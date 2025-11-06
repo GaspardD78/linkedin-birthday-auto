@@ -119,30 +119,10 @@ function setupProgressListener() {
 // ============================================================================
 
 /**
- * Tente d'injecter le content script programmatiquement
- * @param {number} tabId - ID de l'onglet
- * @returns {Promise<boolean>} - True si succès, false sinon
+ * Note: Programmatic injection removed because chrome.scripting.executeScript
+ * doesn't support ES6 modules with imports. The content script in manifest.json
+ * handles automatic injection with "type": "module" support.
  */
-async function injectContentScript(tabId) {
-  try {
-    log('info', 'Attempting to inject content script programmatically');
-
-    // Inject the content script as a module
-    await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ['content.js']
-    });
-
-    // Wait a bit for the script to initialize
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    log('info', 'Content script injected successfully');
-    return true;
-  } catch (error) {
-    log('error', 'Failed to inject content script', error);
-    return false;
-  }
-}
 
 /**
  * Vérifie si le content script est prêt en envoyant un ping
@@ -150,9 +130,9 @@ async function injectContentScript(tabId) {
  * @param {number} maxAttempts - Nombre maximum de tentatives
  * @returns {Promise<boolean>} - True si prêt, false sinon
  */
-async function waitForContentScript(tabId, maxAttempts = 15) {
+async function waitForContentScript(tabId, maxAttempts = 20) {
   // Add initial delay to let the content script module load
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
@@ -165,12 +145,6 @@ async function waitForContentScript(tabId, maxAttempts = 15) {
       // Content script not ready yet, wait and retry
       const delay = Math.min(500 * Math.pow(1.5, i), 3000); // Exponential backoff, max 3s
       log('info', `Waiting for content script... attempt ${i + 1}/${maxAttempts}, next retry in ${Math.round(delay)}ms`);
-
-      // After 5 failed attempts, try to inject the content script
-      if (i === 5) {
-        log('warn', 'Content script not responding after 5 attempts, trying programmatic injection');
-        await injectContentScript(tabId);
-      }
 
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -221,7 +195,7 @@ async function performScan() {
     const isReady = await waitForContentScript(tab.id);
 
     if (!isReady) {
-      throw new Error('Le script n\'a pas pu se charger. Actualisez la page (F5) et réessayez.');
+      throw new Error('Le script de contenu ne répond pas. Actualisez la page LinkedIn (F5) et réessayez.');
     }
 
     showStatus(STATUS_TYPES.INFO, '🔍 Scan en cours...');
@@ -308,7 +282,7 @@ async function handleSendAll() {
     const isReady = await waitForContentScript(tab.id);
 
     if (!isReady) {
-      throw new Error('Le script n\'a pas pu se charger. Actualisez la page (F5) et réessayez.');
+      throw new Error('Le script de contenu ne répond pas. Actualisez la page LinkedIn (F5) et réessayez.');
     }
 
     showStatus(STATUS_TYPES.INFO, '📤 Envoi des messages en cours...');
