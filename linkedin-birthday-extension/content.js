@@ -1,48 +1,219 @@
-// content.js - Script injecté dans la page LinkedIn (Version améliorée)
+// content.js - Script injecté dans la page LinkedIn (Version sans modules)
 
-import {
-  SELECTORS,
-  ERROR_MESSAGES,
-  TIMING
-} from './constants.js';
+// ============================================================================
+// CONSTANTS (inline)
+// ============================================================================
 
-import {
-  sleep,
-  randomDelay,
-  extractFirstName,
-  isValidName,
-  generateMessage,
-  selectRandomTemplate,
-  modifyMessageUrl,
-  getMessageTemplates,
-  isAlreadySentToday,
-  markAsSentToday,
-  log
-} from './utils.js';
+const SELECTORS = {
+  BIRTHDAY_CARDS: 'div[role="listitem"]',
+  NAME_SELECTORS: [
+    'a[href*="/in/"] span[aria-hidden="true"]',
+    'p.c2f24abb.e824998c',
+    'p.c2f24abb.d4d7f11d.e824998c',
+    'h2 span',
+    'div[class*="entity-result__title"] span'
+  ],
+  MESSAGE_BUTTON_SELECTORS: [
+    'a[aria-label*="Envoyer un message"]',
+    'a[aria-label*="Send message"]',
+    'a[href*="/messaging/compose"]',
+    'button[aria-label*="message"]'
+  ]
+};
+
+const TIMING = {
+  PAGE_LOAD_DELAY: 2000,
+  SCROLL_DELAY: 1000,
+  SCROLL_ITERATIONS: 3,
+  CARD_SCROLL_DELAY: 500,
+  MIN_MESSAGE_DELAY: 3000,
+  MAX_MESSAGE_DELAY: 6000
+};
+
+const VALIDATION = {
+  MIN_NAME_LENGTH: 2,
+  MAX_NAME_LENGTH: 100
+};
+
+const STORAGE_KEYS = {
+  MESSAGE_TEMPLATES: 'messageTemplates',
+  SENT_HISTORY: 'sentHistory'
+};
+
+const DEFAULT_TEMPLATES = [
+  "Joyeux anniversaire {prenom} ! 🎉 Je te souhaite une excellente journée remplie de bonheur !",
+  "Bon anniversaire {prenom} ! 🎂 Profite bien de cette journée spéciale !",
+  "Happy birthday {prenom} ! 🥳 Je te souhaite le meilleur pour cette nouvelle année !",
+  "Joyeux anniversaire {prenom} ! 🎈 Que cette année t'apporte de belles réussites !"
+];
+
+// ============================================================================
+// UTILITY FUNCTIONS (inline)
+// ============================================================================
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function randomDelay(min = TIMING.MIN_MESSAGE_DELAY, max = TIMING.MAX_MESSAGE_DELAY) {
+  return min + Math.random() * (max - min);
+}
+
+function extractFirstName(fullName) {
+  if (!fullName || typeof fullName !== 'string') {
+    return '';
+  }
+  return fullName.trim().split(/\s+/)[0];
+}
+
+function isValidName(name) {
+  if (!name || typeof name !== 'string') {
+    return false;
+  }
+
+  const trimmedName = name.trim();
+  const length = trimmedName.length;
+
+  return length >= VALIDATION.MIN_NAME_LENGTH &&
+         length <= VALIDATION.MAX_NAME_LENGTH &&
+         !trimmedName.toLowerCase().includes('célébrez') &&
+         !trimmedName.toLowerCase().includes('anniversaire') &&
+         !trimmedName.toLowerCase().includes('celebrate') &&
+         !trimmedName.toLowerCase().includes('birthday');
+}
+
+function generateMessage(firstName, template) {
+  if (!firstName || !template) {
+    return '';
+  }
+  return template.replace(/\{prenom\}/g, firstName);
+}
+
+function selectRandomTemplate(templates) {
+  if (!templates || templates.length === 0) {
+    return DEFAULT_TEMPLATES[0];
+  }
+  return templates[Math.floor(Math.random() * templates.length)];
+}
+
+function modifyMessageUrl(originalUrl, message) {
+  if (!originalUrl || !message) {
+    return originalUrl;
+  }
+
+  const encodedMessage = encodeURIComponent(message);
+
+  if (originalUrl.includes('body=')) {
+    const parts = originalUrl.split('body=');
+    const basePart = parts[0];
+    const rest = parts[1].split('&');
+    const otherParams = rest.slice(1).join('&');
+
+    let newUrl = basePart + 'body=' + encodedMessage;
+    if (otherParams) {
+      newUrl += '&' + otherParams;
+    }
+    return newUrl;
+  } else {
+    const separator = originalUrl.includes('?') ? '&' : '?';
+    return originalUrl + separator + 'body=' + encodedMessage;
+  }
+}
+
+function getMessageTemplates() {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.storage.sync.get([STORAGE_KEYS.MESSAGE_TEMPLATES], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        const templates = result[STORAGE_KEYS.MESSAGE_TEMPLATES] || DEFAULT_TEMPLATES;
+        resolve(templates);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function isAlreadySentToday(contactName) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.SENT_HISTORY], (result) => {
+      const history = result[STORAGE_KEYS.SENT_HISTORY] || {};
+      const today = new Date().toISOString().split('T')[0];
+      const todaysSent = history[today] || [];
+      resolve(todaysSent.includes(contactName));
+    });
+  });
+}
+
+async function markAsSentToday(contactName) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([STORAGE_KEYS.SENT_HISTORY], (result) => {
+      const history = result[STORAGE_KEYS.SENT_HISTORY] || {};
+      const today = new Date().toISOString().split('T')[0];
+
+      if (!history[today]) {
+        history[today] = [];
+      }
+
+      if (!history[today].includes(contactName)) {
+        history[today].push(contactName);
+      }
+
+      // Nettoyer l'historique (garder seulement les 7 derniers jours)
+      const dates = Object.keys(history);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
+      const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+      dates.forEach(date => {
+        if (date < cutoffStr) {
+          delete history[date];
+        }
+      });
+
+      chrome.storage.local.set({ [STORAGE_KEYS.SENT_HISTORY]: history }, resolve);
+    });
+  });
+}
+
+function log(level, message, data = null) {
+  const timestamp = new Date().toISOString();
+  const prefix = `[LinkedIn Birthday Bot ${timestamp}]`;
+
+  switch (level) {
+    case 'info':
+      console.log(`${prefix} ℹ️ ${message}`, data || '');
+      break;
+    case 'warn':
+      console.warn(`${prefix} ⚠️ ${message}`, data || '');
+      break;
+    case 'error':
+      console.error(`${prefix} ❌ ${message}`, data || '');
+      break;
+    default:
+      console.log(`${prefix} ${message}`, data || '');
+  }
+}
 
 // ============================================================================
 // MESSAGE HANDLERS
 // ============================================================================
 
-/**
- * Écouter les messages de la popup
- */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scanBirthdays') {
     handleScanBirthdays(sendResponse);
-    return true; // Réponse asynchrone
+    return true;
   }
 
   if (request.action === 'sendAllMessages') {
     handleSendAllMessages(sendResponse);
-    return true; // Réponse asynchrone
+    return true;
   }
 });
 
-/**
- * Handler pour le scan des anniversaires
- * @param {Function} sendResponse - Fonction de callback
- */
 async function handleScanBirthdays(sendResponse) {
   try {
     const birthdays = await scanBirthdays();
@@ -53,10 +224,6 @@ async function handleScanBirthdays(sendResponse) {
   }
 }
 
-/**
- * Handler pour l'envoi de tous les messages
- * @param {Function} sendResponse - Fonction de callback
- */
 async function handleSendAllMessages(sendResponse) {
   try {
     const result = await sendAllMessages();
@@ -71,13 +238,7 @@ async function handleSendAllMessages(sendResponse) {
 // DOM EXTRACTION UTILITIES
 // ============================================================================
 
-/**
- * Extrait le nom d'une carte d'anniversaire
- * @param {HTMLElement} card - Élément DOM de la carte
- * @returns {string|null} - Nom extrait ou null
- */
 function extractNameFromCard(card) {
-  // Essayer chaque sélecteur dans l'ordre de priorité
   for (const selector of SELECTORS.NAME_SELECTORS) {
     try {
       const elements = card.querySelectorAll(selector);
@@ -93,7 +254,6 @@ function extractNameFromCard(card) {
     }
   }
 
-  // Fallback: chercher tous les paragraphes
   const paragraphs = card.querySelectorAll('p, span, div[class*="name"]');
   for (const element of paragraphs) {
     const text = element.textContent.trim();
@@ -106,11 +266,6 @@ function extractNameFromCard(card) {
   return null;
 }
 
-/**
- * Trouve le lien de message dans une carte
- * @param {HTMLElement} card - Élément DOM de la carte
- * @returns {HTMLElement|null} - Élément de lien ou null
- */
 function findMessageLink(card) {
   for (const selector of SELECTORS.MESSAGE_BUTTON_SELECTORS) {
     try {
@@ -127,11 +282,6 @@ function findMessageLink(card) {
   return null;
 }
 
-/**
- * Extrait les informations d'une carte d'anniversaire
- * @param {HTMLElement} card - Élément DOM de la carte
- * @returns {Object|null} - Objet contenant name, messageLink, card ou null
- */
 function extractBirthdayInfo(card) {
   try {
     const name = extractNameFromCard(card);
@@ -161,10 +311,6 @@ function extractBirthdayInfo(card) {
 // PAGE INTERACTION
 // ============================================================================
 
-/**
- * Scrolle la page pour charger tous les éléments
- * @returns {Promise<void>}
- */
 async function scrollPage() {
   log('info', 'Scrolling page to load all content');
 
@@ -173,18 +319,12 @@ async function scrollPage() {
     await sleep(TIMING.SCROLL_DELAY);
   }
 
-  // Retour en haut
   window.scrollTo(0, 0);
   await sleep(TIMING.SCROLL_DELAY / 2);
 
   log('info', 'Page scrolling completed');
 }
 
-/**
- * Scrolle vers un élément de manière fluide
- * @param {HTMLElement} element - Élément vers lequel scroller
- * @returns {Promise<void>}
- */
 async function scrollToElement(element) {
   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   await sleep(TIMING.CARD_SCROLL_DELAY);
@@ -194,17 +334,10 @@ async function scrollToElement(element) {
 // MAIN FUNCTIONS
 // ============================================================================
 
-/**
- * Scanne la page pour détecter les anniversaires
- * @returns {Promise<Array>} - Liste des anniversaires détectés
- */
 async function scanBirthdays() {
   log('info', 'Starting birthday scan');
 
-  // Attendre que la page soit complètement chargée
   await sleep(TIMING.PAGE_LOAD_DELAY);
-
-  // Scroll pour charger tous les éléments
   await scrollPage();
 
   const birthdays = [];
@@ -216,7 +349,6 @@ async function scanBirthdays() {
     const birthdayInfo = extractBirthdayInfo(card);
 
     if (birthdayInfo) {
-      // Vérifier si déjà envoyé aujourd'hui
       const alreadySent = await isAlreadySentToday(birthdayInfo.name);
 
       birthdays.push({
@@ -233,17 +365,11 @@ async function scanBirthdays() {
   return birthdays;
 }
 
-/**
- * Envoie les messages à tous les contacts
- * @returns {Promise<Object>} - Résultat avec nombre de messages envoyés et ignorés
- */
 async function sendAllMessages() {
   log('info', 'Starting to send messages');
 
-  // Attendre que la page soit chargée
   await sleep(TIMING.PAGE_LOAD_DELAY);
 
-  // Charger les templates
   const templates = await getMessageTemplates();
   log('info', `Loaded ${templates.length} message templates`);
 
@@ -251,7 +377,6 @@ async function sendAllMessages() {
     throw new Error('Aucun template de message disponible');
   }
 
-  // Scroll pour charger tout le contenu
   await scrollPage();
 
   let sent = 0;
@@ -274,7 +399,6 @@ async function sendAllMessages() {
 
       const { name, messageLink } = birthdayInfo;
 
-      // Vérifier si déjà envoyé aujourd'hui
       if (await isAlreadySentToday(name)) {
         log('info', `Skipping ${name}: already sent today`);
         skipped++;
@@ -285,26 +409,20 @@ async function sendAllMessages() {
       const template = selectRandomTemplate(templates);
       const message = generateMessage(firstName, template);
 
-      // Modifier l'URL pour inclure le message
       const originalHref = messageLink.getAttribute('href');
       const newHref = modifyMessageUrl(originalHref, message);
 
-      // Scroll jusqu'à l'élément
       await scrollToElement(card);
 
-      // Ouvrir dans un nouvel onglet
       window.open(newHref, '_blank');
 
-      // Marquer comme envoyé
       await markAsSentToday(name);
 
       sent++;
 
-      // Délai aléatoire entre chaque envoi
       const delay = randomDelay();
       log('info', `Message ${sent} prepared for ${name}. Waiting ${Math.round(delay / 1000)}s...`);
 
-      // Notifier la popup de la progression
       notifyProgress(sent, cards.length);
 
       await sleep(delay);
@@ -320,11 +438,6 @@ async function sendAllMessages() {
   return { sent, skipped };
 }
 
-/**
- * Notifie la popup de la progression
- * @param {number} current - Nombre actuel
- * @param {number} total - Total
- */
 function notifyProgress(current, total) {
   try {
     chrome.runtime.sendMessage({
@@ -333,7 +446,6 @@ function notifyProgress(current, total) {
       total
     });
   } catch (error) {
-    // Silently fail if popup is closed
     log('warn', 'Could not send progress update', error);
   }
 }

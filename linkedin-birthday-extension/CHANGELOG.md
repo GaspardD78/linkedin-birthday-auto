@@ -1,5 +1,17 @@
 # Changelog - LinkedIn Birthday Bot
 
+## Version 1.1.1 - Correctif Modules ES6 (2025-11-06)
+
+### 🐛 Correctifs Critiques
+
+- **Correction des modules ES6 dans content.js** : Les content scripts Chrome ne supportent pas nativement les imports ES6. Le code a été converti en JavaScript classique avec toutes les fonctions inline.
+- **Manifest.json simplifié** : Retrait des références inutiles aux fichiers modules séparés
+- **Extension maintenant fonctionnelle** : Plus d'erreurs "Cannot use import statement outside a module"
+
+**Note technique** : popup.js et settings.js continuent d'utiliser les modules ES6 (constants.js et utils.js) car ils sont chargés via des pages HTML avec `type="module"`, ce qui est supporté. Seul content.js a été converti en standalone.
+
+---
+
 ## Version 1.1.0 - Améliorations Majeures
 
 ### ✨ Nouvelles Fonctionnalités
