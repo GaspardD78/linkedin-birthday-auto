@@ -28,6 +28,12 @@ import {
  * Écouter les messages de la popup
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Ping handler - allows popup to check if content script is ready
+  if (request.action === 'ping') {
+    sendResponse({ success: true, ready: true });
+    return false;
+  }
+
   if (request.action === 'scanBirthdays') {
     handleScanBirthdays(sendResponse);
     return true; // Réponse asynchrone

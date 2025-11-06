@@ -48,7 +48,7 @@ export const TIMING = {
   CARD_SCROLL_DELAY: 500,        // Délai après scroll vers une carte
   MIN_MESSAGE_DELAY: 3000,       // Délai minimum entre messages
   MAX_MESSAGE_DELAY: 6000,       // Délai maximum entre messages
-  AUTO_SCAN_DELAY: 500,          // Délai avant auto-scan dans popup
+  AUTO_SCAN_DELAY: 1500,         // Délai avant auto-scan dans popup
   SUCCESS_MESSAGE_DURATION: 3000 // Durée d'affichage du message de succès
 };
 

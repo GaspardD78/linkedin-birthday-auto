@@ -58,10 +58,10 @@ async function initializePopup() {
   // Écouter les messages de progression depuis content.js
   setupProgressListener();
 
-  // Auto-scan au chargement (avec un délai plus long pour laisser le content script s'initialiser)
+  // Auto-scan au chargement pour laisser le content script s'initialiser
   setTimeout(() => {
     performScan();
-  }, TIMING.AUTO_SCAN_DELAY + 500);
+  }, TIMING.AUTO_SCAN_DELAY);
 }
 
 /**
@@ -119,13 +119,37 @@ function setupProgressListener() {
 // ============================================================================
 
 /**
+ * Vérifie si le content script est prêt en envoyant un ping
+ * @param {number} tabId - ID de l'onglet
+ * @param {number} maxAttempts - Nombre maximum de tentatives
+ * @returns {Promise<boolean>} - True si prêt, false sinon
+ */
+async function waitForContentScript(tabId, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+      if (response && response.ready) {
+        log('info', 'Content script is ready');
+        return true;
+      }
+    } catch (error) {
+      // Content script not ready yet, wait and retry
+      const delay = Math.min(500 * Math.pow(1.5, i), 3000); // Exponential backoff, max 3s
+      log('info', `Waiting for content script... attempt ${i + 1}/${maxAttempts}, next retry in ${Math.round(delay)}ms`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  return false;
+}
+
+/**
  * Envoie un message au content script avec retry
  * @param {number} tabId - ID de l'onglet
  * @param {Object} message - Message à envoyer
  * @param {number} retries - Nombre de tentatives restantes
  * @returns {Promise<Object>} - Réponse du content script
  */
-async function sendMessageWithRetry(tabId, message, retries = 3) {
+async function sendMessageWithRetry(tabId, message, retries = 5) {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await chrome.tabs.sendMessage(tabId, message);
@@ -138,8 +162,9 @@ async function sendMessageWithRetry(tabId, message, retries = 3) {
         throw new Error('Le script n\'est pas chargé. Actualisez la page et réessayez.');
       }
 
-      // Attendre un peu avant de réessayer (100ms * tentative)
-      await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+      // Attendre avec exponential backoff (500ms, 1000ms, 2000ms, 3000ms, 3000ms)
+      const delay = Math.min(500 * Math.pow(2, i), 3000);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 }
@@ -151,10 +176,19 @@ async function performScan() {
   const scanButton = document.getElementById('scanButton');
   scanButton.disabled = true;
 
-  showStatus(STATUS_TYPES.INFO, '🔍 Scan en cours...');
+  showStatus(STATUS_TYPES.INFO, '🔍 Vérification du script...');
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // Wait for content script to be ready
+    const isReady = await waitForContentScript(tab.id);
+
+    if (!isReady) {
+      throw new Error('Le script n\'a pas pu se charger. Actualisez la page (F5) et réessayez.');
+    }
+
+    showStatus(STATUS_TYPES.INFO, '🔍 Scan en cours...');
 
     const response = await sendMessageWithRetry(tab.id, {
       action: 'scanBirthdays'
@@ -228,11 +262,20 @@ async function handleSendAll() {
   const sendButton = document.getElementById('sendAllButton');
   sendButton.disabled = true;
 
-  showStatus(STATUS_TYPES.INFO, '📤 Envoi des messages en cours...');
+  showStatus(STATUS_TYPES.INFO, '🔍 Vérification du script...');
   showProgressBar();
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // Wait for content script to be ready
+    const isReady = await waitForContentScript(tab.id);
+
+    if (!isReady) {
+      throw new Error('Le script n\'a pas pu se charger. Actualisez la page (F5) et réessayez.');
+    }
+
+    showStatus(STATUS_TYPES.INFO, '📤 Envoi des messages en cours...');
 
     const response = await sendMessageWithRetry(tab.id, {
       action: 'sendAllMessages'
