@@ -21,8 +21,14 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/mynetwork/catch-up/birthday/*"],
-      "js": ["content.js"],
+      "js": ["constants.js", "utils.js", "content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["constants.js", "utils.js"],
+      "matches": ["https://www.linkedin.com/*"]
     }
   ],
   "icons": {
