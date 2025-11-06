@@ -58,10 +58,10 @@ async function initializePopup() {
   // Écouter les messages de progression depuis content.js
   setupProgressListener();
 
-  // Auto-scan au chargement
+  // Auto-scan au chargement (avec un délai plus long pour laisser le content script s'initialiser)
   setTimeout(() => {
     performScan();
-  }, TIMING.AUTO_SCAN_DELAY);
+  }, TIMING.AUTO_SCAN_DELAY + 500);
 }
 
 /**
@@ -119,6 +119,32 @@ function setupProgressListener() {
 // ============================================================================
 
 /**
+ * Envoie un message au content script avec retry
+ * @param {number} tabId - ID de l'onglet
+ * @param {Object} message - Message à envoyer
+ * @param {number} retries - Nombre de tentatives restantes
+ * @returns {Promise<Object>} - Réponse du content script
+ */
+async function sendMessageWithRetry(tabId, message, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, message);
+      return response;
+    } catch (error) {
+      log('warn', `Message attempt ${i + 1}/${retries} failed`, error);
+
+      // Si c'est la dernière tentative, lancer l'erreur
+      if (i === retries - 1) {
+        throw new Error('Le script n\'est pas chargé. Actualisez la page et réessayez.');
+      }
+
+      // Attendre un peu avant de réessayer (100ms * tentative)
+      await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
+    }
+  }
+}
+
+/**
  * Effectue le scan des anniversaires
  */
 async function performScan() {
@@ -130,7 +156,7 @@ async function performScan() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    const response = await sendMessageWithRetry(tab.id, {
       action: 'scanBirthdays'
     });
 
@@ -142,7 +168,7 @@ async function performScan() {
     }
   } catch (error) {
     log('error', 'Scan communication failed', error);
-    showStatus(STATUS_TYPES.ERROR, '❌ Erreur de communication : ' + error.message);
+    showStatus(STATUS_TYPES.ERROR, '❌ Erreur : ' + error.message);
   } finally {
     scanButton.disabled = false;
   }
@@ -208,7 +234,7 @@ async function handleSendAll() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    const response = await sendMessageWithRetry(tab.id, {
       action: 'sendAllMessages'
     });
 
