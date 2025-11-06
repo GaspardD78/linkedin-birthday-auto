@@ -21,7 +21,8 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/mynetwork/catch-up/birthday/*"],
-      "js": ["constants.js", "utils.js", "content.js"],
+      "js": ["content.js"],
+      "type": "module",
       "run_at": "document_idle"
     }
   ],
