@@ -31,7 +31,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Ping handler - allows popup to check if content script is ready
   if (request.action === 'ping') {
     sendResponse({ success: true, ready: true });
-    return false;
+    return true; // Keep message channel open
   }
 
   if (request.action === 'scanBirthdays') {
