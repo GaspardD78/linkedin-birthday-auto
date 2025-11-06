@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paramètres - LinkedIn Birthday Bot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #F3F6F8;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0077B5 0%, #00A0DC 100%);
+      color: white;
+      padding: 30px;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .card h2 {
+      color: #0077B5;
+      font-size: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #E0E0E0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #0077B5;
+    }
+
+    .template-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .template-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .template-item textarea {
+      flex: 1;
+    }
+
+    .template-item button {
+      padding: 8px 12px;
+      background: #F44336;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .template-item button:hover {
+      background: #D32F2F;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #0077B5;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #006399;
+    }
+
+    .btn-secondary {
+      background: #E0E0E0;
+      color: #333;
+      margin-left: 10px;
+    }
+
+    .btn-secondary:hover {
+      background: #BDBDBD;
+    }
+
+    .info-box {
+      background: #E7F3FF;
+      border-left: 4px solid #0077B5;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .help-text {
+      font-size: 13px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 30px;
+    }
+
+    .success-message {
+      background: #4CAF50;
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚙️ Paramètres</h1>
+      <p>Personnalisez vos messages d'anniversaire</p>
+    </div>
+
+    <div class="success-message" id="successMessage">
+      ✅ Paramètres sauvegardés avec succès !
+    </div>
+
+    <div class="card">
+      <h2>💬 Templates de Messages</h2>
+      
+      <div class="info-box">
+        <strong>💡 Astuce :</strong> Utilisez <code>{prenom}</code> pour insérer automatiquement le prénom de la personne.
+        <br>Exemple : "Joyeux anniversaire {prenom} ! 🎉"
+      </div>
+
+      <div class="template-list" id="templateList">
+        <!-- Rempli dynamiquement -->
+      </div>
+
+      <button class="btn btn-primary" id="addTemplateBtn" style="margin-top: 15px;">
+        ➕ Ajouter un message
+      </button>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ Options Avancées</h2>
+      
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="autoSendCheckbox"> 
+          Envoi automatique (expérimental)
+        </label>
+        <p class="help-text">⚠️ Attention : L'envoi automatique peut être détecté par LinkedIn</p>
+      </div>
+
+      <div class="form-group">
+        <label for="delayInput">Délai entre les messages (secondes)</label>
+        <input type="number" id="delayInput" min="3" max="30" value="5" style="padding: 8px; border: 2px solid #E0E0E0; border-radius: 6px; width: 100px;">
+        <p class="help-text">Recommandé : 5-10 secondes pour éviter la détection</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📊 Statistiques</h2>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: center;">
+        <div style="padding: 20px; background: #F5F5F5; border-radius: 8px;">
+          <div style="font-size: 32px; font-weight: bold; color: #0077B5;" id="totalSent">0</div>
+          <div style="color: #666; margin-top: 5px;">Messages envoyés</div>
+        </div>
+        <div style="padding: 20px; background: #F5F5F5; border-radius: 8px;">
+          <div style="font-size: 18px; color: #666;" id="lastSentDate">Jamais</div>
+          <div style="color: #666; margin-top: 5px;">Dernière utilisation</div>
+        </div>
+      </div>
+
+      <button class="btn btn-secondary" id="resetStatsBtn" style="margin-top: 15px;">
+        🔄 Réinitialiser les statistiques
+      </button>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-secondary" id="backBtn">← Retour</button>
+      <button class="btn btn-primary" id="saveBtn">💾 Sauvegarder</button>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

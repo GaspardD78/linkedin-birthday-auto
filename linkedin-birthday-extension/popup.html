@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Birthday Bot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0077B5 0%, #00A0DC 100%);
+      color: #fff;
+    }
+
+    .container {
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .card h2 {
+      color: #0077B5;
+      font-size: 16px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status.info {
+      background: #E7F3FF;
+      color: #0077B5;
+    }
+
+    .status.success {
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+
+    .status.warning {
+      background: #FFF3E0;
+      color: #E65100;
+    }
+
+    .status.error {
+      background: #FFEBEE;
+      color: #C62828;
+    }
+
+    .message-templates {
+      color: #333;
+    }
+
+    .template-item {
+      padding: 10px;
+      background: #F5F5F5;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .add-template-btn {
+      width: 100%;
+      padding: 8px;
+      background: #0077B5;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    .add-template-btn:hover {
+      background: #006399;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      color: #333;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 15px;
+      background: #F5F5F5;
+      border-radius: 8px;
+    }
+
+    .stat-number {
+      font-size: 28px;
+      font-weight: bold;
+      color: #0077B5;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: #0077B5;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #006399;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 119, 181, 0.3);
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #0077B5;
+      border: 2px solid #0077B5;
+    }
+
+    .btn-secondary:hover {
+      background: #F3F6F8;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #E0E0E0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #0077B5;
+      transition: width 0.3s;
+    }
+
+    .birthday-list {
+      max-height: 200px;
+      overflow-y: auto;
+      color: #333;
+    }
+
+    .birthday-item {
+      padding: 8px;
+      border-bottom: 1px solid #E0E0E0;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .birthday-item:last-child {
+      border-bottom: none;
+    }
+
+    .settings-icon {
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 4px;
+    }
+
+    .settings-icon:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    #notOnBirthdayPage {
+      display: none;
+    }
+
+    .emoji {
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎉 LinkedIn Birthday Bot</h1>
+      <p>Automatisez vos vœux d'anniversaire</p>
+    </div>
+
+    <!-- Message si pas sur la bonne page -->
+    <div id="notOnBirthdayPage">
+      <div class="status warning">
+        <span class="emoji">⚠️</span>
+        <div>
+          <strong>Page incorrecte</strong><br>
+          Allez sur la page des anniversaires LinkedIn pour utiliser le bot.
+        </div>
+      </div>
+      <div class="action-buttons">
+        <button class="btn btn-primary" id="goToBirthdayPage">
+          📅 Aller à la page des anniversaires
+        </button>
+      </div>
+    </div>
+
+    <!-- Interface principale -->
+    <div id="mainInterface">
+      <!-- Statut -->
+      <div id="statusMessage"></div>
+
+      <!-- Statistiques -->
+      <div class="card">
+        <h2>📊 Statistiques</h2>
+        <div class="stats">
+          <div class="stat-item">
+            <div class="stat-number" id="birthdayCount">-</div>
+            <div class="stat-label">Anniversaires détectés</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number" id="sentCount">0</div>
+            <div class="stat-label">Messages envoyés</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Liste des anniversaires -->
+      <div class="card">
+        <h2>🎂 Anniversaires du jour</h2>
+        <div class="birthday-list" id="birthdayList">
+          <div style="text-align: center; padding: 20px; color: #999;">
+            Chargement...
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="card">
+        <h2>🚀 Actions</h2>
+        <div class="action-buttons">
+          <button class="btn btn-primary" id="scanButton">
+            🔍 Détecter les anniversaires
+          </button>
+          <button class="btn btn-primary" id="sendAllButton" disabled>
+            📤 Envoyer tous les messages
+          </button>
+          <button class="btn btn-secondary" id="settingsButton">
+            ⚙️ Paramètres
+          </button>
+        </div>
+        <div id="progressContainer" style="display: none;">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <p style="text-align: center; margin-top: 8px; font-size: 13px; color: #666;" id="progressText"></p>
+        </div>
+      </div>
+
+      <!-- Templates de messages -->
+      <div class="card">
+        <h2>💬 Vos messages</h2>
+        <div class="message-templates" id="messageTemplates">
+          <!-- Rempli dynamiquement -->
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>v1.0.0 - Fait avec ❤️ pour LinkedIn</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
