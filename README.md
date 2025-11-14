@@ -30,21 +30,21 @@ Pour que le script puisse se connecter à votre compte, vous devez stocker votre
 
 Le script est maintenant prêt à s'authentifier en toute sécurité.
 
-### 2. (Optionnel) Personnaliser les messages d'anniversaire
+### 2. Personnaliser les messages d'anniversaire
 
-Si vous souhaitez modifier les messages envoyés :
+Pour modifier, ajouter ou supprimer des messages d'anniversaire, il vous suffit d'éditer le fichier `messages.txt`.
 
-1.  Ouvrez le fichier `linkedin_birthday_wisher.py`.
-2.  Trouvez la liste `BIRTHDAY_MESSAGES` au début du fichier.
-3.  Modifiez, ajoutez ou supprimez des messages dans cette liste. Assurez-vous de conserver `{name}` qui sera automatiquement remplacé par le prénom de votre contact.
+1.  Ouvrez le fichier `messages.txt` directement dans GitHub.
+2.  Chaque ligne du fichier est un modèle de message. Modifiez-les comme vous le souhaitez.
+3.  Assurez-vous de conserver le marqueur `{name}`, qui sera automatiquement remplacé par le prénom de votre contact.
 
-Exemple :
-```python
-BIRTHDAY_MESSAGES = [
-    "Joyeux anniversaire, {name} ! J'espère que tu passes une excellente journée.",
-    "Un petit message pour te souhaiter un très bon anniversaire, {name} !",
-]
+**Exemple de contenu pour `messages.txt` :**
 ```
+Joyeux anniversaire, {name} ! J'espère que tu passes une excellente journée.
+Un petit message pour te souhaiter un très bon anniversaire, {name} !
+Hello {name}, happy birthday!
+```
+Le script choisira une de ces lignes au hasard pour chaque contact.
 
 ## Surveillance de l'automatisation
 
