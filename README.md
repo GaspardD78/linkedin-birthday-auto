@@ -14,19 +14,37 @@ Ce projet contient un script d'automatisation Python conçu pour souhaiter autom
 
 Suivez ces étapes pour configurer et activer le bot.
 
-### 1. Stocker vos identifiants LinkedIn en toute sécurité
+### 1. Générer et stocker votre état d'authentification LinkedIn
 
-Pour que le script puisse se connecter à votre compte, vous devez stocker votre e-mail et votre mot de passe LinkedIn en tant que "secrets" dans votre dépôt GitHub. C'est la méthode la plus sûre, car ils sont chiffrés et ne seront jamais visibles publiquement.
+Pour que le script puisse se connecter à votre compte, vous devez générer un état d'authentification (qui contient votre session LinkedIn avec tous les cookies) et le stocker en tant que "secret" dans votre dépôt GitHub. Cette méthode est plus sûre car elle ne stocke pas directement vos identifiants.
+
+**Étape A : Générer l'état d'authentification**
+
+1.  Sur votre ordinateur local, installez les dépendances :
+    ```bash
+    pip install playwright
+    playwright install chromium
+    ```
+
+2.  Exécutez le script de génération :
+    ```bash
+    python generate_auth_state.py
+    ```
+
+3.  Un navigateur s'ouvrira. Connectez-vous à LinkedIn (avec email, mot de passe et code 2FA si activé).
+
+4.  Une fois connecté, revenez au terminal et appuyez sur **Entrée**.
+
+5.  Le script affichera une longue chaîne de caractères Base64. **Copiez-la**.
+
+**Étape B : Créer le secret GitHub**
 
 1.  Dans votre dépôt GitHub, allez dans **Settings** > **Secrets and variables** > **Actions**.
 2.  Cliquez sur **New repository secret**.
-3.  Créez un premier secret :
-    *   **Name** : `LINKEDIN_EMAIL`
-    *   **Secret** : Entrez votre adresse e-mail LinkedIn.
+3.  Créez le secret :
+    *   **Name** : `LINKEDIN_AUTH_STATE`
+    *   **Secret** : Collez la chaîne Base64 copiée à l'étape A.
 4.  Cliquez sur **Add secret**.
-5.  Créez un second secret :
-    *   **Name** : `LINKEDIN_PASSWORD`
-    *   **Secret** : Entrez votre mot de passe LinkedIn.
 
 Le script est maintenant prêt à s'authentifier en toute sécurité.
 
