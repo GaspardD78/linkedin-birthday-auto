@@ -1,6 +1,42 @@
-# Peux tu me faire une recherche sur la détection des bot d'automatisation par linkedin et des règles à respecter pour qu'il ne soient pas repérer ?
+# Automatisation LinkedIn : Guide d'Authentification et de Sécurité
 
-Maintenant, je vais générer une réponse complète et approfondie basée sur mes recherches.
+Ce document décrit la méthode d'authentification sécurisée utilisée par ce projet pour automatiser les actions sur LinkedIn, ainsi que les bonnes pratiques pour éviter la détection et la suspension du compte.
+
+## Méthode d'Authentification Sécurisée (2FA)
+
+Pour contourner les problèmes liés à l'authentification à deux facteurs (2FA) et éviter de stocker des mots de passe en clair, ce projet utilise un système d'état de session pré-authentifié.
+
+### Comment ça marche ?
+
+1.  **Génération d'un état de session** : Un script local (`generate_auth_state.py`) ouvre un navigateur pour que vous puissiez vous connecter manuellement à LinkedIn.
+2.  **Exportation sécurisée** : Une fois connecté, le script sauvegarde les cookies de session dans un fichier, l'encode en Base64 pour le sécuriser, et supprime le fichier local.
+3.  **Stockage dans GitHub Secrets** : Vous copiez cette chaîne encodée et la stockez en tant que secret (`LINKEDIN_AUTH_STATE`) dans votre dépôt GitHub.
+4.  **Utilisation par le script principal** : Le script d'automatisation (`linkedin_birthday_wisher.py`) décode ce secret pour restaurer la session, démarrant ainsi directement "connecté" sans avoir besoin de vos identifiants.
+
+### Comment mettre à jour votre authentification ?
+
+Votre session LinkedIn peut expirer après quelques semaines ou mois. Si le script rencontre des erreurs de connexion, il vous suffit de régénérer l'état d'authentification.
+
+**Instructions :**
+
+1.  **Assurez-vous d'avoir les dépendances à jour** :
+    ```bash
+    pip install -r requirements.txt
+    playwright install --with-deps chromium
+    ```
+2.  **Lancez le script de génération** :
+    ```bash
+    python generate_auth_state.py
+    ```
+3.  **Suivez les instructions** :
+    *   Le script ouvrira une fenêtre de navigateur sur la page de connexion de LinkedIn.
+    *   Connectez-vous avec votre email, mot de passe et code 2FA.
+    *   Une fois sur la page d'accueil de LinkedIn, revenez au terminal et appuyez sur `Entrée`.
+4.  **Mettez à jour le secret sur GitHub** :
+    *   Le script affichera une longue chaîne de caractères dans le terminal.
+    *   Copiez cette chaîne.
+    *   Allez dans les `Settings` de votre dépôt GitHub > `Secrets and variables` > `Actions`.
+    *   Mettez à jour la valeur du secret `LINKEDIN_AUTH_STATE` avec la nouvelle chaîne.
 
 ## Détection des bots d'automatisation par LinkedIn et règles de conformité
 
