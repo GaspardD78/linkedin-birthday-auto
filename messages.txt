@@ -1,3 +1,3 @@
-Joyeux anniversaire, {name} !
-Bonjour {name}, je vous souhaite un excellent anniversaire !
-Je te souhaite un très joyeux anniversaire, {name} ! Profite bien de ta journée.
+Joyeux anniversaire, {name} ! 🎈 Une nouvelle année qui s'ouvre, riche de possibilités et d'opportunités à saisir. Que cette journée spéciale soit le début d'une année encore plus belle et inspirante. ✨
+Joyeux anniversaire {name} ! 🎉 Aujourd'hui débute une nouvelle année, porteuse de possibilités et d'opportunités infinies. Que ce jour soit le point de départ d'une période belle, inspirante et remplie de succès. À célébrer ! 🚀
+Joyeux anniversaire {name} ! 🎁 Voilà une belle année qui commence, pleine de possibilités et d'opportunités à explorer ! Que cette journée marque le début d'une période magnifique et inspirante. Bon anniversaire ! 💫
