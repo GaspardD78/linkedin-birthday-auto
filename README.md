@@ -1,1 +1,1 @@
-# linkedin-birthday-extension
+# linkedin-birthday-auto
