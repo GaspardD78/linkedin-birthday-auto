@@ -2,6 +2,12 @@ name: LinkedIn Birthday Wisher
 
 on:
   workflow_dispatch: # Allows manual triggering
+    inputs:
+      dry-run:
+        description: 'Run in Dry Run mode to test without sending messages.'
+        required: true
+        default: true
+        type: boolean
   schedule:
     # Runs at 8:00 UTC every day.
     # The script itself has a random delay of up to 2 hours.
@@ -29,6 +35,8 @@ jobs:
 
       - name: Run the birthday wisher script
         env:
+          # When manually dispatched, use the input. For scheduled runs, default to 'false'.
+          DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
           LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
           LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
         run: python linkedin_birthday_wisher.py
