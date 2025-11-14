@@ -22,7 +22,7 @@ Votre session LinkedIn peut expirer après quelques semaines ou mois. Si le scri
 1.  **Assurez-vous d'avoir les dépendances à jour** :
     ```bash
     pip install -r requirements.txt
-    playwright install --with-deps chromium
+    python -m playwright install --with-deps chromium
     ```
 2.  **Lancez le script de génération** :
     ```bash
