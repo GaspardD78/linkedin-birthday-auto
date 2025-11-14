@@ -1,0 +1,41 @@
+name: LinkedIn Birthday Wisher
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    # Runs at 8:00 UTC every day.
+    # The script itself has a random delay of up to 2 hours.
+    - cron: '0 8 * * *'
+
+jobs:
+  run-birthday-wisher:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the birthday wisher script
+        env:
+          LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
+        run: python linkedin_birthday_wisher.py
+
+      - name: Upload error screenshots as artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: error-screenshots
+          path: error_*.png
