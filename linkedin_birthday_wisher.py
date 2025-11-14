@@ -14,12 +14,23 @@ LINKEDIN_PASSWORD = os.getenv('LINKEDIN_PASSWORD')
 USER_DATA_DIR = './playwright_user_data' # Stores session cookies to avoid repeated logins
 HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
 
-# Customizable birthday messages. {name} will be replaced by the contact's first name.
-BIRTHDAY_MESSAGES = [
-    "Joyeux anniversaire, {name} !",
-    "Bonjour {name}, je vous souhaite un excellent anniversaire !",
-    "Je te souhaite un très joyeux anniversaire, {name} ! Profite bien de ta journée."
-]
+# Load birthday messages from the external file.
+def load_birthday_messages(file_path="messages.txt"):
+    """Loads birthday messages from a text file."""
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            # Read lines, strip whitespace, and filter out empty lines.
+            messages = [line.strip() for line in f if line.strip()]
+        if not messages:
+            logging.error(f"'{file_path}' is empty. Please add at least one message.")
+            return []
+        logging.info(f"Loaded {len(messages)} messages from '{file_path}'.")
+        return messages
+    except FileNotFoundError:
+        logging.error(f"Error: The message file '{file_path}' was not found.")
+        return []
+
+BIRTHDAY_MESSAGES = load_birthday_messages()
 
 # --- Human Behavior Simulation ---
 
@@ -124,6 +135,11 @@ def main():
     startup_delay = random.randint(0, 7200) # 0 to 120 minutes (2 hours)
     logging.info(f"Startup delay: waiting for {startup_delay // 60}m {startup_delay % 60}s to start.")
     time.sleep(startup_delay)
+
+    if not BIRTHDAY_MESSAGES:
+        logging.error("Message list is empty. Please check messages.txt. Exiting.")
+        return
+
     with sync_playwright() as p:
         browser = p.chromium.launch_persistent_context(
             USER_DATA_DIR,

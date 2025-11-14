@@ -1,0 +1,3 @@
+Joyeux anniversaire, {name} !
+Bonjour {name}, je vous souhaite un excellent anniversaire !
+Je te souhaite un très joyeux anniversaire, {name} ! Profite bien de ta journée.
