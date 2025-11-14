@@ -30,7 +30,19 @@ Pour que le script puisse se connecter à votre compte, vous devez stocker votre
 
 Le script est maintenant prêt à s'authentifier en toute sécurité.
 
-### 2. Personnaliser les messages d'anniversaire
+### 2. Activer le mode test (Dry Run)
+
+Avant de laisser le bot envoyer de vrais messages, vous pouvez le tester en mode "dry run". Dans ce mode, le script effectuera toutes les actions (connexion, recherche des anniversaires) sauf l'envoi du message final. Il affichera à la place un message dans les logs, indiquant à qui il aurait envoyé un message.
+
+Pour activer ce mode :
+
+1.  Retournez dans **Settings** > **Secrets and variables** > **Actions**.
+2.  Créez un nouveau secret :
+    *   **Name** : `DRY_RUN`
+    *   **Secret** : `true`
+3.  Pour revenir en mode normal (envoi de vrais messages), vous pouvez soit supprimer ce secret, soit changer sa valeur pour `false`.
+
+### 3. Personnaliser les messages d'anniversaire
 
 Pour modifier, ajouter ou supprimer des messages d'anniversaire, il vous suffit d'éditer le fichier `messages.txt`.
 
