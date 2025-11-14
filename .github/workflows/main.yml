@@ -37,8 +37,7 @@ jobs:
         env:
           # When manually dispatched, use the input. For scheduled runs, default to 'false'.
           DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
-          LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
-          LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
+          LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
         run: python linkedin_birthday_wisher.py
 
       - name: Upload error screenshots as artifacts
