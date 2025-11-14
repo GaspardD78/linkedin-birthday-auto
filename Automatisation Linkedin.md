@@ -1,5 +1,3 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
-
 # Peux tu me faire une recherche sur la détection des bot d'automatisation par linkedin et des règles à respecter pour qu'il ne soient pas repérer ?
 
 Maintenant, je vais générer une réponse complète et approfondie basée sur mes recherches.
