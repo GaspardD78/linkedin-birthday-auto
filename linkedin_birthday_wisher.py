@@ -13,6 +13,7 @@ LINKEDIN_EMAIL = os.getenv('LINKEDIN_EMAIL')
 LINKEDIN_PASSWORD = os.getenv('LINKEDIN_PASSWORD')
 USER_DATA_DIR = './playwright_user_data' # Stores session cookies to avoid repeated logins
 HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
 
 # Load birthday messages from the external file.
 def load_birthday_messages(file_path="messages.txt"):
@@ -113,6 +114,15 @@ def send_birthday_message(page: Page, contact_element):
     page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
 
     message = random.choice(BIRTHDAY_MESSAGES).format(name=first_name)
+
+    if DRY_RUN:
+        logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
+        # In dry run, we must close the modal to proceed to the next contact.
+        close_button = page.locator("button[data-control-name='overlay.close_conversation_window']")
+        if close_button.is_visible():
+            close_button.click()
+        return
+
     type_like_a_human(page, message_box_selector, message)
     random_delay(1, 2)
 
@@ -122,14 +132,20 @@ def send_birthday_message(page: Page, contact_element):
         logging.info("Message sent successfully.")
     else:
         logging.warning("Send button is not enabled. Skipping.")
-        # Close the modal to continue
-        page.locator("button[data-control-name='overlay.close_conversation_window']").click()
+
+    # Always close the modal after processing.
+    close_button = page.locator("button[data-control-name='overlay.close_conversation_window']")
+    if close_button.is_visible():
+        close_button.click()
 
 
 # --- Main Execution ---
 
 def main():
     """Main function to run the LinkedIn birthday wisher bot."""
+    if DRY_RUN:
+        logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
+
     # Add a random startup delay to run between 8h and 10h UTC.
     # The GitHub Action is scheduled for 8:00 UTC.
     startup_delay = random.randint(0, 7200) # 0 to 120 minutes (2 hours)
