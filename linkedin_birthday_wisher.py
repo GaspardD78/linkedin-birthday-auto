@@ -134,9 +134,14 @@ def main():
     if DRY_RUN:
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
-    # Add a random startup delay to run between 8h and 10h UTC.
-    # The GitHub Action is scheduled for 8:00 UTC.
-    startup_delay = random.randint(0, 7200) # 0 to 120 minutes (2 hours)
+    # Add a random startup delay.
+    # In normal mode, this is long to simulate a user logging in between 8h-10h UTC.
+    # In DRY RUN mode, this is short for quick testing.
+    if DRY_RUN:
+        startup_delay = random.randint(1, 10) # 1 to 10 seconds for testing
+    else:
+        startup_delay = random.randint(0, 7200) # 0 to 120 minutes for normal operation
+
     logging.info(f"Startup delay: waiting for {startup_delay // 60}m {startup_delay % 60}s to start.")
     time.sleep(startup_delay)
 
@@ -179,9 +184,14 @@ def main():
             for i, contact in enumerate(contacts):
                 send_birthday_message(page, contact)
 
-                # If it's not the last contact, pause for a long, random duration
+                # If it's not the last contact, pause.
+                # In normal mode, this is a long, random duration to simulate human behavior.
+                # In DRY RUN mode, this is short for quick testing.
                 if i < len(contacts) - 1:
-                    delay = random.randint(120, 300) # 2 to 5 minutes
+                    if DRY_RUN:
+                        delay = random.randint(1, 5) # 1 to 5 seconds for testing
+                    else:
+                        delay = random.randint(120, 300) # 2 to 5 minutes for normal operation
                     logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
                     time.sleep(delay)
 
