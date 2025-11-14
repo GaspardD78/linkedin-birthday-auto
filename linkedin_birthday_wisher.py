@@ -2,16 +2,19 @@ import os
 import random
 import time
 import logging
+import base64
+import json
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
 # --- Configuration ---
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Credentials and settings from environment variables
-LINKEDIN_EMAIL = os.getenv('LINKEDIN_EMAIL')
-LINKEDIN_PASSWORD = os.getenv('LINKEDIN_PASSWORD')
-USER_DATA_DIR = './playwright_user_data' # Stores session cookies to avoid repeated logins
+# Secure authentication using a Base64 encoded auth state from GitHub Secrets
+LINKEDIN_AUTH_STATE_B64 = os.getenv('LINKEDIN_AUTH_STATE')
+AUTH_FILE_PATH = "auth_state.json"
+
+# General settings
 HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
 
@@ -48,34 +51,19 @@ def type_like_a_human(page: Page, selector: str, text: str):
 
 # --- Core Automation Functions ---
 
-def login_to_linkedin(page: Page):
-    """Handles the login process for LinkedIn."""
-    if not LINKEDIN_EMAIL or not LINKEDIN_PASSWORD:
-        raise ValueError("LINKEDIN_EMAIL and LINKEDIN_PASSWORD environment variables must be set.")
-
-    logging.info("Navigating to LinkedIn login page.")
-    page.goto("https://www.linkedin.com/login", timeout=60000)
-
-    # If already logged in (redirected to feed), skip login.
-    if "feed" in page.url:
-        logging.info("Already logged in.")
-        return
-
-    logging.info("Logging in with provided credentials.")
-    page.fill("#username", LINKEDIN_EMAIL)
-    random_delay()
-    page.fill("#password", LINKEDIN_PASSWORD)
-    random_delay()
-    page.click("button[type='submit']")
-
+def check_login_status(page: Page):
+    """Checks if the user is logged in by verifying the presence of the feed."""
+    page.goto("https://www.linkedin.com/feed/", timeout=60000)
     try:
-        # Wait for the main feed to load to confirm successful login
-        page.wait_for_url("**/feed/**", timeout=90000)
-        logging.info("Login successful.")
+        # A reliable indicator of being logged in is the presence of the profile avatar dropdown.
+        profile_avatar_selector = "img.global-nav__me-photo"
+        page.wait_for_selector(profile_avatar_selector, timeout=15000)
+        logging.info("Successfully logged in and on the main feed.")
+        return True
     except PlaywrightTimeoutError:
-        logging.error("Login failed. Could be due to incorrect credentials or a CAPTCHA.")
-        page.screenshot(path='error_login_failed.png')
-        raise
+        logging.error("Failed to verify login. The feed page doesn't seem to be loaded correctly.")
+        page.screenshot(path='error_login_verification_failed.png')
+        return False
 
 def get_birthday_contacts(page: Page) -> list:
     """Navigates to the birthdays page and extracts a list of contacts."""
@@ -156,17 +144,34 @@ def main():
         logging.error("Message list is empty. Please check messages.txt. Exiting.")
         return
 
+    # Decode and save the auth state from the environment variable
+    if not LINKEDIN_AUTH_STATE_B64:
+        logging.error("LINKEDIN_AUTH_STATE environment variable is not set. Please generate it first.")
+        return
+
+    try:
+        auth_state_bytes = base64.b64decode(LINKEDIN_AUTH_STATE_B64)
+        with open(AUTH_FILE_PATH, "wb") as f:
+            f.write(auth_state_bytes)
+    except Exception as e:
+        logging.error(f"Failed to decode or save the auth state: {e}")
+        return
+
     with sync_playwright() as p:
-        browser = p.chromium.launch_persistent_context(
-            USER_DATA_DIR,
+        browser = p.chromium.launch(
             headless=HEADLESS_BROWSER,
-            slow_mo=100,
+            slow_mo=100
+        )
+        context = browser.new_context(
+            storage_state=AUTH_FILE_PATH,
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         )
-        page = browser.new_page()
+        page = context.new_page()
 
         try:
-            login_to_linkedin(page)
+            if not check_login_status(page):
+                return # Stop execution if login verification fails.
+
             random_delay(2, 4)
 
             contacts = get_birthday_contacts(page)
@@ -191,6 +196,9 @@ def main():
         finally:
             logging.info("Closing browser.")
             browser.close()
+            # Clean up the local auth file for security
+            if os.path.exists(AUTH_FILE_PATH):
+                os.remove(AUTH_FILE_PATH)
 
 if __name__ == "__main__":
     main()
