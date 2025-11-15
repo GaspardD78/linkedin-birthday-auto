@@ -70,17 +70,49 @@ def get_birthday_contacts(page: Page) -> list:
     logging.info("Navigating to the birthdays page.")
     page.goto("https://www.linkedin.com/notifications/birthdays", timeout=60000)
 
-    # This selector targets the list containing birthday cards.
-    birthday_list_selector = ".scaffold-finite-scroll__content > ul > li"
+    # Wait for the page to load
+    random_delay(3, 5)
 
-    try:
-        page.wait_for_selector(birthday_list_selector, timeout=30000)
-        contacts = page.query_selector_all(birthday_list_selector)
-        logging.info(f"Found {len(contacts)} contact(s) with a birthday today.")
-        return contacts
-    except PlaywrightTimeoutError:
-        logging.info("No birthday notifications found today.")
-        return []
+    # Take a screenshot for debugging
+    page.screenshot(path='birthdays_page.png')
+    logging.info("Screenshot saved as 'birthdays_page.png' for debugging.")
+
+    # Try multiple possible selectors for birthday cards
+    possible_selectors = [
+        ".scaffold-finite-scroll__content > ul > li",  # Original selector
+        "li.birthday-card",  # Alternative: direct birthday card selector
+        "div[data-view-name='birthday-card']",  # Alternative: by data attribute
+        ".artdeco-list__item",  # Alternative: artdeco list item
+        "ul.birthday-notifications-list > li",  # Alternative: specific list
+        "[class*='birthday']",  # Any element with 'birthday' in class
+    ]
+
+    contacts = []
+    for selector in possible_selectors:
+        logging.info(f"Trying selector: {selector}")
+        try:
+            page.wait_for_selector(selector, timeout=5000)
+            contacts = page.query_selector_all(selector)
+            if len(contacts) > 0:
+                logging.info(f"Found {len(contacts)} contact(s) with selector '{selector}'")
+                return contacts
+        except PlaywrightTimeoutError:
+            logging.info(f"Selector '{selector}' not found, trying next...")
+            continue
+
+    # If no selector worked, try to find any list items on the page
+    logging.warning("All specific selectors failed. Searching for any list items...")
+    all_list_items = page.query_selector_all("li")
+    logging.info(f"Found {len(all_list_items)} total <li> elements on the page.")
+
+    # Save page HTML for analysis
+    html_content = page.content()
+    with open('birthdays_page.html', 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    logging.info("Page HTML saved as 'birthdays_page.html' for analysis.")
+
+    logging.info("No birthday notifications found today.")
+    return []
 
 def send_birthday_message(page: Page, contact_element):
     """Opens the messaging modal and sends a personalized birthday wish."""
