@@ -102,6 +102,13 @@ celerybeat.pid
 
 # Environments
 .env
+
+# Authentication state
+auth_state.json
+
+# Debugging artifacts
+*.png
+*.html
 .venv
 env/
 venv/
