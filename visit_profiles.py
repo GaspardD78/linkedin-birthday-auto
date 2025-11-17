@@ -37,8 +37,11 @@ def load_config():
         return None
 
 def load_visited_profiles():
-    """Loads the set of already visited profile URLs."""
+    """Loads the set of already visited profile URLs. Creates the file if it doesn't exist."""
     if not os.path.exists(VISITED_PROFILES_FILE):
+        # Create the file so it can be committed by the workflow even if no new profiles are visited.
+        with open(VISITED_PROFILES_FILE, "w", encoding="utf-8") as f:
+            pass # Create an empty file
         return set()
     with open(VISITED_PROFILES_FILE, "r", encoding="utf-8") as f:
         return {line.strip() for line in f if line.strip()}
