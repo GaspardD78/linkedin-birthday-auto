@@ -44,6 +44,23 @@ def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     """Waits for a random duration within a specified range to mimic human latency."""
     time.sleep(random.uniform(min_seconds, max_seconds))
 
+def scroll_to_bottom_of_page(page: Page, max_scrolls: int = 10):
+    """Scrolls to the bottom of the page to load all content, with a max scroll limit."""
+    logging.info("Scrolling to the bottom of the page...")
+    last_height = page.evaluate("document.body.scrollHeight")
+    scroll_attempts = 0
+    while scroll_attempts < max_scrolls:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        time.sleep(2)  # Wait for page to load
+        new_height = page.evaluate("document.body.scrollHeight")
+        if new_height == last_height:
+            logging.info("Reached the bottom of the page.")
+            break
+        last_height = new_height
+        scroll_attempts += 1
+    if scroll_attempts >= max_scrolls:
+        logging.warning("Reached max scroll attempts, but may not be at the bottom of the page.")
+
 def type_like_a_human(page: Page, selector: str, text: str):
     """Simulates typing text into an element char by char with small random delays."""
     logging.info(f"Typing message: '{text}'")
@@ -89,14 +106,19 @@ def get_birthday_contacts(page: Page) -> dict:
     page.screenshot(path='birthdays_page_loaded.png')
     logging.info("Screenshot saved as 'birthdays_page_loaded.png' for debugging.")
 
+    scroll_to_bottom_of_page(page)
+
     all_contacts = page.query_selector_all(card_selector)
     logging.info(f"Found {len(all_contacts)} total birthday cards.")
 
     # Categorize birthdays
     birthdays = {'today': [], 'late': []}
     for contact in all_contacts:
-        birthday_type = get_birthday_type(contact)
-        birthdays[birthday_type].append(contact)
+        birthday_type, days_late = get_birthday_type(contact)
+        if birthday_type == 'late':
+            birthdays['late'].append((contact, days_late))
+        else:
+            birthdays['today'].append(contact)
 
     logging.info(f"Found {len(birthdays['today'])} birthdays for today.")
     logging.info(f"Found {len(birthdays['late'])} late birthdays.")
@@ -134,33 +156,29 @@ def extract_contact_name(contact_element) -> Optional[str]:
     logging.warning("Could not extract a valid name for the contact.")
     return None
 
-def get_birthday_type(contact_element) -> str:
+def get_birthday_type(contact_element) -> tuple[str, int]:
     """
-    Determines if a birthday is 'today' or 'late' by analyzing the card's text.
+    Determines if a birthday is 'today' or 'late' and how many days late.
     """
     card_text = contact_element.inner_text().lower()
 
-    # Keywords for late birthdays
-    late_keywords = [
-        'hier', 'yesterday', 'il y a', 'days ago',
-        'avec un peu de retard', 'avec du retard', 'en retard', 'belated'
-    ]
+    if 'hier' in card_text or 'yesterday' in card_text:
+        return 'late', 1
 
-    # Keywords for current birthdays
-    today_keywords = ['aujourd\'hui', 'today']
+    # Check for "il y a X jours"
+    import re
+    match = re.search(r'il y a (\d+) jours', card_text)
+    if match:
+        days_late = int(match.group(1))
+        if 1 <= days_late <= 4:
+            return 'late', days_late
 
-    if any(keyword in card_text for keyword in late_keywords):
-        return 'late'
+    if 'aujourd\'hui' in card_text or 'today' in card_text:
+        return 'today', 0
 
-    # If a specific 'today' keyword is found, it's today.
-    if any(keyword in card_text for keyword in today_keywords):
-        return 'today'
+    return 'today', 0
 
-    # Default assumption: If no late keywords are found, it's today's birthday.
-    # This is a safe fallback as LinkedIn's primary view is for current birthdays.
-    return 'today'
-
-def send_birthday_message(page: Page, contact_element, is_late: bool = False):
+def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
     full_name = extract_contact_name(contact_element)
     if not full_name:
@@ -169,8 +187,10 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False):
 
     first_name = full_name.split()[0]
 
-    greeting_type = "late" if is_late else "current"
-    logging.info(f"--- Processing {greeting_type} birthday for {full_name} ---")
+    if is_late:
+        logging.info(f"--- Processing late birthday ({days_late} days ago) for {full_name} ---")
+    else:
+        logging.info(f"--- Processing current birthday for {full_name} ---")
 
     # Use a robust selector for the message button
     message_button = contact_element.query_selector(
@@ -318,17 +338,28 @@ def main():
 
                 logging.info(f"--- Starting to process {len(contacts)} {birthday_type} birthdays ---")
 
-                for i, contact in enumerate(contacts):
-                    send_birthday_message(page, contact, is_late=is_late)
+                if is_late:
+                    for i, (contact, days_late) in enumerate(contacts):
+                        send_birthday_message(page, contact, is_late=True, days_late=days_late)
+                        if i < len(contacts) - 1:
+                            if DRY_RUN:
+                                delay = random.randint(2, 5) # Short delay for testing
+                            else:
+                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
+                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
+                            time.sleep(delay)
+                else:
+                    for i, contact in enumerate(contacts):
+                        send_birthday_message(page, contact, is_late=is_late)
 
-                    # Add a pause between messages
-                    if i < len(contacts) - 1:
-                        if DRY_RUN:
-                            delay = random.randint(2, 5) # Short delay for testing
-                        else:
-                            delay = random.randint(120, 300) # 2-5 minutes for normal operation
-                        logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
-                        time.sleep(delay)
+                        # Add a pause between messages
+                        if i < len(contacts) - 1:
+                            if DRY_RUN:
+                                delay = random.randint(2, 5) # Short delay for testing
+                            else:
+                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
+                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
+                            time.sleep(delay)
 
             logging.info("Script finished successfully.")
 
