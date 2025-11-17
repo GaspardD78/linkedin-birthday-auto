@@ -82,28 +82,32 @@ def search_profiles(page: Page, keywords: list, location: str):
     page.screenshot(path='search_results_page.png')
 
     profile_links = []
-    # This selector targets the link around the profile name in the search results.
-    profile_selector = "span.entity-result__title-text a.app-aware-link"
+    # More robust strategy: first find the result "cards", then find the link within each card.
+    result_container_selector = "li.reusable-search__result-container"
 
     try:
-        page.wait_for_selector(profile_selector, timeout=20000)
+        page.wait_for_selector(result_container_selector, timeout=20000)
 
         # Scroll to load more results
         for _ in range(5): # Scroll a few times
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             random_delay()
 
-        links = page.query_selector_all(profile_selector)
-        for link in links:
-            href = link.get_attribute("href")
-            if href and "linkedin.com/in/" in href:
-                # Clean up the URL to remove tracking parameters
-                clean_url = href.split('?')[0]
-                profile_links.append(clean_url)
+        result_containers = page.query_selector_all(result_container_selector)
+        logging.info(f"Found {len(result_containers)} result containers on the page.")
 
-        logging.info(f"Found {len(profile_links)} potential profiles in search results.")
+        for container in result_containers:
+            link_element = container.query_selector("span.entity-result__title-text a.app-aware-link")
+            if link_element:
+                href = link_element.get_attribute("href")
+                if href and "linkedin.com/in/" in href:
+                    # Clean up the URL to remove tracking parameters
+                    clean_url = href.split('?')[0]
+                    profile_links.append(clean_url)
+
+        logging.info(f"Extracted {len(profile_links)} potential profiles from containers.")
     except PlaywrightTimeoutError:
-        logging.warning("Could not find profile links on the search results page.")
+        logging.warning("Could not find profile result containers on the search results page.")
         page.screenshot(path='error_search_no_results.png')
 
     return list(dict.fromkeys(profile_links)) # Return unique links
