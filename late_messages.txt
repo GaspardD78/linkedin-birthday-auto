@@ -1,0 +1,5 @@
+Bon anniversaire avec un peu de retard {name} ! 🎉 J'espère que tu as passé une excellente journée !
+Joyeux anniversaire en retard {name} ! 🎂 Désolé du retard, je te souhaite le meilleur !
+Mieux vaut tard que jamais ! Joyeux anniversaire {name} ! 🥳
+{name}, je suis un peu en retard mais je te souhaite un joyeux anniversaire ! 🎈
+Avec un peu de retard, je te souhaite un très joyeux anniversaire {name} !
