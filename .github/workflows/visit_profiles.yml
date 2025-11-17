@@ -1,0 +1,57 @@
+name: LinkedIn Profile Visitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run in Dry Run mode to test without visiting profiles.'
+        required: true
+        default: true
+        type: boolean
+  schedule:
+    # Runs at 10:00 UTC every day.
+    - cron: '0 10 * * *'
+
+jobs:
+  run-profile-visitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the profile visitor script
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
+          LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
+        run: python visit_profiles.py
+
+      - name: Commit and push visited profiles
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add visited_profiles.txt
+          # Commit only if there are changes
+          git diff --staged --quiet || git commit -m "Update visited profiles list"
+          git push
+
+      - name: Upload error screenshots as artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshots-visitor
+          path:
+            error_*.png
+            search_results_page.png
