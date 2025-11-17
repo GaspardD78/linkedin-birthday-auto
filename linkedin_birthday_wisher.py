@@ -44,22 +44,51 @@ def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     """Waits for a random duration within a specified range to mimic human latency."""
     time.sleep(random.uniform(min_seconds, max_seconds))
 
-def scroll_to_bottom_of_page(page: Page, max_scrolls: int = 10):
-    """Scrolls to the bottom of the page to load all content, with a max scroll limit."""
-    logging.info("Scrolling to the bottom of the page...")
-    last_height = page.evaluate("document.body.scrollHeight")
-    scroll_attempts = 0
-    while scroll_attempts < max_scrolls:
+def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int = 20) -> list:
+    """Scrolls a specific element until no new birthday cards are loaded."""
+    logging.info("Scrolling to load all birthday cards...")
+
+    scrollable_element_selector = "div.artdeco-scaffold-layout__main"
+
+    # Wait for the scrollable element to be available
+    try:
+        page.wait_for_selector(scrollable_element_selector, timeout=10000)
+        logging.info("Scrollable element found.")
+    except PlaywrightTimeoutError:
+        logging.error("Could not find the scrollable element. Defaulting to page scroll.")
+        # Fallback to scrolling the whole page if the specific element isn't found
         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        time.sleep(2)  # Wait for page to load
-        new_height = page.evaluate("document.body.scrollHeight")
-        if new_height == last_height:
-            logging.info("Reached the bottom of the page.")
+
+    all_contacts = []
+    last_card_count = 0
+    scroll_attempts = 0
+
+    while scroll_attempts < max_scrolls:
+        initial_contacts = page.query_selector_all(card_selector)
+        logging.info(f"Attempt {scroll_attempts + 1}: Found {len(initial_contacts)} cards before scroll.")
+
+        # Scroll the main element
+        page.evaluate(f"document.querySelector('{scrollable_element_selector}').scrollTop = document.querySelector('{scrollable_element_selector}').scrollHeight")
+
+        time.sleep(3)  # Wait for content to load
+
+        # Re-query the contacts to see if new ones have loaded
+        current_contacts = page.query_selector_all(card_selector)
+        logging.info(f"Attempt {scroll_attempts + 1}: Found {len(current_contacts)} cards after scroll.")
+
+        if len(current_contacts) == last_card_count:
+            logging.info("No new cards loaded. Assuming end of list.")
             break
-        last_height = new_height
+
+        last_card_count = len(current_contacts)
         scroll_attempts += 1
+
     if scroll_attempts >= max_scrolls:
-        logging.warning("Reached max scroll attempts, but may not be at the bottom of the page.")
+        logging.warning(f"Reached max scroll attempts ({max_scrolls}).")
+
+    all_contacts = page.query_selector_all(card_selector)
+    logging.info(f"Finished scrolling. Total cards found: {len(all_contacts)}")
+    return all_contacts
 
 def type_like_a_human(page: Page, selector: str, text: str):
     """Simulates typing text into an element char by char with small random delays."""
@@ -106,19 +135,21 @@ def get_birthday_contacts(page: Page) -> dict:
     page.screenshot(path='birthdays_page_loaded.png')
     logging.info("Screenshot saved as 'birthdays_page_loaded.png' for debugging.")
 
-    scroll_to_bottom_of_page(page)
-
-    all_contacts = page.query_selector_all(card_selector)
-    logging.info(f"Found {len(all_contacts)} total birthday cards.")
+    all_contacts = scroll_and_collect_contacts(page, card_selector)
 
     # Categorize birthdays
     birthdays = {'today': [], 'late': []}
+    ignored_count = 0
     for contact in all_contacts:
         birthday_type, days_late = get_birthday_type(contact)
-        if birthday_type == 'late':
-            birthdays['late'].append((contact, days_late))
-        else:
+        if birthday_type == 'today':
             birthdays['today'].append(contact)
+        elif birthday_type == 'late':
+            birthdays['late'].append((contact, days_late))
+        else: # birthday_type == 'ignore'
+            ignored_count += 1
+
+    logging.info(f"Ignored {ignored_count} birthdays older than 4 days.")
 
     logging.info(f"Found {len(birthdays['today'])} birthdays for today.")
     logging.info(f"Found {len(birthdays['late'])} late birthdays.")
@@ -158,24 +189,36 @@ def extract_contact_name(contact_element) -> Optional[str]:
 
 def get_birthday_type(contact_element) -> tuple[str, int]:
     """
-    Determines if a birthday is 'today' or 'late' and how many days late.
+    Determines if a birthday is 'today', 'late' (within 4 days), or 'ignore'.
+    Returns a tuple of (type, days_late).
     """
     card_text = contact_element.inner_text().lower()
 
+    # Priority 1: Check for today's birthdays explicitly
+    if 'aujourd\'hui' in card_text or 'today' in card_text:
+        return 'today', 0
+
+    # Priority 2: Check for yesterday
     if 'hier' in card_text or 'yesterday' in card_text:
         return 'late', 1
 
-    # Check for "il y a X jours"
+    # Priority 3: Check for "il y a X jours"
     import re
     match = re.search(r'il y a (\d+) jours', card_text)
     if match:
         days_late = int(match.group(1))
         if 1 <= days_late <= 4:
             return 'late', days_late
+        else:
+            # It's a late birthday, but too old to process
+            return 'ignore', days_late
 
-    if 'aujourd\'hui' in card_text or 'today' in card_text:
-        return 'today', 0
+    # Priority 4: If any other late keywords are present, we can't quantify, so ignore.
+    late_keywords = ['avec un peu de retard', 'avec du retard', 'en retard', 'belated']
+    if any(keyword in card_text for keyword in late_keywords):
+        return 'ignore', 0
 
+    # Default case: If no late keywords are found, it's today's birthday.
     return 'today', 0
 
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
