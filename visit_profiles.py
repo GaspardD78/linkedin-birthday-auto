@@ -109,6 +109,9 @@ def search_profiles(page: Page, keywords: list, location: str):
     except PlaywrightTimeoutError:
         logging.warning("Could not find profile result containers on the search results page.")
         page.screenshot(path='error_search_no_results.png')
+        with open('search_results_page.html', 'w', encoding='utf-8') as f:
+            f.write(page.content())
+        logging.info("Saved search results page HTML for debugging.")
 
     return list(dict.fromkeys(profile_links)) # Return unique links
 
