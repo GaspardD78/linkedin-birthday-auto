@@ -45,26 +45,48 @@ def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     time.sleep(random.uniform(min_seconds, max_seconds))
 
 def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int = 20) -> list:
-    """Scrolls the page until no new birthday cards are loaded and returns all found contacts."""
+    """Scrolls a specific element until no new birthday cards are loaded."""
     logging.info("Scrolling to load all birthday cards...")
+
+    scrollable_element_selector = "div.artdeco-scaffold-layout__main"
+
+    # Wait for the scrollable element to be available
+    try:
+        page.wait_for_selector(scrollable_element_selector, timeout=10000)
+        logging.info("Scrollable element found.")
+    except PlaywrightTimeoutError:
+        logging.error("Could not find the scrollable element. Defaulting to page scroll.")
+        # Fallback to scrolling the whole page if the specific element isn't found
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+
     all_contacts = []
     last_card_count = 0
     scroll_attempts = 0
+
     while scroll_attempts < max_scrolls:
+        initial_contacts = page.query_selector_all(card_selector)
+        logging.info(f"Attempt {scroll_attempts + 1}: Found {len(initial_contacts)} cards before scroll.")
+
+        # Scroll the main element
+        page.evaluate(f"document.querySelector('{scrollable_element_selector}').scrollTop = document.querySelector('{scrollable_element_selector}').scrollHeight")
+
+        time.sleep(3)  # Wait for content to load
+
+        # Re-query the contacts to see if new ones have loaded
         current_contacts = page.query_selector_all(card_selector)
-        current_card_count = len(current_contacts)
-        if current_card_count == last_card_count:
-            logging.info("No new cards loaded after scroll. Assuming end of list.")
+        logging.info(f"Attempt {scroll_attempts + 1}: Found {len(current_contacts)} cards after scroll.")
+
+        if len(current_contacts) == last_card_count:
+            logging.info("No new cards loaded. Assuming end of list.")
             break
-        all_contacts = current_contacts
-        last_card_count = current_card_count
-        logging.info(f"Found {last_card_count} cards so far...")
-        # Scroll the last element into view to trigger loading more content
-        all_contacts[-1].scroll_into_view_if_needed()
-        time.sleep(3)  # Increased wait time for network latency
+
+        last_card_count = len(current_contacts)
         scroll_attempts += 1
+
     if scroll_attempts >= max_scrolls:
         logging.warning(f"Reached max scroll attempts ({max_scrolls}).")
+
+    all_contacts = page.query_selector_all(card_selector)
     logging.info(f"Finished scrolling. Total cards found: {len(all_contacts)}")
     return all_contacts
 
