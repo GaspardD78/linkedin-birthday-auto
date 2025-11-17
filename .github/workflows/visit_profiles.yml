@@ -47,14 +47,6 @@ jobs:
           git diff --staged --quiet || git commit -m "Update visited profiles list"
           git push
 
-      - name: Upload search results HTML for debugging
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: search-results-html
-          path: search_results_page.html
-          if-no-files-found: ignore
-
       - name: Upload error screenshots as artifacts
         if: failure()
         uses: actions/upload-artifact@v4

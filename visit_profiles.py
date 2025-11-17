@@ -82,10 +82,11 @@ def search_profiles(page: Page, keywords: list, location: str):
     page.screenshot(path='search_results_page.png')
 
     profile_links = []
-    # More robust strategy: first find the result "cards", then find the link within each card.
-    result_container_selector = "li.reusable-search__result-container"
+    # The new selector for the container of each search result.
+    result_container_selector = 'div[data-view-name="people-search-result"]'
 
     try:
+        # Wait for the first result container to appear.
         page.wait_for_selector(result_container_selector, timeout=20000)
 
         # Scroll to load more results
@@ -97,7 +98,8 @@ def search_profiles(page: Page, keywords: list, location: str):
         logging.info(f"Found {len(result_containers)} result containers on the page.")
 
         for container in result_containers:
-            link_element = container.query_selector("span.entity-result__title-text a.app-aware-link")
+            # The link is in an 'a' tag with a specific data-view-name attribute
+            link_element = container.query_selector('a[data-view-name="search-result-lockup-title"]')
             if link_element:
                 href = link_element.get_attribute("href")
                 if href and "linkedin.com/in/" in href:
@@ -109,9 +111,6 @@ def search_profiles(page: Page, keywords: list, location: str):
     except PlaywrightTimeoutError:
         logging.warning("Could not find profile result containers on the search results page.")
         page.screenshot(path='error_search_no_results.png')
-        with open('search_results_page.html', 'w', encoding='utf-8') as f:
-            f.write(page.content())
-        logging.info("Saved search results page HTML for debugging.")
 
     return list(dict.fromkeys(profile_links)) # Return unique links
 
