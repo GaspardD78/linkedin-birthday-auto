@@ -80,11 +80,9 @@ def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int
     return final_contacts
 
 def type_like_a_human(page: Page, selector: str, text: str):
-    """Simulates typing text into an element char by char with small random delays."""
+    """Fills the element with the given text."""
     logging.info(f"Typing message: '{text}'")
-    page.click(selector, delay=random.uniform(50, 100))
-    for char in text:
-        page.press(selector, char, delay=random.uniform(70, 200))
+    page.locator(selector).fill(text)
 
 # --- Core Automation Functions ---
 
