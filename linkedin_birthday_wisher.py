@@ -4,6 +4,7 @@ import time
 import logging
 import base64
 import json
+from typing import Optional
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
 # --- Configuration ---
@@ -109,7 +110,7 @@ def get_birthday_contacts(page: Page) -> dict:
 
     return birthdays
 
-def extract_contact_name(contact_element) -> str | None:
+def extract_contact_name(contact_element) -> Optional[str]:
     """
     Extracts the contact's name from a birthday card element using a robust, multi-step process.
     Inspired by the logic from content.js.
