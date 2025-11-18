@@ -235,6 +235,10 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     message_box_selector = "div.msg-form__contenteditable[role='textbox']"
     page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
 
+    # Debug logging for troubleshooting viewport issues
+    logging.info(f"Message modal opened. Current viewport: {page.viewport_size}")
+    page.screenshot(path=f'debug_message_modal_{first_name.replace(" ", "_")}.png')
+
     # Select the appropriate message list
     if is_late:
         message_list = LATE_BIRTHDAY_MESSAGES
@@ -358,7 +362,8 @@ def main():
         )
         context = browser.new_context(
             storage_state=AUTH_FILE_PATH,
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            viewport={'width': 1920, 'height': 1080}  # Larger viewport to ensure all elements are loaded
         )
         page = context.new_page()
 
