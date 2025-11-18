@@ -1,0 +1,92 @@
+name: LinkedIn Birthday Wisher - MODE UNLIMITED (Utilisation unique)
+
+on:
+  workflow_dispatch: # Déclenchement manuel uniquement
+    inputs:
+      dry-run:
+        description: 'Run in Dry Run mode to test without sending messages.'
+        required: true
+        default: true
+        type: boolean
+      confirm:
+        description: '⚠️ ATTENTION : Ce script enverra TOUS les messages sans limite. Tapez "CONFIRM" pour continuer.'
+        required: true
+        type: string
+
+jobs:
+  run-birthday-wisher-unlimited:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "CONFIRM" ]; then
+            echo "❌ Confirmation requise. Vous devez taper 'CONFIRM' pour exécuter ce workflow."
+            exit 1
+          fi
+          echo "✅ Confirmation reçue - démarrage du script unlimited"
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the birthday wisher script (UNLIMITED MODE)
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
+          LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
+
+          # Advanced debugging settings
+          ENABLE_ADVANCED_DEBUG: ${{ secrets.ENABLE_ADVANCED_DEBUG || 'false' }}
+          ENABLE_EMAIL_ALERTS: ${{ secrets.ENABLE_EMAIL_ALERTS || 'false' }}
+
+          # Email alert configuration (optional - only if ENABLE_EMAIL_ALERTS is true)
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_EMAIL_PASSWORD: ${{ secrets.ALERT_EMAIL_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          echo "🚀🚀🚀 DÉMARRAGE DU MODE UNLIMITED 🚀🚀🚀"
+          echo "⚠️  Ce script va traiter TOUS les anniversaires sans limite"
+          echo "⚠️  Utilisation unique recommandée uniquement"
+          python linkedin_birthday_wisher_unlimited.py
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots-unlimited-${{ github.run_number }}
+          path: debug_screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-logs-unlimited-${{ github.run_number }}
+          path: |
+            linkedin_bot_detailed.log
+            *_report.json
+            *_alert.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload error screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-screenshots-unlimited-${{ github.run_number }}
+          path: error_*.png
+          if-no-files-found: ignore
