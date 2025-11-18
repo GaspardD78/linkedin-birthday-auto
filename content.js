@@ -24,25 +24,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /**
  * Standardizes a first name by:
  * - Removing emojis and special characters (except accents and hyphens)
- * - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude)
+ * - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude, Jean Marie)
  * - Converting the rest to lowercase
+ * - Returning empty string if the name is just an initial (e.g., "C" or "C.")
  *
  * @param {string} name - The first name to standardize
- * @returns {string} The standardized first name
+ * @returns {string} The standardized first name, or empty string if invalid
  *
  * @example
  * standardizeFirstName("jean") // "Jean"
  * standardizeFirstName("MARIE") // "Marie"
  * standardizeFirstName("marie-claude") // "Marie-Claude"
+ * standardizeFirstName("jean marie") // "Jean Marie"
  * standardizeFirstName("Jean🎉") // "Jean"
  * standardizeFirstName("françois") // "François"
+ * standardizeFirstName("C") // ""
+ * standardizeFirstName("C.") // ""
  */
 function standardizeFirstName(name) {
   if (!name) {
-    return name;
+    return "";
   }
 
-  // Remove emojis and special characters
+  // Remove emojis and special characters (including periods)
   // Keep only: letters (including accented), hyphens, and spaces
   const cleanedChars = [];
   for (const char of name) {
@@ -68,20 +72,39 @@ function standardizeFirstName(name) {
   cleanedName = cleanedName.trim();
 
   if (!cleanedName) {
-    return name; // Return original if nothing left after cleaning
+    return "";  // Return empty if nothing left after cleaning
   }
 
-  // Handle compound names with hyphens (e.g., Marie-Claude)
-  if (cleanedName.includes('-')) {
-    const parts = cleanedName.split('-');
-    const capitalizedParts = parts
-      .filter(part => part.length > 0)
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
-    return capitalizedParts.join('-');
+  // Check if it's just an initial (single letter)
+  if (cleanedName.length === 1) {
+    return "";  // Ignore single letter initials
   }
 
-  // Handle simple names
-  return cleanedName.charAt(0).toUpperCase() + cleanedName.slice(1).toLowerCase();
+  // Handle names with multiple parts (spaces or hyphens)
+  // Split by spaces first to handle "Jean Marie" type names
+  const spaceParts = cleanedName.split(' ');
+
+  // Process each space-separated part
+  const processedParts = [];
+  for (const spacePart of spaceParts) {
+    if (!spacePart) {
+      continue;
+    }
+
+    // Check if this part has hyphens (e.g., "Marie-Claude")
+    if (spacePart.includes('-')) {
+      const hyphenParts = spacePart.split('-');
+      const capitalizedHyphenParts = hyphenParts
+        .filter(part => part.length > 0)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+      processedParts.push(capitalizedHyphenParts.join('-'));
+    } else {
+      // Simple part, just capitalize
+      processedParts.push(spacePart.charAt(0).toUpperCase() + spacePart.slice(1).toLowerCase());
+    }
+  }
+
+  return processedParts.join(' ');
 }
 
 // Fonction pour scanner les anniversaires
@@ -363,11 +386,18 @@ async function sendMessages(birthdayType = 'today', batchSize = 10) {
 
       // Extract and standardize the first name
       const firstName = standardizeFirstName(name.split(' ')[0]);
-      
+
+      // Skip if the first name is just an initial (returns empty string)
+      if (!firstName) {
+        console.log(`⚠️ Skipping contact '${name}' because first name is just an initial.`);
+        processed++;
+        continue;
+      }
+
       // Trouver le lien de message
       const messageLink = card.querySelector('a[aria-label*="Envoyer un message"]') ||
                          card.querySelector('a[href*="/messaging/compose"]');
-      
+
       if (!messageLink) {
         processed++;
         continue;
