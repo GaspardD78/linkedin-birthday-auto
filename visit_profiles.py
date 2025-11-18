@@ -21,7 +21,7 @@ VISITED_PROFILES_FILE = "visited_profiles.txt"
 HEADLESS_BROWSER = True
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
 PROFILES_TO_VISIT_PER_RUN = 50
-MAX_PAGES_TO_SCRAPE = 10  # Maximum number of pages to scrape per run
+MAX_PAGES_TO_SCRAPE = int(os.getenv('MAX_PAGES_TO_SCRAPE', '100'))  # Maximum number of pages to scrape per run (default: 100)
 
 # --- Helper Functions ---
 
