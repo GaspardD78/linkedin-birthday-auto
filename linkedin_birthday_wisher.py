@@ -647,6 +647,62 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             pass
         return 'ignore', 0
 
+def standardize_first_name(name: str) -> str:
+    """
+    Standardizes a first name by:
+    - Removing emojis and special characters (except accents and hyphens)
+    - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude)
+    - Converting the rest to lowercase
+
+    Args:
+        name: The first name to standardize
+
+    Returns:
+        The standardized first name
+
+    Examples:
+        "jean" -> "Jean"
+        "MARIE" -> "Marie"
+        "marie-claude" -> "Marie-Claude"
+        "Jean🎉" -> "Jean"
+        "françois" -> "François"
+    """
+    if not name:
+        return name
+
+    # Remove emojis and special characters
+    # Keep only: letters (including accented), hyphens, and spaces
+    cleaned_chars = []
+    for char in name:
+        # Keep alphabetic characters, hyphens, and spaces
+        if char.isalpha() or char == '-' or char == ' ':
+            cleaned_chars.append(char)
+
+    cleaned_name = ''.join(cleaned_chars)
+
+    # Normalize spaces: replace multiple spaces with single space
+    while '  ' in cleaned_name:
+        cleaned_name = cleaned_name.replace('  ', ' ')
+
+    # Normalize spaces around hyphens: "marie - claude" -> "marie-claude"
+    cleaned_name = cleaned_name.replace(' - ', '-')
+    cleaned_name = cleaned_name.replace('- ', '-')
+    cleaned_name = cleaned_name.replace(' -', '-')
+
+    cleaned_name = cleaned_name.strip()
+
+    if not cleaned_name:
+        return name  # Return original if nothing left after cleaning
+
+    # Handle compound names with hyphens (e.g., Marie-Claude)
+    if '-' in cleaned_name:
+        parts = cleaned_name.split('-')
+        capitalized_parts = [part.capitalize() for part in parts if part]
+        return '-'.join(capitalized_parts)
+
+    # Handle simple names
+    return cleaned_name.capitalize()
+
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
 
@@ -658,7 +714,9 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         logging.warning("Skipping contact because name could not be extracted.")
         return
 
+    # Extract and standardize the first name
     first_name = full_name.split()[0]
+    first_name = standardize_first_name(first_name)
 
     if is_late:
         logging.info(f"--- Processing late birthday ({days_late} days ago) for {full_name} ---")

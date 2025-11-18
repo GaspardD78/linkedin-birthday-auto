@@ -21,6 +21,69 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+/**
+ * Standardizes a first name by:
+ * - Removing emojis and special characters (except accents and hyphens)
+ * - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude)
+ * - Converting the rest to lowercase
+ *
+ * @param {string} name - The first name to standardize
+ * @returns {string} The standardized first name
+ *
+ * @example
+ * standardizeFirstName("jean") // "Jean"
+ * standardizeFirstName("MARIE") // "Marie"
+ * standardizeFirstName("marie-claude") // "Marie-Claude"
+ * standardizeFirstName("Jean🎉") // "Jean"
+ * standardizeFirstName("françois") // "François"
+ */
+function standardizeFirstName(name) {
+  if (!name) {
+    return name;
+  }
+
+  // Remove emojis and special characters
+  // Keep only: letters (including accented), hyphens, and spaces
+  const cleanedChars = [];
+  for (const char of name) {
+    // Keep alphabetic characters, hyphens, and spaces
+    // Use a regex test for alphabetic (including accented characters)
+    if (/[a-zA-ZÀ-ÿ]/.test(char) || char === '-' || char === ' ') {
+      cleanedChars.push(char);
+    }
+  }
+
+  let cleanedName = cleanedChars.join('');
+
+  // Normalize spaces: replace multiple spaces with single space
+  while (cleanedName.includes('  ')) {
+    cleanedName = cleanedName.replace('  ', ' ');
+  }
+
+  // Normalize spaces around hyphens: "marie - claude" -> "marie-claude"
+  cleanedName = cleanedName.replace(/ - /g, '-');
+  cleanedName = cleanedName.replace(/- /g, '-');
+  cleanedName = cleanedName.replace(/ -/g, '-');
+
+  cleanedName = cleanedName.trim();
+
+  if (!cleanedName) {
+    return name; // Return original if nothing left after cleaning
+  }
+
+  // Handle compound names with hyphens (e.g., Marie-Claude)
+  if (cleanedName.includes('-')) {
+    const parts = cleanedName.split('-');
+    const capitalizedParts = parts
+      .filter(part => part.length > 0)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+    return capitalizedParts.join('-');
+  }
+
+  // Handle simple names
+  return cleanedName.charAt(0).toUpperCase() + cleanedName.slice(1).toLowerCase();
+}
+
 // Fonction pour scanner les anniversaires
 async function scanBirthdays() {
   console.log('🔍 Scan des anniversaires...');
@@ -297,8 +360,9 @@ async function sendMessages(birthdayType = 'today', batchSize = 10) {
         processed++;
         continue;
       }
-      
-      const firstName = name.split(' ')[0];
+
+      // Extract and standardize the first name
+      const firstName = standardizeFirstName(name.split(' ')[0]);
       
       // Trouver le lien de message
       const messageLink = card.querySelector('a[aria-label*="Envoyer un message"]') ||
