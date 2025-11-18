@@ -21,6 +21,7 @@ VISITED_PROFILES_FILE = "visited_profiles.txt"
 HEADLESS_BROWSER = True
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
 PROFILES_TO_VISIT_PER_RUN = 50
+MAX_PAGES_TO_SCRAPE = int(os.getenv('MAX_PAGES_TO_SCRAPE', '100'))  # Maximum number of pages to scrape per run (default: 100)
 
 # --- Helper Functions ---
 
@@ -69,13 +70,13 @@ def check_login_status(page: Page):
         page.screenshot(path='error_login_verification_failed.png')
         return False
 
-def search_profiles(page: Page, keywords: list, location: str):
+def search_profiles(page: Page, keywords: list, location: str, page_number: int = 1):
     """Performs a search on LinkedIn and returns profile URLs."""
     keyword_str = " ".join(keywords)
     # Use the location text directly in the search query, which is more flexible.
-    search_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(keyword_str)}&location={urllib.parse.quote(location)}&origin=GLOBAL_SEARCH_HEADER"
+    search_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(keyword_str)}&location={urllib.parse.quote(location)}&origin=GLOBAL_SEARCH_HEADER&page={page_number}"
 
-    logging.info(f"Navigating to search URL: {search_url}")
+    logging.info(f"Navigating to search URL (page {page_number}): {search_url}")
     page.goto(search_url, timeout=90000)
     random_delay()
 
@@ -152,31 +153,47 @@ def main():
             if not check_login_status(page):
                 return
 
-            profile_urls = search_profiles(page, config['keywords'], config['location'])
+            # Iterate through multiple pages
+            current_page = 1
+            while current_page <= MAX_PAGES_TO_SCRAPE and profiles_visited_this_run < PROFILES_TO_VISIT_PER_RUN:
+                logging.info(f"Scraping page {current_page}/{MAX_PAGES_TO_SCRAPE}")
 
-            for url in profile_urls:
-                if profiles_visited_this_run >= PROFILES_TO_VISIT_PER_RUN:
-                    logging.info(f"Reached visit limit for this run ({PROFILES_TO_VISIT_PER_RUN}).")
+                profile_urls = search_profiles(page, config['keywords'], config['location'], current_page)
+
+                if not profile_urls:
+                    logging.info(f"No more profiles found on page {current_page}. Stopping pagination.")
                     break
 
-                if url in visited_profiles:
-                    logging.info(f"Skipping already visited profile: {url}")
-                    continue
+                for url in profile_urls:
+                    if profiles_visited_this_run >= PROFILES_TO_VISIT_PER_RUN:
+                        logging.info(f"Reached visit limit for this run ({PROFILES_TO_VISIT_PER_RUN}).")
+                        break
 
-                logging.info(f"Visiting profile: {url}")
-                if not DRY_RUN:
-                    page.goto(url, timeout=60000)
-                    random_delay(5, 10) # Stay on page for a bit
-                    save_visited_profile(url)
-                    visited_profiles.add(url)
-                else:
-                    logging.info(f"[DRY RUN] Would have visited {url}")
+                    if url in visited_profiles:
+                        logging.info(f"Skipping already visited profile: {url}")
+                        continue
 
-                profiles_visited_this_run += 1
-                logging.info(f"Profiles visited in this run: {profiles_visited_this_run}/{PROFILES_TO_VISIT_PER_RUN}")
-                random_delay()
+                    logging.info(f"Visiting profile: {url}")
+                    if not DRY_RUN:
+                        page.goto(url, timeout=60000)
+                        random_delay(5, 10) # Stay on page for a bit
+                        save_visited_profile(url)
+                        visited_profiles.add(url)
+                    else:
+                        logging.info(f"[DRY RUN] Would have visited {url}")
 
-            logging.info("Script finished successfully.")
+                    profiles_visited_this_run += 1
+                    logging.info(f"Profiles visited in this run: {profiles_visited_this_run}/{PROFILES_TO_VISIT_PER_RUN}")
+                    random_delay()
+
+                # If we've reached the visit limit, stop pagination
+                if profiles_visited_this_run >= PROFILES_TO_VISIT_PER_RUN:
+                    break
+
+                current_page += 1
+                random_delay(3, 6)  # Delay between page navigation
+
+            logging.info(f"Script finished successfully. Scraped {current_page} page(s).")
 
         except PlaywrightTimeoutError as e:
             logging.error(f"A timeout error occurred: {e}")
