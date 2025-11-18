@@ -187,6 +187,26 @@ def type_like_a_human(page: Page, selector: str, text: str):
     logging.info(f"Typing message: '{text}'")
     page.locator(selector).fill(text)
 
+def close_all_message_modals(page: Page):
+    """Ferme toutes les modales de message ouvertes pour éviter les conflits."""
+    try:
+        # Trouver tous les boutons de fermeture de modale
+        close_buttons = page.locator("button[data-control-name='overlay.close_conversation_window']")
+        count = close_buttons.count()
+
+        if count > 0:
+            logging.info(f"🧹 Fermeture de {count} modale(s) ouverte(s)...")
+            # Fermer toutes les modales une par une
+            for i in range(count):
+                try:
+                    close_buttons.first.click(timeout=2000)
+                    random_delay(0.3, 0.6)  # Petit délai entre chaque fermeture
+                except Exception as e:
+                    logging.debug(f"Impossible de fermer une modale (déjà fermée?): {e}")
+            logging.info("✅ Toutes les modales ont été fermées")
+    except Exception as e:
+        logging.debug(f"Erreur lors de la fermeture des modales (non critique): {e}")
+
 # --- Core Automation Functions ---
 
 def check_login_status(page: Page):
@@ -313,6 +333,10 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
 
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
+
+    # STEP 1: Fermer toutes les modales existantes AVANT d'en ouvrir une nouvelle
+    close_all_message_modals(page)
+
     full_name = extract_contact_name(contact_element)
     if not full_name:
         logging.warning("Skipping contact because name could not be extracted.")
@@ -333,70 +357,80 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         logging.warning(f"Could not find a 'Message' button for {full_name}. Skipping.")
         return
 
-    message_button.click()
-
-    message_box_selector = "div.msg-form__contenteditable[role='textbox']"
-    page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
-
-    # Debug logging for troubleshooting viewport issues
-    logging.info(f"Message modal opened. Current viewport: {page.viewport_size}")
-    page.screenshot(path=f'debug_message_modal_{first_name.replace(" ", "_")}.png')
-
-    # Select the appropriate message list
-    if is_late:
-        message_list = LATE_BIRTHDAY_MESSAGES
-        if not message_list:
-            logging.warning("Late birthday message list is empty. Using default messages.")
-            message_list = BIRTHDAY_MESSAGES
-    else:
-        message_list = BIRTHDAY_MESSAGES
-
-    if not message_list:
-        logging.error("No birthday messages are available. Skipping message sending.")
-        return
-
-    message = random.choice(message_list).format(name=first_name)
-
-    if DRY_RUN:
-        logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
-        # In dry run, we must close the modal to proceed to the next contact.
-        close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
-        if close_button.is_visible():
-            close_button.click()
-        return
-
-    type_like_a_human(page, message_box_selector, message)
-    random_delay(1, 2)
-
-    # Use .first to target the first (most recently opened) message form's send button
-    # This avoids strict mode violations when multiple message forms are present on the page
-    submit_button = page.locator("button.msg-form__send-button").first
-
-    # Ensure the button is in viewport before clicking to avoid timeout errors
+    # Utiliser un try-finally pour garantir la fermeture de la modale même en cas d'erreur
     try:
-        submit_button.scroll_into_view_if_needed(timeout=5000)
-        random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
+        message_button.click()
+        random_delay(0.5, 1)  # Petit délai après le clic
 
-        if submit_button.is_enabled():
-            submit_button.click()
-            logging.info("Message sent successfully.")
+        message_box_selector = "div.msg-form__contenteditable[role='textbox']"
+        page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+
+        # STEP 2: Vérifier combien de modales sont ouvertes et utiliser .last pour la plus récente
+        modal_count = page.locator(message_box_selector).count()
+        if modal_count > 1:
+            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément! Utilisation de .last pour cibler la plus récente.")
+            page.screenshot(path=f'warning_multiple_modals_{first_name.replace(" ", "_")}.png')
+
+        # Toujours utiliser .last pour cibler la modale la plus récemment ouverte
+        message_box_locator = page.locator(message_box_selector).last
+
+        # Debug logging for troubleshooting viewport issues
+        logging.info(f"Message modal opened. Current viewport: {page.viewport_size}")
+        page.screenshot(path=f'debug_message_modal_{first_name.replace(" ", "_")}.png')
+
+        # Select the appropriate message list
+        if is_late:
+            message_list = LATE_BIRTHDAY_MESSAGES
+            if not message_list:
+                logging.warning("Late birthday message list is empty. Using default messages.")
+                message_list = BIRTHDAY_MESSAGES
         else:
-            logging.warning("Send button is not enabled. Skipping.")
-    except PlaywrightTimeoutError:
-        logging.warning("Could not scroll send button into view, attempting force click...")
-        # Fallback: try force click if scrolling fails
-        try:
-            submit_button.click(force=True, timeout=10000)
-            logging.info("Message sent successfully (force click).")
-        except PlaywrightTimeoutError as e:
-            logging.error(f"Failed to click send button even with force: {e}")
-            page.screenshot(path=f'error_send_button_{first_name}.png')
-            raise
+            message_list = BIRTHDAY_MESSAGES
 
-    # Always close the modal after processing.
-    close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
-    if close_button.is_visible():
-        close_button.click()
+        if not message_list:
+            logging.error("No birthday messages are available. Skipping message sending.")
+            return
+
+        message = random.choice(message_list).format(name=first_name)
+
+        if DRY_RUN:
+            logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
+            return  # La fermeture sera gérée par le finally
+
+        # Utiliser le locator .last au lieu du selector brut pour éviter les strict mode violations
+        logging.info(f"Typing message: '{message}'")
+        message_box_locator.fill(message)
+        random_delay(1, 2)
+
+        # Use .last to target the most recently opened message form's send button
+        # This avoids strict mode violations when multiple message forms are present on the page
+        submit_button = page.locator("button.msg-form__send-button").last
+
+        # Ensure the button is in viewport before clicking to avoid timeout errors
+        try:
+            submit_button.scroll_into_view_if_needed(timeout=5000)
+            random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
+
+            if submit_button.is_enabled():
+                submit_button.click()
+                logging.info("Message sent successfully.")
+            else:
+                logging.warning("Send button is not enabled. Skipping.")
+        except PlaywrightTimeoutError:
+            logging.warning("Could not scroll send button into view, attempting force click...")
+            # Fallback: try force click if scrolling fails
+            try:
+                submit_button.click(force=True, timeout=10000)
+                logging.info("Message sent successfully (force click).")
+            except PlaywrightTimeoutError as e:
+                logging.error(f"Failed to click send button even with force: {e}")
+                page.screenshot(path=f'error_send_button_{first_name}.png')
+                raise
+
+    finally:
+        # STEP 3: Fermer SYSTÉMATIQUEMENT la modale après traitement, même en cas d'erreur
+        random_delay(0.5, 1)  # Petit délai pour laisser l'UI se stabiliser
+        close_all_message_modals(page)
 
 
 # --- Main Execution ---
