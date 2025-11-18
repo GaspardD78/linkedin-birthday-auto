@@ -753,8 +753,9 @@ def main():
 
         # Apply stealth mode to avoid bot detection
         try:
-            from playwright_stealth import stealth_sync
-            stealth_sync(context)
+            from playwright_stealth import Stealth
+            stealth = Stealth()
+            stealth.apply_stealth_sync(context)
             logging.info("✅ Playwright stealth mode activated")
         except ImportError:
             logging.warning("⚠️ playwright-stealth not installed, skipping stealth mode")
