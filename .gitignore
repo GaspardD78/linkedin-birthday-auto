@@ -109,6 +109,10 @@ auth_state.json
 # Debugging artifacts
 *.png
 *.html
+debug_screenshots/
+*_report.json
+*_alert.json
+linkedin_bot_detailed.log
 .venv
 env/
 venv/

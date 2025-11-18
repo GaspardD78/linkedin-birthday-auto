@@ -7,6 +7,17 @@ import json
 from typing import Optional
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
+# Import debug utilities
+from debug_utils import (
+    DebugScreenshotManager,
+    DOMStructureValidator,
+    LinkedInPolicyDetector,
+    EnhancedLogger,
+    AlertSystem,
+    retry_with_fallbacks,
+    quick_debug_check
+)
+
 # --- Configuration ---
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,6 +29,10 @@ AUTH_FILE_PATH = "auth_state.json"
 # General settings
 HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
+
+# Advanced debugging settings
+ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
+ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
 # Load birthday messages from the external file.
 def load_birthday_messages(file_path="messages.txt"):
@@ -43,6 +58,94 @@ LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
 def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     """Waits for a random duration within a specified range to mimic human latency."""
     time.sleep(random.uniform(min_seconds, max_seconds))
+
+def gaussian_delay(min_seconds: int, max_seconds: int):
+    """
+    Waits for a random duration using a Gaussian (normal) distribution.
+    This is more human-like than uniform distribution as humans tend to cluster
+    around average times with occasional faster/slower actions.
+
+    Args:
+        min_seconds: Minimum delay in seconds
+        max_seconds: Maximum delay in seconds
+    """
+    mean = (min_seconds + max_seconds) / 2
+    # Standard deviation: ~99.7% of values fall within 3 std devs
+    # So (max - min) = 6*std, therefore std = (max - min) / 6
+    std_dev = (max_seconds - min_seconds) / 6
+
+    # Generate delay with normal distribution
+    delay = random.gauss(mean, std_dev)
+
+    # Clamp to ensure we stay within bounds
+    delay = max(min_seconds, min(max_seconds, delay))
+
+    minutes = int(delay // 60)
+    seconds = int(delay % 60)
+    logging.info(f"Pausing for {minutes}m {seconds}s (Gaussian delay).")
+    time.sleep(delay)
+
+def simulate_human_activity(page: Page):
+    """
+    Simulates random human-like activity to avoid detection.
+    Performs random actions like scrolling, mouse movements, and brief pauses.
+    """
+    actions = [
+        # Random scroll
+        lambda: page.mouse.wheel(0, random.randint(100, 400)),
+        # Brief reading pause
+        lambda: time.sleep(random.uniform(1.5, 4.0)),
+        # Random mouse movement
+        lambda: page.mouse.move(
+            random.randint(300, 800),
+            random.randint(200, 600)
+        ),
+    ]
+
+    # Execute 1-3 random actions
+    num_actions = random.randint(1, 3)
+    for _ in range(num_actions):
+        action = random.choice(actions)
+        try:
+            action()
+            time.sleep(random.uniform(0.5, 1.5))
+        except Exception as e:
+            # Silently ignore errors in activity simulation
+            logging.debug(f"Activity simulation error (non-critical): {e}")
+            pass
+
+def long_break_if_needed(message_count: int, break_intervals: list = None) -> tuple[bool, list]:
+    """
+    Determines if a long break should be taken and executes it.
+    Takes a 20-45 minute break every 10-15 messages to simulate natural human behavior.
+
+    Args:
+        message_count: Current count of messages sent
+        break_intervals: List of message counts where breaks should occur.
+                        If None, a new list will be generated.
+
+    Returns:
+        Tuple of (break_taken: bool, updated_break_intervals: list)
+    """
+    # Initialize break intervals if not provided
+    if break_intervals is None:
+        break_intervals = []
+
+    # Generate next break point if needed
+    if not break_intervals or (break_intervals and message_count >= break_intervals[-1]):
+        # Set the next break to occur in 10-15 messages
+        next_break = message_count + random.randint(10, 15)
+        break_intervals.append(next_break)
+
+    # Check if it's time for a break
+    if message_count in break_intervals and message_count > 0:
+        long_pause = random.randint(20 * 60, 45 * 60)  # 20-45 minutes
+        minutes = long_pause // 60
+        logging.info(f"🚽 Taking a natural break: {minutes} minute pause (simulating coffee/meeting/bathroom)")
+        time.sleep(long_pause)
+        return True, break_intervals
+
+    return False, break_intervals
 
 def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int = 20) -> list:
     """Scrolls the page by bringing the last element into view until no new cards are loaded."""
@@ -304,12 +407,13 @@ def main():
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
     # Add a random startup delay.
-    # In normal mode, this is long to simulate a user logging in between 8h-10h UTC.
+    # In normal mode, this is set to 3-15 minutes to simulate realistic human behavior
+    # while avoiding bot detection (never start at 0 seconds).
     # In DRY RUN mode, this is short for quick testing.
     if DRY_RUN:
         startup_delay = random.randint(1, 10) # 1 to 10 seconds for testing
     else:
-        startup_delay = random.randint(0, 7200) # 0 to 120 minutes for normal operation
+        startup_delay = random.randint(180, 900) # 3 to 15 minutes for normal operation
 
     logging.info(f"Startup delay: waiting for {startup_delay // 60}m {startup_delay % 60}s to start.")
     time.sleep(startup_delay)
@@ -367,13 +471,73 @@ def main():
         )
         page = context.new_page()
 
+        # Initialize debugging managers if advanced debug is enabled
+        screenshot_mgr = None
+        enhanced_logger = None
+        policy_detector = None
+        alert_system = None
+
+        if ENABLE_ADVANCED_DEBUG:
+            logging.info("🔧 Advanced debugging enabled - initializing debug managers...")
+            screenshot_mgr = DebugScreenshotManager()
+            enhanced_logger = EnhancedLogger()
+            policy_detector = LinkedInPolicyDetector(page)
+            if ENABLE_EMAIL_ALERTS:
+                alert_system = AlertSystem()
+                logging.info("📧 Email alerts enabled")
+
         try:
+            # Capture initial state
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "01_browser_start")
+
             if not check_login_status(page):
+                if screenshot_mgr:
+                    screenshot_mgr.capture(page, "login_failed", error=True)
+                if alert_system:
+                    alert_system.send_alert(
+                        "Login Failed",
+                        f"Failed to verify login at {page.url}"
+                    )
                 return # Stop execution if login verification fails.
+
+            # Validate DOM structure after login
+            if ENABLE_ADVANCED_DEBUG:
+                dom_validator = DOMStructureValidator(page)
+                if screenshot_mgr:
+                    screenshot_mgr.capture(page, "02_after_login")
+
+                if not dom_validator.validate_all_selectors(screenshot_mgr):
+                    logging.warning("⚠️ Some DOM selectors failed validation - check logs")
+                    dom_validator.export_validation_report()
+                    if alert_system:
+                        alert_system.send_alert(
+                            "DOM Structure Validation Failed",
+                            "Some LinkedIn selectors failed validation. Site structure may have changed."
+                        )
+
+                # Check for policy restrictions
+                is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                if not is_ok:
+                    logging.critical("🚨 Policy violation detected - stopping execution")
+                    if alert_system:
+                        screenshot_path = screenshot_mgr.capture(page, "policy_violation_critical", error=True)
+                        alert_system.alert_policy_violation(issues, screenshot_path)
+                    return
 
             random_delay(2, 4)
 
             birthdays = get_birthday_contacts(page)
+
+            # Capture birthdays page state
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "03_birthdays_page_loaded")
+            if enhanced_logger:
+                enhanced_logger.log_page_state(page, "Birthdays page loaded")
+
+            # Track total messages sent for implementing periodic long breaks
+            total_messages_sent = 0
+            break_intervals = []  # Track when to take long breaks
 
             # Process today's birthdays first, then late ones.
             # This structure allows for easy expansion or prioritization.
@@ -394,40 +558,115 @@ def main():
                 if is_late:
                     for i, (contact, days_late) in enumerate(contacts):
                         send_birthday_message(page, contact, is_late=True, days_late=days_late)
+                        total_messages_sent += 1
+
+                        # Check for policy restrictions every 5 messages
+                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                            if not is_ok:
+                                logging.critical("🚨 Policy violation detected during execution - stopping")
+                                if alert_system:
+                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                    alert_system.alert_policy_violation(issues, screenshot_path)
+                                return
+
+                        # Simulate occasional human activity
+                        if random.random() < 0.3:  # 30% chance
+                            simulate_human_activity(page)
+
                         if i < len(contacts) - 1:
-                            if DRY_RUN:
-                                delay = random.randint(2, 5) # Short delay for testing
-                            else:
-                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
-                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
-                            time.sleep(delay)
+                            # Check if we need a long break (every 10-15 messages)
+                            if not DRY_RUN:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(120, 300)  # 2-5 minutes
+                            elif DRY_RUN:
+                                # Short delay for testing
+                                delay = random.randint(2, 5)
+                                logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                time.sleep(delay)
                 else:
                     for i, contact in enumerate(contacts):
                         send_birthday_message(page, contact, is_late=is_late)
+                        total_messages_sent += 1
+
+                        # Check for policy restrictions every 5 messages
+                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                            if not is_ok:
+                                logging.critical("🚨 Policy violation detected during execution - stopping")
+                                if alert_system:
+                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                    alert_system.alert_policy_violation(issues, screenshot_path)
+                                return
+
+                        # Simulate occasional human activity
+                        if random.random() < 0.3:  # 30% chance
+                            simulate_human_activity(page)
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
-                            if DRY_RUN:
-                                delay = random.randint(2, 5) # Short delay for testing
-                            else:
-                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
-                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
-                            time.sleep(delay)
+                            # Check if we need a long break (every 10-15 messages)
+                            if not DRY_RUN:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(120, 300)  # 2-5 minutes
+                            elif DRY_RUN:
+                                # Short delay for testing
+                                delay = random.randint(2, 5)
+                                logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                time.sleep(delay)
 
             logging.info("Script finished successfully.")
 
+            # Final screenshot if debugging enabled
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "99_execution_completed")
+
         except PlaywrightTimeoutError as e:
             logging.error(f"A timeout error occurred: {e}")
-            page.screenshot(path='error_timeout.png')
+
+            # Enhanced error handling
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "error_timeout", error=True)
+            else:
+                page.screenshot(path='error_timeout.png')
+
+            if alert_system:
+                alert_system.send_alert(
+                    "Timeout Error",
+                    f"Script encountered a timeout error:\n\n{str(e)}\n\nCheck debug screenshots for details.",
+                    attach_files=['error_timeout.png'] if not screenshot_mgr else None
+                )
+
         except Exception as e:
             logging.error(f"An unexpected error occurred: {e}")
-            page.screenshot(path='error_unexpected.png')
+
+            # Enhanced error handling
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "error_unexpected", error=True)
+            else:
+                page.screenshot(path='error_unexpected.png')
+
+            if alert_system:
+                alert_system.send_alert(
+                    "Unexpected Error",
+                    f"Script crashed with unexpected error:\n\n{str(e)}\n\nCheck debug screenshots and logs for details.",
+                    attach_files=['error_unexpected.png'] if not screenshot_mgr else None
+                )
+
         finally:
             logging.info("Closing browser.")
             browser.close()
             # Clean up the local auth file for security
             if os.path.exists(AUTH_FILE_PATH):
                 os.remove(AUTH_FILE_PATH)
+
+            # Log debugging summary if enabled
+            if ENABLE_ADVANCED_DEBUG:
+                logging.info("🔧 Advanced debugging session completed - check debug_screenshots/ folder for details")
 
 if __name__ == "__main__":
     main()
