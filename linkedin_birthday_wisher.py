@@ -7,6 +7,17 @@ import json
 from typing import Optional
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
+# Import debug utilities
+from debug_utils import (
+    DebugScreenshotManager,
+    DOMStructureValidator,
+    LinkedInPolicyDetector,
+    EnhancedLogger,
+    AlertSystem,
+    retry_with_fallbacks,
+    quick_debug_check
+)
+
 # --- Configuration ---
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,6 +29,10 @@ AUTH_FILE_PATH = "auth_state.json"
 # General settings
 HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
+
+# Advanced debugging settings
+ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
+ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
 # Load birthday messages from the external file.
 def load_birthday_messages(file_path="messages.txt"):
@@ -456,13 +471,69 @@ def main():
         )
         page = context.new_page()
 
+        # Initialize debugging managers if advanced debug is enabled
+        screenshot_mgr = None
+        enhanced_logger = None
+        policy_detector = None
+        alert_system = None
+
+        if ENABLE_ADVANCED_DEBUG:
+            logging.info("🔧 Advanced debugging enabled - initializing debug managers...")
+            screenshot_mgr = DebugScreenshotManager()
+            enhanced_logger = EnhancedLogger()
+            policy_detector = LinkedInPolicyDetector(page)
+            if ENABLE_EMAIL_ALERTS:
+                alert_system = AlertSystem()
+                logging.info("📧 Email alerts enabled")
+
         try:
+            # Capture initial state
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "01_browser_start")
+
             if not check_login_status(page):
+                if screenshot_mgr:
+                    screenshot_mgr.capture(page, "login_failed", error=True)
+                if alert_system:
+                    alert_system.send_alert(
+                        "Login Failed",
+                        f"Failed to verify login at {page.url}"
+                    )
                 return # Stop execution if login verification fails.
+
+            # Validate DOM structure after login
+            if ENABLE_ADVANCED_DEBUG:
+                dom_validator = DOMStructureValidator(page)
+                if screenshot_mgr:
+                    screenshot_mgr.capture(page, "02_after_login")
+
+                if not dom_validator.validate_all_selectors(screenshot_mgr):
+                    logging.warning("⚠️ Some DOM selectors failed validation - check logs")
+                    dom_validator.export_validation_report()
+                    if alert_system:
+                        alert_system.send_alert(
+                            "DOM Structure Validation Failed",
+                            "Some LinkedIn selectors failed validation. Site structure may have changed."
+                        )
+
+                # Check for policy restrictions
+                is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                if not is_ok:
+                    logging.critical("🚨 Policy violation detected - stopping execution")
+                    if alert_system:
+                        screenshot_path = screenshot_mgr.capture(page, "policy_violation_critical", error=True)
+                        alert_system.alert_policy_violation(issues, screenshot_path)
+                    return
 
             random_delay(2, 4)
 
             birthdays = get_birthday_contacts(page)
+
+            # Capture birthdays page state
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "03_birthdays_page_loaded")
+            if enhanced_logger:
+                enhanced_logger.log_page_state(page, "Birthdays page loaded")
 
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
@@ -489,6 +560,16 @@ def main():
                         send_birthday_message(page, contact, is_late=True, days_late=days_late)
                         total_messages_sent += 1
 
+                        # Check for policy restrictions every 5 messages
+                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                            if not is_ok:
+                                logging.critical("🚨 Policy violation detected during execution - stopping")
+                                if alert_system:
+                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                    alert_system.alert_policy_violation(issues, screenshot_path)
+                                return
+
                         # Simulate occasional human activity
                         if random.random() < 0.3:  # 30% chance
                             simulate_human_activity(page)
@@ -510,6 +591,16 @@ def main():
                         send_birthday_message(page, contact, is_late=is_late)
                         total_messages_sent += 1
 
+                        # Check for policy restrictions every 5 messages
+                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                            if not is_ok:
+                                logging.critical("🚨 Policy violation detected during execution - stopping")
+                                if alert_system:
+                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                    alert_system.alert_policy_violation(issues, screenshot_path)
+                                return
+
                         # Simulate occasional human activity
                         if random.random() < 0.3:  # 30% chance
                             simulate_human_activity(page)
@@ -530,18 +621,52 @@ def main():
 
             logging.info("Script finished successfully.")
 
+            # Final screenshot if debugging enabled
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "99_execution_completed")
+
         except PlaywrightTimeoutError as e:
             logging.error(f"A timeout error occurred: {e}")
-            page.screenshot(path='error_timeout.png')
+
+            # Enhanced error handling
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "error_timeout", error=True)
+            else:
+                page.screenshot(path='error_timeout.png')
+
+            if alert_system:
+                alert_system.send_alert(
+                    "Timeout Error",
+                    f"Script encountered a timeout error:\n\n{str(e)}\n\nCheck debug screenshots for details.",
+                    attach_files=['error_timeout.png'] if not screenshot_mgr else None
+                )
+
         except Exception as e:
             logging.error(f"An unexpected error occurred: {e}")
-            page.screenshot(path='error_unexpected.png')
+
+            # Enhanced error handling
+            if screenshot_mgr:
+                screenshot_mgr.capture(page, "error_unexpected", error=True)
+            else:
+                page.screenshot(path='error_unexpected.png')
+
+            if alert_system:
+                alert_system.send_alert(
+                    "Unexpected Error",
+                    f"Script crashed with unexpected error:\n\n{str(e)}\n\nCheck debug screenshots and logs for details.",
+                    attach_files=['error_unexpected.png'] if not screenshot_mgr else None
+                )
+
         finally:
             logging.info("Closing browser.")
             browser.close()
             # Clean up the local auth file for security
             if os.path.exists(AUTH_FILE_PATH):
                 os.remove(AUTH_FILE_PATH)
+
+            # Log debugging summary if enabled
+            if ENABLE_ADVANCED_DEBUG:
+                logging.info("🔧 Advanced debugging session completed - check debug_screenshots/ folder for details")
 
 if __name__ == "__main__":
     main()
