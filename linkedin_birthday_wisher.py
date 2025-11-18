@@ -34,6 +34,28 @@ DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
 ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
 ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
+# Anti-detection limits
+MAX_MESSAGES_PER_RUN = 15  # Limite de sécurité par exécution
+WEEKLY_MESSAGE_LIMIT = 80  # Limite hebdomadaire (sous la limite LinkedIn de 100)
+WEEKLY_TRACKER_FILE = "weekly_messages.json"
+
+# Randomized User-Agents (updated versions)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+]
+
+# Randomized viewport sizes
+VIEWPORT_SIZES = [
+    {'width': 1920, 'height': 1080},
+    {'width': 1366, 'height': 768},
+    {'width': 1440, 'height': 900},
+    {'width': 1536, 'height': 864}
+]
+
 # Load birthday messages from the external file.
 def load_birthday_messages(file_path="messages.txt"):
     """Loads birthday messages from a text file."""
@@ -52,6 +74,39 @@ def load_birthday_messages(file_path="messages.txt"):
 
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
+
+# --- Weekly Message Tracking ---
+
+def load_weekly_count():
+    """Charge le compteur de messages de la semaine."""
+    try:
+        with open(WEEKLY_TRACKER_FILE, 'r') as f:
+            data = json.load(f)
+            # Réinitialiser si plus d'une semaine
+            from datetime import datetime, timedelta
+            last_reset = datetime.fromisoformat(data['last_reset'])
+            if datetime.now() - last_reset > timedelta(days=7):
+                return {'count': 0, 'last_reset': datetime.now().isoformat()}
+            return data
+    except (FileNotFoundError, KeyError, ValueError):
+        from datetime import datetime
+        return {'count': 0, 'last_reset': datetime.now().isoformat()}
+
+def save_weekly_count(count):
+    """Sauvegarde le compteur de messages hebdomadaires."""
+    data = load_weekly_count()
+    data['count'] = count
+    with open(WEEKLY_TRACKER_FILE, 'w') as f:
+        json.dump(data, f)
+
+def can_send_more_messages(messages_to_send):
+    """Vérifie si on peut envoyer plus de messages cette semaine."""
+    data = load_weekly_count()
+
+    if data['count'] + messages_to_send > WEEKLY_MESSAGE_LIMIT:
+        logging.warning(f"⚠️ Limite hebdomadaire atteinte ({data['count']}/{WEEKLY_MESSAGE_LIMIT})")
+        return False, WEEKLY_MESSAGE_LIMIT - data['count']
+    return True, messages_to_send
 
 # --- Human Behavior Simulation ---
 
@@ -226,7 +281,7 @@ def check_login_status(page: Page):
 def get_birthday_contacts(page: Page) -> dict:
     """
     Navigates to the birthdays page, extracts contacts, and categorizes them
-    into 'today' and 'late' birthdays.
+    into 'today' and 'late' birthdays with detailed statistics.
     """
     logging.info("Navigating to the birthdays page.")
     page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000)
@@ -247,29 +302,78 @@ def get_birthday_contacts(page: Page) -> dict:
 
     all_contacts = scroll_and_collect_contacts(page, card_selector)
 
-    # Categorize birthdays
+    # Categorize birthdays avec compteurs de debug
     birthdays = {'today': [], 'late': []}
-    ignored_count = 0
-    for contact in all_contacts:
-        birthday_type, days_late = get_birthday_type(contact)
-        if birthday_type == 'today':
-            birthdays['today'].append(contact)
-        elif birthday_type == 'late':
-            birthdays['late'].append((contact, days_late))
-        else: # birthday_type == 'ignore'
-            ignored_count += 1
+    classification_stats = {
+        'today': 0,
+        'late_1d': 0,
+        'late_2d': 0,
+        'late_3d': 0,
+        'late_4d': 0,
+        'late_5d': 0,
+        'late_6d': 0,
+        'late_7d': 0,
+        'ignored': 0,
+        'errors': 0
+    }
 
-    logging.info(f"Ignored {ignored_count} birthdays older than 4 days.")
+    for i, contact in enumerate(all_contacts):
+        try:
+            birthday_type, days_late = get_birthday_type(contact)
 
-    logging.info(f"Found {len(birthdays['today'])} birthdays for today.")
-    logging.info(f"Found {len(birthdays['late'])} late birthdays.")
+            if birthday_type == 'today':
+                birthdays['today'].append(contact)
+                classification_stats['today'] += 1
 
-    # Save page HTML for analysis, especially if something goes wrong
-    if not all_contacts:
+            elif birthday_type == 'late':
+                birthdays['late'].append((contact, days_late))
+                # Statistiques détaillées par jour de retard
+                if 1 <= days_late <= 7:
+                    classification_stats[f'late_{days_late}d'] += 1
+
+            else:  # 'ignore'
+                classification_stats['ignored'] += 1
+
+        except Exception as e:
+            logging.error(f"Erreur lors de la classification de la carte {i+1}: {e}")
+            classification_stats['errors'] += 1
+            # Sauvegarder la carte problématique pour analyse
+            try:
+                contact.screenshot(path=f'error_card_classification_{i+1}.png')
+            except:
+                pass
+
+    # Afficher les statistiques détaillées
+    logging.info("═══════════════════════════════════════════════════")
+    logging.info("📊 STATISTIQUES DE CLASSIFICATION DES ANNIVERSAIRES")
+    logging.info("═══════════════════════════════════════════════════")
+    logging.info(f"Total de cartes analysées: {len(all_contacts)}")
+    logging.info(f"")
+    logging.info(f"✅ Aujourd'hui:           {classification_stats['today']}")
+    logging.info(f"⏰ En retard (1 jour):    {classification_stats['late_1d']}")
+    logging.info(f"⏰ En retard (2 jours):   {classification_stats['late_2d']}")
+    logging.info(f"⏰ En retard (3 jours):   {classification_stats['late_3d']}")
+    logging.info(f"⏰ En retard (4 jours):   {classification_stats['late_4d']}")
+    logging.info(f"⏰ En retard (5 jours):   {classification_stats['late_5d']}")
+    logging.info(f"⏰ En retard (6 jours):   {classification_stats['late_6d']}")
+    logging.info(f"⏰ En retard (7 jours):   {classification_stats['late_7d']}")
+    logging.info(f"❌ Ignorés (>7 jours):    {classification_stats['ignored']}")
+    logging.info(f"⚠️  Erreurs:               {classification_stats['errors']}")
+    logging.info("═══════════════════════════════════════════════════")
+
+    total_late = sum([classification_stats[f'late_{i}d'] for i in range(1, 8)])
+    logging.info(f"")
+    logging.info(f"TOTAL À TRAITER: {classification_stats['today'] + total_late}")
+    logging.info(f"  - Aujourd'hui: {classification_stats['today']}")
+    logging.info(f"  - En retard:   {total_late}")
+    logging.info("")
+
+    # Sauvegarder le HTML pour analyse si des erreurs ou classifications ambiguës
+    if classification_stats['errors'] > 0 or classification_stats['ignored'] > len(all_contacts) * 0.3:
         html_content = page.content()
         with open('birthdays_page_analysis.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
-        logging.info("Page HTML saved as 'birthdays_page_analysis.html' for analysis.")
+        logging.warning("⚠️ Nombre élevé d'erreurs/ignorés - HTML sauvegardé pour analyse")
 
     return birthdays
 
@@ -297,39 +401,164 @@ def extract_contact_name(contact_element) -> Optional[str]:
     logging.warning("Could not extract a valid name for the contact.")
     return None
 
+def debug_birthday_card(contact_element, card_index: int = 0):
+    """
+    Fonction de debug pour analyser une carte d'anniversaire en détail.
+    Utile pour diagnostiquer les problèmes de classification.
+    """
+    logging.info(f"═══════════════════════════════════════════════════")
+    logging.info(f"🔍 DEBUG - Carte #{card_index}")
+    logging.info(f"═══════════════════════════════════════════════════")
+
+    # Extraire le texte complet
+    full_text = contact_element.inner_text()
+    logging.info(f"Texte complet:\n{full_text}")
+    logging.info(f"")
+
+    # Analyser chaque paragraphe
+    paragraphs = contact_element.query_selector_all("p")
+    logging.info(f"Nombre de paragraphes trouvés: {len(paragraphs)}")
+
+    for i, p in enumerate(paragraphs):
+        p_text = p.inner_text().strip()
+        logging.info(f"  Paragraphe {i+1}: '{p_text}'")
+
+    # Tester la classification
+    birthday_type, days_late = get_birthday_type(contact_element)
+    logging.info(f"")
+    logging.info(f"Résultat de classification:")
+    logging.info(f"  Type: {birthday_type}")
+    logging.info(f"  Jours de retard: {days_late}")
+
+    # Screenshot de la carte
+    screenshot_path = f'debug_card_{card_index}_{birthday_type}.png'
+    try:
+        contact_element.screenshot(path=screenshot_path)
+        logging.info(f"Screenshot sauvegardée: {screenshot_path}")
+    except Exception as e:
+        logging.warning(f"Impossible de sauvegarder la screenshot: {e}")
+    logging.info(f"═══════════════════════════════════════════════════")
+
 def get_birthday_type(contact_element) -> tuple[str, int]:
     """
-    Determines if a birthday is 'today', 'late' (within 4 days), or 'ignore'.
-    Returns a tuple of (type, days_late).
+    Détermine si un anniversaire est 'today', 'late' (1-7 jours), ou 'ignore' (>7 jours).
+
+    Logique de détection améliorée avec validation multi-critères.
+
+    Returns:
+        tuple[str, int]: (type, days_late)
+            - type: 'today', 'late', ou 'ignore'
+            - days_late: nombre de jours de retard (0 pour aujourd'hui)
     """
+    import re
+
     card_text = contact_element.inner_text().lower()
 
-    # Priority 1: Check for today's birthdays explicitly
-    if 'aujourd\'hui' in card_text or 'today' in card_text:
-        return 'today', 0
+    # Debug: afficher le texte complet de la carte en mode debug avancé
+    logging.debug(f"Analyzing card text: {card_text[:200]}...")
 
-    # Priority 2: Check for yesterday
-    if 'hier' in card_text or 'yesterday' in card_text:
-        return 'late', 1
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 1: Vérifier explicitement "aujourd'hui" / "today"
+    # ═══════════════════════════════════════════════════════════
+    today_keywords_fr = ['aujourd\'hui', 'aujourdhui', 'c\'est aujourd\'hui']
+    today_keywords_en = ['today', 'is today', '\'s birthday is today']
 
-    # Priority 3: Check for "il y a X jours"
-    import re
-    match = re.search(r'il y a (\d+) jours', card_text)
-    if match:
-        days_late = int(match.group(1))
-        if 1 <= days_late <= 4:
+    for keyword in today_keywords_fr + today_keywords_en:
+        if keyword in card_text:
+            logging.debug(f"✓ Anniversaire du jour détecté (mot-clé: '{keyword}')")
+            return 'today', 0
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 2: Détecter "hier" / "yesterday" (1 jour de retard)
+    # ═══════════════════════════════════════════════════════════
+    yesterday_keywords = ['hier', 'c\'était hier', 'yesterday', 'was yesterday']
+
+    for keyword in yesterday_keywords:
+        if keyword in card_text:
+            logging.debug(f"✓ Anniversaire d'hier détecté (mot-clé: '{keyword}')")
+            return 'late', 1
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 3: Extraire le nombre de jours via regex (multi-langue)
+    # ═══════════════════════════════════════════════════════════
+
+    # Pattern français: "il y a X jour(s)"
+    match_fr = re.search(r'il y a (\d+) jours?', card_text)
+
+    # Pattern anglais: "X day(s) ago"
+    match_en = re.search(r'(\d+) days? ago', card_text)
+
+    days_late = None
+
+    if match_fr:
+        days_late = int(match_fr.group(1))
+        logging.debug(f"✓ Retard détecté via regex FR: {days_late} jour(s)")
+    elif match_en:
+        days_late = int(match_en.group(1))
+        logging.debug(f"✓ Retard détecté via regex EN: {days_late} day(s)")
+
+    if days_late is not None:
+        if 1 <= days_late <= 7:
+            logging.debug(f"→ Classé comme 'late' ({days_late} jour(s))")
             return 'late', days_late
         else:
-            # It's a late birthday, but too old to process
+            logging.debug(f"→ Classé comme 'ignore' (trop ancien: {days_late} jour(s))")
             return 'ignore', days_late
 
-    # Priority 4: If any other late keywords are present, we can't quantify, so ignore.
-    late_keywords = ['avec un peu de retard', 'avec du retard', 'en retard', 'belated']
-    if any(keyword in card_text for keyword in late_keywords):
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 4: Détecter les indicateurs de retard génériques
+    # ═══════════════════════════════════════════════════════════
+
+    # Mots-clés qui indiquent un retard SANS préciser le nombre de jours
+    generic_late_keywords = [
+        'avec un peu de retard',
+        'avec du retard',
+        'en retard',
+        'belated',
+        'a bit late',
+        'little late'
+    ]
+
+    for keyword in generic_late_keywords:
+        if keyword in card_text:
+            logging.debug(f"⚠️ Retard générique détecté (mot-clé: '{keyword}'), mais durée inconnue")
+            # On ne peut pas quantifier le retard, donc on ignore par sécurité
+            return 'ignore', 0
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 5: Validation de la structure de la carte
+    # ═══════════════════════════════════════════════════════════
+
+    # Vérifier que la carte contient des éléments typiques d'un anniversaire LinkedIn
+    birthday_indicators = [
+        'anniversaire', 'birthday', 'célébrez', 'celebrate',
+        'say happy birthday', 'souhaitez', 'wish'
+    ]
+
+    has_birthday_indicator = any(indicator in card_text for indicator in birthday_indicators)
+
+    if not has_birthday_indicator:
+        logging.warning(f"⚠️ Carte ne semble pas contenir d'indicateur d'anniversaire valide")
+        logging.debug(f"Texte analysé: {card_text[:300]}")
         return 'ignore', 0
 
-    # Default case: If no late keywords are found, it's today's birthday.
-    return 'today', 0
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 6: Cas par défaut - Classification conservatrice
+    # ═══════════════════════════════════════════════════════════
+
+    # Heuristique: si la carte ne contient AUCUN mot-clé de temps,
+    # c'est probablement un anniversaire du jour
+    time_keywords = ['il y a', 'ago', 'hier', 'yesterday', 'retard', 'belated', 'late']
+    has_time_keyword = any(keyword in card_text for keyword in time_keywords)
+
+    if not has_time_keyword:
+        logging.debug("→ Aucun mot-clé temporel trouvé, classification par défaut: 'today'")
+        return 'today', 0
+    else:
+        # Si des mots-clés temporels sont présents mais non reconnus, ignorer par sécurité
+        logging.warning("→ Mots-clés temporels non reconnus, classification: 'ignore'")
+        logging.debug(f"Texte complet: {card_text}")
+        return 'ignore', 0
 
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
@@ -494,15 +723,42 @@ def main():
         return
 
     with sync_playwright() as p:
+        # Randomize browser parameters for anti-detection
+        selected_user_agent = random.choice(USER_AGENTS)
+        selected_viewport = random.choice(VIEWPORT_SIZES)
+
+        logging.info(f"🔧 Using User-Agent: {selected_user_agent[:50]}...")
+        logging.info(f"🔧 Using Viewport: {selected_viewport}")
+
         browser = p.chromium.launch(
             headless=HEADLESS_BROWSER,
-            slow_mo=100
+            slow_mo=random.randint(80, 150),  # Randomize slow_mo
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                f'--window-size={selected_viewport["width"]},{selected_viewport["height"]}'
+            ]
         )
         context = browser.new_context(
             storage_state=AUTH_FILE_PATH,
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            viewport={'width': 1920, 'height': 1080}  # Larger viewport to ensure all elements are loaded
+            user_agent=selected_user_agent,
+            viewport=selected_viewport,
+            locale='fr-FR',
+            timezone_id='Europe/Paris'
         )
+
+        # Apply stealth mode to avoid bot detection
+        try:
+            from playwright_stealth import stealth_sync
+            stealth_sync(context)
+            logging.info("✅ Playwright stealth mode activated")
+        except ImportError:
+            logging.warning("⚠️ playwright-stealth not installed, skipping stealth mode")
+
         page = context.new_page()
 
         # Initialize debugging managers if advanced debug is enabled
@@ -569,6 +825,28 @@ def main():
             if enhanced_logger:
                 enhanced_logger.log_page_state(page, "Birthdays page loaded")
 
+            # --- ANTI-DETECTION: Limit messages per run and check weekly limit ---
+            total_birthdays = len(birthdays['today']) + len(birthdays['late'])
+            logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
+
+            # Check weekly limit first
+            if not DRY_RUN:
+                can_send, allowed_messages = can_send_more_messages(total_birthdays)
+                if not can_send:
+                    logging.warning(f"⚠️ Weekly limit reached. Can only send {allowed_messages} more messages this week.")
+                    total_birthdays = allowed_messages
+
+            # Apply per-run limit
+            if total_birthdays > MAX_MESSAGES_PER_RUN:
+                logging.warning(f"⚠️ {total_birthdays} birthdays detected, limiting to {MAX_MESSAGES_PER_RUN} per run to avoid detection")
+
+                # Prioritize today's birthdays
+                birthdays['today'] = birthdays['today'][:MAX_MESSAGES_PER_RUN]
+                remaining = MAX_MESSAGES_PER_RUN - len(birthdays['today'])
+                birthdays['late'] = birthdays['late'][:remaining] if remaining > 0 else []
+
+                logging.info(f"✂️ Limited to {len(birthdays['today'])} today + {len(birthdays['late'])} late birthdays")
+
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
             break_intervals = []  # Track when to take long breaks
@@ -609,12 +887,18 @@ def main():
                             simulate_human_activity(page)
 
                         if i < len(contacts) - 1:
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
                             # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
                                     # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(120, 300)  # 2-5 minutes
+                                    gaussian_delay(180, 420)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
@@ -641,17 +925,30 @@ def main():
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
                             # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
                                     # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(120, 300)  # 2-5 minutes
+                                    gaussian_delay(180, 420)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
                                 logging.info(f"Pausing for {delay}s (DRY RUN).")
                                 time.sleep(delay)
+
+            # Save weekly message count
+            if not DRY_RUN and total_messages_sent > 0:
+                weekly_data = load_weekly_count()
+                new_count = weekly_data['count'] + total_messages_sent
+                save_weekly_count(new_count)
+                logging.info(f"📊 Weekly message count updated: {new_count}/{WEEKLY_MESSAGE_LIMIT}")
 
             logging.info("Script finished successfully.")
 
