@@ -6,7 +6,7 @@ import base64
 import json
 import urllib.parse
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
-from playwright_stealth import stealth_sync
+from playwright_stealth import Stealth
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -210,7 +210,8 @@ def main():
         )
 
         # Application de playwright-stealth pour masquer l'automatisation
-        stealth_sync(context)
+        stealth = Stealth()
+        stealth.apply_stealth_sync(context)
 
         page = context.new_page()
 
