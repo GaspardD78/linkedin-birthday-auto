@@ -269,50 +269,26 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     # This avoids strict mode violations when multiple message forms are present on the page
     submit_button = page.locator("button.msg-form__send-button").first
 
-    # Robust solution: scroll the message container first, then the button
+    # Ensure the button is in viewport before clicking to avoid timeout errors
     try:
-        # 1. First scroll the entire message form into view
-        message_form = page.locator("div.msg-form__msg-content-container").first
-        if message_form.is_visible():
-            message_form.scroll_into_view_if_needed(timeout=5000)
-            random_delay(0.3, 0.6)
-
-        # 2. Then scroll specifically the send button
         submit_button.scroll_into_view_if_needed(timeout=5000)
-        random_delay(0.5, 1)
+        random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
 
-        # 3. Verify the button is visible AND enabled
-        submit_button.wait_for(state="visible", timeout=10000)
         if submit_button.is_enabled():
-            submit_button.click(timeout=15000)
+            submit_button.click()
             logging.info("Message sent successfully.")
         else:
             logging.warning("Send button is not enabled. Skipping.")
-
-    except PlaywrightTimeoutError as e:
-        logging.warning(f"Standard click failed: {e}. Trying alternative methods...")
-
-        # Fallback 1: Manual JavaScript scroll
+    except PlaywrightTimeoutError:
+        logging.warning("Could not scroll send button into view, attempting force click...")
+        # Fallback: try force click if scrolling fails
         try:
-            page.evaluate("document.querySelector('button.msg-form__send-button').scrollIntoView({behavior: 'smooth', block: 'center'})")
-            random_delay(1, 1.5)
-            submit_button.click(force=True, timeout=15000)
-            logging.info("Message sent successfully (JS scroll + force click).")
-        except Exception as js_err:
-            logging.error(f"JS scroll method failed: {js_err}")
-
-            # Fallback 2: Click by coordinates
-            try:
-                box = submit_button.bounding_box()
-                if box:
-                    page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
-                    logging.info("Message sent successfully (mouse click by coordinates).")
-                else:
-                    raise Exception("Could not get button bounding box")
-            except Exception as coord_err:
-                logging.error(f"Coordinate click failed: {coord_err}")
-                page.screenshot(path=f'error_send_button_{first_name}.png')
-                raise
+            submit_button.click(force=True, timeout=10000)
+            logging.info("Message sent successfully (force click).")
+        except PlaywrightTimeoutError as e:
+            logging.error(f"Failed to click send button even with force: {e}")
+            page.screenshot(path=f'error_send_button_{first_name}.png')
+            raise
 
     # Always close the modal after processing.
     close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
