@@ -314,7 +314,7 @@ def get_birthday_contacts(page: Page) -> dict:
         else: # birthday_type == 'ignore'
             ignored_count += 1
 
-    logging.info(f"Ignored {ignored_count} birthdays older than 4 days.")
+    logging.info(f"Ignored {ignored_count} birthdays older than 7 days.")
 
     logging.info(f"Found {len(birthdays['today'])} birthdays for today.")
     logging.info(f"Found {len(birthdays['late'])} late birthdays.")
@@ -354,7 +354,7 @@ def extract_contact_name(contact_element) -> Optional[str]:
 
 def get_birthday_type(contact_element) -> tuple[str, int]:
     """
-    Determines if a birthday is 'today', 'late' (within 4 days), or 'ignore'.
+    Determines if a birthday is 'today', 'late' (within 7 days), or 'ignore'.
     Returns a tuple of (type, days_late).
     """
     card_text = contact_element.inner_text().lower()
@@ -372,7 +372,7 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
     match = re.search(r'il y a (\d+) jours', card_text)
     if match:
         days_late = int(match.group(1))
-        if 1 <= days_late <= 4:
+        if 1 <= days_late <= 7:
             return 'late', days_late
         else:
             # It's a late birthday, but too old to process
