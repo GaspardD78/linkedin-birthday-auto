@@ -9,6 +9,10 @@ on:
         default: true
         type: boolean
   schedule:
+    # ATTENTION : Les cron jobs à heures fixes créent un pattern temporel prévisible
+    # que LinkedIn peut facilement identifier comme automatisé.
+    # RECOMMANDATION : Utiliser workflow_dispatch et déclencher manuellement à des heures
+    # variables, ou désactiver complètement le schedule et exécuter manuellement.
     # Runs at 8:00 UTC every day.
     # The script itself has a random delay of up to 2 hours.
     - cron: '0 8 * * *'

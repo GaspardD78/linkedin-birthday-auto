@@ -6,6 +6,7 @@ import base64
 import json
 import urllib.parse
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright_stealth import stealth_sync
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,10 +19,21 @@ AUTH_FILE_PATH = "auth_state.json"
 VISITED_PROFILES_FILE = "visited_profiles.txt"
 
 # General settings
-HEADLESS_BROWSER = True
+# En mode GitHub Actions, forcer headless. Sinon, utiliser headless=False pour réduire la détection
+IS_GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS', 'false').lower() == 'true'
+HEADLESS_BROWSER = IS_GITHUB_ACTIONS  # Headless uniquement sur GitHub Actions
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
-PROFILES_TO_VISIT_PER_RUN = 50
+PROFILES_TO_VISIT_PER_RUN = 15  # Réduit à 15 pour éviter la détection (max 20 recommandé)
 MAX_PAGES_TO_SCRAPE = int(os.getenv('MAX_PAGES_TO_SCRAPE', '100'))  # Maximum number of pages to scrape per run (default: 100)
+
+# User-Agents réalistes pour randomisation
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15"
+]
 
 # --- Helper Functions ---
 
@@ -52,9 +64,38 @@ def save_visited_profile(profile_url):
     with open(VISITED_PROFILES_FILE, "a", encoding="utf-8") as f:
         f.write(profile_url + "\n")
 
-def random_delay(min_seconds: float = 2.5, max_seconds: float = 5.5):
-    """Waits for a random duration to mimic human latency."""
-    time.sleep(random.uniform(min_seconds, max_seconds))
+def random_delay(min_seconds: float = 8, max_seconds: float = 20):
+    """Waits for a random duration to mimic human latency with occasional longer pauses."""
+    delay = random.uniform(min_seconds, max_seconds)
+    # Ajouter occasionnellement des pauses plus longues (10% du temps)
+    if random.random() < 0.1:
+        delay += random.uniform(30, 60)
+        logging.info(f"Pause prolongée: {delay:.1f}s")
+    time.sleep(delay)
+
+def simulate_human_interactions(page: Page):
+    """Simule des interactions humaines naturelles (scroll, mouvements de souris)."""
+    try:
+        # Scroll aléatoire
+        for _ in range(random.randint(2, 5)):
+            scroll_amount = random.randint(200, 600)
+            page.evaluate(f"window.scrollBy(0, {scroll_amount})")
+            time.sleep(random.uniform(0.8, 2.5))
+
+        # Mouvements de souris aléatoires
+        for _ in range(random.randint(3, 7)):
+            x = random.randint(100, 800)
+            y = random.randint(100, 600)
+            # Utiliser move avec steps pour rendre le mouvement plus naturel
+            page.mouse.move(x, y)
+            time.sleep(random.uniform(0.3, 1.2))
+
+        # Temps de lecture variable
+        reading_time = random.uniform(5, 15)
+        logging.debug(f"Simulation lecture: {reading_time:.1f}s")
+        time.sleep(reading_time)
+    except Exception as e:
+        logging.debug(f"Erreur lors de la simulation d'interactions (non critique): {e}")
 
 # --- Core Automation Functions ---
 
@@ -145,8 +186,32 @@ def main():
     profiles_visited_this_run = 0
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=HEADLESS_BROWSER, slow_mo=150)
-        context = browser.new_context(storage_state=AUTH_FILE_PATH)
+        # Lancement du browser avec arguments anti-détection
+        browser = p.chromium.launch(
+            headless=HEADLESS_BROWSER,  # Non-headless localement, headless sur GitHub Actions
+            slow_mo=random.randint(100, 300),  # Ralentissement aléatoire
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
+        )
+
+        # Création du contexte avec User-Agent et empreinte aléatoires
+        context = browser.new_context(
+            storage_state=AUTH_FILE_PATH,
+            user_agent=random.choice(USER_AGENTS),
+            viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)},
+            locale='fr-FR',
+            timezone_id='Europe/Paris'
+        )
+
+        # Application de playwright-stealth pour masquer l'automatisation
+        stealth_sync(context)
+
         page = context.new_page()
 
         try:
@@ -176,7 +241,9 @@ def main():
                     logging.info(f"Visiting profile: {url}")
                     if not DRY_RUN:
                         page.goto(url, timeout=60000)
-                        random_delay(5, 10) # Stay on page for a bit
+                        # Simuler des interactions humaines (scroll, mouvements de souris)
+                        simulate_human_interactions(page)
+                        random_delay(15, 35)  # Délai plus naturel (15-35s au lieu de 5-10s)
                         save_visited_profile(url)
                         visited_profiles.add(url)
                     else:
