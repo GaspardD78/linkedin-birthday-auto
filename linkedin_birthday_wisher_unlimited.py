@@ -34,15 +34,10 @@ DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
 ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
 ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
-# Anti-detection limits
-MAX_MESSAGES_PER_RUN = None  # Pas de limite - tous les anniversaires du jour doivent être fêtés
-WEEKLY_MESSAGE_LIMIT = 80  # Limite hebdomadaire (sous la limite LinkedIn de 100)
-WEEKLY_TRACKER_FILE = "weekly_messages.json"
-
-# Planification des messages entre 7h et 19h
-DAILY_START_HOUR = 7  # Début d'envoi des messages (7h du matin)
-DAILY_END_HOUR = 19   # Fin d'envoi des messages (19h le soir)
-DAILY_WINDOW_SECONDS = (DAILY_END_HOUR - DAILY_START_HOUR) * 3600  # 12 heures = 43200 secondes
+# Anti-detection limits - UNLIMITED MODE (utilisation unique)
+MAX_MESSAGES_PER_RUN = None  # Pas de limite pour le mode unlimited
+WEEKLY_MESSAGE_LIMIT = None  # Pas de limite hebdomadaire pour le mode unlimited
+WEEKLY_TRACKER_FILE = "weekly_messages_unlimited.json"  # Fichier séparé pour ne pas impacter le routine
 
 # Randomized User-Agents (updated versions)
 USER_AGENTS = [
@@ -106,67 +101,17 @@ def save_weekly_count(count):
 
 def can_send_more_messages(messages_to_send):
     """Vérifie si on peut envoyer plus de messages cette semaine."""
+    # MODE UNLIMITED : Pas de limite
+    if WEEKLY_MESSAGE_LIMIT is None:
+        logging.info(f"🚀 MODE UNLIMITED : Aucune limite - {messages_to_send} messages peuvent être envoyés")
+        return True, messages_to_send
+
     data = load_weekly_count()
 
     if data['count'] + messages_to_send > WEEKLY_MESSAGE_LIMIT:
         logging.warning(f"⚠️ Limite hebdomadaire atteinte ({data['count']}/{WEEKLY_MESSAGE_LIMIT})")
         return False, WEEKLY_MESSAGE_LIMIT - data['count']
     return True, messages_to_send
-
-def calculate_optimal_delay(total_messages: int, start_hour: int = DAILY_START_HOUR, end_hour: int = DAILY_END_HOUR) -> tuple[int, int]:
-    """
-    Calcule le délai optimal entre les messages pour les répartir dans la journée.
-    Tient compte de l'heure actuelle pour répartir les messages jusqu'à end_hour.
-
-    Args:
-        total_messages: Nombre total de messages à envoyer
-        start_hour: Heure de début (défaut: 7h) - utilisé pour les logs
-        end_hour: Heure de fin (défaut: 19h)
-
-    Returns:
-        tuple[int, int]: (délai_minimum_secondes, délai_maximum_secondes)
-    """
-    from datetime import datetime
-
-    if total_messages <= 0:
-        return (0, 0)
-
-    # Obtenir l'heure actuelle
-    now = datetime.now()
-    current_hour = now.hour + now.minute / 60.0  # Heure avec décimales
-
-    # Calculer le temps restant jusqu'à end_hour
-    if current_hour >= end_hour:
-        # Si on est déjà passé l'heure de fin, utiliser un délai minimal
-        logging.warning(f"⚠️ Heure actuelle ({now.hour}h{now.minute:02d}) dépasse l'heure de fin ({end_hour}h)")
-        logging.warning(f"   Les messages seront envoyés avec un délai minimal de 3 minutes")
-        return (180, 300)  # 3-5 minutes
-
-    # Temps restant en heures
-    remaining_hours = end_hour - current_hour
-    window_seconds = remaining_hours * 3600
-
-    # Calculer le délai moyen entre les messages
-    average_delay = window_seconds / total_messages
-
-    # Ajouter une variation de ±20% pour rendre les envois plus naturels
-    min_delay = int(average_delay * 0.8)
-    max_delay = int(average_delay * 1.2)
-
-    # S'assurer qu'on a au moins 60 secondes entre les messages
-    min_delay = max(60, min_delay)
-
-    # Calculer l'heure de fin estimée
-    end_time = now.hour + (window_seconds / 3600)
-    end_hour_estimated = int(end_time)
-    end_minute_estimated = int((end_time % 1) * 60)
-
-    logging.info(f"📅 Planification: {total_messages} messages à répartir jusqu'à {end_hour}h")
-    logging.info(f"⏰ Heure actuelle: {now.hour}h{now.minute:02d} - Temps disponible: {remaining_hours:.1f}h")
-    logging.info(f"⏱️  Délai moyen: {average_delay/60:.1f} minutes (variation: {min_delay/60:.1f}m - {max_delay/60:.1f}m)")
-    logging.info(f"🏁 Fin estimée: ~{end_hour_estimated}h{end_minute_estimated:02d}")
-
-    return (min_delay, max_delay)
 
 # --- Human Behavior Simulation ---
 
@@ -1059,43 +1004,13 @@ def main():
             if enhanced_logger:
                 enhanced_logger.log_page_state(page, "Birthdays page loaded")
 
-            # --- PLANIFICATION: Tous les anniversaires du jour doivent être fêtés ---
-            total_today = len(birthdays['today'])
-            total_late = len(birthdays['late'])
-            logging.info(f"📊 Total birthdays detected: today={total_today}, late={total_late}")
+            # --- MODE UNLIMITED: Pas de limite sur les messages ---
+            total_birthdays = len(birthdays['today']) + len(birthdays['late'])
+            logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
+            logging.info(f"🚀 MODE UNLIMITED : Tous les anniversaires seront traités sans limite")
 
-            # IMPORTANT: Tous les anniversaires du jour doivent être traités
-            # On ne limite PAS les anniversaires du jour
-            messages_to_send_today = total_today
-
-            # Check weekly limit pour les messages en retard uniquement
-            if not DRY_RUN:
-                can_send, allowed_messages = can_send_more_messages(total_today + total_late)
-                if not can_send:
-                    logging.warning(f"⚠️ Weekly limit reached. Can only send {allowed_messages} more messages this week.")
-                    # Prioriser les anniversaires du jour
-                    if allowed_messages < total_today:
-                        logging.error(f"⚠️ ATTENTION: Pas assez de quota pour tous les anniversaires du jour!")
-                        logging.error(f"   Anniversaires du jour: {total_today}, Quota restant: {allowed_messages}")
-                        # On envoie quand même tous les anniversaires du jour (c'est une priorité)
-                        messages_to_send_today = total_today
-                        birthdays['late'] = []  # On supprime les retards
-                    else:
-                        # On a assez pour les anniversaires du jour
-                        messages_to_send_today = total_today
-                        remaining_quota = allowed_messages - total_today
-                        birthdays['late'] = birthdays['late'][:remaining_quota]
-                        logging.info(f"✂️ Limited late birthdays to {len(birthdays['late'])} (quota: {remaining_quota})")
-
-            logging.info(f"✅ Traitement prévu: {messages_to_send_today} anniversaires du jour + {len(birthdays['late'])} en retard")
-
-            # Calculer le délai optimal pour répartir les messages du jour entre 7h et 19h
-            total_messages_to_send = len(birthdays['today']) + len(birthdays['late'])
-            if total_messages_to_send > 0 and not DRY_RUN:
-                min_delay, max_delay = calculate_optimal_delay(total_messages_to_send)
-            else:
-                # En mode DRY_RUN, utiliser des délais courts
-                min_delay, max_delay = (2, 5)
+            # Pas de limite de messages en mode unlimited
+            # Tous les anniversaires (aujourd'hui + en retard) seront traités
 
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
@@ -1137,14 +1052,19 @@ def main():
                             simulate_human_activity(page)
 
                         if i < len(contacts) - 1:
-                            # Utiliser le délai calculé pour répartir les messages dans la journée
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
+                            # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
-                                delay = random.randint(min_delay, max_delay)
-                                minutes = delay // 60
-                                seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée: {minutes}m {seconds}s")
-                                time.sleep(delay)
-                            else:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(180, 420)  # 3-7 minutes
+                            elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
                                 logging.info(f"Pausing for {delay}s (DRY RUN).")
@@ -1170,25 +1090,33 @@ def main():
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
-                            # Utiliser le délai calculé pour répartir les messages dans la journée
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
+                            # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
-                                delay = random.randint(min_delay, max_delay)
-                                minutes = delay // 60
-                                seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée: {minutes}m {seconds}s")
-                                time.sleep(delay)
-                            else:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(180, 420)  # 3-7 minutes
+                            elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
                                 logging.info(f"Pausing for {delay}s (DRY RUN).")
                                 time.sleep(delay)
 
-            # Save weekly message count
+            # Save weekly message count (pas de sauvegarde en mode unlimited)
             if not DRY_RUN and total_messages_sent > 0:
-                weekly_data = load_weekly_count()
-                new_count = weekly_data['count'] + total_messages_sent
-                save_weekly_count(new_count)
-                logging.info(f"📊 Weekly message count updated: {new_count}/{WEEKLY_MESSAGE_LIMIT}")
+                if WEEKLY_MESSAGE_LIMIT is not None:
+                    weekly_data = load_weekly_count()
+                    new_count = weekly_data['count'] + total_messages_sent
+                    save_weekly_count(new_count)
+                    logging.info(f"📊 Weekly message count updated: {new_count}/{WEEKLY_MESSAGE_LIMIT}")
+                else:
+                    logging.info(f"🚀 MODE UNLIMITED : {total_messages_sent} messages envoyés (pas de tracking hebdomadaire)")
 
             logging.info("Script finished successfully.")
 
