@@ -44,6 +44,94 @@ def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     """Waits for a random duration within a specified range to mimic human latency."""
     time.sleep(random.uniform(min_seconds, max_seconds))
 
+def gaussian_delay(min_seconds: int, max_seconds: int):
+    """
+    Waits for a random duration using a Gaussian (normal) distribution.
+    This is more human-like than uniform distribution as humans tend to cluster
+    around average times with occasional faster/slower actions.
+
+    Args:
+        min_seconds: Minimum delay in seconds
+        max_seconds: Maximum delay in seconds
+    """
+    mean = (min_seconds + max_seconds) / 2
+    # Standard deviation: ~99.7% of values fall within 3 std devs
+    # So (max - min) = 6*std, therefore std = (max - min) / 6
+    std_dev = (max_seconds - min_seconds) / 6
+
+    # Generate delay with normal distribution
+    delay = random.gauss(mean, std_dev)
+
+    # Clamp to ensure we stay within bounds
+    delay = max(min_seconds, min(max_seconds, delay))
+
+    minutes = int(delay // 60)
+    seconds = int(delay % 60)
+    logging.info(f"Pausing for {minutes}m {seconds}s (Gaussian delay).")
+    time.sleep(delay)
+
+def simulate_human_activity(page: Page):
+    """
+    Simulates random human-like activity to avoid detection.
+    Performs random actions like scrolling, mouse movements, and brief pauses.
+    """
+    actions = [
+        # Random scroll
+        lambda: page.mouse.wheel(0, random.randint(100, 400)),
+        # Brief reading pause
+        lambda: time.sleep(random.uniform(1.5, 4.0)),
+        # Random mouse movement
+        lambda: page.mouse.move(
+            random.randint(300, 800),
+            random.randint(200, 600)
+        ),
+    ]
+
+    # Execute 1-3 random actions
+    num_actions = random.randint(1, 3)
+    for _ in range(num_actions):
+        action = random.choice(actions)
+        try:
+            action()
+            time.sleep(random.uniform(0.5, 1.5))
+        except Exception as e:
+            # Silently ignore errors in activity simulation
+            logging.debug(f"Activity simulation error (non-critical): {e}")
+            pass
+
+def long_break_if_needed(message_count: int, break_intervals: list = None) -> tuple[bool, list]:
+    """
+    Determines if a long break should be taken and executes it.
+    Takes a 20-45 minute break every 10-15 messages to simulate natural human behavior.
+
+    Args:
+        message_count: Current count of messages sent
+        break_intervals: List of message counts where breaks should occur.
+                        If None, a new list will be generated.
+
+    Returns:
+        Tuple of (break_taken: bool, updated_break_intervals: list)
+    """
+    # Initialize break intervals if not provided
+    if break_intervals is None:
+        break_intervals = []
+
+    # Generate next break point if needed
+    if not break_intervals or (break_intervals and message_count >= break_intervals[-1]):
+        # Set the next break to occur in 10-15 messages
+        next_break = message_count + random.randint(10, 15)
+        break_intervals.append(next_break)
+
+    # Check if it's time for a break
+    if message_count in break_intervals and message_count > 0:
+        long_pause = random.randint(20 * 60, 45 * 60)  # 20-45 minutes
+        minutes = long_pause // 60
+        logging.info(f"🚽 Taking a natural break: {minutes} minute pause (simulating coffee/meeting/bathroom)")
+        time.sleep(long_pause)
+        return True, break_intervals
+
+    return False, break_intervals
+
 def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int = 20) -> list:
     """Scrolls the page by bringing the last element into view until no new cards are loaded."""
     logging.info("Starting robust scroll to load all birthday cards...")
@@ -376,6 +464,10 @@ def main():
 
             birthdays = get_birthday_contacts(page)
 
+            # Track total messages sent for implementing periodic long breaks
+            total_messages_sent = 0
+            break_intervals = []  # Track when to take long breaks
+
             # Process today's birthdays first, then late ones.
             # This structure allows for easy expansion or prioritization.
             for birthday_type, contacts in birthdays.items():
@@ -395,25 +487,46 @@ def main():
                 if is_late:
                     for i, (contact, days_late) in enumerate(contacts):
                         send_birthday_message(page, contact, is_late=True, days_late=days_late)
+                        total_messages_sent += 1
+
+                        # Simulate occasional human activity
+                        if random.random() < 0.3:  # 30% chance
+                            simulate_human_activity(page)
+
                         if i < len(contacts) - 1:
-                            if DRY_RUN:
-                                delay = random.randint(2, 5) # Short delay for testing
-                            else:
-                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
-                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
-                            time.sleep(delay)
+                            # Check if we need a long break (every 10-15 messages)
+                            if not DRY_RUN:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(120, 300)  # 2-5 minutes
+                            elif DRY_RUN:
+                                # Short delay for testing
+                                delay = random.randint(2, 5)
+                                logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                time.sleep(delay)
                 else:
                     for i, contact in enumerate(contacts):
                         send_birthday_message(page, contact, is_late=is_late)
+                        total_messages_sent += 1
+
+                        # Simulate occasional human activity
+                        if random.random() < 0.3:  # 30% chance
+                            simulate_human_activity(page)
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
-                            if DRY_RUN:
-                                delay = random.randint(2, 5) # Short delay for testing
-                            else:
-                                delay = random.randint(120, 300) # 2-5 minutes for normal operation
-                            logging.info(f"Pausing for {delay // 60}m {delay % 60}s.")
-                            time.sleep(delay)
+                            # Check if we need a long break (every 10-15 messages)
+                            if not DRY_RUN:
+                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
+                                if not break_taken:
+                                    # Normal delay between messages using Gaussian distribution
+                                    gaussian_delay(120, 300)  # 2-5 minutes
+                            elif DRY_RUN:
+                                # Short delay for testing
+                                delay = random.randint(2, 5)
+                                logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                time.sleep(delay)
 
             logging.info("Script finished successfully.")
 
