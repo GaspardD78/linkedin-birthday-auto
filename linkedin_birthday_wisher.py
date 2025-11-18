@@ -713,8 +713,11 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
             return  # La fermeture sera gérée par le finally
 
-        # Utiliser le locator .last au lieu du selector brut pour éviter les strict mode violations
+        # Effacer le texte automatique que LinkedIn pré-remplit (ex: "Je vous souhaite un très joyeux anniversaire.")
+        # puis ajouter notre message personnalisé
         logging.info(f"Typing message: '{message}'")
+        message_box_locator.clear()  # Effacer le texte pré-rempli
+        random_delay(0.3, 0.5)  # Petit délai pour simuler le comportement humain
         message_box_locator.fill(message)
         random_delay(1, 2)
 
