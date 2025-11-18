@@ -253,7 +253,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     if DRY_RUN:
         logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
         # In dry run, we must close the modal to proceed to the next contact.
-        close_button = page.locator("button[data-control-name='overlay.close_conversation_window']")
+        close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
         if close_button.is_visible():
             close_button.click()
         return
@@ -261,7 +261,9 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     type_like_a_human(page, message_box_selector, message)
     random_delay(1, 2)
 
-    submit_button = page.locator("button.msg-form__send-button")
+    # Use .first to target the first (most recently opened) message form's send button
+    # This avoids strict mode violations when multiple message forms are present on the page
+    submit_button = page.locator("button.msg-form__send-button").first
     if submit_button.is_enabled():
         submit_button.click()
         logging.info("Message sent successfully.")
@@ -269,7 +271,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         logging.warning("Send button is not enabled. Skipping.")
 
     # Always close the modal after processing.
-    close_button = page.locator("button[data-control-name='overlay.close_conversation_window']")
+    close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
     if close_button.is_visible():
         close_button.click()
 
