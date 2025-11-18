@@ -281,7 +281,7 @@ def check_login_status(page: Page):
 def get_birthday_contacts(page: Page) -> dict:
     """
     Navigates to the birthdays page, extracts contacts, and categorizes them
-    into 'today' and 'late' birthdays.
+    into 'today' and 'late' birthdays with detailed statistics.
     """
     logging.info("Navigating to the birthdays page.")
     page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000)
@@ -302,29 +302,78 @@ def get_birthday_contacts(page: Page) -> dict:
 
     all_contacts = scroll_and_collect_contacts(page, card_selector)
 
-    # Categorize birthdays
+    # Categorize birthdays avec compteurs de debug
     birthdays = {'today': [], 'late': []}
-    ignored_count = 0
-    for contact in all_contacts:
-        birthday_type, days_late = get_birthday_type(contact)
-        if birthday_type == 'today':
-            birthdays['today'].append(contact)
-        elif birthday_type == 'late':
-            birthdays['late'].append((contact, days_late))
-        else: # birthday_type == 'ignore'
-            ignored_count += 1
+    classification_stats = {
+        'today': 0,
+        'late_1d': 0,
+        'late_2d': 0,
+        'late_3d': 0,
+        'late_4d': 0,
+        'late_5d': 0,
+        'late_6d': 0,
+        'late_7d': 0,
+        'ignored': 0,
+        'errors': 0
+    }
 
-    logging.info(f"Ignored {ignored_count} birthdays older than 7 days.")
+    for i, contact in enumerate(all_contacts):
+        try:
+            birthday_type, days_late = get_birthday_type(contact)
 
-    logging.info(f"Found {len(birthdays['today'])} birthdays for today.")
-    logging.info(f"Found {len(birthdays['late'])} late birthdays.")
+            if birthday_type == 'today':
+                birthdays['today'].append(contact)
+                classification_stats['today'] += 1
 
-    # Save page HTML for analysis, especially if something goes wrong
-    if not all_contacts:
+            elif birthday_type == 'late':
+                birthdays['late'].append((contact, days_late))
+                # Statistiques détaillées par jour de retard
+                if 1 <= days_late <= 7:
+                    classification_stats[f'late_{days_late}d'] += 1
+
+            else:  # 'ignore'
+                classification_stats['ignored'] += 1
+
+        except Exception as e:
+            logging.error(f"Erreur lors de la classification de la carte {i+1}: {e}")
+            classification_stats['errors'] += 1
+            # Sauvegarder la carte problématique pour analyse
+            try:
+                contact.screenshot(path=f'error_card_classification_{i+1}.png')
+            except:
+                pass
+
+    # Afficher les statistiques détaillées
+    logging.info("═══════════════════════════════════════════════════")
+    logging.info("📊 STATISTIQUES DE CLASSIFICATION DES ANNIVERSAIRES")
+    logging.info("═══════════════════════════════════════════════════")
+    logging.info(f"Total de cartes analysées: {len(all_contacts)}")
+    logging.info(f"")
+    logging.info(f"✅ Aujourd'hui:           {classification_stats['today']}")
+    logging.info(f"⏰ En retard (1 jour):    {classification_stats['late_1d']}")
+    logging.info(f"⏰ En retard (2 jours):   {classification_stats['late_2d']}")
+    logging.info(f"⏰ En retard (3 jours):   {classification_stats['late_3d']}")
+    logging.info(f"⏰ En retard (4 jours):   {classification_stats['late_4d']}")
+    logging.info(f"⏰ En retard (5 jours):   {classification_stats['late_5d']}")
+    logging.info(f"⏰ En retard (6 jours):   {classification_stats['late_6d']}")
+    logging.info(f"⏰ En retard (7 jours):   {classification_stats['late_7d']}")
+    logging.info(f"❌ Ignorés (>7 jours):    {classification_stats['ignored']}")
+    logging.info(f"⚠️  Erreurs:               {classification_stats['errors']}")
+    logging.info("═══════════════════════════════════════════════════")
+
+    total_late = sum([classification_stats[f'late_{i}d'] for i in range(1, 8)])
+    logging.info(f"")
+    logging.info(f"TOTAL À TRAITER: {classification_stats['today'] + total_late}")
+    logging.info(f"  - Aujourd'hui: {classification_stats['today']}")
+    logging.info(f"  - En retard:   {total_late}")
+    logging.info("")
+
+    # Sauvegarder le HTML pour analyse si des erreurs ou classifications ambiguës
+    if classification_stats['errors'] > 0 or classification_stats['ignored'] > len(all_contacts) * 0.3:
         html_content = page.content()
         with open('birthdays_page_analysis.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
-        logging.info("Page HTML saved as 'birthdays_page_analysis.html' for analysis.")
+        logging.warning("⚠️ Nombre élevé d'erreurs/ignorés - HTML sauvegardé pour analyse")
 
     return birthdays
 
@@ -352,39 +401,164 @@ def extract_contact_name(contact_element) -> Optional[str]:
     logging.warning("Could not extract a valid name for the contact.")
     return None
 
+def debug_birthday_card(contact_element, card_index: int = 0):
+    """
+    Fonction de debug pour analyser une carte d'anniversaire en détail.
+    Utile pour diagnostiquer les problèmes de classification.
+    """
+    logging.info(f"═══════════════════════════════════════════════════")
+    logging.info(f"🔍 DEBUG - Carte #{card_index}")
+    logging.info(f"═══════════════════════════════════════════════════")
+
+    # Extraire le texte complet
+    full_text = contact_element.inner_text()
+    logging.info(f"Texte complet:\n{full_text}")
+    logging.info(f"")
+
+    # Analyser chaque paragraphe
+    paragraphs = contact_element.query_selector_all("p")
+    logging.info(f"Nombre de paragraphes trouvés: {len(paragraphs)}")
+
+    for i, p in enumerate(paragraphs):
+        p_text = p.inner_text().strip()
+        logging.info(f"  Paragraphe {i+1}: '{p_text}'")
+
+    # Tester la classification
+    birthday_type, days_late = get_birthday_type(contact_element)
+    logging.info(f"")
+    logging.info(f"Résultat de classification:")
+    logging.info(f"  Type: {birthday_type}")
+    logging.info(f"  Jours de retard: {days_late}")
+
+    # Screenshot de la carte
+    screenshot_path = f'debug_card_{card_index}_{birthday_type}.png'
+    try:
+        contact_element.screenshot(path=screenshot_path)
+        logging.info(f"Screenshot sauvegardée: {screenshot_path}")
+    except Exception as e:
+        logging.warning(f"Impossible de sauvegarder la screenshot: {e}")
+    logging.info(f"═══════════════════════════════════════════════════")
+
 def get_birthday_type(contact_element) -> tuple[str, int]:
     """
-    Determines if a birthday is 'today', 'late' (within 7 days), or 'ignore'.
-    Returns a tuple of (type, days_late).
+    Détermine si un anniversaire est 'today', 'late' (1-7 jours), ou 'ignore' (>7 jours).
+
+    Logique de détection améliorée avec validation multi-critères.
+
+    Returns:
+        tuple[str, int]: (type, days_late)
+            - type: 'today', 'late', ou 'ignore'
+            - days_late: nombre de jours de retard (0 pour aujourd'hui)
     """
+    import re
+
     card_text = contact_element.inner_text().lower()
 
-    # Priority 1: Check for today's birthdays explicitly
-    if 'aujourd\'hui' in card_text or 'today' in card_text:
-        return 'today', 0
+    # Debug: afficher le texte complet de la carte en mode debug avancé
+    logging.debug(f"Analyzing card text: {card_text[:200]}...")
 
-    # Priority 2: Check for yesterday
-    if 'hier' in card_text or 'yesterday' in card_text:
-        return 'late', 1
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 1: Vérifier explicitement "aujourd'hui" / "today"
+    # ═══════════════════════════════════════════════════════════
+    today_keywords_fr = ['aujourd\'hui', 'aujourdhui', 'c\'est aujourd\'hui']
+    today_keywords_en = ['today', 'is today', '\'s birthday is today']
 
-    # Priority 3: Check for "il y a X jours"
-    import re
-    match = re.search(r'il y a (\d+) jours', card_text)
-    if match:
-        days_late = int(match.group(1))
+    for keyword in today_keywords_fr + today_keywords_en:
+        if keyword in card_text:
+            logging.debug(f"✓ Anniversaire du jour détecté (mot-clé: '{keyword}')")
+            return 'today', 0
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 2: Détecter "hier" / "yesterday" (1 jour de retard)
+    # ═══════════════════════════════════════════════════════════
+    yesterday_keywords = ['hier', 'c\'était hier', 'yesterday', 'was yesterday']
+
+    for keyword in yesterday_keywords:
+        if keyword in card_text:
+            logging.debug(f"✓ Anniversaire d'hier détecté (mot-clé: '{keyword}')")
+            return 'late', 1
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 3: Extraire le nombre de jours via regex (multi-langue)
+    # ═══════════════════════════════════════════════════════════
+
+    # Pattern français: "il y a X jour(s)"
+    match_fr = re.search(r'il y a (\d+) jours?', card_text)
+
+    # Pattern anglais: "X day(s) ago"
+    match_en = re.search(r'(\d+) days? ago', card_text)
+
+    days_late = None
+
+    if match_fr:
+        days_late = int(match_fr.group(1))
+        logging.debug(f"✓ Retard détecté via regex FR: {days_late} jour(s)")
+    elif match_en:
+        days_late = int(match_en.group(1))
+        logging.debug(f"✓ Retard détecté via regex EN: {days_late} day(s)")
+
+    if days_late is not None:
         if 1 <= days_late <= 7:
+            logging.debug(f"→ Classé comme 'late' ({days_late} jour(s))")
             return 'late', days_late
         else:
-            # It's a late birthday, but too old to process
+            logging.debug(f"→ Classé comme 'ignore' (trop ancien: {days_late} jour(s))")
             return 'ignore', days_late
 
-    # Priority 4: If any other late keywords are present, we can't quantify, so ignore.
-    late_keywords = ['avec un peu de retard', 'avec du retard', 'en retard', 'belated']
-    if any(keyword in card_text for keyword in late_keywords):
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 4: Détecter les indicateurs de retard génériques
+    # ═══════════════════════════════════════════════════════════
+
+    # Mots-clés qui indiquent un retard SANS préciser le nombre de jours
+    generic_late_keywords = [
+        'avec un peu de retard',
+        'avec du retard',
+        'en retard',
+        'belated',
+        'a bit late',
+        'little late'
+    ]
+
+    for keyword in generic_late_keywords:
+        if keyword in card_text:
+            logging.debug(f"⚠️ Retard générique détecté (mot-clé: '{keyword}'), mais durée inconnue")
+            # On ne peut pas quantifier le retard, donc on ignore par sécurité
+            return 'ignore', 0
+
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 5: Validation de la structure de la carte
+    # ═══════════════════════════════════════════════════════════
+
+    # Vérifier que la carte contient des éléments typiques d'un anniversaire LinkedIn
+    birthday_indicators = [
+        'anniversaire', 'birthday', 'célébrez', 'celebrate',
+        'say happy birthday', 'souhaitez', 'wish'
+    ]
+
+    has_birthday_indicator = any(indicator in card_text for indicator in birthday_indicators)
+
+    if not has_birthday_indicator:
+        logging.warning(f"⚠️ Carte ne semble pas contenir d'indicateur d'anniversaire valide")
+        logging.debug(f"Texte analysé: {card_text[:300]}")
         return 'ignore', 0
 
-    # Default case: If no late keywords are found, it's today's birthday.
-    return 'today', 0
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 6: Cas par défaut - Classification conservatrice
+    # ═══════════════════════════════════════════════════════════
+
+    # Heuristique: si la carte ne contient AUCUN mot-clé de temps,
+    # c'est probablement un anniversaire du jour
+    time_keywords = ['il y a', 'ago', 'hier', 'yesterday', 'retard', 'belated', 'late']
+    has_time_keyword = any(keyword in card_text for keyword in time_keywords)
+
+    if not has_time_keyword:
+        logging.debug("→ Aucun mot-clé temporel trouvé, classification par défaut: 'today'")
+        return 'today', 0
+    else:
+        # Si des mots-clés temporels sont présents mais non reconnus, ignorer par sécurité
+        logging.warning("→ Mots-clés temporels non reconnus, classification: 'ignore'")
+        logging.debug(f"Texte complet: {card_text}")
+        return 'ignore', 0
 
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
