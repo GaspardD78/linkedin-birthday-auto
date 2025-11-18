@@ -304,12 +304,13 @@ def main():
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
     # Add a random startup delay.
-    # In normal mode, this is long to simulate a user logging in between 8h-10h UTC.
+    # In normal mode, this is set to 3-15 minutes to simulate realistic human behavior
+    # while avoiding bot detection (never start at 0 seconds).
     # In DRY RUN mode, this is short for quick testing.
     if DRY_RUN:
         startup_delay = random.randint(1, 10) # 1 to 10 seconds for testing
     else:
-        startup_delay = random.randint(0, 7200) # 0 to 120 minutes for normal operation
+        startup_delay = random.randint(180, 900) # 3 to 15 minutes for normal operation
 
     logging.info(f"Startup delay: waiting for {startup_delay // 60}m {startup_delay % 60}s to start.")
     time.sleep(startup_delay)
