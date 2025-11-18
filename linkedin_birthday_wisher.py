@@ -34,6 +34,28 @@ DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
 ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
 ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
+# Anti-detection limits
+MAX_MESSAGES_PER_RUN = 15  # Limite de sécurité par exécution
+WEEKLY_MESSAGE_LIMIT = 80  # Limite hebdomadaire (sous la limite LinkedIn de 100)
+WEEKLY_TRACKER_FILE = "weekly_messages.json"
+
+# Randomized User-Agents (updated versions)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+]
+
+# Randomized viewport sizes
+VIEWPORT_SIZES = [
+    {'width': 1920, 'height': 1080},
+    {'width': 1366, 'height': 768},
+    {'width': 1440, 'height': 900},
+    {'width': 1536, 'height': 864}
+]
+
 # Load birthday messages from the external file.
 def load_birthday_messages(file_path="messages.txt"):
     """Loads birthday messages from a text file."""
@@ -52,6 +74,39 @@ def load_birthday_messages(file_path="messages.txt"):
 
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
+
+# --- Weekly Message Tracking ---
+
+def load_weekly_count():
+    """Charge le compteur de messages de la semaine."""
+    try:
+        with open(WEEKLY_TRACKER_FILE, 'r') as f:
+            data = json.load(f)
+            # Réinitialiser si plus d'une semaine
+            from datetime import datetime, timedelta
+            last_reset = datetime.fromisoformat(data['last_reset'])
+            if datetime.now() - last_reset > timedelta(days=7):
+                return {'count': 0, 'last_reset': datetime.now().isoformat()}
+            return data
+    except (FileNotFoundError, KeyError, ValueError):
+        from datetime import datetime
+        return {'count': 0, 'last_reset': datetime.now().isoformat()}
+
+def save_weekly_count(count):
+    """Sauvegarde le compteur de messages hebdomadaires."""
+    data = load_weekly_count()
+    data['count'] = count
+    with open(WEEKLY_TRACKER_FILE, 'w') as f:
+        json.dump(data, f)
+
+def can_send_more_messages(messages_to_send):
+    """Vérifie si on peut envoyer plus de messages cette semaine."""
+    data = load_weekly_count()
+
+    if data['count'] + messages_to_send > WEEKLY_MESSAGE_LIMIT:
+        logging.warning(f"⚠️ Limite hebdomadaire atteinte ({data['count']}/{WEEKLY_MESSAGE_LIMIT})")
+        return False, WEEKLY_MESSAGE_LIMIT - data['count']
+    return True, messages_to_send
 
 # --- Human Behavior Simulation ---
 
@@ -494,15 +549,42 @@ def main():
         return
 
     with sync_playwright() as p:
+        # Randomize browser parameters for anti-detection
+        selected_user_agent = random.choice(USER_AGENTS)
+        selected_viewport = random.choice(VIEWPORT_SIZES)
+
+        logging.info(f"🔧 Using User-Agent: {selected_user_agent[:50]}...")
+        logging.info(f"🔧 Using Viewport: {selected_viewport}")
+
         browser = p.chromium.launch(
             headless=HEADLESS_BROWSER,
-            slow_mo=100
+            slow_mo=random.randint(80, 150),  # Randomize slow_mo
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                f'--window-size={selected_viewport["width"]},{selected_viewport["height"]}'
+            ]
         )
         context = browser.new_context(
             storage_state=AUTH_FILE_PATH,
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            viewport={'width': 1920, 'height': 1080}  # Larger viewport to ensure all elements are loaded
+            user_agent=selected_user_agent,
+            viewport=selected_viewport,
+            locale='fr-FR',
+            timezone_id='Europe/Paris'
         )
+
+        # Apply stealth mode to avoid bot detection
+        try:
+            from playwright_stealth import stealth_sync
+            stealth_sync(context)
+            logging.info("✅ Playwright stealth mode activated")
+        except ImportError:
+            logging.warning("⚠️ playwright-stealth not installed, skipping stealth mode")
+
         page = context.new_page()
 
         # Initialize debugging managers if advanced debug is enabled
@@ -569,6 +651,28 @@ def main():
             if enhanced_logger:
                 enhanced_logger.log_page_state(page, "Birthdays page loaded")
 
+            # --- ANTI-DETECTION: Limit messages per run and check weekly limit ---
+            total_birthdays = len(birthdays['today']) + len(birthdays['late'])
+            logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
+
+            # Check weekly limit first
+            if not DRY_RUN:
+                can_send, allowed_messages = can_send_more_messages(total_birthdays)
+                if not can_send:
+                    logging.warning(f"⚠️ Weekly limit reached. Can only send {allowed_messages} more messages this week.")
+                    total_birthdays = allowed_messages
+
+            # Apply per-run limit
+            if total_birthdays > MAX_MESSAGES_PER_RUN:
+                logging.warning(f"⚠️ {total_birthdays} birthdays detected, limiting to {MAX_MESSAGES_PER_RUN} per run to avoid detection")
+
+                # Prioritize today's birthdays
+                birthdays['today'] = birthdays['today'][:MAX_MESSAGES_PER_RUN]
+                remaining = MAX_MESSAGES_PER_RUN - len(birthdays['today'])
+                birthdays['late'] = birthdays['late'][:remaining] if remaining > 0 else []
+
+                logging.info(f"✂️ Limited to {len(birthdays['today'])} today + {len(birthdays['late'])} late birthdays")
+
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
             break_intervals = []  # Track when to take long breaks
@@ -609,12 +713,18 @@ def main():
                             simulate_human_activity(page)
 
                         if i < len(contacts) - 1:
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
                             # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
                                     # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(120, 300)  # 2-5 minutes
+                                    gaussian_delay(180, 420)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
@@ -641,17 +751,30 @@ def main():
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
+                            # ANTI-DETECTION: Extra pause every 5 messages
+                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
+                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
+                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
+                                time.sleep(extra_pause)
+
                             # Check if we need a long break (every 10-15 messages)
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
                                     # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(120, 300)  # 2-5 minutes
+                                    gaussian_delay(180, 420)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
                                 logging.info(f"Pausing for {delay}s (DRY RUN).")
                                 time.sleep(delay)
+
+            # Save weekly message count
+            if not DRY_RUN and total_messages_sent > 0:
+                weekly_data = load_weekly_count()
+                new_count = weekly_data['count'] + total_messages_sent
+                save_weekly_count(new_count)
+                logging.info(f"📊 Weekly message count updated: {new_count}/{WEEKLY_MESSAGE_LIMIT}")
 
             logging.info("Script finished successfully.")
 
