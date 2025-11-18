@@ -235,6 +235,10 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     message_box_selector = "div.msg-form__contenteditable[role='textbox']"
     page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
 
+    # Debug logging for troubleshooting viewport issues
+    logging.info(f"Message modal opened. Current viewport: {page.viewport_size}")
+    page.screenshot(path=f'debug_message_modal_{first_name.replace(" ", "_")}.png')
+
     # Select the appropriate message list
     if is_late:
         message_list = LATE_BIRTHDAY_MESSAGES
@@ -264,11 +268,51 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     # Use .first to target the first (most recently opened) message form's send button
     # This avoids strict mode violations when multiple message forms are present on the page
     submit_button = page.locator("button.msg-form__send-button").first
-    if submit_button.is_enabled():
-        submit_button.click()
-        logging.info("Message sent successfully.")
-    else:
-        logging.warning("Send button is not enabled. Skipping.")
+
+    # Robust solution: scroll the message container first, then the button
+    try:
+        # 1. First scroll the entire message form into view
+        message_form = page.locator("div.msg-form__msg-content-container").first
+        if message_form.is_visible():
+            message_form.scroll_into_view_if_needed(timeout=5000)
+            random_delay(0.3, 0.6)
+
+        # 2. Then scroll specifically the send button
+        submit_button.scroll_into_view_if_needed(timeout=5000)
+        random_delay(0.5, 1)
+
+        # 3. Verify the button is visible AND enabled
+        submit_button.wait_for(state="visible", timeout=10000)
+        if submit_button.is_enabled():
+            submit_button.click(timeout=15000)
+            logging.info("Message sent successfully.")
+        else:
+            logging.warning("Send button is not enabled. Skipping.")
+
+    except PlaywrightTimeoutError as e:
+        logging.warning(f"Standard click failed: {e}. Trying alternative methods...")
+
+        # Fallback 1: Manual JavaScript scroll
+        try:
+            page.evaluate("document.querySelector('button.msg-form__send-button').scrollIntoView({behavior: 'smooth', block: 'center'})")
+            random_delay(1, 1.5)
+            submit_button.click(force=True, timeout=15000)
+            logging.info("Message sent successfully (JS scroll + force click).")
+        except Exception as js_err:
+            logging.error(f"JS scroll method failed: {js_err}")
+
+            # Fallback 2: Click by coordinates
+            try:
+                box = submit_button.bounding_box()
+                if box:
+                    page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
+                    logging.info("Message sent successfully (mouse click by coordinates).")
+                else:
+                    raise Exception("Could not get button bounding box")
+            except Exception as coord_err:
+                logging.error(f"Coordinate click failed: {coord_err}")
+                page.screenshot(path=f'error_send_button_{first_name}.png')
+                raise
 
     # Always close the modal after processing.
     close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
@@ -342,7 +386,8 @@ def main():
         )
         context = browser.new_context(
             storage_state=AUTH_FILE_PATH,
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            viewport={'width': 1920, 'height': 1080}  # Larger viewport to ensure all elements are loaded
         )
         page = context.new_page()
 
