@@ -647,6 +647,82 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             pass
         return 'ignore', 0
 
+def standardize_first_name(name: str) -> str:
+    """
+    Standardizes a first name by:
+    - Removing emojis and special characters (except accents and hyphens)
+    - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude, Jean Marie)
+    - Converting the rest to lowercase
+    - Returning empty string if the name is just an initial (e.g., "C" or "C.")
+
+    Args:
+        name: The first name to standardize
+
+    Returns:
+        The standardized first name, or empty string if invalid
+
+    Examples:
+        "jean" -> "Jean"
+        "MARIE" -> "Marie"
+        "marie-claude" -> "Marie-Claude"
+        "jean marie" -> "Jean Marie"
+        "Jean🎉" -> "Jean"
+        "françois" -> "François"
+        "C" -> ""
+        "C." -> ""
+    """
+    if not name:
+        return ""
+
+    # Remove emojis and special characters (including periods)
+    # Keep only: letters (including accented), hyphens, and spaces
+    cleaned_chars = []
+    for char in name:
+        # Keep alphabetic characters, hyphens, and spaces
+        if char.isalpha() or char == '-' or char == ' ':
+            cleaned_chars.append(char)
+
+    cleaned_name = ''.join(cleaned_chars)
+
+    # Normalize spaces: replace multiple spaces with single space
+    while '  ' in cleaned_name:
+        cleaned_name = cleaned_name.replace('  ', ' ')
+
+    # Normalize spaces around hyphens: "marie - claude" -> "marie-claude"
+    cleaned_name = cleaned_name.replace(' - ', '-')
+    cleaned_name = cleaned_name.replace('- ', '-')
+    cleaned_name = cleaned_name.replace(' -', '-')
+
+    cleaned_name = cleaned_name.strip()
+
+    if not cleaned_name:
+        return ""  # Return empty if nothing left after cleaning
+
+    # Check if it's just an initial (single letter)
+    if len(cleaned_name) == 1:
+        return ""  # Ignore single letter initials
+
+    # Handle names with multiple parts (spaces or hyphens)
+    # Split by spaces first to handle "Jean Marie" type names
+    space_parts = cleaned_name.split(' ')
+
+    # Process each space-separated part
+    processed_parts = []
+    for space_part in space_parts:
+        if not space_part:
+            continue
+
+        # Check if this part has hyphens (e.g., "Marie-Claude")
+        if '-' in space_part:
+            hyphen_parts = space_part.split('-')
+            capitalized_hyphen_parts = [part.capitalize() for part in hyphen_parts if part]
+            processed_parts.append('-'.join(capitalized_hyphen_parts))
+        else:
+            # Simple part, just capitalize
+            processed_parts.append(space_part.capitalize())
+
+    return ' '.join(processed_parts)
+
 def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
     """Opens the messaging modal and sends a personalized birthday wish."""
 
@@ -658,7 +734,14 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         logging.warning("Skipping contact because name could not be extracted.")
         return
 
+    # Extract and standardize the first name
     first_name = full_name.split()[0]
+    first_name = standardize_first_name(first_name)
+
+    # Skip if the first name is just an initial (returns empty string)
+    if not first_name:
+        logging.warning(f"Skipping contact '{full_name}' because first name is just an initial.")
+        return
 
     if is_late:
         logging.info(f"--- Processing late birthday ({days_late} days ago) for {full_name} ---")
