@@ -38,11 +38,44 @@ jobs:
           # When manually dispatched, use the input. For scheduled runs, default to 'false'.
           DRY_RUN: ${{ github.event.inputs.dry-run || 'false' }}
           LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
+
+          # Advanced debugging settings
+          ENABLE_ADVANCED_DEBUG: ${{ secrets.ENABLE_ADVANCED_DEBUG || 'false' }}
+          ENABLE_EMAIL_ALERTS: ${{ secrets.ENABLE_EMAIL_ALERTS || 'false' }}
+
+          # Email alert configuration (optional - only if ENABLE_EMAIL_ALERTS is true)
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_EMAIL_PASSWORD: ${{ secrets.ALERT_EMAIL_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: python linkedin_birthday_wisher.py
 
-      - name: Upload error screenshots as artifacts
+      - name: Upload debug screenshots
+        if: always()  # Upload même si le script réussit
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots-${{ github.run_number }}
+          path: debug_screenshots/
+          if-no-files-found: ignore
+          retention-days: 7  # Garde les screenshots pendant 7 jours
+
+      - name: Upload debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-logs-${{ github.run_number }}
+          path: |
+            linkedin_bot_detailed.log
+            *_report.json
+            *_alert.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload error screenshots (legacy)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: error-screenshots
+          name: error-screenshots-${{ github.run_number }}
           path: error_*.png
+          if-no-files-found: ignore
