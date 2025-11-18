@@ -264,11 +264,27 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     # Use .first to target the first (most recently opened) message form's send button
     # This avoids strict mode violations when multiple message forms are present on the page
     submit_button = page.locator("button.msg-form__send-button").first
-    if submit_button.is_enabled():
-        submit_button.click()
-        logging.info("Message sent successfully.")
-    else:
-        logging.warning("Send button is not enabled. Skipping.")
+
+    # Ensure the button is in viewport before clicking to avoid timeout errors
+    try:
+        submit_button.scroll_into_view_if_needed(timeout=5000)
+        random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
+
+        if submit_button.is_enabled():
+            submit_button.click()
+            logging.info("Message sent successfully.")
+        else:
+            logging.warning("Send button is not enabled. Skipping.")
+    except PlaywrightTimeoutError:
+        logging.warning("Could not scroll send button into view, attempting force click...")
+        # Fallback: try force click if scrolling fails
+        try:
+            submit_button.click(force=True, timeout=10000)
+            logging.info("Message sent successfully (force click).")
+        except PlaywrightTimeoutError as e:
+            logging.error(f"Failed to click send button even with force: {e}")
+            page.screenshot(path=f'error_send_button_{first_name}.png')
+            raise
 
     # Always close the modal after processing.
     close_button = page.locator("button[data-control-name='overlay.close_conversation_window']").first
