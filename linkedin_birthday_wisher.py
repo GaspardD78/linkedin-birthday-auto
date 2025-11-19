@@ -80,6 +80,40 @@ def load_birthday_messages(file_path="messages.txt"):
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
 
+# --- Timezone Check for Automatic Schedule ---
+
+def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) -> bool:
+    """
+    Vérifie si l'heure actuelle à Paris est dans la fenêtre horaire souhaitée.
+    Cette fonction permet d'avoir des cron jobs doubles (été/hiver) qui s'adaptent
+    automatiquement aux changements d'heure sans intervention manuelle.
+
+    Args:
+        target_hour_start: Heure de début de la fenêtre (ex: 7 pour 7h)
+        target_hour_end: Heure de fin de la fenêtre (ex: 9 pour 9h)
+
+    Returns:
+        True si l'heure actuelle à Paris est dans la fenêtre, False sinon
+    """
+    from datetime import datetime
+    import pytz
+
+    paris_tz = pytz.timezone('Europe/Paris')
+    paris_time = datetime.now(paris_tz)
+    current_hour = paris_time.hour
+
+    logging.info(f"⏰ Heure actuelle à Paris: {paris_time.strftime('%H:%M:%S')} (timezone: {paris_tz})")
+    logging.info(f"📅 Fenêtre d'exécution autorisée: {target_hour_start}h - {target_hour_end}h")
+
+    if target_hour_start <= current_hour < target_hour_end:
+        logging.info(f"✅ Heure valide ({current_hour}h) - Le script va s'exécuter")
+        return True
+    else:
+        logging.info(f"⏸️  Heure invalide ({current_hour}h) - Script arrêté (mauvaise fenêtre horaire)")
+        logging.info(f"ℹ️  Ce comportement est normal : les doubles crons (été/hiver) garantissent")
+        logging.info(f"   qu'un seul s'exécute dans la bonne fenêtre horaire, sans ajustement manuel.")
+        return False
+
 # --- Weekly Message Tracking ---
 
 def load_weekly_count():
@@ -901,6 +935,12 @@ def main():
     """Main function to run the LinkedIn birthday wisher bot."""
     if DRY_RUN:
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
+
+    # Vérification du fuseau horaire - arrêt automatique si hors fenêtre (7h-9h Paris)
+    # Cela permet aux doubles crons (6h et 7h UTC) de s'adapter automatiquement été/hiver
+    if not check_paris_timezone_window(target_hour_start=7, target_hour_end=9):
+        logging.info("Script terminé (hors fenêtre horaire).")
+        return
 
     # Add a random startup delay.
     # In normal mode, this is set to 3-15 minutes to simulate realistic human behavior

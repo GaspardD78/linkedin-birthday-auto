@@ -14,13 +14,14 @@ on:
     # RECOMMANDATION : Utiliser workflow_dispatch et déclencher manuellement à des heures
     # variables, ou désactiver complètement le schedule et exécuter manuellement.
     #
-    # FUSEAU HORAIRE : GitHub Actions utilise UTC. Configuration pour heure de Paris :
-    # - Hiver (UTC+1, nov-mars) : 9h UTC = 10h Paris
-    # - Été (UTC+2, mars-nov) : 8h UTC = 10h Paris
-    # Note: Ajuster manuellement le cron lors des changements d'heure (mars/octobre)
-    #
-    # Configuration actuelle : Hiver (9h UTC = 10h Paris)
-    - cron: '0 9 * * *'
+    # FUSEAU HORAIRE AUTOMATIQUE : Double cron pour s'adapter automatiquement été/hiver
+    # - 8h UTC = 10h Paris en été (UTC+2)
+    # - 9h UTC = 10h Paris en hiver (UTC+1)
+    # Le script Python vérifie l'heure locale de Paris au démarrage et s'arrête
+    # si l'exécution n'est pas dans la fenêtre souhaitée (9h-11h Paris).
+    # Aucun ajustement manuel nécessaire lors des changements d'heure !
+    - cron: '0 8 * * *'  # Pour l'été
+    - cron: '0 9 * * *'  # Pour l'hiver
 
 jobs:
   run-profile-visitor:
