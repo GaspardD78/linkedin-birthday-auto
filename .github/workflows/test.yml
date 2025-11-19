@@ -1,0 +1,103 @@
+name: Test Suite - Phase 1
+
+on:
+  workflow_dispatch: # Permet le déclenchement manuel
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - '.github/workflows/test.yml'
+
+jobs:
+  test-phase1:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers (optional)
+        run: python -m playwright install --with-deps chromium
+        continue-on-error: true
+
+      - name: Make test script executable
+        run: chmod +x scripts/test_all.sh
+
+      - name: Run comprehensive test suite
+        id: tests
+        run: |
+          bash scripts/test_all.sh 2>&1 | tee test_output.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            test_output.log
+            test_*.db
+            test_export.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload database artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-databases-${{ github.run_number }}
+          path: |
+            test_*.db
+            test_*.db-shm
+            test_*.db-wal
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('test_output.log', 'utf8');
+            const comment = `## 🧪 Test Suite Results
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Run:** ${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Check test results
+        if: steps.tests.outputs.exit_code != '0'
+        run: |
+          echo "❌ Tests have failed. See test_output.log for details."
+          exit 1
+
+      - name: Success notification
+        if: steps.tests.outputs.exit_code == '0'
+        run: |
+          echo "✅ All tests passed successfully!"

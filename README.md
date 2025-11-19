@@ -10,6 +10,28 @@ Ce projet contient un script d'automatisation Python conçu pour souhaiter autom
 - **Messages Personnalisables** : Vous pouvez facilement modifier la liste des messages d'anniversaire.
 - **Notifications d'Erreur** : Si le script échoue, GitHub Actions vous enverra automatiquement un e-mail et enregistrera une capture d'écran du problème.
 
+### 🚀 Nouvelles fonctionnalités Phase 1
+
+- **Base de Données SQLite** : Stockage persistant de tous les messages, contacts, visites et erreurs avec mode WAL pour performances optimales
+- **Dashboard Web** : Interface Flask avec statistiques en temps réel, graphiques, et historique complet
+- **Détection de Changements LinkedIn** : Système de validation des sélecteurs CSS pour détecter automatiquement les changements de structure DOM
+- **Thread-Safe** : Architecture robuste avec singleton thread-safe et retry logic
+- **Tests Automatisés** : Suite de tests complète exécutée via GitHub Actions
+- **Métriques & Analytics** : Suivi détaillé des performances avec export JSON
+
+📚 **Documentation complète** : Voir [PHASE1.md](PHASE1.md), [DEPLOYMENT.md](DEPLOYMENT.md), et [BUGFIXES.md](BUGFIXES.md)
+
+## 🧪 Tests
+
+**Les tests sont exécutés uniquement via GitHub Actions.**
+
+Pour lancer les tests :
+1. Allez sur **Actions** → **Test Suite - Phase 1**
+2. Cliquez sur **Run workflow**
+3. Consultez les résultats et téléchargez les artifacts
+
+Les tests s'exécutent aussi automatiquement sur chaque push/PR vers main/master.
+
 ## Configuration
 
 Suivez ces étapes pour configurer et activer le bot.
