@@ -806,8 +806,15 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         # STEP 2: Vérifier combien de modales sont ouvertes et utiliser .last pour la plus récente
         modal_count = page.locator(message_box_selector).count()
         if modal_count > 1:
-            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément! Utilisation de .last pour cibler la plus récente.")
+            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément! Tentative de fermeture...")
             page.screenshot(path=f'warning_multiple_modals_{first_name.replace(" ", "_")}.png')
+            # Fermer toutes les modales sauf la plus récente
+            close_all_message_modals(page)
+            random_delay(0.5, 1)
+            # Rouvrir la modale pour le contact actuel
+            message_button.click()
+            random_delay(0.5, 1)
+            page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
 
         # Toujours utiliser .last pour cibler la modale la plus récemment ouverte
         message_box_locator = page.locator(message_box_selector).last
@@ -849,6 +856,11 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         # Ensure the button is in viewport before clicking to avoid timeout errors
         try:
+            # First try to scroll the message box (modal) into view
+            message_box_locator.scroll_into_view_if_needed(timeout=5000)
+            random_delay(0.3, 0.5)
+
+            # Then scroll the send button into view
             submit_button.scroll_into_view_if_needed(timeout=5000)
             random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
 
@@ -857,15 +869,17 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
                 logging.info("Message sent successfully.")
             else:
                 logging.warning("Send button is not enabled. Skipping.")
-        except PlaywrightTimeoutError:
-            logging.warning("Could not scroll send button into view, attempting force click...")
-            # Fallback: try force click if scrolling fails
+        except Exception as e:
+            # Catch all exceptions (timeout, viewport issues, etc.)
+            logging.warning(f"Could not send message normally ({type(e).__name__}: {e}), attempting force click...")
+            page.screenshot(path=f'warning_send_issue_{first_name.replace(" ", "_")}.png')
+            # Fallback: try force click if normal click fails
             try:
                 submit_button.click(force=True, timeout=10000)
                 logging.info("Message sent successfully (force click).")
-            except PlaywrightTimeoutError as e:
-                logging.error(f"Failed to click send button even with force: {e}")
-                page.screenshot(path=f'error_send_button_{first_name}.png')
+            except Exception as e2:
+                logging.error(f"Failed to click send button even with force ({type(e2).__name__}): {e2}")
+                page.screenshot(path=f'error_send_button_{first_name.replace(" ", "_")}.png')
                 raise
 
     finally:
