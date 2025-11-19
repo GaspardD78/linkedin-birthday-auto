@@ -5,6 +5,8 @@ import logging
 import base64
 import json
 import urllib.parse
+import pytz
+from datetime import datetime
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth
 
@@ -41,12 +43,23 @@ def load_config():
     """Loads search configuration from config.json."""
     try:
         with open("config.json", "r", encoding="utf-8") as f:
-            return json.load(f)
+            config = json.load(f)
+            # Validate required keys
+            if 'keywords' not in config or 'location' not in config:
+                logging.error("config.json must contain 'keywords' and 'location' keys.")
+                return None
+            if not isinstance(config['keywords'], list) or len(config['keywords']) == 0:
+                logging.error("'keywords' must be a non-empty list in config.json.")
+                return None
+            if not isinstance(config['location'], str) or not config['location'].strip():
+                logging.error("'location' must be a non-empty string in config.json.")
+                return None
+            return config
     except FileNotFoundError:
         logging.error("config.json not found. Please create it.")
         return None
-    except json.JSONDecodeError:
-        logging.error("Error decoding config.json. Please check its format.")
+    except json.JSONDecodeError as e:
+        logging.error(f"Error decoding config.json: {e}. Please check its format.")
         return None
 
 def load_visited_profiles():
@@ -56,8 +69,20 @@ def load_visited_profiles():
         with open(VISITED_PROFILES_FILE, "w", encoding="utf-8") as f:
             pass # Create an empty file
         return set()
-    with open(VISITED_PROFILES_FILE, "r", encoding="utf-8") as f:
-        return {line.strip() for line in f if line.strip()}
+
+    try:
+        with open(VISITED_PROFILES_FILE, "r", encoding="utf-8") as f:
+            profiles = set()
+            for line in f:
+                line = line.strip()
+                if line and (line.startswith('http://') or line.startswith('https://')):
+                    profiles.add(line)
+                elif line:
+                    logging.warning(f"Invalid URL found in {VISITED_PROFILES_FILE}: {line}")
+            return profiles
+    except Exception as e:
+        logging.error(f"Error reading {VISITED_PROFILES_FILE}: {e}")
+        return set()
 
 def save_visited_profile(profile_url):
     """Appends a new visited profile URL to the file."""
@@ -112,9 +137,6 @@ def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) ->
     Returns:
         True si l'heure actuelle à Paris est dans la fenêtre, False sinon
     """
-    from datetime import datetime
-    import pytz
-
     paris_tz = pytz.timezone('Europe/Paris')
     paris_time = datetime.now(paris_tz)
     current_hour = paris_time.hour
@@ -261,6 +283,9 @@ def main():
 
             # Iterate through multiple pages
             current_page = 1
+            pages_without_new_profiles = 0  # Safety counter to prevent infinite loops
+            MAX_PAGES_WITHOUT_NEW = 3  # Stop after 3 consecutive pages with no new profiles
+
             while current_page <= MAX_PAGES_TO_SCRAPE and profiles_visited_this_run < PROFILES_TO_VISIT_PER_RUN:
                 logging.info(f"Scraping page {current_page}/{MAX_PAGES_TO_SCRAPE}")
 
@@ -269,6 +294,9 @@ def main():
                 if not profile_urls:
                     logging.info(f"No more profiles found on page {current_page}. Stopping pagination.")
                     break
+
+                # Track if we found new profiles on this page
+                found_new_profiles = False
 
                 for url in profile_urls:
                     if profiles_visited_this_run >= PROFILES_TO_VISIT_PER_RUN:
@@ -279,20 +307,36 @@ def main():
                         logging.info(f"Skipping already visited profile: {url}")
                         continue
 
+                    found_new_profiles = True
                     logging.info(f"Visiting profile: {url}")
                     if not DRY_RUN:
-                        page.goto(url, timeout=60000)
-                        # Simuler des interactions humaines (scroll, mouvements de souris)
-                        simulate_human_interactions(page)
-                        random_delay(15, 35)  # Délai plus naturel (15-35s au lieu de 5-10s)
-                        save_visited_profile(url)
-                        visited_profiles.add(url)
+                        try:
+                            page.goto(url, timeout=60000)
+                            # Simuler des interactions humaines (scroll, mouvements de souris)
+                            simulate_human_interactions(page)
+                            random_delay(15, 35)  # Délai plus naturel (15-35s au lieu de 5-10s)
+                            save_visited_profile(url)
+                            visited_profiles.add(url)
+                        except Exception as e:
+                            logging.error(f"Error visiting profile {url}: {e}")
+                            # Continue to next profile instead of crashing
+                            continue
                     else:
                         logging.info(f"[DRY RUN] Would have visited {url}")
 
                     profiles_visited_this_run += 1
                     logging.info(f"Profiles visited in this run: {profiles_visited_this_run}/{PROFILES_TO_VISIT_PER_RUN}")
                     random_delay()
+
+                # Safety check: if we didn't find new profiles, increment counter
+                if not found_new_profiles:
+                    pages_without_new_profiles += 1
+                    logging.info(f"No new profiles on page {current_page} ({pages_without_new_profiles}/{MAX_PAGES_WITHOUT_NEW} pages without new)")
+                    if pages_without_new_profiles >= MAX_PAGES_WITHOUT_NEW:
+                        logging.info(f"Stopping: {MAX_PAGES_WITHOUT_NEW} consecutive pages with no new profiles.")
+                        break
+                else:
+                    pages_without_new_profiles = 0  # Reset counter
 
                 # If we've reached the visit limit, stop pagination
                 if profiles_visited_this_run >= PROFILES_TO_VISIT_PER_RUN:

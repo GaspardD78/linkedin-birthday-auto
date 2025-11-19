@@ -4,6 +4,9 @@ import time
 import logging
 import base64
 import json
+import re
+import pytz
+from datetime import datetime, timedelta
 from typing import Optional
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
@@ -90,9 +93,6 @@ def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) ->
     Returns:
         True si l'heure actuelle à Paris est dans la fenêtre, False sinon
     """
-    from datetime import datetime
-    import pytz
-
     paris_tz = pytz.timezone('Europe/Paris')
     paris_time = datetime.now(paris_tz)
     current_hour = paris_time.hour
@@ -117,13 +117,11 @@ def load_weekly_count():
         with open(WEEKLY_TRACKER_FILE, 'r') as f:
             data = json.load(f)
             # Réinitialiser si plus d'une semaine
-            from datetime import datetime, timedelta
             last_reset = datetime.fromisoformat(data['last_reset'])
             if datetime.now() - last_reset > timedelta(days=7):
                 return {'count': 0, 'last_reset': datetime.now().isoformat()}
             return data
     except (FileNotFoundError, KeyError, ValueError):
-        from datetime import datetime
         return {'count': 0, 'last_reset': datetime.now().isoformat()}
 
 def save_weekly_count(count):
@@ -276,28 +274,38 @@ def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int
     logging.info(f"Finished scrolling. Total cards found: {len(final_contacts)}")
     return final_contacts
 
-def type_like_a_human(page: Page, selector: str, text: str):
-    """Fills the element with the given text."""
-    logging.info(f"Typing message: '{text}'")
-    page.locator(selector).fill(text)
+# Fonction supprimée car non utilisée - voir send_birthday_message() qui fait le typage directement
 
 def close_all_message_modals(page: Page):
     """Ferme toutes les modales de message ouvertes pour éviter les conflits."""
     try:
         # Trouver tous les boutons de fermeture de modale
         close_buttons = page.locator("button[data-control-name='overlay.close_conversation_window']")
-        count = close_buttons.count()
+        initial_count = close_buttons.count()
 
-        if count > 0:
-            logging.info(f"🧹 Fermeture de {count} modale(s) ouverte(s)...")
-            # Fermer toutes les modales une par une
-            for i in range(count):
+        if initial_count > 0:
+            logging.info(f"🧹 Fermeture de {initial_count} modale(s) ouverte(s)...")
+            # Fermer toutes les modales une par une en re-vérifiant à chaque fois
+            closed_count = 0
+            max_attempts = initial_count + 2  # Protection contre boucle infinie
+            attempt = 0
+
+            while attempt < max_attempts:
                 try:
-                    close_buttons.first.click(timeout=2000)
+                    current_count = page.locator("button[data-control-name='overlay.close_conversation_window']").count()
+                    if current_count == 0:
+                        break
+
+                    page.locator("button[data-control-name='overlay.close_conversation_window']").first.click(timeout=2000)
+                    closed_count += 1
                     random_delay(0.3, 0.6)  # Petit délai entre chaque fermeture
                 except Exception as e:
                     logging.debug(f"Impossible de fermer une modale (déjà fermée?): {e}")
-            logging.info("✅ Toutes les modales ont été fermées")
+                    break
+
+                attempt += 1
+
+            logging.info(f"✅ {closed_count} modale(s) fermée(s)")
     except Exception as e:
         logging.debug(f"Erreur lors de la fermeture des modales (non critique): {e}")
 
@@ -382,8 +390,8 @@ def get_birthday_contacts(page: Page) -> dict:
             # Sauvegarder la carte problématique pour analyse
             try:
                 contact.screenshot(path=f'error_card_classification_{i+1}.png')
-            except:
-                pass
+            except Exception as screenshot_error:
+                logging.debug(f"Cannot save error screenshot: {screenshot_error}")
 
     # Afficher les statistiques détaillées
     logging.info("═══════════════════════════════════════════════════")
@@ -495,9 +503,6 @@ def extract_days_from_date(card_text: str) -> Optional[int]:
         int: Nombre de jours de différence (0 = aujourd'hui, positif = passé)
         None: Si aucune date n'a pu être extraite
     """
-    import re
-    from datetime import datetime
-
     # Pattern pour capturer "le X mois" (ex: "le 10 nov.")
     # Supporte : nov, nov., novembre, dec, déc, décembre, etc.
     pattern = r'le (\d{1,2}) (janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?)'
@@ -572,8 +577,6 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             - type: 'today', 'late', ou 'ignore'
             - days_late: nombre de jours de retard (0 pour aujourd'hui)
     """
-    import re
-
     card_text = contact_element.inner_text().lower()
 
     # Debug: afficher le texte complet de la carte en mode debug avancé
@@ -682,8 +685,8 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
         logging.warning("→ Indicateurs temporels ambigus, classification: 'ignore'")
         try:
             contact_element.screenshot(path=f'debug_unknown_pattern_{int(time.time())}.png')
-        except:
-            pass
+        except Exception as e:
+            logging.debug(f"Cannot save debug screenshot: {e}")
         return 'ignore', 0
 
 def standardize_first_name(name: str) -> str:
@@ -917,15 +920,6 @@ def main():
         logging.error("LINKEDIN_AUTH_STATE environment variable is not set. Exiting.")
         return
 
-    try:
-        # Try to load the auth state as a JSON string directly
-        json.loads(LINKEDIN_AUTH_STATE)
-        logging.info("Auth state is a valid JSON string.")
-        with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(LINKEDIN_AUTH_STATE)
-    except json.JSONDecodeError:
-        # If it's not a JSON string, assume it's a Base64 encoded string
-        logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
     try:
         # Try to load the auth state as a JSON string directly
         json.loads(LINKEDIN_AUTH_STATE)

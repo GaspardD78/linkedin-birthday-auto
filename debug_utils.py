@@ -465,7 +465,7 @@ def retry_with_fallbacks(
     fallback_strategies: Optional[List] = None,
     screenshot_mgr: Optional[DebugScreenshotManager] = None,
     page: Optional[Page] = None
-):
+) -> Any:
     """
     Exécute une fonction avec retry automatique et stratégies de repli
 
@@ -542,6 +542,7 @@ def quick_debug_check(page: Page) -> Dict[str, Any]:
         "Page URL": page.url,
         "Page Title": page.title(),
         "Birthday cards found": page.locator("div[role='listitem']").count(),
+        "Message button count": page.locator("button.artdeco-button--secondary").count(),
         "Message button visible": page.locator("button.artdeco-button--secondary").first.is_visible() if page.locator("button.artdeco-button--secondary").count() > 0 else False,
         "Send button exists": page.locator("button.msg-form__send-button").count() > 0,
     }
