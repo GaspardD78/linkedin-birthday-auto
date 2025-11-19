@@ -27,6 +27,9 @@ from database import get_database
 # Import selector validator
 from selector_validator import validate_birthday_feed_selectors, validate_messaging_selectors
 
+# Import proxy manager
+from proxy_manager import ProxyManager
+
 # --- Configuration ---
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -1057,6 +1060,19 @@ def main():
         return
 
     with sync_playwright() as p:
+        # Initialize proxy manager
+        proxy_manager = ProxyManager()
+        proxy_config = None
+        proxy_start_time = None
+
+        if proxy_manager.is_enabled():
+            proxy_config = proxy_manager.get_playwright_proxy_config()
+            proxy_start_time = time.time()
+            if proxy_config:
+                logging.info(f"🌐 Proxy rotation enabled - using proxy")
+            else:
+                logging.warning("⚠️ Proxy rotation enabled but no proxy available, continuing without proxy")
+
         # Randomize browser parameters for anti-detection
         selected_user_agent = random.choice(USER_AGENTS)
         selected_viewport = random.choice(VIEWPORT_SIZES)
@@ -1077,13 +1093,21 @@ def main():
                 f'--window-size={selected_viewport["width"]},{selected_viewport["height"]}'
             ]
         )
-        context = browser.new_context(
-            storage_state=AUTH_FILE_PATH,
-            user_agent=selected_user_agent,
-            viewport=selected_viewport,
-            locale='fr-FR',
-            timezone_id='Europe/Paris'
-        )
+
+        # Build context options
+        context_options = {
+            'storage_state': AUTH_FILE_PATH,
+            'user_agent': selected_user_agent,
+            'viewport': selected_viewport,
+            'locale': 'fr-FR',
+            'timezone_id': 'Europe/Paris'
+        }
+
+        # Add proxy configuration if available
+        if proxy_config:
+            context_options['proxy'] = proxy_config
+
+        context = browser.new_context(**context_options)
 
         # Apply stealth mode to avoid bot detection
         try:
@@ -1351,6 +1375,16 @@ def main():
         except PlaywrightTimeoutError as e:
             logging.error(f"A timeout error occurred: {e}")
 
+            # Record proxy failure if proxy was used
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=False,
+                    response_time=response_time,
+                    error_message=f"Timeout error: {str(e)}"
+                )
+
             # Enhanced error handling
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "error_timeout", error=True)
@@ -1367,6 +1401,16 @@ def main():
         except Exception as e:
             logging.error(f"An unexpected error occurred: {e}")
 
+            # Record proxy failure if proxy was used
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=False,
+                    response_time=response_time,
+                    error_message=f"Unexpected error: {str(e)}"
+                )
+
             # Enhanced error handling
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "error_unexpected", error=True)
@@ -1381,6 +1425,16 @@ def main():
                 )
 
         finally:
+            # Record proxy success if proxy was used and no exceptions occurred
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=True,
+                    response_time=response_time
+                )
+                logging.info(f"✅ Proxy completed successfully (response time: {response_time:.2f}s)")
+
             logging.info("Closing browser.")
             browser.close()
             # Clean up the local auth file for security

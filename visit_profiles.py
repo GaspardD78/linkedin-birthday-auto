@@ -16,6 +16,9 @@ from database import get_database
 # Import selector validator
 from selector_validator import validate_search_selectors
 
+# Import proxy manager
+from proxy_manager import ProxyManager
+
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -254,6 +257,19 @@ def main():
     profiles_visited_this_run = 0
 
     with sync_playwright() as p:
+        # Initialize proxy manager
+        proxy_manager = ProxyManager()
+        proxy_config = None
+        proxy_start_time = None
+
+        if proxy_manager.is_enabled():
+            proxy_config = proxy_manager.get_playwright_proxy_config()
+            proxy_start_time = time.time()
+            if proxy_config:
+                logging.info(f"🌐 Proxy rotation enabled - using proxy")
+            else:
+                logging.warning("⚠️ Proxy rotation enabled but no proxy available, continuing without proxy")
+
         # Lancement du browser avec arguments anti-détection
         browser = p.chromium.launch(
             headless=HEADLESS_BROWSER,  # Non-headless localement, headless sur GitHub Actions
@@ -268,14 +284,21 @@ def main():
             ]
         )
 
+        # Build context options
+        context_options = {
+            'storage_state': AUTH_FILE_PATH,
+            'user_agent': random.choice(USER_AGENTS),
+            'viewport': {'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)},
+            'locale': 'fr-FR',
+            'timezone_id': 'Europe/Paris'
+        }
+
+        # Add proxy configuration if available
+        if proxy_config:
+            context_options['proxy'] = proxy_config
+
         # Création du contexte avec User-Agent et empreinte aléatoires
-        context = browser.new_context(
-            storage_state=AUTH_FILE_PATH,
-            user_agent=random.choice(USER_AGENTS),
-            viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)},
-            locale='fr-FR',
-            timezone_id='Europe/Paris'
-        )
+        context = browser.new_context(**context_options)
 
         # Application de playwright-stealth pour masquer l'automatisation
         stealth = Stealth()
@@ -408,11 +431,43 @@ def main():
 
         except PlaywrightTimeoutError as e:
             logging.error(f"A timeout error occurred: {e}")
+
+            # Record proxy failure if proxy was used
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=False,
+                    response_time=response_time,
+                    error_message=f"Timeout error: {str(e)}"
+                )
+
             page.screenshot(path='error_timeout.png')
         except Exception as e:
             logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+
+            # Record proxy failure if proxy was used
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=False,
+                    response_time=response_time,
+                    error_message=f"Unexpected error: {str(e)}"
+                )
+
             page.screenshot(path='error_unexpected.png')
         finally:
+            # Record proxy success if proxy was used and no exceptions occurred
+            if proxy_config and proxy_start_time:
+                response_time = time.time() - proxy_start_time
+                proxy_manager.record_proxy_result(
+                    proxy_config.get('server', 'unknown'),
+                    success=True,
+                    response_time=response_time
+                )
+                logging.info(f"✅ Proxy completed successfully (response time: {response_time:.2f}s)")
+
             logging.info("Closing browser.")
             browser.close()
             if os.path.exists(AUTH_FILE_PATH):
