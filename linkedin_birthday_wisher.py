@@ -80,6 +80,40 @@ def load_birthday_messages(file_path="messages.txt"):
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
 
+# --- Timezone Check for Automatic Schedule ---
+
+def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) -> bool:
+    """
+    Vérifie si l'heure actuelle à Paris est dans la fenêtre horaire souhaitée.
+    Cette fonction permet d'avoir des cron jobs doubles (été/hiver) qui s'adaptent
+    automatiquement aux changements d'heure sans intervention manuelle.
+
+    Args:
+        target_hour_start: Heure de début de la fenêtre (ex: 7 pour 7h)
+        target_hour_end: Heure de fin de la fenêtre (ex: 9 pour 9h)
+
+    Returns:
+        True si l'heure actuelle à Paris est dans la fenêtre, False sinon
+    """
+    from datetime import datetime
+    import pytz
+
+    paris_tz = pytz.timezone('Europe/Paris')
+    paris_time = datetime.now(paris_tz)
+    current_hour = paris_time.hour
+
+    logging.info(f"⏰ Heure actuelle à Paris: {paris_time.strftime('%H:%M:%S')} (timezone: {paris_tz})")
+    logging.info(f"📅 Fenêtre d'exécution autorisée: {target_hour_start}h - {target_hour_end}h")
+
+    if target_hour_start <= current_hour < target_hour_end:
+        logging.info(f"✅ Heure valide ({current_hour}h) - Le script va s'exécuter")
+        return True
+    else:
+        logging.info(f"⏸️  Heure invalide ({current_hour}h) - Script arrêté (mauvaise fenêtre horaire)")
+        logging.info(f"ℹ️  Ce comportement est normal : les doubles crons (été/hiver) garantissent")
+        logging.info(f"   qu'un seul s'exécute dans la bonne fenêtre horaire, sans ajustement manuel.")
+        return False
+
 # --- Weekly Message Tracking ---
 
 def load_weekly_count():
@@ -902,6 +936,12 @@ def main():
     if DRY_RUN:
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
+    # Vérification du fuseau horaire - arrêt automatique si hors fenêtre (7h-9h Paris)
+    # Cela permet aux doubles crons (6h et 7h UTC) de s'adapter automatiquement été/hiver
+    if not check_paris_timezone_window(target_hour_start=7, target_hour_end=9):
+        logging.info("Script terminé (hors fenêtre horaire).")
+        return
+
     # Add a random startup delay.
     # In normal mode, this is set to 3-15 minutes to simulate realistic human behavior
     # while avoiding bot detection (never start at 0 seconds).
@@ -1089,13 +1129,54 @@ def main():
 
             logging.info(f"✅ Traitement prévu: {messages_to_send_today} anniversaires du jour + {len(birthdays['late'])} en retard")
 
-            # Calculer le délai optimal pour répartir les messages du jour entre 7h et 19h
-            total_messages_to_send = len(birthdays['today']) + len(birthdays['late'])
-            if total_messages_to_send > 0 and not DRY_RUN:
-                min_delay, max_delay = calculate_optimal_delay(total_messages_to_send)
+            # --- PLANIFICATION AVEC PRIORITÉ : Anniversaires du jour AVANT 12h ---
+            # Phase 1 : Anniversaires du jour répartis jusqu'à 12h maximum
+            # Phase 2 : Anniversaires en retard répartis de 12h à 19h
+            from datetime import datetime
+            import pytz
+
+            paris_tz = pytz.timezone('Europe/Paris')
+            current_time = datetime.now(paris_tz)
+            current_hour = current_time.hour + current_time.minute / 60.0
+
+            if not DRY_RUN:
+                # Phase 1 : Anniversaires du jour (priorité absolue avant 12h)
+                if len(birthdays['today']) > 0:
+                    if current_hour < 12:
+                        # On a encore du temps avant 12h
+                        min_delay_today, max_delay_today = calculate_optimal_delay(
+                            len(birthdays['today']),
+                            end_hour=12
+                        )
+                        logging.info(f"🎂 PRIORITÉ: {len(birthdays['today'])} anniversaires du jour seront traités AVANT 12h")
+                    else:
+                        # Déjà après 12h - on envoie quand même en priorité avec délai minimal
+                        min_delay_today, max_delay_today = (60, 120)  # 1-2 minutes
+                        logging.warning(f"⚠️ Déjà {current_hour:.1f}h - Anniversaires du jour envoyés en priorité avec délai minimal")
+                else:
+                    min_delay_today, max_delay_today = (0, 0)
+
+                # Phase 2 : Anniversaires en retard (après les anniversaires du jour)
+                if len(birthdays['late']) > 0:
+                    # Ces messages seront envoyés après les anniversaires du jour
+                    # On les répartit entre l'heure actuelle (ou 12h) et 19h
+                    late_start_hour = max(current_hour, 12)
+                    if late_start_hour < 19:
+                        min_delay_late, max_delay_late = calculate_optimal_delay(
+                            len(birthdays['late']),
+                            end_hour=19
+                        )
+                        logging.info(f"⏰ {len(birthdays['late'])} anniversaires en retard seront traités après (jusqu'à 19h)")
+                    else:
+                        # Déjà après 19h - délai minimal
+                        min_delay_late, max_delay_late = (60, 120)
+                        logging.warning(f"⚠️ Déjà {current_hour:.1f}h - Anniversaires en retard avec délai minimal")
+                else:
+                    min_delay_late, max_delay_late = (0, 0)
             else:
                 # En mode DRY_RUN, utiliser des délais courts
-                min_delay, max_delay = (2, 5)
+                min_delay_today, max_delay_today = (2, 5)
+                min_delay_late, max_delay_late = (2, 5)
 
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
@@ -1137,12 +1218,12 @@ def main():
                             simulate_human_activity(page)
 
                         if i < len(contacts) - 1:
-                            # Utiliser le délai calculé pour répartir les messages dans la journée
+                            # Utiliser le délai calculé selon le type d'anniversaire
                             if not DRY_RUN:
-                                delay = random.randint(min_delay, max_delay)
+                                delay = random.randint(min_delay_late, max_delay_late)
                                 minutes = delay // 60
                                 seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée: {minutes}m {seconds}s")
+                                logging.info(f"⏸️ Pause planifiée (retard): {minutes}m {seconds}s")
                                 time.sleep(delay)
                             else:
                                 # Short delay for testing
@@ -1170,12 +1251,12 @@ def main():
 
                         # Add a pause between messages
                         if i < len(contacts) - 1:
-                            # Utiliser le délai calculé pour répartir les messages dans la journée
+                            # Utiliser le délai calculé selon le type d'anniversaire (priorité avant 12h pour aujourd'hui)
                             if not DRY_RUN:
-                                delay = random.randint(min_delay, max_delay)
+                                delay = random.randint(min_delay_today, max_delay_today)
                                 minutes = delay // 60
                                 seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée: {minutes}m {seconds}s")
+                                logging.info(f"⏸️ Pause planifiée (aujourd'hui): {minutes}m {seconds}s")
                                 time.sleep(delay)
                             else:
                                 # Short delay for testing

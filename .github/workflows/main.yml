@@ -13,9 +13,15 @@ on:
     # que LinkedIn peut facilement identifier comme automatisé.
     # RECOMMANDATION : Utiliser workflow_dispatch et déclencher manuellement à des heures
     # variables, ou désactiver complètement le schedule et exécuter manuellement.
-    # Runs at 8:00 UTC every day.
-    # The script itself has a random delay of up to 2 hours.
-    - cron: '0 8 * * *'
+    #
+    # FUSEAU HORAIRE AUTOMATIQUE : Double cron pour s'adapter automatiquement été/hiver
+    # - 6h UTC = 8h Paris en été (UTC+2)
+    # - 7h UTC = 8h Paris en hiver (UTC+1)
+    # Le script Python vérifie l'heure locale de Paris au démarrage et s'arrête
+    # si l'exécution n'est pas dans la fenêtre souhaitée (7h-9h Paris).
+    # Aucun ajustement manuel nécessaire lors des changements d'heure !
+    - cron: '0 6 * * *'  # Pour l'été
+    - cron: '0 7 * * *'  # Pour l'hiver
 
 jobs:
   run-birthday-wisher:

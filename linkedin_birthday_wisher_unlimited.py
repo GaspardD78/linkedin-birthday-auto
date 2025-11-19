@@ -75,6 +75,40 @@ def load_birthday_messages(file_path="messages.txt"):
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
 
+# --- Timezone Check for Automatic Schedule ---
+
+def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) -> bool:
+    """
+    Vérifie si l'heure actuelle à Paris est dans la fenêtre horaire souhaitée.
+    Cette fonction permet d'avoir des cron jobs doubles (été/hiver) qui s'adaptent
+    automatiquement aux changements d'heure sans intervention manuelle.
+
+    Args:
+        target_hour_start: Heure de début de la fenêtre (ex: 7 pour 7h)
+        target_hour_end: Heure de fin de la fenêtre (ex: 9 pour 9h)
+
+    Returns:
+        True si l'heure actuelle à Paris est dans la fenêtre, False sinon
+    """
+    from datetime import datetime
+    import pytz
+
+    paris_tz = pytz.timezone('Europe/Paris')
+    paris_time = datetime.now(paris_tz)
+    current_hour = paris_time.hour
+
+    logging.info(f"⏰ Heure actuelle à Paris: {paris_time.strftime('%H:%M:%S')} (timezone: {paris_tz})")
+    logging.info(f"📅 Fenêtre d'exécution autorisée: {target_hour_start}h - {target_hour_end}h")
+
+    if target_hour_start <= current_hour < target_hour_end:
+        logging.info(f"✅ Heure valide ({current_hour}h) - Le script va s'exécuter")
+        return True
+    else:
+        logging.info(f"⏸️  Heure invalide ({current_hour}h) - Script arrêté (mauvaise fenêtre horaire)")
+        logging.info(f"ℹ️  Ce comportement est normal : les doubles crons (été/hiver) garantissent")
+        logging.info(f"   qu'un seul s'exécute dans la bonne fenêtre horaire, sans ajustement manuel.")
+        return False
+
 # --- Weekly Message Tracking ---
 
 def load_weekly_count():
@@ -1009,8 +1043,15 @@ def main():
             logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
             logging.info(f"🚀 MODE UNLIMITED : Tous les anniversaires seront traités sans limite")
 
-            # Pas de limite de messages en mode unlimited
-            # Tous les anniversaires (aujourd'hui + en retard) seront traités
+            # --- PRIORISATION: Anniversaires du jour traités plus rapidement ---
+            # Phase 1: Anniversaires du jour (délai réduit pour envoi rapide)
+            # Phase 2: Anniversaires en retard (délai normal)
+            logging.info(f"🎂 PRIORITÉ: Anniversaires du jour seront traités en premier avec délais réduits")
+
+            # Délais pour les anniversaires du jour (2-4 minutes au lieu de 3-7)
+            min_delay_today, max_delay_today = (120, 240)  # 2-4 minutes
+            # Délais pour les anniversaires en retard (3-7 minutes)
+            min_delay_late, max_delay_late = (180, 420)  # 3-7 minutes
 
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
@@ -1062,8 +1103,8 @@ def main():
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
-                                    # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(180, 420)  # 3-7 minutes
+                                    # Delay for late birthdays using Gaussian distribution
+                                    gaussian_delay(min_delay_late, max_delay_late)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
@@ -1100,8 +1141,8 @@ def main():
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
-                                    # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(180, 420)  # 3-7 minutes
+                                    # Reduced delay for today's birthdays (priority)
+                                    gaussian_delay(min_delay_today, max_delay_today)  # 2-4 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
