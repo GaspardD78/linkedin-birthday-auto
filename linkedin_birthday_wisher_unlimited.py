@@ -1043,8 +1043,15 @@ def main():
             logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
             logging.info(f"🚀 MODE UNLIMITED : Tous les anniversaires seront traités sans limite")
 
-            # Pas de limite de messages en mode unlimited
-            # Tous les anniversaires (aujourd'hui + en retard) seront traités
+            # --- PRIORISATION: Anniversaires du jour traités plus rapidement ---
+            # Phase 1: Anniversaires du jour (délai réduit pour envoi rapide)
+            # Phase 2: Anniversaires en retard (délai normal)
+            logging.info(f"🎂 PRIORITÉ: Anniversaires du jour seront traités en premier avec délais réduits")
+
+            # Délais pour les anniversaires du jour (2-4 minutes au lieu de 3-7)
+            min_delay_today, max_delay_today = (120, 240)  # 2-4 minutes
+            # Délais pour les anniversaires en retard (3-7 minutes)
+            min_delay_late, max_delay_late = (180, 420)  # 3-7 minutes
 
             # Track total messages sent for implementing periodic long breaks
             total_messages_sent = 0
@@ -1096,8 +1103,8 @@ def main():
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
-                                    # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(180, 420)  # 3-7 minutes
+                                    # Delay for late birthdays using Gaussian distribution
+                                    gaussian_delay(min_delay_late, max_delay_late)  # 3-7 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
@@ -1134,8 +1141,8 @@ def main():
                             if not DRY_RUN:
                                 break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
                                 if not break_taken:
-                                    # Normal delay between messages using Gaussian distribution
-                                    gaussian_delay(180, 420)  # 3-7 minutes
+                                    # Reduced delay for today's birthdays (priority)
+                                    gaussian_delay(min_delay_today, max_delay_today)  # 2-4 minutes
                             elif DRY_RUN:
                                 # Short delay for testing
                                 delay = random.randint(2, 5)
