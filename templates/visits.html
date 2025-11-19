@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Visites - LinkedIn Birthday Auto{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-person-check"></i> Visites de profils</h1>
+        <p class="text-muted">Historique de toutes les visites effectuées (Total: {{ total }})</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                {% if visits %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Profil</th>
+                                    <th>URL</th>
+                                    <th>Date de visite</th>
+                                    <th>Source</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for visit in visits %}
+                                    <tr>
+                                        <td><strong>{{ visit.profile_name or 'N/A' }}</strong></td>
+                                        <td>
+                                            {% if visit.profile_url %}
+                                                <a href="{{ visit.profile_url }}" target="_blank" class="text-truncate d-inline-block" style="max-width: 200px;">
+                                                    {{ visit.profile_url }}
+                                                </a>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ visit.visited_at }}</td>
+                                        <td>
+                                            {% if visit.source_search %}
+                                                <span class="badge bg-secondary">{{ visit.source_search }}</span>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if visit.success %}
+                                                <span class="badge bg-success">
+                                                    <i class="bi bi-check-circle"></i> Succès
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger">
+                                                    <i class="bi bi-x-circle"></i> Échec
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if total_pages > 1 %}
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ page - 1 }}">Précédent</a>
+                                </li>
+                                {% for p in range(1, total_pages + 1) %}
+                                    <li class="page-item {% if p == page %}active{% endif %}">
+                                        <a class="page-link" href="?page={{ p }}">{{ p }}</a>
+                                    </li>
+                                {% endfor %}
+                                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ page + 1 }}">Suivant</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Aucune visite enregistrée pour le moment.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

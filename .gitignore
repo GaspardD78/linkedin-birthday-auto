@@ -109,6 +109,7 @@ auth_state.json
 # Debugging artifacts
 *.png
 *.html
+!templates/*.html
 debug_screenshots/
 *_report.json
 *_alert.json

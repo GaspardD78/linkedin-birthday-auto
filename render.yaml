@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: linkedin-birthday-dashboard
+    env: python
+    region: frankfurt  # ou oregon, singapore selon votre localisation
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn dashboard_app:app"
+    envVars:
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_PATH
+        value: linkedin_automation.db
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    disk:
+      name: data
+      mountPath: /opt/render/project/src
+      sizeGB: 1

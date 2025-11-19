@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - LinkedIn Birthday Auto{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+        <p class="text-muted">Vue d'ensemble de l'activité des 30 derniers jours</p>
+    </div>
+</div>
+
+<!-- Statistiques principales -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Messages envoyés</h6>
+                        <h2 class="mb-0">{{ stats_30d.messages }}</h2>
+                        <small class="text-muted">30 derniers jours</small>
+                    </div>
+                    <div class="fs-1 text-primary">
+                        <i class="bi bi-chat-dots"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Visites de profils</h6>
+                        <h2 class="mb-0">{{ stats_30d.profile_visits }}</h2>
+                        <small class="text-muted">30 derniers jours</small>
+                    </div>
+                    <div class="fs-1 text-success">
+                        <i class="bi bi-person-check"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Contacts uniques</h6>
+                        <h2 class="mb-0">{{ stats_30d.unique_contacts }}</h2>
+                        <small class="text-muted">30 derniers jours</small>
+                    </div>
+                    <div class="fs-1 text-info">
+                        <i class="bi bi-people"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Erreurs</h6>
+                        <h2 class="mb-0">{{ stats_30d.errors }}</h2>
+                        <small class="text-muted">30 derniers jours</small>
+                    </div>
+                    <div class="fs-1 text-danger">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Limite hebdomadaire -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-calendar-week"></i> Limite hebdomadaire</h5>
+                <p class="mb-2">Messages cette semaine: <strong>{{ weekly_count }}</strong> / {{ weekly_limit }}</p>
+                <div class="progress" style="height: 25px;">
+                    {% set percentage = (weekly_count / weekly_limit * 100) | int %}
+                    <div class="progress-bar {% if percentage >= 90 %}bg-danger{% elif percentage >= 70 %}bg-warning{% else %}bg-success{% endif %}"
+                         role="progressbar"
+                         style="width: {{ percentage }}%"
+                         aria-valuenow="{{ weekly_count }}"
+                         aria-valuemin="0"
+                         aria-valuemax="{{ weekly_limit }}">
+                        {{ percentage }}%
+                    </div>
+                </div>
+                {% if percentage >= 90 %}
+                    <div class="alert alert-warning mt-2 mb-0">
+                        <i class="bi bi-exclamation-triangle"></i> Attention: Proche de la limite hebdomadaire!
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Contacts et Erreurs récentes -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-star"></i> Top 5 Contacts</h5>
+                {% if top_contacts %}
+                    <div class="list-group list-group-flush">
+                        {% for contact in top_contacts %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ contact.name }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        {% if contact.linkedin_url %}
+                                            <a href="{{ contact.linkedin_url }}" target="_blank">Voir profil</a>
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">{{ contact.message_count }} messages</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">Aucun contact pour le moment</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-exclamation-triangle"></i> Erreurs récentes</h5>
+                {% if recent_errors %}
+                    <div class="list-group list-group-flush">
+                        {% for error in recent_errors[:5] %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">{{ error.occurred_at }}</small>
+                                    <span class="badge bg-danger">{{ error.error_type }}</span>
+                                </div>
+                                <p class="mb-0 mt-1"><small>{{ error.error_message[:100] }}{% if error.error_message|length > 100 %}...{% endif %}</small></p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-2 text-center">
+                        <a href="/errors" class="btn btn-sm btn-outline-secondary">Voir toutes les erreurs</a>
+                    </div>
+                {% else %}
+                    <div class="alert alert-success mb-0">
+                        <i class="bi bi-check-circle"></i> Aucune erreur récente!
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activité quotidienne -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-graph-up"></i> Activité quotidienne (14 derniers jours)</h5>
+                {% if daily_activity %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Messages</th>
+                                    <th>Visites</th>
+                                    <th>Contacts</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for day in daily_activity[:7] %}
+                                    <tr>
+                                        <td>{{ day.date }}</td>
+                                        <td><span class="badge bg-primary">{{ day.messages }}</span></td>
+                                        <td><span class="badge bg-success">{{ day.visits }}</span></td>
+                                        <td><span class="badge bg-info">{{ day.contacts }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Aucune activité enregistrée</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Actions rapides -->
+<div class="row">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-lightning"></i> Actions rapides</h5>
+                <div class="d-grid gap-2 d-md-flex">
+                    <a href="/messages" class="btn btn-linkedin">
+                        <i class="bi bi-chat-dots"></i> Voir tous les messages
+                    </a>
+                    <a href="/visits" class="btn btn-outline-secondary">
+                        <i class="bi bi-person-check"></i> Voir toutes les visites
+                    </a>
+                    <a href="/contacts" class="btn btn-outline-secondary">
+                        <i class="bi bi-people"></i> Gérer les contacts
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
