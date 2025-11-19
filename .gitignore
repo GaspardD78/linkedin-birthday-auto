@@ -137,3 +137,14 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Phase 1 - Database files
+*.db
+*.db-shm
+*.db-wal
+test_*.db
+linkedin_automation.db
+test_export.json
+
+# Phase 1 - Dashboard exports
+export_*.json

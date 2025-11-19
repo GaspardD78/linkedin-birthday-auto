@@ -900,9 +900,16 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         message = random.choice(message_list).format(name=first_name)
 
-        # Check message history to avoid repetition
-        db = get_database()
-        previous_messages = db.get_messages_sent_to_contact(full_name, years=2)
+        # Check message history to avoid repetition (with fallback)
+        previous_messages = []
+        db = None
+        try:
+            db = get_database()
+            previous_messages = db.get_messages_sent_to_contact(full_name, years=2)
+        except Exception as e:
+            logging.warning(f"Could not access database for message history: {e}. Proceeding with random selection.")
+            db = None  # Reset db to None to avoid using it later
+
         if previous_messages:
             # Filter out messages already used for this contact
             used_messages = {msg['message_text'] for msg in previous_messages}
@@ -918,8 +925,12 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         if DRY_RUN:
             logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
-            # Record message in database even in dry run mode for testing
-            db.add_birthday_message(full_name, message, is_late, days_late, "routine_dry_run")
+            # Record message in database even in dry run mode for testing (if db available)
+            if db:
+                try:
+                    db.add_birthday_message(full_name, message, is_late, days_late, "routine_dry_run")
+                except Exception as e:
+                    logging.warning(f"Could not record message to database: {e}")
             return  # La fermeture sera gérée par le finally
 
         # Effacer le texte automatique que LinkedIn pré-remplit (ex: "Je vous souhaite un très joyeux anniversaire.")
@@ -947,8 +958,12 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             if submit_button.is_enabled():
                 submit_button.click()
                 logging.info("Message sent successfully.")
-                # Record message in database
-                db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                # Record message in database (with fallback)
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as db_err:
+                        logging.warning(f"Could not record message to database: {db_err}")
             else:
                 logging.warning("Send button is not enabled. Skipping.")
         except Exception as e:
@@ -959,15 +974,23 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             try:
                 submit_button.click(force=True, timeout=10000)
                 logging.info("Message sent successfully (force click).")
-                # Record message in database
-                db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                # Record message in database (with fallback)
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as db_err:
+                        logging.warning(f"Could not record message to database: {db_err}")
             except Exception as e2:
                 error_msg = f"Failed to click send button even with force ({type(e2).__name__}): {e2}"
                 logging.error(error_msg)
                 screenshot_path = f'error_send_button_{first_name.replace(" ", "_")}.png'
                 page.screenshot(path=screenshot_path)
-                # Log error to database
-                db.log_error("linkedin_birthday_wisher", "SendButtonError", error_msg, str(e2), screenshot_path)
+                # Log error to database (with fallback)
+                if db:
+                    try:
+                        db.log_error("linkedin_birthday_wisher", "SendButtonError", error_msg, str(e2), screenshot_path)
+                    except Exception as db_err:
+                        logging.warning(f"Could not log error to database: {db_err}")
                 raise
 
     finally:

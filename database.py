@@ -1,18 +1,56 @@
 """
 Module de gestion de la base de données SQLite pour LinkedIn Birthday Auto
 Gère les contacts, messages, visites de profils, erreurs et sélecteurs LinkedIn
+
+Version 2.1.0 - Corrections audit:
+- Mode WAL pour performances
+- Thread-safe singleton
+- Résolution des connexions nested
+- Retry logic pour locks
+- Timeout configuré
 """
 
 import sqlite3
 import os
+import time
+import threading
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple, Any
+from functools import wraps
 import json
 from contextlib import contextmanager
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
+def retry_on_lock(max_retries=3, delay=0.5):
+    """Decorator pour retry automatique en cas de database lock"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e) and attempt < max_retries - 1:
+                        wait_time = delay * (2 ** attempt)  # Exponential backoff
+                        logger.warning(f"Database locked, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"Database operation failed after {max_retries} attempts: {e}")
+                        raise
+            return None
+        return wrapper
+    return decorator
 
 
 class Database:
-    """Classe de gestion de la base de données SQLite"""
+    """Classe de gestion de la base de données SQLite (thread-safe)"""
+
+    # Version du schéma de BDD pour migrations futures
+    SCHEMA_VERSION = "2.1.0"
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
         """
@@ -22,18 +60,37 @@ class Database:
             db_path: Chemin vers le fichier de base de données
         """
         self.db_path = db_path
+        self._configure_sqlite()
         self.init_database()
+
+    def _configure_sqlite(self):
+        """Configure SQLite pour de meilleures performances et gestion de la concurrence"""
+        # Connexion temporaire pour configuration globale
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            # Mode WAL pour better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            # Timeout pour éviter locks immédiats
+            conn.execute("PRAGMA busy_timeout=30000")  # 30 secondes
+            # Synchronisation NORMAL pour meilleures performances (safe avec WAL)
+            conn.execute("PRAGMA synchronous=NORMAL")
+            # Cache size (en KB)
+            conn.execute("PRAGMA cache_size=-10000")  # 10MB
+            logger.info("SQLite configured: WAL mode, 30s timeout, optimized cache")
+        finally:
+            conn.close()
 
     @contextmanager
     def get_connection(self):
         """Context manager pour la connexion à la base de données"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row  # Permet l'accès par nom de colonne
         try:
             yield conn
             conn.commit()
         except Exception as e:
             conn.rollback()
+            logger.error(f"Database transaction failed: {e}")
             raise e
         finally:
             conn.close()
@@ -42,6 +99,23 @@ class Database:
         """Crée les tables si elles n'existent pas"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
+
+            # Table de versioning du schéma
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                )
+            """)
+
+            # Vérifier et enregistrer la version
+            cursor.execute("SELECT version FROM schema_version LIMIT 1")
+            existing_version = cursor.fetchone()
+            if not existing_version:
+                cursor.execute(
+                    "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                    (self.SCHEMA_VERSION, datetime.now().isoformat())
+                )
 
             # Table contacts
             cursor.execute("""
@@ -122,22 +196,12 @@ class Database:
             """)
 
             # Index pour améliorer les performances
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at
-                ON birthday_messages(sent_at)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_birthday_messages_contact_name
-                ON birthday_messages(contact_name)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_profile_visits_visited_at
-                ON profile_visits(visited_at)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_errors_occurred_at
-                ON errors(occurred_at)
-            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_birthday_messages_contact_name ON birthday_messages(contact_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_profile_visits_visited_at ON profile_visits(visited_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_profile_visits_url ON profile_visits(profile_url)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_errors_occurred_at ON errors(occurred_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)")
 
             # Initialiser les sélecteurs par défaut
             self._init_default_selectors(cursor)
@@ -205,8 +269,10 @@ class Database:
 
     # ==================== CONTACTS ====================
 
+    @retry_on_lock(max_retries=3)
     def add_contact(self, name: str, linkedin_url: Optional[str] = None,
-                   relationship_score: float = 0.0, notes: Optional[str] = None) -> int:
+                   relationship_score: float = 0.0, notes: Optional[str] = None,
+                   conn=None) -> int:
         """
         Ajoute un nouveau contact
 
@@ -215,33 +281,43 @@ class Database:
             linkedin_url: URL du profil LinkedIn
             relationship_score: Score de relation (0-100)
             notes: Notes sur le contact
+            conn: Connexion optionnelle (pour éviter nested connections)
 
         Returns:
             ID du contact créé
         """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        def _add(cursor):
             now = datetime.now().isoformat()
-
             cursor.execute("""
                 INSERT INTO contacts (name, linkedin_url, relationship_score, notes, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (name, linkedin_url, relationship_score, notes, now, now))
-
             return cursor.lastrowid
 
-    def get_contact_by_name(self, name: str) -> Optional[Dict]:
+        if conn:
+            return _add(conn.cursor())
+        else:
+            with self.get_connection() as conn:
+                return _add(conn.cursor())
+
+    @retry_on_lock(max_retries=3)
+    def get_contact_by_name(self, name: str, conn=None) -> Optional[Dict]:
         """Récupère un contact par son nom"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        def _get(cursor):
             cursor.execute("SELECT * FROM contacts WHERE name = ?", (name,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def update_contact_last_message(self, name: str, message_date: str):
+        if conn:
+            return _get(conn.cursor())
+        else:
+            with self.get_connection() as conn:
+                return _get(conn.cursor())
+
+    @retry_on_lock(max_retries=3)
+    def update_contact_last_message(self, name: str, message_date: str, conn=None):
         """Met à jour la date du dernier message et incrémente le compteur"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        def _update(cursor):
             cursor.execute("""
                 UPDATE contacts
                 SET last_message_date = ?,
@@ -250,8 +326,15 @@ class Database:
                 WHERE name = ?
             """, (message_date, datetime.now().isoformat(), name))
 
+        if conn:
+            _update(conn.cursor())
+        else:
+            with self.get_connection() as conn:
+                _update(conn.cursor())
+
     # ==================== BIRTHDAY MESSAGES ====================
 
+    @retry_on_lock(max_retries=3)
     def add_birthday_message(self, contact_name: str, message_text: str,
                             is_late: bool = False, days_late: int = 0,
                             script_mode: str = "routine") -> int:
@@ -271,9 +354,9 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Récupérer ou créer le contact
-            contact = self.get_contact_by_name(contact_name)
-            contact_id = contact['id'] if contact else self.add_contact(contact_name)
+            # Récupérer ou créer le contact (en passant la connexion!)
+            contact = self.get_contact_by_name(contact_name, conn=conn)
+            contact_id = contact['id'] if contact else self.add_contact(contact_name, conn=conn)
 
             # Enregistrer le message
             sent_at = datetime.now().isoformat()
@@ -283,11 +366,12 @@ class Database:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode))
 
-            # Mettre à jour le contact
-            self.update_contact_last_message(contact_name, sent_at)
+            # Mettre à jour le contact (en passant la connexion!)
+            self.update_contact_last_message(contact_name, sent_at, conn=conn)
 
             return cursor.lastrowid
 
+    @retry_on_lock(max_retries=3)
     def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> List[Dict]:
         """
         Récupère les messages envoyés à un contact sur les X dernières années
@@ -311,6 +395,7 @@ class Database:
 
             return [dict(row) for row in cursor.fetchall()]
 
+    @retry_on_lock(max_retries=3)
     def get_weekly_message_count(self) -> int:
         """Retourne le nombre de messages envoyés cette semaine"""
         with self.get_connection() as conn:
@@ -324,6 +409,7 @@ class Database:
 
             return cursor.fetchone()['count']
 
+    @retry_on_lock(max_retries=3)
     def get_daily_message_count(self, date: Optional[str] = None) -> int:
         """Retourne le nombre de messages envoyés pour une date donnée"""
         with self.get_connection() as conn:
@@ -341,6 +427,7 @@ class Database:
 
     # ==================== PROFILE VISITS ====================
 
+    @retry_on_lock(max_retries=3)
     def add_profile_visit(self, profile_name: str, profile_url: Optional[str] = None,
                          source_search: Optional[str] = None, keywords: Optional[List[str]] = None,
                          location: Optional[str] = None, success: bool = True,
@@ -382,6 +469,7 @@ class Database:
 
             return cursor.lastrowid
 
+    @retry_on_lock(max_retries=3)
     def get_daily_visits_count(self, date: Optional[str] = None) -> int:
         """Retourne le nombre de profils visités pour une date donnée"""
         with self.get_connection() as conn:
@@ -397,6 +485,7 @@ class Database:
 
             return cursor.fetchone()['count']
 
+    @retry_on_lock(max_retries=3)
     def is_profile_visited(self, profile_url: str, days: int = 30) -> bool:
         """
         Vérifie si un profil a été visité dans les X derniers jours
@@ -421,6 +510,7 @@ class Database:
 
     # ==================== ERRORS ====================
 
+    @retry_on_lock(max_retries=3)
     def log_error(self, script_name: str, error_type: str, error_message: str,
                  error_details: Optional[str] = None, screenshot_path: Optional[str] = None) -> int:
         """
@@ -454,6 +544,7 @@ class Database:
 
             return cursor.lastrowid
 
+    @retry_on_lock(max_retries=3)
     def get_recent_errors(self, limit: int = 50) -> List[Dict]:
         """Récupère les erreurs récentes"""
         with self.get_connection() as conn:
@@ -469,6 +560,7 @@ class Database:
 
     # ==================== LINKEDIN SELECTORS ====================
 
+    @retry_on_lock(max_retries=3)
     def get_selector(self, selector_name: str) -> Optional[Dict]:
         """Récupère un sélecteur par son nom"""
         with self.get_connection() as conn:
@@ -479,6 +571,7 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    @retry_on_lock(max_retries=3)
     def update_selector_validation(self, selector_name: str, is_valid: bool):
         """Met à jour le statut de validation d'un sélecteur"""
         with self.get_connection() as conn:
@@ -501,6 +594,7 @@ class Database:
                     WHERE selector_name = ?
                 """, (datetime.now().isoformat(), selector_name))
 
+    @retry_on_lock(max_retries=3)
     def get_all_selectors(self) -> List[Dict]:
         """Récupère tous les sélecteurs"""
         with self.get_connection() as conn:
@@ -510,6 +604,7 @@ class Database:
 
     # ==================== STATISTICS ====================
 
+    @retry_on_lock(max_retries=3)
     def get_statistics(self, days: int = 30) -> Dict[str, Any]:
         """
         Récupère les statistiques d'activité
@@ -527,7 +622,7 @@ class Database:
             # Messages envoyés
             cursor.execute("""
                 SELECT COUNT(*) as total,
-                       SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END) as late_messages
+                       COALESCE(SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END), 0) as late_messages
                 FROM birthday_messages
                 WHERE sent_at >= ?
             """, (cutoff_date,))
@@ -536,7 +631,7 @@ class Database:
             # Profils visités
             cursor.execute("""
                 SELECT COUNT(*) as total,
-                       SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful
+                       COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END), 0) as successful
                 FROM profile_visits
                 WHERE visited_at >= ?
             """, (cutoff_date,))
@@ -578,6 +673,7 @@ class Database:
                 }
             }
 
+    @retry_on_lock(max_retries=3)
     def get_daily_activity(self, days: int = 30) -> List[Dict]:
         """
         Récupère l'activité quotidienne
@@ -634,6 +730,7 @@ class Database:
 
             return result
 
+    @retry_on_lock(max_retries=3)
     def get_top_contacts(self, limit: int = 10) -> List[Dict]:
         """Récupère les contacts les plus contactés"""
         with self.get_connection() as conn:
@@ -651,6 +748,7 @@ class Database:
 
     # ==================== MAINTENANCE ====================
 
+    @retry_on_lock(max_retries=3)
     def cleanup_old_data(self, days_to_keep: int = 365):
         """
         Supprime les anciennes données
@@ -675,6 +773,7 @@ class Database:
                 "visits_deleted": visits_deleted
             }
 
+    @retry_on_lock(max_retries=3)
     def export_to_json(self, output_path: str):
         """Exporte toute la base de données en JSON"""
         data = {
@@ -698,18 +797,29 @@ class Database:
         return output_path
 
 
-# Fonction utilitaire pour obtenir l'instance de base de données
+# Fonction utilitaire pour obtenir l'instance de base de données (thread-safe)
 _db_instance = None
+_db_lock = threading.Lock()
 
-def get_database() -> Database:
-    """Retourne l'instance singleton de la base de données"""
+
+def get_database(db_path: str = "linkedin_automation.db") -> Database:
+    """Retourne l'instance singleton de la base de données (thread-safe)"""
     global _db_instance
+
+    # Double-checked locking pattern
     if _db_instance is None:
-        _db_instance = Database()
+        with _db_lock:
+            if _db_instance is None:
+                _db_instance = Database(db_path)
+                logger.info(f"Database initialized: {db_path} (schema v{Database.SCHEMA_VERSION})")
+
     return _db_instance
 
 
 if __name__ == "__main__":
+    # Configuration du logging pour les tests
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
     # Test de la base de données
     db = Database("test_linkedin.db")
 

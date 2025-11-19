@@ -4,9 +4,20 @@ Détecte les changements de structure DOM et alerte quand les sélecteurs ne fon
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+
+# Import optionnel de Playwright (pas nécessaire si juste pour importer le module)
+if TYPE_CHECKING:
+    from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+else:
+    try:
+        from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+    except ImportError:
+        Page = None  # type: ignore
+        PlaywrightTimeoutError = Exception  # type: ignore
+        logging.warning("Playwright not installed - SelectorValidator will have limited functionality")
+
 from database import get_database
 
 
