@@ -13,8 +13,14 @@ on:
     # que LinkedIn peut facilement identifier comme automatisé.
     # RECOMMANDATION : Utiliser workflow_dispatch et déclencher manuellement à des heures
     # variables, ou désactiver complètement le schedule et exécuter manuellement.
-    # Runs at 10:00 UTC every day.
-    - cron: '0 10 * * *'
+    #
+    # FUSEAU HORAIRE : GitHub Actions utilise UTC. Configuration pour heure de Paris :
+    # - Hiver (UTC+1, nov-mars) : 9h UTC = 10h Paris
+    # - Été (UTC+2, mars-nov) : 8h UTC = 10h Paris
+    # Note: Ajuster manuellement le cron lors des changements d'heure (mars/octobre)
+    #
+    # Configuration actuelle : Hiver (9h UTC = 10h Paris)
+    - cron: '0 9 * * *'
 
 jobs:
   run-profile-visitor:
