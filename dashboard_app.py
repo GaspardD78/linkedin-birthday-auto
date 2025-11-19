@@ -9,7 +9,11 @@ import os
 from datetime import datetime, timedelta
 import json
 
-app = Flask(__name__)
+# Get the absolute path to the templates folder
+basedir = os.path.abspath(os.path.dirname(__file__))
+template_dir = os.path.join(basedir, 'templates')
+
+app = Flask(__name__, template_folder=template_dir)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # Configuration
