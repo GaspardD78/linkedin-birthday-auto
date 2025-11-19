@@ -2,26 +2,50 @@
 
 {% block title %}Dashboard - LinkedIn Birthday Auto{% endblock %}
 
+{% block extra_css %}
+<style>
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    .trend-indicator {
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .trend-up {
+        color: #11998e;
+    }
+
+    .trend-down {
+        color: #fa709a;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
+<div class="row mb-4 animate-fade-in">
     <div class="col-12">
-        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
-        <p class="text-muted">Vue d'ensemble de l'activité des 30 derniers jours</p>
+        <h1 class="fw-bold"><i class="bi bi-speedometer2 text-primary"></i> Dashboard</h1>
+        <p class="text-muted fs-5">Vue d'ensemble de l'activité des 30 derniers jours</p>
     </div>
 </div>
 
 <!-- Statistiques principales -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
-        <div class="card stat-card border-0 shadow-sm">
+        <div class="card stat-card border-0 shadow-sm animate-fade-in">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Messages envoyés</h6>
-                        <h2 class="mb-0">{{ stats_30d.messages }}</h2>
-                        <small class="text-muted">30 derniers jours</small>
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <p class="text-muted mb-2 fw-semibold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">Messages envoyés</p>
+                        <h2 class="mb-2 fw-bold" style="font-size: 2.2rem;">{{ stats_30d.messages }}</h2>
+                        <small class="text-muted d-flex align-items-center">
+                            <i class="bi bi-calendar3 me-1"></i> 30 derniers jours
+                        </small>
                     </div>
-                    <div class="fs-1 text-primary">
+                    <div class="stat-icon primary text-white">
                         <i class="bi bi-chat-dots"></i>
                     </div>
                 </div>
@@ -30,15 +54,17 @@
     </div>
 
     <div class="col-md-3 mb-3">
-        <div class="card stat-card border-0 shadow-sm">
+        <div class="card stat-card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.1s;">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Visites de profils</h6>
-                        <h2 class="mb-0">{{ stats_30d.profile_visits }}</h2>
-                        <small class="text-muted">30 derniers jours</small>
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <p class="text-muted mb-2 fw-semibold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">Visites de profils</p>
+                        <h2 class="mb-2 fw-bold" style="font-size: 2.2rem;">{{ stats_30d.profile_visits }}</h2>
+                        <small class="text-muted d-flex align-items-center">
+                            <i class="bi bi-calendar3 me-1"></i> 30 derniers jours
+                        </small>
                     </div>
-                    <div class="fs-1 text-success">
+                    <div class="stat-icon success text-white">
                         <i class="bi bi-person-check"></i>
                     </div>
                 </div>
@@ -47,15 +73,17 @@
     </div>
 
     <div class="col-md-3 mb-3">
-        <div class="card stat-card border-0 shadow-sm">
+        <div class="card stat-card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.2s;">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Contacts uniques</h6>
-                        <h2 class="mb-0">{{ stats_30d.unique_contacts }}</h2>
-                        <small class="text-muted">30 derniers jours</small>
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <p class="text-muted mb-2 fw-semibold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">Contacts uniques</p>
+                        <h2 class="mb-2 fw-bold" style="font-size: 2.2rem;">{{ stats_30d.unique_contacts }}</h2>
+                        <small class="text-muted d-flex align-items-center">
+                            <i class="bi bi-calendar3 me-1"></i> 30 derniers jours
+                        </small>
                     </div>
-                    <div class="fs-1 text-info">
+                    <div class="stat-icon info text-white">
                         <i class="bi bi-people"></i>
                     </div>
                 </div>
@@ -64,15 +92,17 @@
     </div>
 
     <div class="col-md-3 mb-3">
-        <div class="card stat-card border-0 shadow-sm">
+        <div class="card stat-card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.3s;">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Erreurs</h6>
-                        <h2 class="mb-0">{{ stats_30d.errors }}</h2>
-                        <small class="text-muted">30 derniers jours</small>
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <p class="text-muted mb-2 fw-semibold text-uppercase" style="font-size: 0.75rem; letter-spacing: 0.5px;">Erreurs</p>
+                        <h2 class="mb-2 fw-bold" style="font-size: 2.2rem;">{{ stats_30d.errors }}</h2>
+                        <small class="text-muted d-flex align-items-center">
+                            <i class="bi bi-calendar3 me-1"></i> 30 derniers jours
+                        </small>
                     </div>
-                    <div class="fs-1 text-danger">
+                    <div class="stat-icon danger text-white">
                         <i class="bi bi-exclamation-triangle"></i>
                     </div>
                 </div>
@@ -84,11 +114,17 @@
 <!-- Limite hebdomadaire -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.4s;">
             <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-calendar-week"></i> Limite hebdomadaire</h5>
-                <p class="mb-2">Messages cette semaine: <strong>{{ weekly_count }}</strong> / {{ weekly_limit }}</p>
-                <div class="progress" style="height: 25px;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0 fw-bold">
+                        <i class="bi bi-calendar-week text-primary"></i> Limite hebdomadaire
+                    </h5>
+                    <span class="badge bg-light text-dark fs-6">
+                        <strong>{{ weekly_count }}</strong> / {{ weekly_limit }} messages
+                    </span>
+                </div>
+                <div class="progress" style="height: 30px;">
                     {% set percentage = (weekly_count / weekly_limit * 100) | int %}
                     <div class="progress-bar {% if percentage >= 90 %}bg-danger{% elif percentage >= 70 %}bg-warning{% else %}bg-success{% endif %}"
                          role="progressbar"
@@ -96,12 +132,26 @@
                          aria-valuenow="{{ weekly_count }}"
                          aria-valuemin="0"
                          aria-valuemax="{{ weekly_limit }}">
-                        {{ percentage }}%
+                        <span class="fw-bold">{{ percentage }}%</span>
                     </div>
                 </div>
                 {% if percentage >= 90 %}
-                    <div class="alert alert-warning mt-2 mb-0">
-                        <i class="bi bi-exclamation-triangle"></i> Attention: Proche de la limite hebdomadaire!
+                    <div class="alert alert-warning mt-3 mb-0 d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                        <div>
+                            <strong>Attention !</strong> Vous êtes proche de la limite hebdomadaire.
+                        </div>
+                    </div>
+                {% elif percentage >= 70 %}
+                    <div class="alert alert-info mt-3 mb-0 d-flex align-items-center">
+                        <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                        <div>
+                            Vous avez utilisé {{ percentage }}% de votre limite hebdomadaire.
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mt-3 text-muted text-center">
+                        <i class="bi bi-check-circle text-success"></i> Limite bien respectée
                     </div>
                 {% endif %}
             </div>
@@ -112,55 +162,82 @@
 <!-- Top Contacts et Erreurs récentes -->
 <div class="row mb-4">
     <div class="col-md-6 mb-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card border-0 shadow-sm h-100 animate-fade-in" style="animation-delay: 0.5s;">
             <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-star"></i> Top 5 Contacts</h5>
+                <h5 class="card-title fw-bold mb-4">
+                    <i class="bi bi-star-fill text-warning"></i> Top 5 Contacts
+                </h5>
                 {% if top_contacts %}
                     <div class="list-group list-group-flush">
                         {% for contact in top_contacts %}
-                            <div class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>{{ contact.name }}</strong>
-                                    <br>
-                                    <small class="text-muted">
-                                        {% if contact.linkedin_url %}
-                                            <a href="{{ contact.linkedin_url }}" target="_blank">Voir profil</a>
-                                        {% endif %}
-                                    </small>
+                            <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                                <div class="d-flex align-items-center">
+                                    <div class="me-3">
+                                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center" style="width: 45px; height: 45px; font-weight: 600;">
+                                            {{ contact.name[0] }}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <strong class="d-block">{{ contact.name }}</strong>
+                                        <small class="text-muted">
+                                            {% if contact.linkedin_url %}
+                                                <a href="{{ contact.linkedin_url }}" target="_blank" class="text-decoration-none">
+                                                    <i class="bi bi-linkedin"></i> Voir profil
+                                                </a>
+                                            {% endif %}
+                                        </small>
+                                    </div>
                                 </div>
-                                <span class="badge bg-primary rounded-pill">{{ contact.message_count }} messages</span>
+                                <span class="badge rounded-pill" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 0.5rem 1rem;">
+                                    {{ contact.message_count }} <i class="bi bi-chat-dots-fill"></i>
+                                </span>
                             </div>
                         {% endfor %}
                     </div>
                 {% else %}
-                    <p class="text-muted">Aucun contact pour le moment</p>
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                        <p>Aucun contact pour le moment</p>
+                    </div>
                 {% endif %}
             </div>
         </div>
     </div>
 
     <div class="col-md-6 mb-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card border-0 shadow-sm h-100 animate-fade-in" style="animation-delay: 0.6s;">
             <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-exclamation-triangle"></i> Erreurs récentes</h5>
+                <h5 class="card-title fw-bold mb-4">
+                    <i class="bi bi-exclamation-triangle-fill text-danger"></i> Erreurs récentes
+                </h5>
                 {% if recent_errors %}
                     <div class="list-group list-group-flush">
                         {% for error in recent_errors[:5] %}
-                            <div class="list-group-item">
-                                <div class="d-flex justify-content-between">
-                                    <small class="text-muted">{{ error.occurred_at }}</small>
-                                    <span class="badge bg-danger">{{ error.error_type }}</span>
+                            <div class="list-group-item px-0 py-3">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <small class="text-muted d-flex align-items-center">
+                                        <i class="bi bi-clock me-1"></i> {{ error.occurred_at }}
+                                    </small>
+                                    <span class="badge" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                                        {{ error.error_type }}
+                                    </span>
                                 </div>
-                                <p class="mb-0 mt-1"><small>{{ error.error_message[:100] }}{% if error.error_message|length > 100 %}...{% endif %}</small></p>
+                                <p class="mb-0 text-dark"><small>{{ error.error_message[:100] }}{% if error.error_message|length > 100 %}...{% endif %}</small></p>
                             </div>
                         {% endfor %}
                     </div>
-                    <div class="mt-2 text-center">
-                        <a href="/errors" class="btn btn-sm btn-outline-secondary">Voir toutes les erreurs</a>
+                    <div class="mt-3 text-center">
+                        <a href="/errors" class="btn btn-outline-danger">
+                            <i class="bi bi-list-ul"></i> Voir toutes les erreurs
+                        </a>
                     </div>
                 {% else %}
-                    <div class="alert alert-success mb-0">
-                        <i class="bi bi-check-circle"></i> Aucune erreur récente!
+                    <div class="alert alert-success mb-0 d-flex align-items-center" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); border: none; color: white;">
+                        <i class="bi bi-check-circle-fill fs-3 me-3"></i>
+                        <div>
+                            <strong>Excellent !</strong><br>
+                            Aucune erreur récente détectée
+                        </div>
                     </div>
                 {% endif %}
             </div>
@@ -171,34 +248,54 @@
 <!-- Activité quotidienne -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.7s;">
             <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-graph-up"></i> Activité quotidienne (14 derniers jours)</h5>
+                <h5 class="card-title fw-bold mb-4">
+                    <i class="bi bi-graph-up-arrow text-success"></i> Activité quotidienne (7 derniers jours)
+                </h5>
                 {% if daily_activity %}
+                    <div class="chart-container mb-4">
+                        <canvas id="activityChart"></canvas>
+                    </div>
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Messages</th>
-                                    <th>Visites</th>
-                                    <th>Contacts</th>
+                                    <th><i class="bi bi-calendar3 me-2"></i>Date</th>
+                                    <th class="text-center"><i class="bi bi-chat-dots me-2"></i>Messages</th>
+                                    <th class="text-center"><i class="bi bi-person-check me-2"></i>Visites</th>
+                                    <th class="text-center"><i class="bi bi-people me-2"></i>Contacts</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for day in daily_activity[:7] %}
                                     <tr>
-                                        <td>{{ day.date }}</td>
-                                        <td><span class="badge bg-primary">{{ day.messages }}</span></td>
-                                        <td><span class="badge bg-success">{{ day.visits }}</span></td>
-                                        <td><span class="badge bg-info">{{ day.contacts }}</span></td>
+                                        <td class="fw-semibold">{{ day.date }}</td>
+                                        <td class="text-center">
+                                            <span class="badge rounded-pill" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                                {{ day.messages }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge rounded-pill" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                                                {{ day.visits }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge rounded-pill" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                                {{ day.contacts }}
+                                            </span>
+                                        </td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                 {% else %}
-                    <p class="text-muted">Aucune activité enregistrée</p>
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-graph-down fs-1 d-block mb-2"></i>
+                        <p>Aucune activité enregistrée</p>
+                    </div>
                 {% endif %}
             </div>
         </div>
@@ -208,22 +305,172 @@
 <!-- Actions rapides -->
 <div class="row">
     <div class="col-12">
-        <div class="card border-0 shadow-sm">
+        <div class="card border-0 shadow-sm animate-fade-in" style="animation-delay: 0.8s;">
             <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-lightning"></i> Actions rapides</h5>
-                <div class="d-grid gap-2 d-md-flex">
-                    <a href="/messages" class="btn btn-linkedin">
-                        <i class="bi bi-chat-dots"></i> Voir tous les messages
-                    </a>
-                    <a href="/visits" class="btn btn-outline-secondary">
-                        <i class="bi bi-person-check"></i> Voir toutes les visites
-                    </a>
-                    <a href="/contacts" class="btn btn-outline-secondary">
-                        <i class="bi bi-people"></i> Gérer les contacts
-                    </a>
+                <h5 class="card-title fw-bold mb-4">
+                    <i class="bi bi-lightning-fill text-warning"></i> Actions rapides
+                </h5>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <a href="/messages" class="btn btn-linkedin w-100 py-3 d-flex align-items-center justify-content-center">
+                            <i class="bi bi-chat-dots-fill fs-4 me-2"></i>
+                            <span class="fw-semibold">Voir tous les messages</span>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="/visits" class="btn btn-outline-success w-100 py-3 d-flex align-items-center justify-content-center" style="transition: all 0.3s ease;">
+                            <i class="bi bi-person-check-fill fs-4 me-2"></i>
+                            <span class="fw-semibold">Voir toutes les visites</span>
+                        </a>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="/contacts" class="btn btn-outline-info w-100 py-3 d-flex align-items-center justify-content-center" style="transition: all 0.3s ease;">
+                            <i class="bi bi-people-fill fs-4 me-2"></i>
+                            <span class="fw-semibold">Gérer les contacts</span>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Animation pour la barre de progression
+    document.addEventListener('DOMContentLoaded', function() {
+        const progressBar = document.querySelector('.progress-bar');
+        if (progressBar) {
+            const targetWidth = progressBar.style.width;
+            progressBar.style.width = '0%';
+            setTimeout(() => {
+                progressBar.style.width = targetWidth;
+            }, 300);
+        }
+
+        // Graphique d'activité
+        {% if daily_activity %}
+        const ctx = document.getElementById('activityChart');
+        if (ctx) {
+            const dates = [{% for day in daily_activity[:7]|reverse %}'{{ day.date }}',{% endfor %}];
+            const messages = [{% for day in daily_activity[:7]|reverse %}{{ day.messages }},{% endfor %}];
+            const visits = [{% for day in daily_activity[:7]|reverse %}{{ day.visits }},{% endfor %}];
+            const contacts = [{% for day in daily_activity[:7]|reverse %}{{ day.contacts }},{% endfor %}];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        {
+                            label: 'Messages',
+                            data: messages,
+                            borderColor: 'rgb(102, 126, 234)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            borderWidth: 3
+                        },
+                        {
+                            label: 'Visites',
+                            data: visits,
+                            borderColor: 'rgb(17, 153, 142)',
+                            backgroundColor: 'rgba(17, 153, 142, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            borderWidth: 3
+                        },
+                        {
+                            label: 'Contacts',
+                            data: contacts,
+                            borderColor: 'rgb(79, 172, 254)',
+                            backgroundColor: 'rgba(79, 172, 254, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            borderWidth: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 15,
+                                font: {
+                                    size: 12,
+                                    weight: '600'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0,
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+        {% endif %}
+
+        // Animation au survol des boutons d'action
+        const actionButtons = document.querySelectorAll('.btn-outline-success, .btn-outline-info');
+        actionButtons.forEach(btn => {
+            btn.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateY(-3px)';
+                this.style.boxShadow = '0 5px 15px rgba(0,0,0,0.2)';
+            });
+            btn.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateY(0)';
+                this.style.boxShadow = 'none';
+            });
+        });
+    });
+</script>
 {% endblock %}
