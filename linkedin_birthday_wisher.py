@@ -21,6 +21,12 @@ from debug_utils import (
     quick_debug_check
 )
 
+# Import database utilities
+from database import get_database
+
+# Import selector validator
+from selector_validator import validate_birthday_feed_selectors, validate_messaging_selectors
+
 # --- Configuration ---
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -894,8 +900,37 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         message = random.choice(message_list).format(name=first_name)
 
+        # Check message history to avoid repetition (with fallback)
+        previous_messages = []
+        db = None
+        try:
+            db = get_database()
+            previous_messages = db.get_messages_sent_to_contact(full_name, years=2)
+        except Exception as e:
+            logging.warning(f"Could not access database for message history: {e}. Proceeding with random selection.")
+            db = None  # Reset db to None to avoid using it later
+
+        if previous_messages:
+            # Filter out messages already used for this contact
+            used_messages = {msg['message_text'] for msg in previous_messages}
+            available_messages = [msg for msg in message_list if msg.format(name=first_name) not in used_messages]
+
+            if available_messages:
+                message = random.choice(available_messages).format(name=first_name)
+                logging.info(f"Selected unused message from {len(available_messages)} available options (avoiding {len(used_messages)} used)")
+            else:
+                # All messages have been used, reset and pick any
+                message = random.choice(message_list).format(name=first_name)
+                logging.warning(f"All {len(message_list)} messages have been used for {full_name}, reusing from pool")
+
         if DRY_RUN:
             logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
+            # Record message in database even in dry run mode for testing (if db available)
+            if db:
+                try:
+                    db.add_birthday_message(full_name, message, is_late, days_late, "routine_dry_run")
+                except Exception as e:
+                    logging.warning(f"Could not record message to database: {e}")
             return  # La fermeture sera gérée par le finally
 
         # Effacer le texte automatique que LinkedIn pré-remplit (ex: "Je vous souhaite un très joyeux anniversaire.")
@@ -923,6 +958,12 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             if submit_button.is_enabled():
                 submit_button.click()
                 logging.info("Message sent successfully.")
+                # Record message in database (with fallback)
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as db_err:
+                        logging.warning(f"Could not record message to database: {db_err}")
             else:
                 logging.warning("Send button is not enabled. Skipping.")
         except Exception as e:
@@ -933,9 +974,23 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             try:
                 submit_button.click(force=True, timeout=10000)
                 logging.info("Message sent successfully (force click).")
+                # Record message in database (with fallback)
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as db_err:
+                        logging.warning(f"Could not record message to database: {db_err}")
             except Exception as e2:
-                logging.error(f"Failed to click send button even with force ({type(e2).__name__}): {e2}")
-                page.screenshot(path=f'error_send_button_{first_name.replace(" ", "_")}.png')
+                error_msg = f"Failed to click send button even with force ({type(e2).__name__}): {e2}"
+                logging.error(error_msg)
+                screenshot_path = f'error_send_button_{first_name.replace(" ", "_")}.png'
+                page.screenshot(path=screenshot_path)
+                # Log error to database (with fallback)
+                if db:
+                    try:
+                        db.log_error("linkedin_birthday_wisher", "SendButtonError", error_msg, str(e2), screenshot_path)
+                    except Exception as db_err:
+                        logging.warning(f"Could not log error to database: {db_err}")
                 raise
 
     finally:
@@ -1070,6 +1125,16 @@ def main():
                         f"Failed to verify login at {page.url}"
                     )
                 return # Stop execution if login verification fails.
+
+            # Navigate to birthdays page first to validate selectors
+            page.goto("https://www.linkedin.com/feed/", timeout=60000)
+            random_delay(1, 2)
+
+            # Validate birthday feed selectors
+            logging.info("🔍 Validating birthday feed selectors...")
+            selectors_valid = validate_birthday_feed_selectors(page)
+            if not selectors_valid:
+                logging.warning("⚠️ Some birthday feed selectors are invalid - LinkedIn may have changed")
 
             # Validate DOM structure after login
             if ENABLE_ADVANCED_DEBUG:

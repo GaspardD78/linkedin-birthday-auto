@@ -10,6 +10,12 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 from playwright_stealth import Stealth
 
+# Import database utilities
+from database import get_database
+
+# Import selector validator
+from selector_validator import validate_search_selectors
+
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -281,6 +287,17 @@ def main():
             if not check_login_status(page):
                 return
 
+            # Validate search selectors before starting
+            logging.info("🔍 Validating search page selectors...")
+            # First navigate to a search page to validate selectors
+            test_search_url = f"https://www.linkedin.com/search/results/people/?keywords={config['keywords'][0]}"
+            page.goto(test_search_url, timeout=60000)
+            random_delay(1, 2)
+
+            selectors_valid = validate_search_selectors(page)
+            if not selectors_valid:
+                logging.warning("⚠️ Some search selectors are invalid - LinkedIn may have changed")
+
             # Iterate through multiple pages
             current_page = 1
             pages_without_new_profiles = 0  # Safety counter to prevent infinite loops
@@ -309,6 +326,13 @@ def main():
 
                     found_new_profiles = True
                     logging.info(f"Visiting profile: {url}")
+
+                    # Extract profile name from URL
+                    profile_name = url.split('/in/')[-1].split('/')[0].replace('-', ' ').title()
+
+                    # Get database instance
+                    db = get_database()
+
                     if not DRY_RUN:
                         try:
                             page.goto(url, timeout=60000)
@@ -317,12 +341,47 @@ def main():
                             random_delay(15, 35)  # Délai plus naturel (15-35s au lieu de 5-10s)
                             save_visited_profile(url)
                             visited_profiles.add(url)
+
+                            # Record successful visit in database
+                            db.add_profile_visit(
+                                profile_name=profile_name,
+                                profile_url=url,
+                                source_search="keyword_search",
+                                keywords=config['keywords'],
+                                location=config['location'],
+                                success=True
+                            )
                         except Exception as e:
-                            logging.error(f"Error visiting profile {url}: {e}")
+                            error_msg = f"Error visiting profile {url}: {e}"
+                            logging.error(error_msg)
+
+                            # Record failed visit in database
+                            db.add_profile_visit(
+                                profile_name=profile_name,
+                                profile_url=url,
+                                source_search="keyword_search",
+                                keywords=config['keywords'],
+                                location=config['location'],
+                                success=False,
+                                error_message=str(e)
+                            )
+
+                            # Log error to database
+                            db.log_error("visit_profiles", "ProfileVisitError", error_msg, str(e))
+
                             # Continue to next profile instead of crashing
                             continue
                     else:
                         logging.info(f"[DRY RUN] Would have visited {url}")
+                        # Record dry run visit in database
+                        db.add_profile_visit(
+                            profile_name=profile_name,
+                            profile_url=url,
+                            source_search="keyword_search_dry_run",
+                            keywords=config['keywords'],
+                            location=config['location'],
+                            success=True
+                        )
 
                     profiles_visited_this_run += 1
                     logging.info(f"Profiles visited in this run: {profiles_visited_this_run}/{PROFILES_TO_VISIT_PER_RUN}")
