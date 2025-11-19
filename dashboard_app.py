@@ -183,6 +183,15 @@ def stats():
     )
 
 
+@app.route('/favicon.ico')
+def favicon():
+    """Route pour éviter les erreurs 404 du favicon"""
+    from flask import make_response
+    response = make_response('', 204)
+    response.headers['Content-Type'] = 'image/x-icon'
+    return response
+
+
 # ==================== API ENDPOINTS ====================
 
 @app.route('/api/stats/<int:days>')
