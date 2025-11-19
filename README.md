@@ -142,6 +142,49 @@ Pour éviter la détection par LinkedIn, vous pouvez configurer une rotation de 
 
 > **Note** : Ceci n'est pas une recommandation d'achat. Faites vos propres recherches et choisissez le fournisseur qui correspond à vos besoins.
 
+### 5. Alternatives Gratuites aux Proxies
+
+Si vous ne souhaitez pas investir dans des proxies payants, vous avez plusieurs alternatives **100% gratuites** :
+
+#### 🏠 Installation Locale (Recommandé)
+
+Installez le bot sur votre **propre matériel** pour utiliser votre IP résidentielle légitime :
+
+- **📖 [LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)** : Guide complet pour PC, Mac, ou Raspberry Pi
+- **📖 [INSTALLATION_NAS_FREEBOX.md](INSTALLATION_NAS_FREEBOX.md)** : Guide pour NAS Synology ou Freebox Pop/Delta
+
+**Avantages** :
+- ✅ Totalement gratuit (sauf électricité ~3€/mois)
+- ✅ IP résidentielle 100% légitime
+- ✅ Aucune détection possible
+- ✅ Contrôle total
+
+**Matériel compatible** :
+- NAS Synology (IDÉAL si vous en avez un)
+- Freebox Pop/Delta
+- Raspberry Pi (~35€ une fois)
+- N'importe quel PC/Mac/Linux
+
+#### 🎁 Essais Gratuits de Proxies Premium
+
+Utilisez les **trials gratuits** des fournisseurs premium (17 jours total) :
+
+- **📖 [PROXY_FREE_TRIALS_GUIDE.md](PROXY_FREE_TRIALS_GUIDE.md)** : Guide complet des essais gratuits
+- **🔧 `manage_proxy_trials.py`** : Script de gestion automatique des trials
+
+**Timeline** :
+- Jours 1-3 : Smartproxy (pas de CB)
+- Jours 4-10 : Bright Data (meilleure qualité)
+- Jours 11-13 : IPRoyal ($1 crédit gratuit)
+- Jour 14+ : Installation locale recommandée
+
+#### ⚖️ Sans Proxies (GitHub Actions uniquement)
+
+Possible mais risqué à long terme :
+- ⚠️ Limiter strictement à 15-20 messages/jour max
+- ⚠️ Surveillance accrue des logs
+- ⚠️ Détection possible après quelques semaines
+
 ## Surveillance de l'automatisation
 
 L'automatisation est configurée pour s'exécuter tous les jours. Voici comment vous pouvez la suivre :
