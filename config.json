@@ -1,4 +1,25 @@
 {
   "keywords": ["Azure", "APIM", "AKS", "Terraform"],
-  "location": "Ile-de-France"
+  "location": "Ile-de-France",
+  "limits": {
+    "profiles_per_run": 15,
+    "max_pages_to_scrape": 100,
+    "max_pages_without_new": 3
+  },
+  "delays": {
+    "min_seconds": 8,
+    "max_seconds": 20,
+    "profile_visit_min": 15,
+    "profile_visit_max": 35,
+    "page_navigation_min": 3,
+    "page_navigation_max": 6
+  },
+  "timezone": {
+    "start_hour": 7,
+    "end_hour": 20
+  },
+  "retry": {
+    "max_attempts": 3,
+    "backoff_factor": 2
+  }
 }
