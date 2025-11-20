@@ -557,13 +557,26 @@ def check_session_valid(page: Page) -> bool:
             logging.warning(f"Session appears invalid - on auth page: {current_url}")
             return False
 
-        # Try to find the user menu/photo (quick check)
-        try:
-            page.wait_for_selector("img.global-nav__me-photo", timeout=5000)
-            return True
-        except PlaywrightTimeoutError:
-            logging.warning("Session may be invalid - couldn't find user menu")
-            return False
+        # Try to find the user menu/photo with multiple selectors and longer timeout
+        user_menu_selectors = [
+            "img.global-nav__me-photo",
+            "div.global-nav__me",
+            "button[aria-label*='View profile']",
+            "a[href*='/in/']"  # Fallback: any profile link
+        ]
+
+        for selector in user_menu_selectors:
+            try:
+                page.wait_for_selector(selector, timeout=10000)
+                logging.debug(f"Session valid - found selector: {selector}")
+                return True
+            except PlaywrightTimeoutError:
+                continue
+
+        # If none of the selectors found, session might be invalid
+        logging.warning("Session may be invalid - couldn't find any user menu indicators")
+        logging.debug(f"Current URL: {current_url}")
+        return False
 
     except Exception as e:
         logging.error(f"Error checking session validity: {e}")
@@ -803,7 +816,11 @@ def cleanup_resources(browser: Browser, proxy_manager: ProxyManager, proxy_confi
             logging.warning(f"⚠️ Proxy recorded as failed due to script errors")
 
     logging.info("Closing browser.")
-    browser.close()
+    try:
+        browser.close()
+    except Exception as e:
+        # Browser might already be closed by playwright context manager
+        logging.debug(f"Browser close skipped (already closed): {e}")
 
     if os.path.exists(AUTH_FILE_PATH):
         os.remove(AUTH_FILE_PATH)
