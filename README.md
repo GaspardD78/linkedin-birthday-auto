@@ -80,6 +80,111 @@ Hello {name}, happy birthday!
 ```
 Le script choisira une de ces lignes au hasard pour chaque contact.
 
+### 4. Configuration de la Rotation de Proxies (Optionnel mais Recommandé)
+
+Pour éviter la détection par LinkedIn, vous pouvez configurer une rotation de proxies. Cela permet de masquer votre IP et de faire croire que les requêtes proviennent de différents endroits.
+
+#### 🌐 Pourquoi utiliser des proxies ?
+
+- **Éviter la détection** : Les IPs datacenter de GitHub Actions sont facilement détectables par LinkedIn
+- **Sécurité accrue** : Rotation automatique entre plusieurs proxies
+- **Fallback automatique** : Si un proxy échoue, le système bascule automatiquement sur un autre
+- **Métriques détaillées** : Suivi des performances de chaque proxy dans la base de données
+
+#### Configuration des Proxies
+
+1. **Dans GitHub Secrets**, ajoutez les variables suivantes :
+
+   - **ENABLE_PROXY_ROTATION** : `true` (pour activer la rotation)
+   - **PROXY_LIST** : Liste JSON des proxies, format :
+     ```json
+     ["http://username:password@proxy1.com:8080", "http://username:password@proxy2.com:8080"]
+     ```
+   - **RANDOM_PROXY_SELECTION** (optionnel) : `true` pour sélection aléatoire, `false` pour round-robin (défaut: `false`)
+   - **PROXY_TIMEOUT** (optionnel) : Timeout en secondes (défaut: `10`)
+   - **PROXY_MAX_RETRIES** (optionnel) : Nombre de tentatives max (défaut: `3`)
+
+2. **Types de proxies recommandés** :
+   - ✅ **Résidentiels** : IPs résidentielles (HAUTEMENT RECOMMANDÉ pour LinkedIn)
+   - ✅ **Mobiles** : IPs mobiles (HAUTEMENT RECOMMANDÉ)
+   - ⚠️ **Datacenter** : IPs datacenter (peu recommandé, facilement détectables)
+
+3. **Exemple de configuration** :
+
+   Voir le fichier `proxy_config.example.json` pour des exemples complets de configuration.
+
+4. **Surveillance des proxies** :
+
+   Les métriques des proxies sont automatiquement enregistrées dans la table `proxy_metrics` de la base de données :
+   - Taux de succès/échec par proxy
+   - Temps de réponse moyen
+   - Messages d'erreur détaillés
+   - Historique complet
+
+   Vous pouvez consulter ces métriques via le Dashboard Web ou en interrogeant directement la base de données.
+
+#### 🔒 Bonnes Pratiques
+
+- Utilisez au minimum **3-5 proxies** différents pour une rotation efficace
+- Privilégiez les **proxies résidentiels ou mobiles** pour LinkedIn
+- **Ne jamais utiliser de proxies gratuits** (très souvent bloqués)
+- Vérifiez que vos proxies supportent **HTTPS**
+- Remplacez les proxies qui échouent fréquemment
+- Localisez vos proxies dans des pays cohérents avec votre profil LinkedIn
+
+#### 📊 Fournisseurs de Proxies Recommandés
+
+- Bright Data (ex-Luminati)
+- Smartproxy
+- Oxylabs
+- Geosurf
+- NetNut
+
+> **Note** : Ceci n'est pas une recommandation d'achat. Faites vos propres recherches et choisissez le fournisseur qui correspond à vos besoins.
+
+### 5. Alternatives Gratuites aux Proxies
+
+Si vous ne souhaitez pas investir dans des proxies payants, vous avez plusieurs alternatives **100% gratuites** :
+
+#### 🏠 Installation Locale (Recommandé)
+
+Installez le bot sur votre **propre matériel** pour utiliser votre IP résidentielle légitime :
+
+- **📖 [LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)** : Guide complet pour PC, Mac, ou Raspberry Pi
+- **📖 [INSTALLATION_NAS_FREEBOX.md](INSTALLATION_NAS_FREEBOX.md)** : Guide pour NAS Synology ou Freebox Pop/Delta
+
+**Avantages** :
+- ✅ Totalement gratuit (sauf électricité ~3€/mois)
+- ✅ IP résidentielle 100% légitime
+- ✅ Aucune détection possible
+- ✅ Contrôle total
+
+**Matériel compatible** :
+- NAS Synology (IDÉAL si vous en avez un)
+- Freebox Pop/Delta
+- Raspberry Pi (~35€ une fois)
+- N'importe quel PC/Mac/Linux
+
+#### 🎁 Essais Gratuits de Proxies Premium
+
+Utilisez les **trials gratuits** des fournisseurs premium (17 jours total) :
+
+- **📖 [PROXY_FREE_TRIALS_GUIDE.md](PROXY_FREE_TRIALS_GUIDE.md)** : Guide complet des essais gratuits
+- **🔧 `manage_proxy_trials.py`** : Script de gestion automatique des trials
+
+**Timeline** :
+- Jours 1-3 : Smartproxy (pas de CB)
+- Jours 4-10 : Bright Data (meilleure qualité)
+- Jours 11-13 : IPRoyal ($1 crédit gratuit)
+- Jour 14+ : Installation locale recommandée
+
+#### ⚖️ Sans Proxies (GitHub Actions uniquement)
+
+Possible mais risqué à long terme :
+- ⚠️ Limiter strictement à 15-20 messages/jour max
+- ⚠️ Surveillance accrue des logs
+- ⚠️ Détection possible après quelques semaines
+
 ## Surveillance de l'automatisation
 
 L'automatisation est configurée pour s'exécuter tous les jours. Voici comment vous pouvez la suivre :
