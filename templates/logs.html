@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Logs - LinkedIn Birthday Auto{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Logs Système</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-file-alt me-1"></i> {{ selected_log }}
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
+                {% for log in log_files %}
+                <li><a class="dropdown-item" href="{{ url_for('logs', file=log) }}">{{ log }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        <button class="btn btn-sm btn-outline-primary ms-2" onclick="location.reload()">
+            <i class="fas fa-sync-alt"></i> Actualiser
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm h-100">
+    <div class="card-body p-0">
+        <div class="bg-dark text-light p-3" style="height: 70vh; overflow-y: auto; font-family: monospace; white-space: pre-wrap; font-size: 0.9rem;" id="logContainer">
+            {{- log_content -}}
+        </div>
+    </div>
+</div>
+
+<script>
+    // Scroll to bottom automatically
+    const logContainer = document.getElementById('logContainer');
+    logContainer.scrollTop = logContainer.scrollHeight;
+</script>
+{% endblock %}

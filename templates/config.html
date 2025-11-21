@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %}Configuration - LinkedIn Birthday Auto{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Configuration</h1>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="row">
+    <!-- Messages du jour -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0"><i class="fas fa-envelope text-primary me-2"></i>Messages d'anniversaire</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_messages">
+                    <div class="mb-3">
+                        <label for="messages_content" class="form-label text-muted">Un message par ligne. {name} sera remplacé par le prénom.</label>
+                        <textarea class="form-control" id="messages_content" name="messages_content" rows="15" style="font-family: monospace;">{{ messages_content }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Enregistrer les messages</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages de retard -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0"><i class="fas fa-clock text-warning me-2"></i>Messages de retard</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_late_messages">
+                    <div class="mb-3">
+                        <label for="late_messages_content" class="form-label text-muted">Pour les anniversaires manqués (hier ou avant).</label>
+                        <textarea class="form-control" id="late_messages_content" name="late_messages_content" rows="15" style="font-family: monospace;">{{ late_messages_content }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Enregistrer les messages de retard</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration avancée (JSON) -->
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0"><i class="fas fa-cogs text-secondary me-2"></i>Configuration Avancée (config.json)</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_config">
+                    <div class="mb-3">
+                        <textarea class="form-control" id="config_json" name="config_json" rows="15" style="font-family: monospace;">{{ config_content }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100">Mettre à jour la configuration JSON</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

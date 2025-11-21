@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}LinkedIn Birthday Auto - Dashboard{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
             --linkedin-blue: #0077B5;
@@ -20,6 +20,9 @@
         body {
             background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .navbar {
@@ -36,237 +39,118 @@
             transition: all 0.3s ease;
             border-radius: 5px;
             margin: 0 5px;
+            color: rgba(255,255,255,0.9) !important;
         }
 
         .nav-link:hover {
             background-color: rgba(255,255,255,0.1);
             transform: translateY(-2px);
+            color: white !important;
         }
 
         .nav-link.active {
             background-color: rgba(255,255,255,0.2);
             font-weight: 600;
+            color: white !important;
         }
 
-        .btn-linkedin {
-            background: linear-gradient(135deg, var(--linkedin-blue) 0%, var(--linkedin-light) 100%);
-            color: white;
-            border: none;
-            transition: all 0.3s ease;
-            font-weight: 500;
-        }
-
-        .btn-linkedin:hover {
-            background: linear-gradient(135deg, var(--linkedin-dark) 0%, var(--linkedin-blue) 100%);
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,119,181,0.3);
-        }
-
-        .stat-card {
-            transition: all 0.3s ease;
-            border-radius: 15px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, var(--linkedin-blue), var(--linkedin-light));
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-        }
-
-        .stat-card:hover::before {
-            opacity: 1;
+        .container-fluid {
+            flex: 1;
         }
 
         .card {
             border-radius: 15px;
             border: none;
             transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
 
         .card:hover {
-            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        }
-
-        .stat-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.8rem;
-        }
-
-        .stat-icon.primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .stat-icon.success {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-        }
-
-        .stat-icon.info {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        }
-
-        .stat-icon.danger {
-            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        }
-
-        .badge {
-            padding: 0.5rem 0.8rem;
-            font-weight: 500;
-        }
-
-        .progress {
-            border-radius: 10px;
-            overflow: hidden;
-            background-color: #e9ecef;
-        }
-
-        .progress-bar {
-            transition: width 1s ease-in-out;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-
-        .list-group-item {
-            border: none;
-            border-bottom: 1px solid #f0f0f0;
-            transition: all 0.2s ease;
-        }
-
-        .list-group-item:hover {
-            background-color: #f8f9fa;
-            padding-left: 1.5rem;
-        }
-
-        .table {
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .table thead th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.5px;
-        }
-
-        .table tbody tr {
-            transition: all 0.2s ease;
-        }
-
-        .table tbody tr:hover {
-            background-color: #f8f9fa;
-            transform: scale(1.01);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
         }
 
         footer {
             background: white;
-            border-top: 3px solid var(--linkedin-blue);
-            margin-top: 3rem;
+            border-top: 1px solid #dee2e6;
+            margin-top: auto;
+            padding: 1.5rem 0;
         }
 
-        .alert {
-            border-radius: 10px;
-            border: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .animate-fade-in {
-            animation: fadeInUp 0.6s ease-out;
-        }
-
+        /* Responsive adjustments */
         @media (max-width: 768px) {
-            .stat-card {
-                margin-bottom: 1rem;
-            }
-
-            .card-body {
-                padding: 1rem;
+            .navbar-collapse {
+                background: rgba(0,0,0,0.1);
+                border-radius: 10px;
+                padding: 10px;
+                margin-top: 10px;
             }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4 sticky-top">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
-                <i class="bi bi-linkedin"></i> LinkedIn Birthday Auto
+                <i class="fab fa-linkedin"></i> LinkedIn Auto
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.path == '/' else '' }}" href="/">
+                            <i class="fas fa-tachometer-alt me-1"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if 'control' in request.path else '' }}" href="/control">
+                            <i class="fas fa-gamepad me-1"></i> Contrôle
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if 'logs' in request.path else '' }}" href="/logs">
+                            <i class="fas fa-terminal me-1"></i> Logs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if 'config' in request.path else '' }}" href="/config">
+                            <i class="fas fa-cog me-1"></i> Config
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-database me-1"></i> Données
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="/messages"><i class="fas fa-envelope me-2"></i>Messages</a></li>
+                            <li><a class="dropdown-item" href="/visits"><i class="fas fa-user-check me-2"></i>Visites</a></li>
+                            <li><a class="dropdown-item" href="/contacts"><i class="fas fa-address-book me-2"></i>Contacts</a></li>
+                            <li><a class="dropdown-item" href="/errors"><i class="fas fa-exclamation-triangle me-2"></i>Erreurs</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/stats"><i class="fas fa-chart-bar me-2"></i>Statistiques</a></li>
+                        </ul>
+                    </li>
+                </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/messages"><i class="bi bi-chat-dots"></i> Messages</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/visits"><i class="bi bi-person-check"></i> Visites</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/contacts"><i class="bi bi-people"></i> Contacts</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/errors"><i class="bi bi-exclamation-triangle"></i> Erreurs</a>
+                        <a class="nav-link" href="/logout">
+                            <i class="fas fa-sign-out-alt me-1"></i> Déconnexion
+                        </a>
                     </li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
+    <div class="container-fluid px-4">
         {% block content %}{% endblock %}
     </div>
 
-    <footer class="mt-5 py-3 bg-white border-top">
+    <footer class="mt-5">
         <div class="container text-center text-muted">
-            <small>LinkedIn Birthday Auto Dashboard - Phase 1 | <a href="https://github.com/GaspardD78/linkedin-birthday-auto" target="_blank">GitHub</a></small>
+            <small>LinkedIn Birthday Auto Dashboard | Version 2.0</small>
         </div>
     </footer>
 

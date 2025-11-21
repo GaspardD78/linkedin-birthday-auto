@@ -1,13 +1,19 @@
 """
 Application Flask - Dashboard pour LinkedIn Birthday Auto
-Permet de visualiser les statistiques, l'historique et gérer la configuration
+Permet de visualiser les statistiques, l'historique, gérer la configuration et contrôler les scripts
 """
 
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from database import get_database
 import os
-from datetime import datetime, timedelta
+import time
 import json
+import subprocess
+import psutil
+import signal
+from datetime import datetime, timedelta
+import logging
 
 # Get the absolute path to the templates folder
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -18,9 +24,52 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-product
 
 # Configuration
 app.config['DATABASE_PATH'] = os.getenv('DATABASE_PATH', 'linkedin_automation.db')
+app.config['ADMIN_PASSWORD'] = os.getenv('ADMIN_PASSWORD', 'admin')  # Change in production!
 
+# Setup Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id == 'admin':
+        return User('admin')
+    return None
+
+# ==================== AUTHENTICATION ====================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        password = request.form['password']
+        if password == app.config['ADMIN_PASSWORD']:
+            user = User('admin')
+            login_user(user)
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('index'))
+        else:
+            flash('Mot de passe incorrect')
+
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# ==================== MAIN ROUTES ====================
 
 @app.route('/')
+@login_required
 def index():
     """Page d'accueil du dashboard"""
     db = get_database()
@@ -54,8 +103,8 @@ def index():
         weekly_limit=80  # WEEKLY_MESSAGE_LIMIT
     )
 
-
 @app.route('/messages')
+@login_required
 def messages():
     """Page listant tous les messages d'anniversaire envoyés"""
     db = get_database()
@@ -64,14 +113,13 @@ def messages():
     page = request.args.get('page', 1, type=int)
     per_page = 50
 
-    # Récupérer tous les messages (simplif ication - pas de pagination dans la base)
-    # On devrait ajouter une fonction get_messages_paginated à database.py pour de vraies applis
     with db.get_connection() as conn:
         cursor = conn.cursor()
 
         # Compter le total
         cursor.execute("SELECT COUNT(*) as total FROM birthday_messages")
-        total = cursor.fetchone()['total']
+        row = cursor.fetchone()
+        total = row['total'] if row else 0
 
         # Récupérer la page actuelle
         offset = (page - 1) * per_page
@@ -93,8 +141,8 @@ def messages():
         total=total
     )
 
-
 @app.route('/visits')
+@login_required
 def visits():
     """Page listant toutes les visites de profils"""
     db = get_database()
@@ -108,7 +156,8 @@ def visits():
 
         # Compter le total
         cursor.execute("SELECT COUNT(*) as total FROM profile_visits")
-        total = cursor.fetchone()['total']
+        row = cursor.fetchone()
+        total = row['total'] if row else 0
 
         # Récupérer la page actuelle
         offset = (page - 1) * per_page
@@ -130,8 +179,8 @@ def visits():
         total=total
     )
 
-
 @app.route('/errors')
+@login_required
 def errors():
     """Page listant toutes les erreurs"""
     db = get_database()
@@ -139,8 +188,8 @@ def errors():
 
     return render_template('errors.html', errors=errors_list)
 
-
 @app.route('/contacts')
+@login_required
 def contacts():
     """Page listant tous les contacts"""
     db = get_database()
@@ -155,8 +204,8 @@ def contacts():
 
     return render_template('contacts.html', contacts=contacts_list)
 
-
 @app.route('/selectors')
+@login_required
 def selectors():
     """Page listant et gérant les sélecteurs LinkedIn"""
     db = get_database()
@@ -164,8 +213,8 @@ def selectors():
 
     return render_template('selectors.html', selectors=selectors_list)
 
-
 @app.route('/stats')
+@login_required
 def stats():
     """Page de statistiques détaillées"""
     db = get_database()
@@ -186,6 +235,167 @@ def stats():
         daily_activity=daily_activity
     )
 
+# ==================== CONFIGURATION & CONTROL ====================
+
+@app.route('/config', methods=['GET', 'POST'])
+@login_required
+def config():
+    """Page de configuration"""
+    config_path = 'config.json'
+    messages_path = 'messages.txt'
+    late_messages_path = 'late_messages.txt'
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'update_config':
+            try:
+                new_config = request.form.get('config_json')
+                # Verify JSON validity
+                json.loads(new_config)
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    f.write(new_config)
+                flash('Configuration mise à jour avec succès', 'success')
+            except json.JSONDecodeError:
+                flash('Erreur: JSON invalide', 'danger')
+            except Exception as e:
+                flash(f'Erreur lors de la sauvegarde: {str(e)}', 'danger')
+
+        elif action == 'update_messages':
+            try:
+                new_messages = request.form.get('messages_content')
+                with open(messages_path, 'w', encoding='utf-8') as f:
+                    f.write(new_messages)
+                flash('Messages mis à jour avec succès', 'success')
+            except Exception as e:
+                flash(f'Erreur lors de la sauvegarde: {str(e)}', 'danger')
+
+        elif action == 'update_late_messages':
+            try:
+                new_messages = request.form.get('late_messages_content')
+                with open(late_messages_path, 'w', encoding='utf-8') as f:
+                    f.write(new_messages)
+                flash('Messages de retard mis à jour avec succès', 'success')
+            except Exception as e:
+                flash(f'Erreur lors de la sauvegarde: {str(e)}', 'danger')
+
+        return redirect(url_for('config'))
+
+    # Read current files
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_content = f.read()
+    except:
+        config_content = "{}"
+
+    try:
+        with open(messages_path, 'r', encoding='utf-8') as f:
+            messages_content = f.read()
+    except:
+        messages_content = ""
+
+    try:
+        with open(late_messages_path, 'r', encoding='utf-8') as f:
+            late_messages_content = f.read()
+    except:
+        late_messages_content = ""
+
+    return render_template(
+        'config.html',
+        config_content=config_content,
+        messages_content=messages_content,
+        late_messages_content=late_messages_content
+    )
+
+@app.route('/logs')
+@login_required
+def logs():
+    """Page de visualisation des logs"""
+    log_files = []
+    selected_log = request.args.get('file', 'birthday_wisher.log')
+    log_content = ""
+
+    # List available log files
+    log_dir = 'logs'
+    if os.path.exists(log_dir):
+        log_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+
+    # Read selected log
+    if selected_log and os.path.exists(os.path.join(log_dir, selected_log)):
+        try:
+            with open(os.path.join(log_dir, selected_log), 'r', encoding='utf-8') as f:
+                # Read last 1000 lines efficiently
+                lines = f.readlines()
+                log_content = "".join(lines[-1000:])
+        except Exception as e:
+            log_content = f"Error reading log file: {str(e)}"
+
+    return render_template('logs.html', log_files=log_files, selected_log=selected_log, log_content=log_content)
+
+@app.route('/control')
+@login_required
+def control():
+    """Page de contrôle des processus"""
+    processes = []
+
+    # Check for running python scripts
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+        try:
+            cmdline = proc.info['cmdline']
+            if cmdline and 'python' in cmdline[0]:
+                script_name = None
+                for arg in cmdline:
+                    if 'linkedin_birthday_wisher.py' in arg:
+                        script_name = 'linkedin_birthday_wisher.py'
+                    elif 'visit_profiles.py' in arg:
+                        script_name = 'visit_profiles.py'
+
+                if script_name:
+                    processes.append({
+                        'pid': proc.info['pid'],
+                        'name': script_name,
+                        'started': datetime.fromtimestamp(proc.info['create_time']).strftime('%Y-%m-%d %H:%M:%S'),
+                        'status': proc.status()
+                    })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
+    return render_template('control.html', processes=processes)
+
+@app.route('/api/control/<action>', methods=['POST'])
+@login_required
+def api_control(action):
+    """API pour démarrer/arrêter les scripts"""
+    script = request.json.get('script')
+
+    if action == 'start':
+        if script not in ['linkedin_birthday_wisher.py', 'visit_profiles.py']:
+            return jsonify({'success': False, 'message': 'Script inconnu'})
+
+        try:
+            # Run in background, redirecting output to log file handled by script itself
+            # But we also redirect stdout/stderr here to capture crash dumps
+            cmd = ['python', script]
+            subprocess.Popen(cmd, close_fds=True)
+            return jsonify({'success': True, 'message': f'Script {script} démarré'})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)})
+
+    elif action == 'stop':
+        pid = request.json.get('pid')
+        try:
+            proc = psutil.Process(pid)
+            proc.terminate()
+            # Wait a bit and kill if still alive
+            try:
+                proc.wait(timeout=3)
+            except psutil.TimeoutExpired:
+                proc.kill()
+            return jsonify({'success': True, 'message': 'Processus arrêté'})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)})
+
+    return jsonify({'success': False, 'message': 'Action inconnue'})
 
 @app.route('/favicon.ico')
 def favicon():
@@ -199,6 +409,7 @@ def favicon():
 # ==================== API ENDPOINTS ====================
 
 @app.route('/api/stats/<int:days>')
+@login_required
 def api_stats(days):
     """API endpoint pour récupérer les statistiques"""
     db = get_database()
@@ -207,6 +418,7 @@ def api_stats(days):
 
 
 @app.route('/api/daily-activity/<int:days>')
+@login_required
 def api_daily_activity(days):
     """API endpoint pour récupérer l'activité quotidienne"""
     db = get_database()
@@ -215,6 +427,7 @@ def api_daily_activity(days):
 
 
 @app.route('/api/messages/recent/<int:limit>')
+@login_required
 def api_recent_messages(limit):
     """API endpoint pour récupérer les messages récents"""
     db = get_database()
@@ -232,6 +445,7 @@ def api_recent_messages(limit):
 
 
 @app.route('/api/visits/recent/<int:limit>')
+@login_required
 def api_recent_visits(limit):
     """API endpoint pour récupérer les visites récentes"""
     db = get_database()
@@ -249,6 +463,7 @@ def api_recent_visits(limit):
 
 
 @app.route('/api/errors/recent/<int:limit>')
+@login_required
 def api_recent_errors(limit):
     """API endpoint pour récupérer les erreurs récentes"""
     db = get_database()
@@ -257,6 +472,7 @@ def api_recent_errors(limit):
 
 
 @app.route('/api/top-contacts/<int:limit>')
+@login_required
 def api_top_contacts(limit):
     """API endpoint pour récupérer les top contacts"""
     db = get_database()
@@ -265,6 +481,7 @@ def api_top_contacts(limit):
 
 
 @app.route('/api/weekly-count')
+@login_required
 def api_weekly_count():
     """API endpoint pour récupérer le compteur hebdomadaire"""
     db = get_database()
@@ -278,6 +495,7 @@ def api_weekly_count():
 
 
 @app.route('/api/chart-data/<chart_type>')
+@login_required
 def api_chart_data(chart_type):
     """
     API endpoint pour récupérer les données de graphiques
@@ -330,6 +548,7 @@ def api_chart_data(chart_type):
 # ==================== MAINTENANCE ====================
 
 @app.route('/api/cleanup', methods=['POST'])
+@login_required
 def api_cleanup():
     """API endpoint pour nettoyer les anciennes données"""
     days_to_keep = request.json.get('days_to_keep', 365)
@@ -344,6 +563,7 @@ def api_cleanup():
 
 
 @app.route('/api/export', methods=['POST'])
+@login_required
 def api_export():
     """API endpoint pour exporter la base de données en JSON"""
     output_path = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

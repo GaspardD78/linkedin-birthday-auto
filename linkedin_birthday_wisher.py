@@ -32,7 +32,16 @@ from proxy_manager import ProxyManager
 
 # --- Configuration ---
 # Logging setup
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/birthday_wisher.log"),
+        logging.StreamHandler()
+    ]
+)
 
 # Secure authentication using an auth state from GitHub Secrets
 LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
