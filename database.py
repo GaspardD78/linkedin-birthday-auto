@@ -737,9 +737,14 @@ class Database:
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT contact_name, COUNT(*) as message_count, MAX(sent_at) as last_message
-                FROM birthday_messages
-                GROUP BY contact_name
+                SELECT
+                    bm.contact_name as name,
+                    c.linkedin_url,
+                    COUNT(bm.id) as message_count,
+                    MAX(bm.sent_at) as last_message
+                FROM birthday_messages bm
+                LEFT JOIN contacts c ON bm.contact_id = c.id
+                GROUP BY bm.contact_name
                 ORDER BY message_count DESC, last_message DESC
                 LIMIT ?
             """, (limit,))
