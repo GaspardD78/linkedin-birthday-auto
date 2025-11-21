@@ -587,17 +587,17 @@ def setup_authentication() -> bool:
         True if successful, False otherwise
     """
     # 1. Try Environment Variable first (Priority)
-    if LINKEDIN_AUTH_STATE:
+    if LINKEDIN_AUTH_STATE and LINKEDIN_AUTH_STATE.strip():
         try:
-            # Try to load the auth state as a JSON string directly
+            # Try to load as JSON
             json.loads(LINKEDIN_AUTH_STATE)
-            logger.info("Auth state is a valid JSON string. Writing to file directly.")
+            logger.info("Auth state is valid JSON. Writing to file.")
             with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
                 f.write(LINKEDIN_AUTH_STATE)
             return True
         except json.JSONDecodeError:
-            # If it's not a JSON string, assume it's a Base64 encoded binary file
-            logger.info("Auth state is not a JSON string, attempting to decode from Base64.")
+            # Try Base64
+            logger.info("Auth state is Base64, decoding...")
             try:
                 padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
                 auth_state_padded = LINKEDIN_AUTH_STATE + padding
@@ -609,15 +609,17 @@ def setup_authentication() -> bool:
                 logger.error(f"Failed to decode Base64 auth state: {e}")
                 # Continue to fallback...
         except Exception as e:
-            logger.error(f"An unexpected error occurred during auth state setup: {e}")
+            logger.error(f"Unexpected error during auth state setup: {e}")
             # Continue to fallback...
+    else:
+        logger.info("LINKEDIN_AUTH_STATE not set, checking for local auth file...")
 
     # 2. Fallback to existing 'auth_state.json' if it was manually placed
     if os.path.exists(AUTH_FILE_PATH):
-        logger.info(f"Environment variable missing. Found existing '{AUTH_FILE_PATH}', using it.")
+        logger.info(f"✅ Found existing '{AUTH_FILE_PATH}', using it.")
         return True
 
-    logger.error("LINKEDIN_AUTH_STATE environment variable is not set and no valid local auth file found. Exiting.")
+    logger.error(f"❌ {AUTH_FILE_PATH} not found. Please run generate_linkedin_auth.py first or set LINKEDIN_AUTH_STATE environment variable.")
     return False
 
 def setup_browser_context(p, proxy_manager: ProxyManager) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page], Optional[Dict], Optional[float]]:
