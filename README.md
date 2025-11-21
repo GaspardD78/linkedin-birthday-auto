@@ -1,203 +1,404 @@
-# LinkedIn Birthday Wisher Bot
+# 🍓 LinkedIn Birthday Bot pour Raspberry Pi
 
-Ce projet contient un script d'automatisation Python conçu pour souhaiter automatiquement un joyeux anniversaire à vos contacts de premier niveau sur LinkedIn. Le bot est conçu pour être discret et imiter le comportement humain afin de minimiser les risques de détection.
+Bot automatique pour souhaiter les anniversaires de vos contacts LinkedIn, optimisé pour fonctionner 24/7 sur **Raspberry Pi**.
 
-## Fonctionnalités
+## ✨ Fonctionnalités
 
-- **Connexion Sécurisée** : Utilise les secrets de GitHub pour stocker vos identifiants en toute sécurité, sans jamais les écrire en clair dans le code.
-- **Comportement Humain** : Le script intègre des délais aléatoires et simule la frappe au clavier pour paraître moins robotique.
-- **Exécution Programmée** : Grâce à GitHub Actions, le script s'exécute automatiquement chaque matin à une heure variable entre 8h00 et 10h00 (UTC).
-- **Messages Personnalisables** : Vous pouvez facilement modifier la liste des messages d'anniversaire.
-- **Notifications d'Erreur** : Si le script échoue, GitHub Actions vous enverra automatiquement un e-mail et enregistrera une capture d'écran du problème.
+- ✅ **Détection automatique** des anniversaires du jour et en retard (jusqu'à 10 jours)
+- ✅ **Messages personnalisés** avec rotation aléatoire et mémorisation
+- ✅ **Comportement humain** : délais aléatoires, mouvements de souris, scrolling naturel
+- ✅ **Base de données SQLite** : historique complet des messages envoyés
+- ✅ **Dashboard Web** : visualisation en temps réel via interface Flask
+- ✅ **Gestion intelligente** : évite les doublons, adapte les messages selon l'historique
+- ✅ **Support 2FA** : authentification via fichier `auth_state.json`
+- ✅ **Correction automatique** : gestion des modales multiples et erreurs DOM
 
-### 🚀 Nouvelles fonctionnalités Phase 1
+## 🎯 Pourquoi Raspberry Pi ?
 
-- **Base de Données SQLite** : Stockage persistant de tous les messages, contacts, visites et erreurs avec mode WAL pour performances optimales
-- **Dashboard Web** : Interface Flask avec statistiques en temps réel, graphiques, et historique complet
-- **Détection de Changements LinkedIn** : Système de validation des sélecteurs CSS pour détecter automatiquement les changements de structure DOM
-- **Thread-Safe** : Architecture robuste avec singleton thread-safe et retry logic
-- **Tests Automatisés** : Suite de tests complète exécutée via GitHub Actions
-- **Métriques & Analytics** : Suivi détaillé des performances avec export JSON
+| Critère | Raspberry Pi | Cloud (GitHub Actions) |
+|---------|--------------|------------------------|
+| **IP** | ✅ Résidentielle légitime | ❌ Datacenter détectable |
+| **Détection LinkedIn** | ✅ Impossible | ⚠️ Risque élevé |
+| **Coût mensuel** | ✅ ~1€ d'électricité | ⚠️ Nécessite proxies payants |
+| **Configuration** | ✅ Une fois pour toutes | ⚠️ Secrets à maintenir |
+| **Disponibilité** | ✅ 24/7 garanti | ⚠️ Dépend de GitHub |
+| **Contrôle** | ✅ Total | ⚠️ Limité |
 
-📚 **Documentation complète** : Voir [PHASE1.md](PHASE1.md), [DEPLOYMENT.md](DEPLOYMENT.md), et [BUGFIXES.md](BUGFIXES.md)
+## 🚀 Installation Rapide
 
-## 🧪 Tests
+```bash
+# 1. Cloner le projet
+git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+cd linkedin-birthday-auto
 
-**Les tests sont exécutés uniquement via GitHub Actions.**
+# 2. Installer les dépendances
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+playwright install-deps chromium
 
-Pour lancer les tests :
-1. Allez sur **Actions** → **Test Suite - Phase 1**
-2. Cliquez sur **Run workflow**
-3. Consultez les résultats et téléchargez les artifacts
+# 3. Générer l'authentification (avec support 2FA)
+python3 generate_auth_simple.py
 
-Les tests s'exécutent aussi automatiquement sur chaque push/PR vers main/master.
+# 4. Configurer l'environnement
+cat > .env << EOF
+# Authentification (utilisée uniquement si auth_state.json n'existe pas)
+LINKEDIN_EMAIL=votre.email@example.com
+LINKEDIN_PASSWORD=VotreMotDePasse123
 
-## Configuration
+# Mode
+DRY_RUN=true  # false pour envoyer vraiment les messages
+HEADLESS_BROWSER=true
 
-Suivez ces étapes pour configurer et activer le bot.
+# Proxies (désactivé pour IP locale)
+ENABLE_PROXY_ROTATION=false
+EOF
 
-### 1. Stocker vos identifiants LinkedIn en toute sécurité
+# 5. Sécuriser .env
+chmod 600 .env
 
-Pour que le script puisse se connecter à votre compte, vous devez stocker votre e-mail et votre mot de passe LinkedIn en tant que "secrets" dans votre dépôt GitHub. C'est la méthode la plus sûre, car ils sont chiffrés et ne seront jamais visibles publiquement.
-
-1.  Dans votre dépôt GitHub, allez dans **Settings** > **Secrets and variables** > **Actions**.
-2.  Cliquez sur **New repository secret**.
-3.  Créez un premier secret :
-    *   **Name** : `LINKEDIN_EMAIL`
-    *   **Secret** : Entrez votre adresse e-mail LinkedIn.
-4.  Cliquez sur **Add secret**.
-5.  Créez un second secret :
-    *   **Name** : `LINKEDIN_PASSWORD`
-    *   **Secret** : Entrez votre mot de passe LinkedIn.
-
-Le script est maintenant prêt à s'authentifier en toute sécurité.
-
-### 2. Activer le mode test (Dry Run)
-
-Avant de laisser le bot envoyer de vrais messages, vous pouvez le tester en mode "dry run". Dans ce mode, le script effectuera toutes les actions (connexion, recherche des anniversaires) sauf l'envoi du message final. Il affichera à la place un message dans les logs, indiquant à qui il aurait envoyé un message.
-
-Pour activer ce mode :
-
-1.  Retournez dans **Settings** > **Secrets and variables** > **Actions**.
-2.  Créez un nouveau secret :
-    *   **Name** : `DRY_RUN`
-    *   **Secret** : `true`
-3.  Pour revenir en mode normal (envoi de vrais messages), vous pouvez soit supprimer ce secret, soit changer sa valeur pour `false`.
-
-### 3. Personnaliser les messages d'anniversaire
-
-Pour modifier, ajouter ou supprimer des messages d'anniversaire, il vous suffit d'éditer le fichier `messages.txt`.
-
-1.  Ouvrez le fichier `messages.txt` directement dans GitHub.
-2.  Chaque ligne du fichier est un modèle de message. Modifiez-les comme vous le souhaitez.
-3.  Assurez-vous de conserver le marqueur `{name}`, qui sera automatiquement remplacé par le prénom de votre contact.
-
-**Exemple de contenu pour `messages.txt` :**
+# 6. Tester le bot
+python3 linkedin_birthday_wisher.py
 ```
+
+## 📋 Configuration Détaillée
+
+### 1. Génération de auth_state.json (avec 2FA)
+
+Le script `generate_auth_simple.py` simplifie l'authentification LinkedIn :
+
+```bash
+python3 generate_auth_simple.py
+```
+
+**Ce script va :**
+1. Ouvrir un navigateur Chromium
+2. Vous rediriger vers la page de connexion LinkedIn
+3. Attendre que vous vous connectiez (email, mot de passe, **code 2FA**)
+4. Sauvegarder votre session dans `auth_state.json`
+
+**Avantages :**
+- ✅ Plus besoin de saisir le code 2FA à chaque exécution
+- ✅ Session valide pendant plusieurs semaines/mois
+- ✅ Compatible avec tous les types d'authentification LinkedIn
+
+**Si la session expire :**
+```bash
+rm auth_state.json
+python3 generate_auth_simple.py
+```
+
+### 2. Fichiers de Configuration
+
+#### `.env` - Variables d'environnement
+
+```bash
+# AUTHENTIFICATION
+LINKEDIN_EMAIL=votre.email@example.com
+LINKEDIN_PASSWORD=VotreMotDePasse123
+
+# Si auth_state.json existe, ces identifiants ne sont utilisés que pour le fallback
+
+# MODE DE TEST
+DRY_RUN=true  # true = test (affiche sans envoyer), false = production
+
+# NAVIGATEUR
+HEADLESS_BROWSER=true  # false pour voir le navigateur (debug)
+
+# PROXIES (optionnel)
+ENABLE_PROXY_ROTATION=false
+# Pour activer :
+# ENABLE_PROXY_ROTATION=true
+# PROXY_LIST=["http://user:pass@proxy1.com:8080", "http://user:pass@proxy2.com:8080"]
+
+# DEBUG AVANCÉ (optionnel)
+# ENABLE_ADVANCED_DEBUG=false
+# SCREENSHOT_ON_ERROR=true
+```
+
+#### `messages.txt` - Messages d'anniversaire
+
+```text
 Joyeux anniversaire, {name} ! J'espère que tu passes une excellente journée.
-Un petit message pour te souhaiter un très bon anniversaire, {name} !
+Bon anniversaire {name} ! 🎉
 Hello {name}, happy birthday!
+Un grand bonjour et un excellent anniversaire {name} ! 🎂
 ```
-Le script choisira une de ces lignes au hasard pour chaque contact.
 
-### 4. Configuration de la Rotation de Proxies (Optionnel mais Recommandé)
+Le placeholder `{name}` sera automatiquement remplacé par le prénom du contact.
 
-Pour éviter la détection par LinkedIn, vous pouvez configurer une rotation de proxies. Cela permet de masquer votre IP et de faire croire que les requêtes proviennent de différents endroits.
+#### `late_messages.txt` - Messages pour anniversaires en retard
 
-#### 🌐 Pourquoi utiliser des proxies ?
+```text
+Bonjour {name}, joyeux anniversaire avec un peu de retard ! 🎂
+{name}, j'espère que tu as passé un super anniversaire ! 🎉
+Meilleurs vœux d'anniversaire {name}, même s'ils arrivent un peu tard !
+```
 
-- **Éviter la détection** : Les IPs datacenter de GitHub Actions sont facilement détectables par LinkedIn
-- **Sécurité accrue** : Rotation automatique entre plusieurs proxies
-- **Fallback automatique** : Si un proxy échoue, le système bascule automatiquement sur un autre
-- **Métriques détaillées** : Suivi des performances de chaque proxy dans la base de données
+### 3. Personnalisation du Comportement
 
-#### Configuration des Proxies
+Éditez `config.json` pour le script `visit_profiles.py` (optionnel) :
 
-1. **Dans GitHub Secrets**, ajoutez les variables suivantes :
+```json
+{
+  "keywords": ["Azure", "DevOps", "Cloud"],
+  "location": "Ile-de-France",
+  "limits": {
+    "profiles_per_run": 15,
+    "max_pages_to_scrape": 100
+  },
+  "delays": {
+    "min_seconds": 8,
+    "max_seconds": 20,
+    "profile_visit_min": 15,
+    "profile_visit_max": 55
+  },
+  "timezone": {
+    "start_hour": 7,
+    "end_hour": 20
+  }
+}
+```
 
-   - **ENABLE_PROXY_ROTATION** : `true` (pour activer la rotation)
-   - **PROXY_LIST** : Liste JSON des proxies, format :
-     ```json
-     ["http://username:password@proxy1.com:8080", "http://username:password@proxy2.com:8080"]
-     ```
-   - **RANDOM_PROXY_SELECTION** (optionnel) : `true` pour sélection aléatoire, `false` pour round-robin (défaut: `false`)
-   - **PROXY_TIMEOUT** (optionnel) : Timeout en secondes (défaut: `10`)
-   - **PROXY_MAX_RETRIES** (optionnel) : Nombre de tentatives max (défaut: `3`)
+## 🤖 Automatisation avec Cron
 
-2. **Types de proxies recommandés** :
-   - ✅ **Résidentiels** : IPs résidentielles (HAUTEMENT RECOMMANDÉ pour LinkedIn)
-   - ✅ **Mobiles** : IPs mobiles (HAUTEMENT RECOMMANDÉ)
-   - ⚠️ **Datacenter** : IPs datacenter (peu recommandé, facilement détectables)
+### Créer le Script de Lancement
 
-3. **Exemple de configuration** :
+```bash
+nano ~/linkedin-birthday-auto/run.sh
+```
 
-   Voir le fichier `proxy_config.example.json` pour des exemples complets de configuration.
+```bash
+#!/bin/bash
+PROJECT_DIR="/home/pi/linkedin-birthday-auto"
+LOG_FILE="$PROJECT_DIR/logs/cron.log"
 
-4. **Surveillance des proxies** :
+mkdir -p "$PROJECT_DIR/logs"
 
-   Les métriques des proxies sont automatiquement enregistrées dans la table `proxy_metrics` de la base de données :
-   - Taux de succès/échec par proxy
-   - Temps de réponse moyen
-   - Messages d'erreur détaillés
-   - Historique complet
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Démarrage du bot" | tee -a "$LOG_FILE"
 
-   Vous pouvez consulter ces métriques via le Dashboard Web ou en interrogeant directement la base de données.
+cd "$PROJECT_DIR" || exit 1
+source "$PROJECT_DIR/venv/bin/activate"
 
-#### 🔒 Bonnes Pratiques
+export $(cat "$PROJECT_DIR/.env" | grep -v '^#' | xargs)
 
-- Utilisez au minimum **3-5 proxies** différents pour une rotation efficace
-- Privilégiez les **proxies résidentiels ou mobiles** pour LinkedIn
-- **Ne jamais utiliser de proxies gratuits** (très souvent bloqués)
-- Vérifiez que vos proxies supportent **HTTPS**
-- Remplacez les proxies qui échouent fréquemment
-- Localisez vos proxies dans des pays cohérents avec votre profil LinkedIn
+python3 "$PROJECT_DIR/linkedin_birthday_wisher.py" 2>&1 | tee -a "$LOG_FILE"
 
-#### 📊 Fournisseurs de Proxies Recommandés
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fin d'exécution" | tee -a "$LOG_FILE"
+```
 
-- Bright Data (ex-Luminati)
-- Smartproxy
-- Oxylabs
-- Geosurf
-- NetNut
+```bash
+chmod +x ~/linkedin-birthday-auto/run.sh
+```
 
-> **Note** : Ceci n'est pas une recommandation d'achat. Faites vos propres recherches et choisissez le fournisseur qui correspond à vos besoins.
+### Configurer Cron
 
-### 5. Alternatives Gratuites aux Proxies
+```bash
+crontab -e
+```
 
-Si vous ne souhaitez pas investir dans des proxies payants, vous avez plusieurs alternatives **100% gratuites** :
+Ajouter :
 
-#### 🏠 Installation Locale (Recommandé)
+```bash
+# Exécution tous les jours à 8h30
+30 8 * * * /home/pi/linkedin-birthday-auto/run.sh
 
-Installez le bot sur votre **propre matériel** pour utiliser votre IP résidentielle légitime :
+# Alternative : Heure aléatoire entre 8h et 10h (plus naturel)
+# 0 8 * * * sleep $((RANDOM \% 7200)) && /home/pi/linkedin-birthday-auto/run.sh
+```
 
-- **📖 [LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)** : Guide général pour PC, Mac, ou Raspberry Pi
-- **🍓 [RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** : Guide ultra-détaillé spécifique pour Raspberry Pi 4 (RECOMMANDÉ)
-- **📖 [SYNOLOGY_NAS_SETUP_GUIDE.md](SYNOLOGY_NAS_SETUP_GUIDE.md)** : Guide pour NAS Synology avec Docker
-- **📖 [SYNOLOGY_DS213J_GUIDE.md](SYNOLOGY_DS213J_GUIDE.md)** : Guide pour NAS Synology DS213J (sans Docker)
-- **📖 [FREEBOX_POP_GUIDE.md](FREEBOX_POP_GUIDE.md)** : Guide pour Freebox Pop avec disque 1To
-- **📖 [INSTALLATION_NAS_FREEBOX.md](INSTALLATION_NAS_FREEBOX.md)** : Guide général NAS Synology et Freebox
+## 📊 Dashboard Web (Optionnel)
 
-**Avantages** :
-- ✅ Totalement gratuit (sauf électricité ~1-3€/mois)
-- ✅ IP résidentielle 100% légitime
-- ✅ Aucune détection possible
-- ✅ Contrôle total
-- ✅ Disponible 24/7
+Surveillez l'activité du bot via une interface web :
 
-**Matériel compatible** :
-- **Raspberry Pi 4** (IDÉAL - 60-90€ une fois, 1€/mois d'électricité)
-- NAS Synology avec Container Manager / Docker
-- NAS Synology DS213J (installation native sans Docker)
-- Freebox Pop/Delta avec disque USB
-- N'importe quel PC/Mac/Linux
+```bash
+# Lancer le dashboard
+python3 dashboard_app.py
 
-#### 🎁 Essais Gratuits de Proxies Premium
+# Accessible sur http://raspberrypi.local:5000
+```
 
-Utilisez les **trials gratuits** des fournisseurs premium (17 jours total) :
+**Fonctionnalités du dashboard :**
+- 📈 Statistiques en temps réel
+- 📅 Historique des messages envoyés
+- 🔍 Recherche par contact ou date
+- 📊 Graphiques de performance
 
-- **📖 [PROXY_FREE_TRIALS_GUIDE.md](PROXY_FREE_TRIALS_GUIDE.md)** : Guide complet des essais gratuits
-- **🔧 `manage_proxy_trials.py`** : Script de gestion automatique des trials
+## 🔧 Maintenance
 
-**Timeline** :
-- Jours 1-3 : Smartproxy (pas de CB)
-- Jours 4-10 : Bright Data (meilleure qualité)
-- Jours 11-13 : IPRoyal ($1 crédit gratuit)
-- Jour 14+ : Installation locale recommandée
+### Consulter les Logs
 
-#### ⚖️ Sans Proxies (GitHub Actions uniquement)
+```bash
+# Logs de cron
+tail -f ~/linkedin-birthday-auto/logs/cron.log
 
-Possible mais risqué à long terme :
-- ⚠️ Limiter strictement à 15-20 messages/jour max
-- ⚠️ Surveillance accrue des logs
-- ⚠️ Détection possible après quelques semaines
+# Base de données SQLite
+sqlite3 ~/linkedin-birthday-auto/linkedin_birthday.db
 
-## Surveillance de l'automatisation
+# Voir les derniers messages envoyés
+sqlite3 ~/linkedin-birthday-auto/linkedin_birthday.db \
+  "SELECT * FROM birthday_messages ORDER BY timestamp DESC LIMIT 10;"
+```
 
-L'automatisation est configurée pour s'exécuter tous les jours. Voici comment vous pouvez la suivre :
+### Sauvegardes Automatiques
 
-- **Journaux d'exécution** : Pour voir si le script a bien fonctionné, allez dans l'onglet **Actions** de votre dépôt. Vous y verrez la liste de toutes les exécutions. En cliquant sur une exécution, vous pourrez consulter les logs détaillés.
-- **Notifications par e-mail** : Si une exécution échoue, GitHub vous enverra un e-mail. Dans ce cas, consultez les logs pour identifier la cause du problème. Si une capture d'écran d'erreur a été générée (`error_*.png`), elle sera disponible en tant qu'artefact téléchargeable en bas de la page de résumé de l'exécution.
+Créer `backup.sh` :
 
-## Comment ça marche ?
+```bash
+#!/bin/bash
+BACKUP_DIR="/home/pi/linkedin-birthday-auto/backups"
+mkdir -p "$BACKUP_DIR"
 
-Le script utilise la bibliothèque **Playwright** pour automatiser un navigateur web. Il se connecte à LinkedIn, navigue vers la page des anniversaires, identifie les contacts concernés et leur envoie un message privé choisi au hasard dans votre liste personnalisée. La première fois qu'il s'exécute, il sauvegarde les informations de session (cookies), ce qui lui permet de ne pas avoir à se reconnecter à chaque fois, rendant l'automatisation plus discrète.
+BACKUP_FILE="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).db"
+cp ~/linkedin-birthday-auto/linkedin_birthday.db "$BACKUP_FILE"
+
+# Garder seulement les 30 dernières sauvegardes
+cd "$BACKUP_DIR"
+ls -t | tail -n +31 | xargs -r rm --
+
+echo "[$(date)] Sauvegarde créée : $BACKUP_FILE"
+```
+
+```bash
+chmod +x backup.sh
+```
+
+Ajouter au crontab (hebdomadaire) :
+
+```bash
+# Sauvegarde hebdomadaire le dimanche à minuit
+0 0 * * 0 /home/pi/linkedin-birthday-auto/backup.sh
+```
+
+### Mise à Jour du Bot
+
+```bash
+cd ~/linkedin-birthday-auto
+git pull origin main
+source venv/bin/activate
+pip install --upgrade -r requirements.txt
+playwright install chromium
+```
+
+## 🐛 Dépannage
+
+### Le bot ne détecte pas les anniversaires
+
+```bash
+# Tester la connexion
+python3 linkedin_birthday_wisher.py
+
+# Vérifier auth_state.json
+ls -la auth_state.json
+
+# Régénérer l'authentification
+rm auth_state.json
+python3 generate_auth_simple.py
+```
+
+### Erreur "Element is not attached to the DOM"
+
+✅ **Corrigé automatiquement !**
+
+Le bot détecte maintenant les modales multiples et :
+1. Ferme toutes les modales ouvertes
+2. Re-recherche le bouton Message (évite le détachement DOM)
+3. Ré-ouvre la modale proprement
+4. Continue le traitement
+
+### Erreur de mémoire sur Raspberry Pi 2GB
+
+```bash
+# Augmenter la swap
+sudo dphys-swapfile swapoff
+sudo nano /etc/dphys-swapfile
+# Modifier : CONF_SWAPSIZE=2048
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
+### Températures élevées
+
+```bash
+# Vérifier la température
+vcgencmd measure_temp
+
+# Si > 75°C, installer un ventilateur ou boîtier avec dissipateur
+```
+
+## 📚 Documentation Complète
+
+Pour un guide pas-à-pas ultra-détaillé :
+
+**[📖 RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** - Guide complet d'installation sur Raspberry Pi 4
+
+**Contenu :**
+- ✅ Installation Raspberry Pi OS
+- ✅ Configuration initiale
+- ✅ Installation du bot
+- ✅ Gestion du 2FA (4 méthodes détaillées)
+- ✅ Automatisation avec cron
+- ✅ Monitoring et maintenance
+- ✅ Optimisations performances
+- ✅ Dépannage complet
+
+**Autres guides :**
+- [DEBUGGING.md](DEBUGGING.md) - Guide de débogage avancé
+- [SCRIPTS_USAGE.md](SCRIPTS_USAGE.md) - Utilisation des scripts auxiliaires
+- [PROXY_FREE_TRIALS_GUIDE.md](PROXY_FREE_TRIALS_GUIDE.md) - Guide des essais gratuits de proxies (optionnel)
+
+## 🔒 Sécurité
+
+- ✅ Fichier `.env` avec permissions `600` (lecture seule par vous)
+- ✅ `auth_state.json` jamais commité dans Git (dans `.gitignore`)
+- ✅ Pas de mot de passe en clair dans le code
+- ✅ Base de données locale uniquement
+- ✅ Pas de transmission de données à des tiers
+
+## 🆘 Support
+
+En cas de problème :
+
+1. **Consultez les logs** : `tail -f logs/cron.log`
+2. **Testez manuellement** : `python3 linkedin_birthday_wisher.py`
+3. **Vérifiez les issues GitHub** : [github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
+4. **Consultez le guide détaillé** : [RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)
+
+## 📜 Licence
+
+Ce projet est fourni "tel quel", sans garantie d'aucune sorte.
+
+Utilisation à vos propres risques. LinkedIn peut détecter et bloquer l'automatisation.
+
+**Recommandations :**
+- ⚠️ Limitez à 20-30 messages/jour maximum
+- ⚠️ Utilisez votre propre IP résidentielle (Raspberry Pi)
+- ⚠️ Variez les messages et les horaires
+- ⚠️ Ne sur-automatisez pas
+
+## 🎉 Améliorations Récentes
+
+### ✅ Version 2.0 - Corrections Majeures
+
+**Bugs corrigés :**
+
+1. **🐛 Bug des modales multiples**
+   - **Problème** : Erreur "Element is not attached to the DOM" lors de modales multiples
+   - **Solution** : Détection automatique, fermeture de toutes les modales, re-recherche du bouton
+   - **Résultat** : Plus d'erreurs de détachement DOM
+
+2. **⏱️ Attente inutile après skip**
+   - **Problème** : Pause de 3-4 minutes même quand le contact est skippé (pas de bouton Message)
+   - **Solution** : Pause de 1-3 secondes uniquement pour les skips
+   - **Résultat** : Script 10x plus rapide lors de contacts sans bouton
+
+**Fonctionnalités ajoutées :**
+
+3. **🔐 Script d'authentification simplifié**
+   - **Nouveau** : `generate_auth_simple.py`
+   - **Avantage** : Interface guidée, support 2FA natif, aucune configuration complexe
+
+---
+
+**Conçu avec ❤️ pour Raspberry Pi**
