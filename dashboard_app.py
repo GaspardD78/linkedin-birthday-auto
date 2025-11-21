@@ -547,6 +547,75 @@ def api_chart_data(chart_type):
 
 # ==================== MAINTENANCE ====================
 
+@app.route('/api/system_status')
+@login_required
+def api_system_status():
+    """API endpoint pour l'état du système"""
+    # Check scripts status
+    scripts_status = {
+        'birthday_wisher': False,
+        'visit_profiles': False
+    }
+
+    for proc in psutil.process_iter(['pid', 'cmdline']):
+        try:
+            cmdline = proc.info['cmdline']
+            if cmdline and 'python' in cmdline[0]:
+                for arg in cmdline:
+                    if 'linkedin_birthday_wisher.py' in arg:
+                        scripts_status['birthday_wisher'] = True
+                    elif 'visit_profiles.py' in arg:
+                        scripts_status['visit_profiles'] = True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+
+    # System stats
+    cpu_percent = psutil.cpu_percent()
+    memory = psutil.virtual_memory()
+
+    return jsonify({
+        'scripts': scripts_status,
+        'system': {
+            'cpu': cpu_percent,
+            'memory': memory.percent
+        }
+    })
+
+@app.route('/api/logs/content')
+@login_required
+def api_logs_content():
+    """API endpoint pour récupérer le contenu des logs"""
+    lines_count = request.args.get('lines', 50, type=int)
+    log_type = request.args.get('type', 'birthday') # birthday, visit, or system
+
+    filename = 'birthday_wisher.log'
+    if log_type == 'visit':
+        filename = 'visit_profiles.log'
+    elif log_type == 'system':
+        # Find the dashboard log if it exists, otherwise use default
+        filename = 'dashboard.log'
+
+    log_dir = 'logs'
+    filepath = os.path.join(log_dir, filename)
+
+    content = []
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                # Read all lines and take the last N
+                # For very large files, this could be optimized but sufficient for now
+                all_lines = f.readlines()
+                content = all_lines[-lines_count:]
+        except Exception as e:
+            content = [f"Error reading log: {str(e)}"]
+    else:
+        content = [f"Log file not found: {filename}"]
+
+    return jsonify({
+        'lines': content,
+        'filename': filename
+    })
+
 @app.route('/api/cleanup', methods=['POST'])
 @login_required
 def api_cleanup():
