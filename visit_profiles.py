@@ -3,6 +3,7 @@ import random
 import time
 import logging
 import base64
+import binascii
 import json
 import urllib.parse
 import math
@@ -563,26 +564,44 @@ def check_session_valid(page: Page) -> bool:
 
 def setup_authentication() -> bool:
     """
-    Set up authentication from environment variable.
+    Set up authentication from environment variable or local file.
 
     Returns:
         True if successful, False otherwise
     """
-    if not LINKEDIN_AUTH_STATE:
-        logging.error("LINKEDIN_AUTH_STATE environment variable is not set. Exiting.")
-        return False
+    # 1. Try Environment Variable first (Priority)
+    if LINKEDIN_AUTH_STATE:
+        try:
+            # Try to load the auth state as a JSON string directly
+            json.loads(LINKEDIN_AUTH_STATE)
+            logging.info("Auth state is a valid JSON string. Writing to file directly.")
+            with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
+                f.write(LINKEDIN_AUTH_STATE)
+            return True
+        except json.JSONDecodeError:
+            # If it's not a JSON string, assume it's a Base64 encoded binary file
+            logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
+            try:
+                padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
+                auth_state_padded = LINKEDIN_AUTH_STATE + padding
+                auth_state_bytes = base64.b64decode(auth_state_padded)
+                with open(AUTH_FILE_PATH, "wb") as f:
+                    f.write(auth_state_bytes)
+                return True
+            except (binascii.Error, TypeError) as e:
+                logging.error(f"Failed to decode Base64 auth state: {e}")
+                # Continue to fallback...
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during auth state setup: {e}")
+            # Continue to fallback...
 
-    try:
-        auth_state_decoded = base64.b64decode(LINKEDIN_AUTH_STATE)
-        with open(AUTH_FILE_PATH, "wb") as f:
-            f.write(auth_state_decoded)
-        logging.info("Authentication state decoded successfully")
+    # 2. Fallback to existing 'auth_state.json' if it was manually placed
+    if os.path.exists(AUTH_FILE_PATH):
+        logging.info(f"Environment variable missing. Found existing '{AUTH_FILE_PATH}', using it.")
         return True
-    except Exception as e:
-        logging.error(f"Failed to decode or write auth state: {e}")
-        log_error_to_db('visit_profiles', 'AuthSetupError',
-                       'Failed to decode authentication state', str(e))
-        return False
+
+    logging.error("LINKEDIN_AUTH_STATE environment variable is not set and no valid local auth file found. Exiting.")
+    return False
 
 def setup_browser_context(p, proxy_manager: ProxyManager) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page], Optional[Dict], Optional[float]]:
     """
