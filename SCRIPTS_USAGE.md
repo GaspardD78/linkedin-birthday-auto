@@ -192,3 +192,28 @@ Résultat: Tous les anniversaires fêtés régulièrement dans la journée ✅
 ---
 
 **Dernière mise à jour :** 2025-11-18
+
+---
+
+## 🚀 Script de mise à jour (`update_bot.sh`)
+
+Ce script simplifie la mise à jour du bot sur Raspberry Pi.
+
+### Fonctionnalités
+- ✅ **Sauvegarde automatique** des fichiers de configuration et données (`.env`, `auth_state.json`, `linkedin_birthday.db`, etc.)
+- ✅ **Mise à jour Git** propre (fetch + pull)
+- ✅ **Restauration** des fichiers personnels après mise à jour
+- ✅ **Installation des dépendances** (pip + playwright)
+- ✅ **Test rapide** pour vérifier que le script se lance bien
+
+### Utilisation
+
+```bash
+# Rendre exécutable (première fois)
+chmod +x update_bot.sh
+
+# Lancer la mise à jour
+./update_bot.sh
+```
+
+**Note :** N'utilisez pas `python3 update_bot.sh`, c'est un script Bash !

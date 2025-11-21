@@ -273,6 +273,14 @@ Ajouter au crontab (hebdomadaire) :
 
 ### Mise à Jour du Bot
 
+Utilisez simplement le script de mise à jour automatique :
+
+```bash
+./update_bot.sh
+```
+
+Ou manuellement :
+
 ```bash
 cd ~/linkedin-birthday-auto
 git pull origin main
