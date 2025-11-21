@@ -342,6 +342,155 @@ ls -la .env
 # Doit afficher : -rw------- 1 pi pi ...
 ```
 
+### Étape 15bis : Gérer l'Authentification à Deux Facteurs (2FA) 🔐
+
+Si vous avez activé le **2FA (authentification à deux facteurs)** sur LinkedIn, le simple login/mot de passe ne fonctionnera pas. Voici **3 solutions** :
+
+#### Solution 1 : Générer auth_state.json sur PC puis le transférer (RECOMMANDÉ)
+
+**Sur votre PC/Mac (avec interface graphique) :**
+
+```bash
+# Cloner le repository temporairement
+git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+cd linkedin-birthday-auto
+
+# Installer les dépendances
+pip install -r requirements.txt
+playwright install chromium
+
+# Créer un fichier .env temporaire
+cat > .env << EOF
+LINKEDIN_EMAIL=votre.email@example.com
+LINKEDIN_PASSWORD=VotreMotDePasse123
+HEADLESS_BROWSER=false
+DRY_RUN=true
+EOF
+
+# Lancer le script UNE FOIS en mode non-headless
+python3 linkedin_birthday_wisher.py
+```
+
+**Lors de l'exécution :**
+1. Le navigateur Chromium s'ouvre
+2. Vous êtes redirigé vers la page de connexion LinkedIn
+3. Entrez votre email/mot de passe
+4. **Entrez le code 2FA** depuis votre téléphone/application
+5. Une fois connecté, le script crée automatiquement `auth_state.json`
+6. Le script continue et se termine
+
+**Transférer auth_state.json vers le Raspberry Pi :**
+
+```bash
+# Sur votre PC, depuis le dossier du projet
+scp auth_state.json pi@raspberrypi.local:~/linkedin-birthday-auto/
+
+# Ou si vous connaissez l'IP
+scp auth_state.json pi@192.168.1.X:~/linkedin-birthday-auto/
+```
+
+**Sur le Raspberry Pi, vérifier que le fichier est bien là :**
+
+```bash
+ls -la ~/linkedin-birthday-auto/auth_state.json
+```
+
+Maintenant le bot utilisera `auth_state.json` pour se connecter automatiquement **sans demander le code 2FA** à chaque exécution !
+
+#### Solution 2 : Première connexion en mode GUI sur le Raspberry Pi
+
+Si vous avez un écran HDMI connecté au Raspberry Pi :
+
+```bash
+# Modifier .env pour désactiver le mode headless TEMPORAIREMENT
+nano ~/linkedin-birthday-auto/.env
+```
+
+Modifier la ligne :
+```bash
+HEADLESS_BROWSER=false
+```
+
+**Lancer le script :**
+
+```bash
+cd ~/linkedin-birthday-auto
+source venv/bin/activate
+python3 linkedin_birthday_wisher.py
+```
+
+1. Le navigateur Chromium s'ouvre sur l'écran du Raspberry Pi
+2. Connectez-vous à LinkedIn
+3. Entrez le code 2FA
+4. Le fichier `auth_state.json` est généré automatiquement
+5. Le script se termine
+
+**Réactiver le mode headless :**
+
+```bash
+nano ~/linkedin-birthday-auto/.env
+```
+
+Remettre :
+```bash
+HEADLESS_BROWSER=true
+```
+
+**Désormais, le bot se connectera automatiquement sans 2FA.**
+
+#### Solution 3 : Utiliser VNC pour accéder au bureau du Raspberry Pi
+
+Si vous n'avez pas d'écran HDMI mais voulez quand même voir l'interface graphique :
+
+**Activer VNC sur le Raspberry Pi :**
+
+```bash
+sudo raspi-config
+```
+
+1. **3 Interface Options** → **I3 VNC** → **Yes**
+2. Reboot : `sudo reboot`
+
+**Sur votre PC/Mac :**
+1. Téléchargez **VNC Viewer** : https://www.realvnc.com/en/connect/download/viewer/
+2. Connectez-vous à `raspberrypi.local` ou `192.168.1.X`
+3. Vous verrez le bureau du Raspberry Pi
+
+**Puis suivez la Solution 2** en lançant le script depuis le Terminal VNC.
+
+#### Solution 4 : Désactiver temporairement le 2FA (Non Recommandé)
+
+Si vraiment aucune solution ne fonctionne :
+
+1. Allez dans les paramètres LinkedIn sur votre navigateur
+2. Désactivez temporairement le 2FA
+3. Lancez le script UNE FOIS pour générer `auth_state.json`
+4. Réactivez le 2FA
+
+**⚠️ Moins sécurisé, à utiliser en dernier recours uniquement.**
+
+---
+
+### 💡 Comprendre auth_state.json
+
+Le fichier `auth_state.json` contient les **cookies et tokens de session LinkedIn**. Une fois généré :
+- ✅ Le bot se connecte automatiquement sans redemander vos identifiants
+- ✅ Pas besoin du code 2FA à chaque exécution
+- ✅ Valide généralement pendant **plusieurs semaines/mois**
+- ⚠️ Si LinkedIn vous déconnecte, il faudra régénérer le fichier
+
+**Régénérer auth_state.json :**
+
+```bash
+# Supprimer l'ancien fichier
+rm ~/linkedin-birthday-auto/auth_state.json
+
+# Relancer le script (suivre Solution 1 ou 2)
+python3 ~/linkedin-birthday-auto/linkedin_birthday_wisher.py
+```
+
+---
+
 ### Étape 16 : Test Manuel Initial
 
 ```bash
