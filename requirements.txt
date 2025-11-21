@@ -3,3 +3,5 @@ playwright-stealth
 pytz
 flask
 gunicorn
+flask-login
+psutil

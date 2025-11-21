@@ -22,7 +22,16 @@ from selector_validator import validate_search_selectors
 from proxy_manager import ProxyManager
 
 # --- Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/profile_visitor.log"),
+        logging.StreamHandler()
+    ]
+)
 
 # Authentication
 LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
