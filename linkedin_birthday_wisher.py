@@ -1033,31 +1033,31 @@ def main():
 
     # Decode and save the auth state from the environment variable
     # --- Authentication Setup ---
-    if not LINKEDIN_AUTH_STATE:
-        logging.error("LINKEDIN_AUTH_STATE environment variable is not set. Exiting.")
-        return
-
-    try:
-        # Try to load the auth state as a JSON string directly
-        json.loads(LINKEDIN_AUTH_STATE)
-        logging.info("Auth state is a valid JSON string. Writing to file directly.")
-        with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(LINKEDIN_AUTH_STATE)
-    except json.JSONDecodeError:
-        # If it's not a JSON string, assume it's a Base64 encoded binary file
-        logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
+    if LINKEDIN_AUTH_STATE and LINKEDIN_AUTH_STATE.strip():
+        # LINKEDIN_AUTH_STATE is set and not empty, load it
         try:
-            padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
-            auth_state_padded = LINKEDIN_AUTH_STATE + padding
-            auth_state_bytes = base64.b64decode(auth_state_padded)
-            with open(AUTH_FILE_PATH, "wb") as f:
-                f.write(auth_state_bytes)
-        except (base64.binascii.Error, TypeError) as e:
-            logging.error(f"Failed to decode Base64 auth state: {e}")
+            # Try to load the auth state as a JSON string directly
+            json.loads(LINKEDIN_AUTH_STATE)
+            logging.info("Auth state is a valid JSON string. Writing to file directly.")
+            with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
+                f.write(LINKEDIN_AUTH_STATE)
+        except json.JSONDecodeError:
+            # If it's not a JSON string, assume it's a Base64 encoded binary file
+            logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
+            try:
+                padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
+                auth_state_padded = LINKEDIN_AUTH_STATE + padding
+                auth_state_bytes = base64.b64decode(auth_state_padded)
+                with open(AUTH_FILE_PATH, "wb") as f:
+                    f.write(auth_state_bytes)
+            except (base64.binascii.Error, TypeError) as e:
+                logging.error(f"Failed to decode Base64 auth state: {e}")
+                return
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during auth state setup: {e}")
             return
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during auth state setup: {e}")
-        return
+    else:
+        logging.info("LINKEDIN_AUTH_STATE is empty or not set. Will use existing auth_state.json or generate new one from login.")
 
     with sync_playwright() as p:
         # Initialize proxy manager
