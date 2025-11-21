@@ -2,7 +2,7 @@
   "keywords": ["Azure", "APIM", "AKS", "Terraform"],
   "location": "Ile-de-France",
   "limits": {
-    "profiles_per_run": 15,
+    "profiles_per_run": 50,
     "max_pages_to_scrape": 100,
     "max_pages_without_new": 3
   },
