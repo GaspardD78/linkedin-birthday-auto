@@ -24,14 +24,30 @@ from proxy_manager import ProxyManager
 # --- Configuration ---
 # Ensure logs directory exists
 os.makedirs("logs", exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("logs/visit_profiles.log"),
-        logging.StreamHandler()
-    ]
-)
+
+# Configure logger to avoid duplicate handlers
+logger = logging.getLogger('visit_profiles')
+logger.setLevel(logging.INFO)
+
+# Remove any existing handlers to avoid duplicates
+if logger.handlers:
+    logger.handlers.clear()
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+# File handler
+file_handler = logging.FileHandler("logs/visit_profiles.log")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+# Prevent propagation to root logger
+logger.propagate = False
 
 # Authentication
 LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
@@ -102,13 +118,13 @@ def load_config() -> Optional[Dict[str, Any]]:
             config = json.load(f)
             # Validate required keys
             if 'keywords' not in config or 'location' not in config:
-                logging.error("config.json must contain 'keywords' and 'location' keys.")
+                logger.error("config.json must contain 'keywords' and 'location' keys.")
                 return None
             if not isinstance(config['keywords'], list) or len(config['keywords']) == 0:
-                logging.error("'keywords' must be a non-empty list in config.json.")
+                logger.error("'keywords' must be a non-empty list in config.json.")
                 return None
             if not isinstance(config['location'], str) or not config['location'].strip():
-                logging.error("'location' must be a non-empty string in config.json.")
+                logger.error("'location' must be a non-empty string in config.json.")
                 return None
 
             # Set defaults for optional settings
@@ -139,10 +155,10 @@ def load_config() -> Optional[Dict[str, Any]]:
 
             return config
     except FileNotFoundError:
-        logging.error("config.json not found. Please create it.")
+        logger.error("config.json not found. Please create it.")
         return None
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding config.json: {e}. Please check its format.")
+        logger.error(f"Error decoding config.json: {e}. Please check its format.")
         return None
 
 def extract_profile_name_from_url(url: str) -> str:
@@ -176,7 +192,7 @@ def extract_profile_name_from_url(url: str) -> str:
 
         return name
     except Exception as e:
-        logging.warning(f"Error extracting profile name from URL {url}: {e}")
+        logger.warning(f"Error extracting profile name from URL {url}: {e}")
         return 'Unknown'
 
 def random_delay(min_seconds: float = 8, max_seconds: float = 20):
@@ -196,7 +212,7 @@ def random_delay(min_seconds: float = 8, max_seconds: float = 20):
     if random.random() < 0.1:
         extra_delay = random.uniform(30, 60)
         delay += extra_delay
-        logging.info(f"Pause prolongée: {delay:.1f}s")
+        logger.info(f"Pause prolongée: {delay:.1f}s")
 
     time.sleep(delay)
 
@@ -279,10 +295,10 @@ def simulate_human_interactions(page: Page):
         # Temps de lecture variable (distribution normale)
         reading_time = random.gauss(10, 3)  # Mean 10s, std dev 3s
         reading_time = max(5, min(15, reading_time))  # Clamp between 5-15s
-        logging.debug(f"Simulation lecture: {reading_time:.1f}s")
+        logger.debug(f"Simulation lecture: {reading_time:.1f}s")
         time.sleep(reading_time)
     except Exception as e:
-        logging.debug(f"Erreur lors de la simulation d'interactions (non critique): {e}")
+        logger.debug(f"Erreur lors de la simulation d'interactions (non critique): {e}")
 
 # --- Screenshot management ---
 
@@ -309,12 +325,12 @@ def cleanup_old_screenshots(max_age_days: int = 7):
                     if file_age > max_age_seconds:
                         os.remove(file_path)
                         cleaned_count += 1
-                        logging.debug(f"Removed old screenshot: {filename}")
+                        logger.debug(f"Removed old screenshot: {filename}")
 
         if cleaned_count > 0:
-            logging.info(f"Cleaned up {cleaned_count} old screenshot(s)")
+            logger.info(f"Cleaned up {cleaned_count} old screenshot(s)")
     except Exception as e:
-        logging.warning(f"Error during screenshot cleanup: {e}")
+        logger.warning(f"Error during screenshot cleanup: {e}")
 
 def take_error_screenshot(page: Page, error_type: str) -> Optional[str]:
     """
@@ -331,10 +347,10 @@ def take_error_screenshot(page: Page, error_type: str) -> Optional[str]:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         screenshot_path = f'error_{error_type}_{timestamp}.png'
         page.screenshot(path=screenshot_path)
-        logging.info(f"Screenshot saved: {screenshot_path}")
+        logger.info(f"Screenshot saved: {screenshot_path}")
         return screenshot_path
     except Exception as e:
-        logging.warning(f"Failed to take screenshot: {e}")
+        logger.warning(f"Failed to take screenshot: {e}")
         return None
 
 # --- Error handling ---
@@ -354,9 +370,9 @@ def log_error_to_db(script_name: str, error_type: str, error_message: str,
     try:
         db = get_database()
         db.log_error(script_name, error_type, error_message, error_details, screenshot_path)
-        logging.info(f"Error logged to database: {error_type}")
+        logger.info(f"Error logged to database: {error_type}")
     except Exception as e:
-        logging.error(f"Failed to log error to database: {e}")
+        logger.error(f"Failed to log error to database: {e}")
 
 # --- Core Automation Functions ---
 
@@ -365,10 +381,10 @@ def check_login_status(page: Page) -> bool:
     try:
         page.goto("https://www.linkedin.com/feed/", timeout=60000)
         page.wait_for_selector("img.global-nav__me-photo", timeout=15000)
-        logging.info("Successfully logged in.")
+        logger.info("Successfully logged in.")
         return True
     except PlaywrightTimeoutError:
-        logging.error("Failed to verify login.")
+        logger.error("Failed to verify login.")
         screenshot_path = take_error_screenshot(page, 'login_verification_failed')
         log_error_to_db('visit_profiles', 'LoginVerificationError',
                        'Failed to verify login status', screenshot_path=screenshot_path)
@@ -380,7 +396,7 @@ def search_profiles(page: Page, keywords: List[str], location: str, page_number:
     # Use the location text directly in the search query, which is more flexible.
     search_url = f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(keyword_str)}&location={urllib.parse.quote(location)}&origin=GLOBAL_SEARCH_HEADER&page={page_number}"
 
-    logging.info(f"Navigating to search URL (page {page_number}): {search_url}")
+    logger.info(f"Navigating to search URL (page {page_number}): {search_url}")
     page.goto(search_url, timeout=90000)
     random_delay()
 
@@ -400,7 +416,7 @@ def search_profiles(page: Page, keywords: List[str], location: str, page_number:
             random_delay()
 
         result_containers = page.query_selector_all(result_container_selector)
-        logging.info(f"Found {len(result_containers)} result containers on the page.")
+        logger.info(f"Found {len(result_containers)} result containers on the page.")
 
         for container in result_containers:
             # The link is in an 'a' tag with a specific data-view-name attribute
@@ -412,9 +428,9 @@ def search_profiles(page: Page, keywords: List[str], location: str, page_number:
                     clean_url = href.split('?')[0]
                     profile_links.append(clean_url)
 
-        logging.info(f"Extracted {len(profile_links)} potential profiles from containers.")
+        logger.info(f"Extracted {len(profile_links)} potential profiles from containers.")
     except PlaywrightTimeoutError:
-        logging.warning("Could not find profile result containers on the search results page.")
+        logger.warning("Could not find profile result containers on the search results page.")
         screenshot_path = take_error_screenshot(page, 'search_no_results')
         log_error_to_db('visit_profiles', 'SearchError',
                        'No search results found', screenshot_path=screenshot_path)
@@ -447,7 +463,7 @@ def record_profile_visit(profile_url: str, profile_name: str, config: Dict,
             error_message=error_message
         )
     except Exception as e:
-        logging.error(f"Failed to record profile visit to database: {e}")
+        logger.error(f"Failed to record profile visit to database: {e}")
 
 def visit_profile_with_retry(page: Page, url: str, config: Dict,
                             max_attempts: int = 3, backoff_factor: int = 2) -> bool:
@@ -468,7 +484,7 @@ def visit_profile_with_retry(page: Page, url: str, config: Dict,
 
     for attempt in range(max_attempts):
         try:
-            logging.info(f"Visiting profile (attempt {attempt + 1}/{max_attempts}): {url}")
+            logger.info(f"Visiting profile (attempt {attempt + 1}/{max_attempts}): {url}")
             page.goto(url, timeout=60000)
 
             # Simuler des interactions humaines (scroll, mouvements de souris)
@@ -483,17 +499,17 @@ def visit_profile_with_retry(page: Page, url: str, config: Dict,
 
         except PlaywrightTimeoutError as e:
             wait_time = backoff_factor ** attempt
-            logging.warning(f"Timeout visiting profile (attempt {attempt + 1}/{max_attempts}): {e}")
+            logger.warning(f"Timeout visiting profile (attempt {attempt + 1}/{max_attempts}): {e}")
 
             if attempt < max_attempts - 1:
-                logging.info(f"Retrying in {wait_time} seconds...")
+                logger.info(f"Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
             else:
-                logging.error(f"Failed to visit profile after {max_attempts} attempts")
+                logger.error(f"Failed to visit profile after {max_attempts} attempts")
                 return False
 
         except Exception as e:
-            logging.error(f"Unexpected error visiting profile: {e}")
+            logger.error(f"Unexpected error visiting profile: {e}")
             return False
 
     return False
@@ -513,7 +529,7 @@ def is_profile_already_visited(profile_url: str, days: int = 30) -> bool:
         db = get_database()
         return db.is_profile_visited(profile_url, days)
     except Exception as e:
-        logging.error(f"Error checking if profile visited: {e}")
+        logger.error(f"Error checking if profile visited: {e}")
         # On error, assume not visited to avoid skipping profiles
         return False
 
@@ -533,7 +549,7 @@ def check_session_valid(page: Page) -> bool:
 
         # If we're on a login/checkpoint page, session is invalid
         if 'login' in current_url or 'checkpoint' in current_url or 'authwall' in current_url:
-            logging.warning(f"Session appears invalid - on auth page: {current_url}")
+            logger.warning(f"Session appears invalid - on auth page: {current_url}")
             return False
 
         # Try to find the user menu/photo with multiple selectors and longer timeout
@@ -547,18 +563,18 @@ def check_session_valid(page: Page) -> bool:
         for selector in user_menu_selectors:
             try:
                 page.wait_for_selector(selector, timeout=10000)
-                logging.debug(f"Session valid - found selector: {selector}")
+                logger.debug(f"Session valid - found selector: {selector}")
                 return True
             except PlaywrightTimeoutError:
                 continue
 
         # If none of the selectors found, session might be invalid
-        logging.warning("Session may be invalid - couldn't find any user menu indicators")
-        logging.debug(f"Current URL: {current_url}")
+        logger.warning("Session may be invalid - couldn't find any user menu indicators")
+        logger.debug(f"Current URL: {current_url}")
         return False
 
     except Exception as e:
-        logging.error(f"Error checking session validity: {e}")
+        logger.error(f"Error checking session validity: {e}")
         return False
 
 # --- Setup Functions ---
@@ -575,13 +591,13 @@ def setup_authentication() -> bool:
         try:
             # Try to load the auth state as a JSON string directly
             json.loads(LINKEDIN_AUTH_STATE)
-            logging.info("Auth state is a valid JSON string. Writing to file directly.")
+            logger.info("Auth state is a valid JSON string. Writing to file directly.")
             with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
                 f.write(LINKEDIN_AUTH_STATE)
             return True
         except json.JSONDecodeError:
             # If it's not a JSON string, assume it's a Base64 encoded binary file
-            logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
+            logger.info("Auth state is not a JSON string, attempting to decode from Base64.")
             try:
                 padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
                 auth_state_padded = LINKEDIN_AUTH_STATE + padding
@@ -590,18 +606,18 @@ def setup_authentication() -> bool:
                     f.write(auth_state_bytes)
                 return True
             except (binascii.Error, TypeError) as e:
-                logging.error(f"Failed to decode Base64 auth state: {e}")
+                logger.error(f"Failed to decode Base64 auth state: {e}")
                 # Continue to fallback...
         except Exception as e:
-            logging.error(f"An unexpected error occurred during auth state setup: {e}")
+            logger.error(f"An unexpected error occurred during auth state setup: {e}")
             # Continue to fallback...
 
     # 2. Fallback to existing 'auth_state.json' if it was manually placed
     if os.path.exists(AUTH_FILE_PATH):
-        logging.info(f"Environment variable missing. Found existing '{AUTH_FILE_PATH}', using it.")
+        logger.info(f"Environment variable missing. Found existing '{AUTH_FILE_PATH}', using it.")
         return True
 
-    logging.error("LINKEDIN_AUTH_STATE environment variable is not set and no valid local auth file found. Exiting.")
+    logger.error("LINKEDIN_AUTH_STATE environment variable is not set and no valid local auth file found. Exiting.")
     return False
 
 def setup_browser_context(p, proxy_manager: ProxyManager) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page], Optional[Dict], Optional[float]]:
@@ -622,9 +638,9 @@ def setup_browser_context(p, proxy_manager: ProxyManager) -> Tuple[Optional[Brow
         proxy_config = proxy_manager.get_playwright_proxy_config()
         proxy_start_time = time.time()
         if proxy_config:
-            logging.info(f"🌐 Proxy rotation enabled - using proxy")
+            logger.info(f"🌐 Proxy rotation enabled - using proxy")
         else:
-            logging.warning("⚠️ Proxy rotation enabled but no proxy available, continuing without proxy")
+            logger.warning("⚠️ Proxy rotation enabled but no proxy available, continuing without proxy")
 
     # Lancement du browser avec arguments anti-détection
     browser = p.chromium.launch(
@@ -686,27 +702,27 @@ def visit_profiles_loop(page: Page, config: Dict, metrics: ExecutionMetrics) -> 
     max_pages_without_new = limits.get('max_pages_without_new', 3)
 
     # Validate search selectors before starting
-    logging.info("🔍 Validating search page selectors...")
+    logger.info("🔍 Validating search page selectors...")
     test_search_url = f"https://www.linkedin.com/search/results/people/?keywords={config['keywords'][0]}"
     page.goto(test_search_url, timeout=60000)
     random_delay(1, 2)
 
     selectors_valid = validate_search_selectors(page)
     if not selectors_valid:
-        logging.warning("⚠️ Some search selectors are invalid - LinkedIn may have changed")
+        logger.warning("⚠️ Some search selectors are invalid - LinkedIn may have changed")
 
     # Iterate through multiple pages
     current_page = 1
     pages_without_new_profiles = 0
 
     while current_page <= max_pages and profiles_visited < profiles_per_run:
-        logging.info(f"Scraping page {current_page}/{max_pages}")
+        logger.info(f"Scraping page {current_page}/{max_pages}")
         metrics.pages_scraped = current_page
 
         profile_urls = search_profiles(page, config['keywords'], config['location'], current_page)
 
         if not profile_urls:
-            logging.info(f"No more profiles found on page {current_page}. Stopping pagination.")
+            logger.info(f"No more profiles found on page {current_page}. Stopping pagination.")
             break
 
         # Track if we found new profiles on this page
@@ -714,16 +730,16 @@ def visit_profiles_loop(page: Page, config: Dict, metrics: ExecutionMetrics) -> 
 
         for url in profile_urls:
             if profiles_visited >= profiles_per_run:
-                logging.info(f"Reached visit limit for this run ({profiles_per_run}).")
+                logger.info(f"Reached visit limit for this run ({profiles_per_run}).")
                 break
 
             # Check if already visited using database
             if is_profile_already_visited(url, days=30):
-                logging.info(f"Skipping already visited profile: {url}")
+                logger.info(f"Skipping already visited profile: {url}")
                 continue
 
             found_new_profiles = True
-            logging.info(f"Visiting profile: {url}")
+            logger.info(f"Visiting profile: {url}")
 
             # Extract profile name from URL
             profile_name = extract_profile_name_from_url(url)
@@ -750,25 +766,25 @@ def visit_profiles_loop(page: Page, config: Dict, metrics: ExecutionMetrics) -> 
                 # Check session validity periodically (every 5 profiles)
                 if profiles_visited % 5 == 0:
                     if not check_session_valid(page):
-                        logging.error("Session is no longer valid. Stopping.")
+                        logger.error("Session is no longer valid. Stopping.")
                         log_error_to_db('visit_profiles', 'SessionInvalidError',
                                       'LinkedIn session became invalid during execution')
                         break
             else:
-                logging.info(f"[DRY RUN] Would have visited {url}")
+                logger.info(f"[DRY RUN] Would have visited {url}")
                 record_profile_visit(url, profile_name, config, success=True)
                 profiles_visited += 1
                 metrics.record_profile_attempt(True)
 
-            logging.info(f"Profiles visited in this run: {profiles_visited}/{profiles_per_run}")
+            logger.info(f"Profiles visited in this run: {profiles_visited}/{profiles_per_run}")
             random_delay()
 
         # Safety check: if we didn't find new profiles, increment counter
         if not found_new_profiles:
             pages_without_new_profiles += 1
-            logging.info(f"No new profiles on page {current_page} ({pages_without_new_profiles}/{max_pages_without_new} pages without new)")
+            logger.info(f"No new profiles on page {current_page} ({pages_without_new_profiles}/{max_pages_without_new} pages without new)")
             if pages_without_new_profiles >= max_pages_without_new:
-                logging.info(f"Stopping: {max_pages_without_new} consecutive pages with no new profiles.")
+                logger.info(f"Stopping: {max_pages_without_new} consecutive pages with no new profiles.")
                 break
         else:
             pages_without_new_profiles = 0  # Reset counter
@@ -784,7 +800,7 @@ def visit_profiles_loop(page: Page, config: Dict, metrics: ExecutionMetrics) -> 
         max_nav_delay = delays.get('page_navigation_max', 6)
         random_delay(min_nav_delay, max_nav_delay)
 
-    logging.info(f"Script finished successfully. Scraped {current_page} page(s).")
+    logger.info(f"Script finished successfully. Scraped {current_page} page(s).")
     return profiles_visited
 
 def cleanup_resources(browser: Browser, proxy_manager: ProxyManager, proxy_config: Optional[Dict],
@@ -806,22 +822,22 @@ def cleanup_resources(browser: Browser, proxy_manager: ProxyManager, proxy_confi
 
         if script_successful:
             proxy_manager.record_proxy_result(proxy_url, success=True, response_time=response_time)
-            logging.info(f"✅ Proxy completed successfully (response time: {response_time:.2f}s)")
+            logger.info(f"✅ Proxy completed successfully (response time: {response_time:.2f}s)")
         else:
             proxy_manager.record_proxy_result(proxy_url, success=False, response_time=response_time,
                                             error_message="Script execution failed")
-            logging.warning(f"⚠️ Proxy recorded as failed due to script errors")
+            logger.warning(f"⚠️ Proxy recorded as failed due to script errors")
 
-    logging.info("Closing browser.")
+    logger.info("Closing browser.")
     try:
         browser.close()
     except Exception as e:
         # Browser might already be closed by playwright context manager
-        logging.debug(f"Browser close skipped (already closed): {e}")
+        logger.debug(f"Browser close skipped (already closed): {e}")
 
     if os.path.exists(AUTH_FILE_PATH):
         os.remove(AUTH_FILE_PATH)
-        logging.debug("Auth file removed")
+        logger.debug("Auth file removed")
 
 # --- Main Execution ---
 
@@ -834,13 +850,13 @@ def main():
         return
 
     # Log browser mode
-    logging.info(f"=== Browser mode: {'HEADLESS' if HEADLESS_BROWSER else 'VISIBLE (with GUI)'} ===")
+    logger.info(f"=== Browser mode: {'HEADLESS' if HEADLESS_BROWSER else 'VISIBLE (with GUI)'} ===")
 
     # Clean up old screenshots
     cleanup_old_screenshots(max_age_days=7)
 
     if DRY_RUN:
-        logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
+        logger.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
     # Initialize metrics
     metrics = ExecutionMetrics()
@@ -865,7 +881,7 @@ def main():
             browser, context, page, proxy_config, proxy_start_time = setup_browser_context(p, proxy_manager)
 
             if not browser or not page:
-                logging.error("Failed to set up browser")
+                logger.error("Failed to set up browser")
                 return
 
             # Check login
@@ -880,21 +896,21 @@ def main():
 
             # Log metrics summary
             summary = metrics.get_summary()
-            logging.info("=" * 60)
-            logging.info("EXECUTION METRICS SUMMARY")
-            logging.info("=" * 60)
-            logging.info(f"Duration: {summary['duration_seconds']:.1f}s")
-            logging.info(f"Profiles attempted: {summary['profiles_attempted']}")
-            logging.info(f"Profiles succeeded: {summary['profiles_succeeded']}")
-            logging.info(f"Profiles failed: {summary['profiles_failed']}")
-            logging.info(f"Success rate: {summary['success_rate']:.1f}%")
-            logging.info(f"Pages scraped: {summary['pages_scraped']}")
-            logging.info(f"Avg time per profile: {summary['avg_time_per_profile']:.1f}s")
-            logging.info(f"Errors encountered: {summary['errors_count']}")
-            logging.info("=" * 60)
+            logger.info("=" * 60)
+            logger.info("EXECUTION METRICS SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"Duration: {summary['duration_seconds']:.1f}s")
+            logger.info(f"Profiles attempted: {summary['profiles_attempted']}")
+            logger.info(f"Profiles succeeded: {summary['profiles_succeeded']}")
+            logger.info(f"Profiles failed: {summary['profiles_failed']}")
+            logger.info(f"Success rate: {summary['success_rate']:.1f}%")
+            logger.info(f"Pages scraped: {summary['pages_scraped']}")
+            logger.info(f"Avg time per profile: {summary['avg_time_per_profile']:.1f}s")
+            logger.info(f"Errors encountered: {summary['errors_count']}")
+            logger.info("=" * 60)
 
     except PlaywrightTimeoutError as e:
-        logging.error(f"A timeout error occurred: {e}")
+        logger.error(f"A timeout error occurred: {e}")
         error_msg = f"Playwright timeout: {str(e)}"
 
         if page:
@@ -905,7 +921,7 @@ def main():
         metrics.record_error(error_msg)
 
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
         error_msg = f"Unexpected error: {str(e)}"
 
         if page:
