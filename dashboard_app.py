@@ -20,6 +20,17 @@ import logging
 basedir = os.path.abspath(os.path.dirname(__file__))
 template_dir = os.path.join(basedir, 'templates')
 
+# Configure logging for dashboard
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("logs/dashboard.log"),
+        logging.StreamHandler()
+    ]
+)
+
 app = Flask(__name__, template_folder=template_dir)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
