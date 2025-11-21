@@ -28,14 +28,14 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("logs/visit_profiles.log"),
+        logging.FileHandler("logs/profil_visitor.log"),
         logging.StreamHandler()
     ]
 )
 
 # Authentication
 LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
-AUTH_FILE_PATH = "auth_state.json"
+AUTH_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_state.json")
 
 # General settings
 # En mode GitHub Actions, forcer headless. Sinon, utiliser headless=False pour réduire la détection
@@ -601,6 +601,8 @@ def setup_authentication() -> bool:
         return True
 
     logging.error("LINKEDIN_AUTH_STATE environment variable is not set and no valid local auth file found. Exiting.")
+    logging.error(f"Current Working Directory: {os.getcwd()}")
+    logging.error(f"Looking for auth file at: {os.path.abspath(AUTH_FILE_PATH)}")
     return False
 
 def setup_browser_context(p, proxy_manager: ProxyManager) -> Tuple[Optional[Browser], Optional[BrowserContext], Optional[Page], Optional[Dict], Optional[float]]:
