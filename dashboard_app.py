@@ -453,8 +453,10 @@ def api_control(action):
         try:
             # Run in background, redirecting output to log file handled by script itself
             # But we also redirect stdout/stderr here to capture crash dumps
+            # Set cwd to script directory to ensure auth files are found
+            script_dir = os.path.dirname(os.path.abspath(__file__))
             cmd = ['python', script]
-            subprocess.Popen(cmd, close_fds=True)
+            subprocess.Popen(cmd, close_fds=True, cwd=script_dir)
             return jsonify({'success': True, 'message': f'Script {script} démarré'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)})
