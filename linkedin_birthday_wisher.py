@@ -827,8 +827,13 @@ def standardize_first_name(name: str) -> str:
 
     return ' '.join(processed_parts)
 
-def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0):
-    """Opens the messaging modal and sends a personalized birthday wish."""
+def send_birthday_message(page: Page, contact_element, is_late: bool = False, days_late: int = 0) -> bool:
+    """
+    Opens the messaging modal and sends a personalized birthday wish.
+
+    Returns:
+        True if message was sent successfully, False otherwise
+    """
 
     # STEP 1: Fermer toutes les modales existantes AVANT d'en ouvrir une nouvelle
     close_all_message_modals(page)
@@ -836,7 +841,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     full_name = extract_contact_name(contact_element)
     if not full_name:
         logging.warning("Skipping contact because name could not be extracted.")
-        return
+        return False
 
     # Extract and standardize the first name
     first_name = full_name.split()[0]
@@ -845,7 +850,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     # Skip if the first name is just an initial (returns empty string)
     if not first_name:
         logging.warning(f"Skipping contact '{full_name}' because first name is just an initial.")
-        return
+        return False
 
     if is_late:
         logging.info(f"--- Processing late birthday ({days_late} days ago) for {full_name} ---")
@@ -857,8 +862,8 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
     )
     if not message_button:
-        logging.warning(f"Could not find a 'Message' button for {full_name}. Skipping.")
-        return
+        logging.warning(f"Message button not found for {full_name}. Skipping.")
+        return False
 
     # Utiliser un try-finally pour garantir la fermeture de la modale même en cas d'erreur
     try:
@@ -871,15 +876,44 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         # STEP 2: Vérifier combien de modales sont ouvertes et utiliser .last pour la plus récente
         modal_count = page.locator(message_box_selector).count()
         if modal_count > 1:
-            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément! Tentative de fermeture...")
+            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément!")
+            logging.warning(f"   Fermeture automatique de toutes les modales...")
             page.screenshot(path=f'warning_multiple_modals_{first_name.replace(" ", "_")}.png')
-            # Fermer toutes les modales sauf la plus récente
+
+            # Fermer toutes les modales
             close_all_message_modals(page)
             random_delay(0.5, 1)
-            # Rouvrir la modale pour le contact actuel
+
+            # Attendre que toutes les modales soient fermées
+            try:
+                page.wait_for_selector(message_box_selector, state="hidden", timeout=5000)
+            except:
+                pass  # Continue même si timeout
+
+            random_delay(0.3, 0.6)
+
+            # RE-CHERCHER le bouton Message (évite "Element is not attached to the DOM")
+            logging.info(f"   Re-recherche du bouton Message pour {first_name}...")
+            message_button = contact_element.query_selector(
+                'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+            )
+
+            if not message_button:
+                logging.error(f"   ❌ Impossible de retrouver le bouton Message après fermeture des modales. Skip.")
+                return False
+
+            # Rouvrir la modale proprement
+            logging.info(f"   Ré-ouverture de la modale pour {first_name}...")
             message_button.click()
             random_delay(0.5, 1)
-            page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+
+            # Vérifier que la modale s'est ouverte
+            try:
+                page.wait_for_selector(message_box_selector, state="visible", timeout=10000)
+                logging.info(f"   ✅ Modale ré-ouverte avec succès")
+            except Exception as e:
+                logging.error(f"   ❌ Échec de ré-ouverture de la modale : {e}")
+                return False
 
         # Toujours utiliser .last pour cibler la modale la plus récemment ouverte
         message_box_locator = page.locator(message_box_selector).last
@@ -899,7 +933,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         if not message_list:
             logging.error("No birthday messages are available. Skipping message sending.")
-            return
+            return False
 
         message = random.choice(message_list).format(name=first_name)
 
@@ -934,7 +968,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
                     db.add_birthday_message(full_name, message, is_late, days_late, "routine_dry_run")
                 except Exception as e:
                     logging.warning(f"Could not record message to database: {e}")
-            return  # La fermeture sera gérée par le finally
+            return True  # Succès en mode DRY_RUN
 
         # Effacer le texte automatique que LinkedIn pré-remplit (ex: "Je vous souhaite un très joyeux anniversaire.")
         # puis ajouter notre message personnalisé
@@ -967,8 +1001,10 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
                         db.add_birthday_message(full_name, message, is_late, days_late, "routine")
                     except Exception as db_err:
                         logging.warning(f"Could not record message to database: {db_err}")
+                return True  # Message envoyé avec succès
             else:
                 logging.warning("Send button is not enabled. Skipping.")
+                return False
         except Exception as e:
             # Catch all exceptions (timeout, viewport issues, etc.)
             logging.warning(f"Could not send message normally ({type(e).__name__}: {e}), attempting force click...")
@@ -983,6 +1019,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
                         db.add_birthday_message(full_name, message, is_late, days_late, "routine")
                     except Exception as db_err:
                         logging.warning(f"Could not record message to database: {db_err}")
+                return True  # Message envoyé avec force click
             except Exception as e2:
                 error_msg = f"Failed to click send button even with force ({type(e2).__name__}): {e2}"
                 logging.error(error_msg)
@@ -994,7 +1031,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
                         db.log_error("linkedin_birthday_wisher", "SendButtonError", error_msg, str(e2), screenshot_path)
                     except Exception as db_err:
                         logging.warning(f"Could not log error to database: {db_err}")
-                raise
+                return False  # Échec de l'envoi du message
 
     finally:
         # STEP 3: Fermer SYSTÉMATIQUEMENT la modale après traitement, même en cas d'erreur
@@ -1295,69 +1332,86 @@ def main():
 
                 if is_late:
                     for i, (contact, days_late) in enumerate(contacts):
-                        send_birthday_message(page, contact, is_late=True, days_late=days_late)
-                        total_messages_sent += 1
+                        # Envoyer le message et vérifier si ça a réussi
+                        message_sent = send_birthday_message(page, contact, is_late=True, days_late=days_late)
 
-                        # Check for policy restrictions every 5 messages
-                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
-                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
-                            if not is_ok:
-                                logging.critical("🚨 Policy violation detected during execution - stopping")
-                                if alert_system:
-                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
-                                    alert_system.alert_policy_violation(issues, screenshot_path)
-                                return
+                        # N'incrémenter et faire une pause QUE si le message a été envoyé
+                        if message_sent:
+                            total_messages_sent += 1
 
-                        # Simulate occasional human activity
-                        if random.random() < 0.3:  # 30% chance
-                            simulate_human_activity(page)
+                            # Check for policy restrictions every 5 messages
+                            if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                                is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                                if not is_ok:
+                                    logging.critical("🚨 Policy violation detected during execution - stopping")
+                                    if alert_system:
+                                        screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                        alert_system.alert_policy_violation(issues, screenshot_path)
+                                    return
 
-                        if i < len(contacts) - 1:
-                            # Utiliser le délai calculé selon le type d'anniversaire
-                            if not DRY_RUN:
-                                delay = random.randint(min_delay_late, max_delay_late)
-                                minutes = delay // 60
-                                seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée (retard): {minutes}m {seconds}s")
-                                time.sleep(delay)
-                            else:
-                                # Short delay for testing
-                                delay = random.randint(2, 5)
-                                logging.info(f"Pausing for {delay}s (DRY RUN).")
-                                time.sleep(delay)
+                            # Simulate occasional human activity
+                            if random.random() < 0.3:  # 30% chance
+                                simulate_human_activity(page)
+
+                            # Pause UNIQUEMENT si le message a été envoyé et qu'il reste des contacts
+                            if i < len(contacts) - 1:
+                                # Utiliser le délai calculé selon le type d'anniversaire
+                                if not DRY_RUN:
+                                    delay = random.randint(min_delay_late, max_delay_late)
+                                    minutes = delay // 60
+                                    seconds = delay % 60
+                                    logging.info(f"⏸️ Pause planifiée (retard): {minutes}m {seconds}s")
+                                    time.sleep(delay)
+                                else:
+                                    # Short delay for testing
+                                    delay = random.randint(2, 5)
+                                    logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                    time.sleep(delay)
+                        else:
+                            # Si le message n'a pas été envoyé, pause minimale avant le prochain
+                            logging.info("⏭️ Contact skippé, passage immédiat au suivant")
+                            random_delay(1, 3)  # Pause minimale de 1-3 secondes
                 else:
                     for i, contact in enumerate(contacts):
-                        send_birthday_message(page, contact, is_late=is_late)
-                        total_messages_sent += 1
+                        # Envoyer le message et vérifier si ça a réussi
+                        message_sent = send_birthday_message(page, contact, is_late=is_late)
 
-                        # Check for policy restrictions every 5 messages
-                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
-                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
-                            if not is_ok:
-                                logging.critical("🚨 Policy violation detected during execution - stopping")
-                                if alert_system:
-                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
-                                    alert_system.alert_policy_violation(issues, screenshot_path)
-                                return
+                        # N'incrémenter et faire une pause QUE si le message a été envoyé
+                        if message_sent:
+                            total_messages_sent += 1
 
-                        # Simulate occasional human activity
-                        if random.random() < 0.3:  # 30% chance
-                            simulate_human_activity(page)
+                            # Check for policy restrictions every 5 messages
+                            if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
+                                is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
+                                if not is_ok:
+                                    logging.critical("🚨 Policy violation detected during execution - stopping")
+                                    if alert_system:
+                                        screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
+                                        alert_system.alert_policy_violation(issues, screenshot_path)
+                                    return
 
-                        # Add a pause between messages
-                        if i < len(contacts) - 1:
-                            # Utiliser le délai calculé selon le type d'anniversaire (priorité avant 12h pour aujourd'hui)
-                            if not DRY_RUN:
-                                delay = random.randint(min_delay_today, max_delay_today)
-                                minutes = delay // 60
-                                seconds = delay % 60
-                                logging.info(f"⏸️ Pause planifiée (aujourd'hui): {minutes}m {seconds}s")
-                                time.sleep(delay)
-                            else:
-                                # Short delay for testing
-                                delay = random.randint(2, 5)
-                                logging.info(f"Pausing for {delay}s (DRY RUN).")
-                                time.sleep(delay)
+                            # Simulate occasional human activity
+                            if random.random() < 0.3:  # 30% chance
+                                simulate_human_activity(page)
+
+                            # Pause UNIQUEMENT si le message a été envoyé et qu'il reste des contacts
+                            if i < len(contacts) - 1:
+                                # Utiliser le délai calculé selon le type d'anniversaire (priorité avant 12h pour aujourd'hui)
+                                if not DRY_RUN:
+                                    delay = random.randint(min_delay_today, max_delay_today)
+                                    minutes = delay // 60
+                                    seconds = delay % 60
+                                    logging.info(f"⏸️ Pause planifiée (aujourd'hui): {minutes}m {seconds}s")
+                                    time.sleep(delay)
+                                else:
+                                    # Short delay for testing
+                                    delay = random.randint(2, 5)
+                                    logging.info(f"Pausing for {delay}s (DRY RUN).")
+                                    time.sleep(delay)
+                        else:
+                            # Si le message n'a pas été envoyé, pause minimale avant le prochain
+                            logging.info("⏭️ Contact skippé, passage immédiat au suivant")
+                            random_delay(1, 3)  # Pause minimale de 1-3 secondes
 
             # Save weekly message count
             if not DRY_RUN and total_messages_sent > 0:
