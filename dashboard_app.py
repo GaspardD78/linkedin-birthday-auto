@@ -5,6 +5,7 @@ Permet de visualiser les statistiques, l'historique, gérer la configuration et 
 
 from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_database
 import os
 import time
@@ -25,6 +26,7 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-product
 # Configuration
 app.config['DATABASE_PATH'] = os.getenv('DATABASE_PATH', 'linkedin_automation.db')
 app.config['ADMIN_PASSWORD'] = os.getenv('ADMIN_PASSWORD', 'admin')  # Change in production!
+app.config['AUTH_FILE'] = 'dashboard_auth.json'
 
 # Setup Flask-Login
 login_manager = LoginManager()
@@ -50,7 +52,25 @@ def login():
 
     if request.method == 'POST':
         password = request.form['password']
-        if password == app.config['ADMIN_PASSWORD']:
+        authenticated = False
+
+        # Check for auth file first
+        if os.path.exists(app.config['AUTH_FILE']):
+            try:
+                with open(app.config['AUTH_FILE'], 'r') as f:
+                    auth_data = json.load(f)
+                    if 'password_hash' in auth_data:
+                        if check_password_hash(auth_data['password_hash'], password):
+                            authenticated = True
+            except Exception as e:
+                print(f"Error reading auth file: {e}")
+
+        # Fallback to env/config password if no auth file or auth failed (and file didn't exist)
+        if not authenticated and not os.path.exists(app.config['AUTH_FILE']):
+            if password == app.config['ADMIN_PASSWORD']:
+                authenticated = True
+
+        if authenticated:
             user = User('admin')
             login_user(user)
             next_page = request.args.get('next')
@@ -236,6 +256,53 @@ def stats():
     )
 
 # ==================== CONFIGURATION & CONTROL ====================
+
+@app.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    if not current_password or not new_password or not confirm_password:
+        flash('Tous les champs sont requis', 'danger')
+        return redirect(url_for('config'))
+
+    if new_password != confirm_password:
+        flash('Les nouveaux mots de passe ne correspondent pas', 'danger')
+        return redirect(url_for('config'))
+
+    # Verify current password
+    authenticated = False
+    if os.path.exists(app.config['AUTH_FILE']):
+        try:
+            with open(app.config['AUTH_FILE'], 'r') as f:
+                auth_data = json.load(f)
+                if 'password_hash' in auth_data:
+                    if check_password_hash(auth_data['password_hash'], current_password):
+                        authenticated = True
+        except Exception:
+            pass
+    else:
+        # Fallback check
+        if current_password == app.config['ADMIN_PASSWORD']:
+            authenticated = True
+
+    if not authenticated:
+        flash('Mot de passe actuel incorrect', 'danger')
+        return redirect(url_for('config'))
+
+    # Save new password
+    try:
+        password_hash = generate_password_hash(new_password)
+        with open(app.config['AUTH_FILE'], 'w') as f:
+            json.dump({'password_hash': password_hash}, f)
+        flash('Mot de passe modifié avec succès', 'success')
+    except Exception as e:
+        flash(f'Erreur lors de la sauvegarde du mot de passe: {str(e)}', 'danger')
+
+    return redirect(url_for('config'))
+
 
 @app.route('/config', methods=['GET', 'POST'])
 @login_required
