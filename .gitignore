@@ -105,6 +105,7 @@ celerybeat.pid
 
 # Authentication state
 auth_state.json
+dashboard_auth.json
 
 # Debugging artifacts
 *.png

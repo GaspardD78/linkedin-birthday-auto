@@ -16,6 +16,38 @@
 {% endwith %}
 
 <div class="row">
+    <!-- Sécurité (Changement de mot de passe) -->
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="card-title mb-0"><i class="fas fa-lock text-danger me-2"></i>Sécurité</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('change_password') }}" method="POST">
+                    <div class="row align-items-end">
+                        <div class="col-md-3">
+                            <label for="current_password" class="form-label">Mot de passe actuel</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="new_password" class="form-label">Nouveau mot de passe</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="confirm_password" class="form-label">Confirmer le nouveau</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-danger w-100 mt-3 mt-md-0">Changer le mot de passe</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
     <!-- Messages du jour -->
     <div class="col-md-6 mb-4">
         <div class="card h-100 shadow-sm">
