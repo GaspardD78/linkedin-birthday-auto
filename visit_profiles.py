@@ -28,7 +28,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("logs/profile_visitor.log"),
+        logging.FileHandler("logs/visit_profiles.log"),
         logging.StreamHandler()
     ]
 )
