@@ -150,19 +150,25 @@ Si vous ne souhaitez pas investir dans des proxies payants, vous avez plusieurs 
 
 Installez le bot sur votre **propre matériel** pour utiliser votre IP résidentielle légitime :
 
-- **📖 [LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)** : Guide complet pour PC, Mac, ou Raspberry Pi
-- **📖 [INSTALLATION_NAS_FREEBOX.md](INSTALLATION_NAS_FREEBOX.md)** : Guide pour NAS Synology ou Freebox Pop/Delta
+- **📖 [LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)** : Guide général pour PC, Mac, ou Raspberry Pi
+- **🍓 [RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** : Guide ultra-détaillé spécifique pour Raspberry Pi 4 (RECOMMANDÉ)
+- **📖 [SYNOLOGY_NAS_SETUP_GUIDE.md](SYNOLOGY_NAS_SETUP_GUIDE.md)** : Guide pour NAS Synology avec Docker
+- **📖 [SYNOLOGY_DS213J_GUIDE.md](SYNOLOGY_DS213J_GUIDE.md)** : Guide pour NAS Synology DS213J (sans Docker)
+- **📖 [FREEBOX_POP_GUIDE.md](FREEBOX_POP_GUIDE.md)** : Guide pour Freebox Pop avec disque 1To
+- **📖 [INSTALLATION_NAS_FREEBOX.md](INSTALLATION_NAS_FREEBOX.md)** : Guide général NAS Synology et Freebox
 
 **Avantages** :
-- ✅ Totalement gratuit (sauf électricité ~3€/mois)
+- ✅ Totalement gratuit (sauf électricité ~1-3€/mois)
 - ✅ IP résidentielle 100% légitime
 - ✅ Aucune détection possible
 - ✅ Contrôle total
+- ✅ Disponible 24/7
 
 **Matériel compatible** :
-- NAS Synology (IDÉAL si vous en avez un)
-- Freebox Pop/Delta
-- Raspberry Pi (~35€ une fois)
+- **Raspberry Pi 4** (IDÉAL - 60-90€ une fois, 1€/mois d'électricité)
+- NAS Synology avec Container Manager / Docker
+- NAS Synology DS213J (installation native sans Docker)
+- Freebox Pop/Delta avec disque USB
 - N'importe quel PC/Mac/Linux
 
 #### 🎁 Essais Gratuits de Proxies Premium
