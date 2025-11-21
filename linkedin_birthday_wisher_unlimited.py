@@ -10,19 +10,45 @@ from datetime import datetime, timedelta
 from typing import Optional
 from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
 
-# Import debug utilities
-from debug_utils import (
-    DebugScreenshotManager,
-    DOMStructureValidator,
-    LinkedInPolicyDetector,
-    EnhancedLogger,
-    AlertSystem,
-    retry_with_fallbacks,
-    quick_debug_check
-)
+# Import debug utilities (si disponibles)
+try:
+    from debug_utils import (
+        DebugScreenshotManager,
+        DOMStructureValidator,
+        LinkedInPolicyDetector,
+        EnhancedLogger,
+        AlertSystem,
+        retry_with_fallbacks,
+        quick_debug_check
+    )
+    DEBUG_UTILS_AVAILABLE = True
+except ImportError:
+    DEBUG_UTILS_AVAILABLE = False
+    logging.warning("Debug utilities not available - continuing without advanced debugging")
 
-# Import proxy manager
-from proxy_manager import ProxyManager
+# Import database utilities (si disponibles)
+try:
+    from database import get_database
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+    logging.warning("Database utilities not available - continuing without message history tracking")
+
+# Import selector validator (si disponible)
+try:
+    from selector_validator import validate_birthday_feed_selectors, validate_messaging_selectors
+    VALIDATOR_AVAILABLE = True
+except ImportError:
+    VALIDATOR_AVAILABLE = False
+    logging.warning("Selector validator not available - continuing without selector validation")
+
+# Import proxy manager (si disponible)
+try:
+    from proxy_manager import ProxyManager
+    PROXY_AVAILABLE = True
+except ImportError:
+    PROXY_AVAILABLE = False
+    logging.warning("Proxy manager not available - continuing without proxy rotation")
 
 # --- Configuration ---
 # Logging setup
@@ -33,17 +59,25 @@ LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
 AUTH_FILE_PATH = "auth_state.json"
 
 # General settings
-HEADLESS_BROWSER = True # Set to False for debugging to see the browser UI
-DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true' # Enables test mode
+HEADLESS_BROWSER = True  # Set to False for debugging to see the browser UI
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'  # Enables test mode
 
 # Advanced debugging settings
 ENABLE_ADVANCED_DEBUG = os.getenv('ENABLE_ADVANCED_DEBUG', 'false').lower() == 'true'
 ENABLE_EMAIL_ALERTS = os.getenv('ENABLE_EMAIL_ALERTS', 'false').lower() == 'true'
 
-# Anti-detection limits - UNLIMITED MODE (utilisation unique)
-MAX_MESSAGES_PER_RUN = None  # Pas de limite pour le mode unlimited
-WEEKLY_MESSAGE_LIMIT = None  # Pas de limite hebdomadaire pour le mode unlimited
-WEEKLY_TRACKER_FILE = "weekly_messages_unlimited.json"  # Fichier séparé pour ne pas impacter le routine
+# ═══════════════════════════════════════════════════════════════════════════
+# VERSION ANNIVERSAIRES DU JOUR UNIQUEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+# Cette version traite UNIQUEMENT les anniversaires du jour
+# - Les anniversaires en retard sont ignorés
+# - Parfait pour usage quotidien automatisé
+# - Évite de surcharger avec des centaines d'anniversaires en retard
+# - Peut être lancé tous les jours sans limite
+
+# Délais entre les messages (toujours nécessaire pour éviter la détection)
+MIN_DELAY_SECONDS = 120  # 2 minutes minimum entre chaque message
+MAX_DELAY_SECONDS = 300  # 5 minutes maximum entre chaque message
 
 # Randomized User-Agents (updated versions)
 USER_AGENTS = [
@@ -81,104 +115,11 @@ def load_birthday_messages(file_path="messages.txt"):
 BIRTHDAY_MESSAGES = load_birthday_messages()
 LATE_BIRTHDAY_MESSAGES = load_birthday_messages("late_messages.txt")
 
-# --- Timezone Check for Automatic Schedule ---
-
-def check_paris_timezone_window(target_hour_start: int, target_hour_end: int) -> bool:
-    """
-    Vérifie si l'heure actuelle à Paris est dans la fenêtre horaire souhaitée.
-    Cette fonction permet d'avoir des cron jobs doubles (été/hiver) qui s'adaptent
-    automatiquement aux changements d'heure sans intervention manuelle.
-
-    Args:
-        target_hour_start: Heure de début de la fenêtre (ex: 7 pour 7h)
-        target_hour_end: Heure de fin de la fenêtre (ex: 9 pour 9h)
-
-    Returns:
-        True si l'heure actuelle à Paris est dans la fenêtre, False sinon
-    """
-    paris_tz = pytz.timezone('Europe/Paris')
-    paris_time = datetime.now(paris_tz)
-    current_hour = paris_time.hour
-
-    logging.info(f"⏰ Heure actuelle à Paris: {paris_time.strftime('%H:%M:%S')} (timezone: {paris_tz})")
-    logging.info(f"📅 Fenêtre d'exécution autorisée: {target_hour_start}h - {target_hour_end}h")
-
-    if target_hour_start <= current_hour < target_hour_end:
-        logging.info(f"✅ Heure valide ({current_hour}h) - Le script va s'exécuter")
-        return True
-    else:
-        logging.info(f"⏸️  Heure invalide ({current_hour}h) - Script arrêté (mauvaise fenêtre horaire)")
-        logging.info(f"ℹ️  Ce comportement est normal : les doubles crons (été/hiver) garantissent")
-        logging.info(f"   qu'un seul s'exécute dans la bonne fenêtre horaire, sans ajustement manuel.")
-        return False
-
-# --- Weekly Message Tracking ---
-
-def load_weekly_count():
-    """Charge le compteur de messages de la semaine."""
-    try:
-        with open(WEEKLY_TRACKER_FILE, 'r') as f:
-            data = json.load(f)
-            # Réinitialiser si plus d'une semaine
-            last_reset = datetime.fromisoformat(data['last_reset'])
-            if datetime.now() - last_reset > timedelta(days=7):
-                return {'count': 0, 'last_reset': datetime.now().isoformat()}
-            return data
-    except (FileNotFoundError, KeyError, ValueError):
-        return {'count': 0, 'last_reset': datetime.now().isoformat()}
-
-def save_weekly_count(count):
-    """Sauvegarde le compteur de messages hebdomadaires."""
-    data = load_weekly_count()
-    data['count'] = count
-    with open(WEEKLY_TRACKER_FILE, 'w') as f:
-        json.dump(data, f)
-
-def can_send_more_messages(messages_to_send):
-    """Vérifie si on peut envoyer plus de messages cette semaine."""
-    # MODE UNLIMITED : Pas de limite
-    if WEEKLY_MESSAGE_LIMIT is None:
-        logging.info(f"🚀 MODE UNLIMITED : Aucune limite - {messages_to_send} messages peuvent être envoyés")
-        return True, messages_to_send
-
-    data = load_weekly_count()
-
-    if data['count'] + messages_to_send > WEEKLY_MESSAGE_LIMIT:
-        logging.warning(f"⚠️ Limite hebdomadaire atteinte ({data['count']}/{WEEKLY_MESSAGE_LIMIT})")
-        return False, WEEKLY_MESSAGE_LIMIT - data['count']
-    return True, messages_to_send
-
 # --- Human Behavior Simulation ---
 
 def random_delay(min_seconds: float = 0.5, max_seconds: float = 1.5):
     """Waits for a random duration within a specified range to mimic human latency."""
     time.sleep(random.uniform(min_seconds, max_seconds))
-
-def gaussian_delay(min_seconds: int, max_seconds: int):
-    """
-    Waits for a random duration using a Gaussian (normal) distribution.
-    This is more human-like than uniform distribution as humans tend to cluster
-    around average times with occasional faster/slower actions.
-
-    Args:
-        min_seconds: Minimum delay in seconds
-        max_seconds: Maximum delay in seconds
-    """
-    mean = (min_seconds + max_seconds) / 2
-    # Standard deviation: ~99.7% of values fall within 3 std devs
-    # So (max - min) = 6*std, therefore std = (max - min) / 6
-    std_dev = (max_seconds - min_seconds) / 6
-
-    # Generate delay with normal distribution
-    delay = random.gauss(mean, std_dev)
-
-    # Clamp to ensure we stay within bounds
-    delay = max(min_seconds, min(max_seconds, delay))
-
-    minutes = int(delay // 60)
-    seconds = int(delay % 60)
-    logging.info(f"Pausing for {minutes}m {seconds}s (Gaussian delay).")
-    time.sleep(delay)
 
 def simulate_human_activity(page: Page):
     """
@@ -208,39 +149,6 @@ def simulate_human_activity(page: Page):
             # Silently ignore errors in activity simulation
             logging.debug(f"Activity simulation error (non-critical): {e}")
             pass
-
-def long_break_if_needed(message_count: int, break_intervals: list = None) -> tuple[bool, list]:
-    """
-    Determines if a long break should be taken and executes it.
-    Takes a 20-45 minute break every 10-15 messages to simulate natural human behavior.
-
-    Args:
-        message_count: Current count of messages sent
-        break_intervals: List of message counts where breaks should occur.
-                        If None, a new list will be generated.
-
-    Returns:
-        Tuple of (break_taken: bool, updated_break_intervals: list)
-    """
-    # Initialize break intervals if not provided
-    if break_intervals is None:
-        break_intervals = []
-
-    # Generate next break point if needed
-    if not break_intervals or (break_intervals and message_count >= break_intervals[-1]):
-        # Set the next break to occur in 10-15 messages
-        next_break = message_count + random.randint(10, 15)
-        break_intervals.append(next_break)
-
-    # Check if it's time for a break
-    if message_count in break_intervals and message_count > 0:
-        long_pause = random.randint(20 * 60, 45 * 60)  # 20-45 minutes
-        minutes = long_pause // 60
-        logging.info(f"🚽 Taking a natural break: {minutes} minute pause (simulating coffee/meeting/bathroom)")
-        time.sleep(long_pause)
-        return True, break_intervals
-
-    return False, break_intervals
 
 def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int = 20) -> list:
     """Scrolls the page by bringing the last element into view until no new cards are loaded."""
@@ -276,8 +184,6 @@ def scroll_and_collect_contacts(page: Page, card_selector: str, max_scrolls: int
     final_contacts = page.query_selector_all(card_selector)
     logging.info(f"Finished scrolling. Total cards found: {len(final_contacts)}")
     return final_contacts
-
-# Fonction supprimée car non utilisée - voir send_birthday_message() qui fait le typage directement
 
 def close_all_message_modals(page: Page):
     """Ferme toutes les modales de message ouvertes pour éviter les conflits."""
@@ -436,7 +342,6 @@ def get_birthday_contacts(page: Page) -> dict:
 def extract_contact_name(contact_element) -> Optional[str]:
     """
     Extracts the contact's name from a birthday card element using a robust, multi-step process.
-    Inspired by the logic from content.js.
     """
     # Iterate through all paragraphs, which is a robust method
     paragraphs = contact_element.query_selector_all("p")
@@ -457,57 +362,11 @@ def extract_contact_name(contact_element) -> Optional[str]:
     logging.warning("Could not extract a valid name for the contact.")
     return None
 
-def debug_birthday_card(contact_element, card_index: int = 0):
-    """
-    Fonction de debug pour analyser une carte d'anniversaire en détail.
-    Utile pour diagnostiquer les problèmes de classification.
-    """
-    logging.info(f"═══════════════════════════════════════════════════")
-    logging.info(f"🔍 DEBUG - Carte #{card_index}")
-    logging.info(f"═══════════════════════════════════════════════════")
-
-    # Extraire le texte complet
-    full_text = contact_element.inner_text()
-    logging.info(f"Texte complet:\n{full_text}")
-    logging.info(f"")
-
-    # Analyser chaque paragraphe
-    paragraphs = contact_element.query_selector_all("p")
-    logging.info(f"Nombre de paragraphes trouvés: {len(paragraphs)}")
-
-    for i, p in enumerate(paragraphs):
-        p_text = p.inner_text().strip()
-        logging.info(f"  Paragraphe {i+1}: '{p_text}'")
-
-    # Tester la classification
-    birthday_type, days_late = get_birthday_type(contact_element)
-    logging.info(f"")
-    logging.info(f"Résultat de classification:")
-    logging.info(f"  Type: {birthday_type}")
-    logging.info(f"  Jours de retard: {days_late}")
-
-    # Screenshot de la carte
-    screenshot_path = f'debug_card_{card_index}_{birthday_type}.png'
-    try:
-        contact_element.screenshot(path=screenshot_path)
-        logging.info(f"Screenshot sauvegardée: {screenshot_path}")
-    except Exception as e:
-        logging.warning(f"Impossible de sauvegarder la screenshot: {e}")
-    logging.info(f"═══════════════════════════════════════════════════")
-
 def extract_days_from_date(card_text: str) -> Optional[int]:
     """
     Extrait le nombre de jours entre une date mentionnée dans le texte et aujourd'hui.
-
-    Exemple: "Célébrez l'anniversaire récent de Frédéric le 10 nov."
-    Si on est le 18 nov → retourne 8 jours
-
-    Returns:
-        int: Nombre de jours de différence (0 = aujourd'hui, positif = passé)
-        None: Si aucune date n'a pu être extraite
     """
     # Pattern pour capturer "le X mois" (ex: "le 10 nov.")
-    # Supporte : nov, nov., novembre, dec, déc, décembre, etc.
     pattern = r'le (\d{1,2}) (janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?)'
 
     match = re.search(pattern, card_text, re.IGNORECASE)
@@ -571,28 +430,13 @@ def extract_days_from_date(card_text: str) -> Optional[int]:
 def get_birthday_type(contact_element) -> tuple[str, int]:
     """
     Détermine si un anniversaire est 'today', 'late' (1-10 jours), ou 'ignore' (>10 jours).
-
-    Logique de détection améliorée basée sur l'analyse des screenshots réels LinkedIn.
-    Utilise une approche multi-méthodes pour une classification robuste.
-
-    Returns:
-        tuple[str, int]: (type, days_late)
-            - type: 'today', 'late', ou 'ignore'
-            - days_late: nombre de jours de retard (0 pour aujourd'hui)
     """
     card_text = contact_element.inner_text().lower()
 
     # Debug: afficher le texte complet de la carte en mode debug avancé
     logging.debug(f"Analyzing card text: {card_text[:200]}...")
 
-    # ═══════════════════════════════════════════════════════════
-    # MÉTHODE 1 (La plus fiable) : Analyser le texte du bouton
-    # ═══════════════════════════════════════════════════════════
-
-    # LinkedIn utilise des boutons différents selon la date:
-    # - Aujourd'hui : "Je vous souhaite un très joyeux anniversaire."
-    # - En retard :   "Joyeux anniversaire avec un peu de retard !"
-
+    # MÉTHODE 1 : Analyser le texte du bouton
     button_text_today = "je vous souhaite un très joyeux anniversaire"
     button_text_late = "joyeux anniversaire avec un peu de retard"
 
@@ -602,8 +446,6 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
 
     if button_text_late in card_text:
         logging.info(f"✓ Anniversaire en retard détecté (bouton retard)")
-        # Maintenant on doit déterminer COMBIEN de jours de retard
-        # On va parser la date dans le texte
         days = extract_days_from_date(card_text)
         if days is not None:
             if 1 <= days <= 10:
@@ -613,23 +455,13 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
                 logging.info(f"→ {days} jour(s) de retard - Trop ancien, classé comme 'ignore'")
                 return 'ignore', days
         else:
-            # Si on ne peut pas extraire le nombre exact de jours,
-            # on suppose un retard de 1-3 jours basé sur le fait que LinkedIn affiche ce bouton
             logging.warning("⚠️ Retard détecté mais date non parsable, estimation à 2 jours")
-            return 'late', 2  # Valeur par défaut conservatrice
+            return 'late', 2
 
-    # ═══════════════════════════════════════════════════════════
     # MÉTHODE 2 : Détection explicite "aujourd'hui"
-    # ═══════════════════════════════════════════════════════════
-
     today_keywords = [
-        'aujourd\'hui',
-        'aujourdhui',
-        'c\'est aujourd\'hui',
-        'de [nom] aujourd\'hui',
-        'today',
-        'is today',
-        '\'s birthday is today'
+        'aujourd\'hui', 'aujourdhui', 'c\'est aujourd\'hui',
+        'de [nom] aujourd\'hui', 'today', 'is today', '\'s birthday is today'
     ]
 
     for keyword in today_keywords:
@@ -637,10 +469,7 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             logging.info(f"✓ Anniversaire du jour détecté (mot-clé: '{keyword}')")
             return 'today', 0
 
-    # ═══════════════════════════════════════════════════════════
-    # MÉTHODE 3 : Parser la date explicite (ex: "le 10 nov.")
-    # ═══════════════════════════════════════════════════════════
-
+    # MÉTHODE 3 : Parser la date explicite
     days = extract_days_from_date(card_text)
     if days is not None:
         if days == 0:
@@ -653,10 +482,7 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             logging.info(f"→ Date parsée = {days} jour(s) - Trop ancien")
             return 'ignore', days
 
-    # ═══════════════════════════════════════════════════════════
     # MÉTHODE 4 : Regex classique "il y a X jours"
-    # ═══════════════════════════════════════════════════════════
-
     match_fr = re.search(r'il y a (\d+) jours?', card_text)
     match_en = re.search(r'(\d+) days? ago', card_text)
 
@@ -669,15 +495,10 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
             logging.info(f"→ Regex: {days_late} jours - Trop ancien")
             return 'ignore', days_late
 
-    # ═══════════════════════════════════════════════════════════
-    # CAS PAR DÉFAUT : Classification conservatrice
-    # ═══════════════════════════════════════════════════════════
-
+    # CAS PAR DÉFAUT
     logging.warning(f"⚠️ Aucun pattern reconnu dans la carte")
     logging.warning(f"Texte complet:\n{card_text}")
 
-    # Si aucun indicateur de retard, on suppose que c'est aujourd'hui
-    # (LinkedIn affiche généralement les anniversaires du jour en premier)
     time_keywords = ['retard', 'il y a', 'ago', 'récent']
     has_time_keyword = any(kw in card_text for kw in time_keywords)
 
@@ -694,46 +515,25 @@ def get_birthday_type(contact_element) -> tuple[str, int]:
 
 def standardize_first_name(name: str) -> str:
     """
-    Standardizes a first name by:
-    - Removing emojis and special characters (except accents and hyphens)
-    - Capitalizing the first letter of each part in compound names (e.g., Marie-Claude, Jean Marie)
-    - Converting the rest to lowercase
-    - Returning empty string if the name is just an initial (e.g., "C" or "C.")
-
-    Args:
-        name: The first name to standardize
-
-    Returns:
-        The standardized first name, or empty string if invalid
-
-    Examples:
-        "jean" -> "Jean"
-        "MARIE" -> "Marie"
-        "marie-claude" -> "Marie-Claude"
-        "jean marie" -> "Jean Marie"
-        "Jean🎉" -> "Jean"
-        "françois" -> "François"
-        "C" -> ""
-        "C." -> ""
+    Standardizes a first name by removing emojis and special characters,
+    capitalizing properly, and handling compound names.
     """
     if not name:
         return ""
 
-    # Remove emojis and special characters (including periods)
-    # Keep only: letters (including accented), hyphens, and spaces
+    # Remove emojis and special characters
     cleaned_chars = []
     for char in name:
-        # Keep alphabetic characters, hyphens, and spaces
         if char.isalpha() or char == '-' or char == ' ':
             cleaned_chars.append(char)
 
     cleaned_name = ''.join(cleaned_chars)
 
-    # Normalize spaces: replace multiple spaces with single space
+    # Normalize spaces
     while '  ' in cleaned_name:
         cleaned_name = cleaned_name.replace('  ', ' ')
 
-    # Normalize spaces around hyphens: "marie - claude" -> "marie-claude"
+    # Normalize hyphens
     cleaned_name = cleaned_name.replace(' - ', '-')
     cleaned_name = cleaned_name.replace('- ', '-')
     cleaned_name = cleaned_name.replace(' -', '-')
@@ -741,29 +541,25 @@ def standardize_first_name(name: str) -> str:
     cleaned_name = cleaned_name.strip()
 
     if not cleaned_name:
-        return ""  # Return empty if nothing left after cleaning
+        return ""
 
-    # Check if it's just an initial (single letter)
+    # Check if it's just an initial
     if len(cleaned_name) == 1:
-        return ""  # Ignore single letter initials
+        return ""
 
-    # Handle names with multiple parts (spaces or hyphens)
-    # Split by spaces first to handle "Jean Marie" type names
+    # Handle compound names
     space_parts = cleaned_name.split(' ')
 
-    # Process each space-separated part
     processed_parts = []
     for space_part in space_parts:
         if not space_part:
             continue
 
-        # Check if this part has hyphens (e.g., "Marie-Claude")
         if '-' in space_part:
             hyphen_parts = space_part.split('-')
             capitalized_hyphen_parts = [part.capitalize() for part in hyphen_parts if part]
             processed_parts.append('-'.join(capitalized_hyphen_parts))
         else:
-            # Simple part, just capitalize
             processed_parts.append(space_part.capitalize())
 
     return ' '.join(processed_parts)
@@ -783,7 +579,7 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     first_name = full_name.split()[0]
     first_name = standardize_first_name(first_name)
 
-    # Skip if the first name is just an initial (returns empty string)
+    # Skip if the first name is just an initial
     if not first_name:
         logging.warning(f"Skipping contact '{full_name}' because first name is just an initial.")
         return
@@ -793,39 +589,90 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     else:
         logging.info(f"--- Processing current birthday for {full_name} ---")
 
-    # Use a robust selector for the message button
-    message_button = contact_element.query_selector(
-        'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
-    )
-    if not message_button:
-        logging.warning(f"Could not find a 'Message' button for {full_name}. Skipping.")
-        return
+    # Flag pour savoir si une modale a été ouverte (pour éviter les délais inutiles)
+    modal_opened = False
 
     # Utiliser un try-finally pour garantir la fermeture de la modale même en cas d'erreur
     try:
-        message_button.click()
-        random_delay(0.5, 1)  # Petit délai après le clic
+        # Trouver et cliquer sur le bouton de message en utilisant un locator pour éviter les problèmes de détachement
+        message_button_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+        message_buttons_in_contact = contact_element.query_selector_all(message_button_selector)
+        
+        if not message_buttons_in_contact:
+            logging.warning(f"Could not find a 'Message' button for {full_name}. Skipping.")
+            return  # Pas de modale ouverte, pas de délai nécessaire
+        
+        # Cliquer sur le premier bouton trouvé
+        message_buttons_in_contact[0].click()
+        random_delay(1, 2)  # Délai augmenté pour laisser le temps à la modale de s'ouvrir
 
         message_box_selector = "div.msg-form__contenteditable[role='textbox']"
         page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+        
+        # Modale ouverte avec succès
+        modal_opened = True
 
-        # STEP 2: Vérifier combien de modales sont ouvertes et utiliser .last pour la plus récente
+        # STEP 2: Vérifier combien de modales sont ouvertes
         modal_count = page.locator(message_box_selector).count()
         if modal_count > 1:
-            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément! Tentative de fermeture...")
+            logging.warning(f"⚠️ ATTENTION: {modal_count} modales détectées simultanément!")
             page.screenshot(path=f'warning_multiple_modals_{first_name.replace(" ", "_")}.png')
-            # Fermer toutes les modales sauf la plus récente
+            
+            # Fermer toutes les modales
             close_all_message_modals(page)
-            random_delay(0.5, 1)
-            # Rouvrir la modale pour le contact actuel
-            message_button.click()
-            random_delay(0.5, 1)
-            page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+            random_delay(1, 2)  # Délai augmenté après fermeture
+            
+            # Re-trouver le bouton de message (l'ancien est détaché du DOM)
+            # On doit re-chercher l'élément contact dans la page
+            logging.info("Re-opening message modal after cleanup...")
+            
+            # Chercher à nouveau le bouton dans le contexte actuel de la page
+            # On utilise le nom pour retrouver la carte de contact
+            try:
+                # Attendre que la page se stabilise
+                random_delay(1, 1.5)
+                
+                # Re-trouver le bouton de message pour ce contact spécifiquement
+                all_message_buttons = page.query_selector_all(message_button_selector)
+                
+                # Essayer de trouver le bon bouton en cherchant celui qui est proche du nom
+                button_clicked = False
+                for btn in all_message_buttons:
+                    try:
+                        # Vérifier si le bouton est visible et attaché
+                        if btn.is_visible():
+                            # Regarder si le nom du contact est proche
+                            parent = btn
+                            for _ in range(5):  # Remonter jusqu'à 5 niveaux
+                                parent_text = parent.text_content()
+                                if full_name in parent_text or first_name in parent_text:
+                                    btn.click()
+                                    button_clicked = True
+                                    logging.info(f"✅ Re-clicked message button for {first_name}")
+                                    break
+                                try:
+                                    parent = parent.query_selector('..')  # Parent element
+                                except:
+                                    break
+                            if button_clicked:
+                                break
+                    except:
+                        continue
+                
+                if not button_clicked:
+                    logging.warning(f"Could not re-find message button for {full_name} after cleanup. Skipping.")
+                    return
+                
+                random_delay(1, 2)
+                page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+                
+            except Exception as e:
+                logging.error(f"Failed to re-open modal for {full_name}: {e}")
+                return
 
-        # Toujours utiliser .last pour cibler la modale la plus récemment ouverte
+        # Toujours utiliser .last pour cibler la modale la plus récente
         message_box_locator = page.locator(message_box_selector).last
 
-        # Debug logging for troubleshooting viewport issues
         logging.info(f"Message modal opened. Current viewport: {page.viewport_size}")
         page.screenshot(path=f'debug_message_modal_{first_name.replace(" ", "_")}.png')
 
@@ -844,131 +691,180 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
         message = random.choice(message_list).format(name=first_name)
 
+        # Check message history if database available
+        previous_messages = []
+        db = None
+        if DATABASE_AVAILABLE:
+            try:
+                db = get_database()
+                previous_messages = db.get_messages_sent_to_contact(full_name, years=2)
+            except Exception as e:
+                logging.warning(f"Could not access database: {e}")
+                db = None
+
+        if previous_messages:
+            used_messages = {msg['message_text'] for msg in previous_messages}
+            available_messages = [msg for msg in message_list if msg.format(name=first_name) not in used_messages]
+
+            if available_messages:
+                message = random.choice(available_messages).format(name=first_name)
+                logging.info(f"Selected unused message from {len(available_messages)} available")
+            else:
+                message = random.choice(message_list).format(name=first_name)
+                logging.warning(f"All messages used for {full_name}, reusing from pool")
+
         if DRY_RUN:
             logging.info(f"[DRY RUN] Would send message to {first_name}: '{message}'")
-            return  # La fermeture sera gérée par le finally
+            if db:
+                try:
+                    db.add_birthday_message(full_name, message, is_late, days_late, "routine_dry_run")
+                except Exception as e:
+                    logging.warning(f"Could not record to database: {e}")
+            return
 
-        # Effacer le texte automatique que LinkedIn pré-remplit (ex: "Je vous souhaite un très joyeux anniversaire.")
-        # puis ajouter notre message personnalisé
+        # Effacer et taper le message
         logging.info(f"Typing message: '{message}'")
-        message_box_locator.clear()  # Effacer le texte pré-rempli
-        random_delay(0.3, 0.5)  # Petit délai pour simuler le comportement humain
+        message_box_locator.clear()
+        random_delay(0.3, 0.5)
         message_box_locator.fill(message)
         random_delay(1, 2)
 
-        # Use .last to target the most recently opened message form's send button
-        # This avoids strict mode violations when multiple message forms are present on the page
+        # Send button
         submit_button = page.locator("button.msg-form__send-button").last
 
-        # Ensure the button is in viewport before clicking to avoid timeout errors
         try:
-            # First try to scroll the message box (modal) into view
             message_box_locator.scroll_into_view_if_needed(timeout=5000)
             random_delay(0.3, 0.5)
-
-            # Then scroll the send button into view
             submit_button.scroll_into_view_if_needed(timeout=5000)
-            random_delay(0.5, 1)  # Small delay to let UI settle after scrolling
+            random_delay(0.5, 1)
 
             if submit_button.is_enabled():
                 submit_button.click()
                 logging.info("Message sent successfully.")
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as e:
+                        logging.warning(f"Could not record to database: {e}")
             else:
                 logging.warning("Send button is not enabled. Skipping.")
         except Exception as e:
-            # Catch all exceptions (timeout, viewport issues, etc.)
-            logging.warning(f"Could not send message normally ({type(e).__name__}: {e}), attempting force click...")
+            logging.warning(f"Could not send message normally ({type(e).__name__}), attempting force click...")
             page.screenshot(path=f'warning_send_issue_{first_name.replace(" ", "_")}.png')
-            # Fallback: try force click if normal click fails
             try:
                 submit_button.click(force=True, timeout=10000)
                 logging.info("Message sent successfully (force click).")
+                if db:
+                    try:
+                        db.add_birthday_message(full_name, message, is_late, days_late, "routine")
+                    except Exception as e:
+                        logging.warning(f"Could not record to database: {e}")
             except Exception as e2:
-                logging.error(f"Failed to click send button even with force ({type(e2).__name__}): {e2}")
+                error_msg = f"Failed to click send button: {e2}"
+                logging.error(error_msg)
                 page.screenshot(path=f'error_send_button_{first_name.replace(" ", "_")}.png')
+                if db and DATABASE_AVAILABLE:
+                    try:
+                        db.log_error("linkedin_birthday_wisher", "SendButtonError", error_msg, str(e2), f'error_send_button_{first_name.replace(" ", "_")}.png')
+                    except Exception:
+                        pass
                 raise
 
     finally:
-        # STEP 3: Fermer SYSTÉMATIQUEMENT la modale après traitement, même en cas d'erreur
-        random_delay(0.5, 1)  # Petit délai pour laisser l'UI se stabiliser
-        close_all_message_modals(page)
+        # STEP 3: Fermer la modale UNIQUEMENT si elle a été ouverte
+        if modal_opened:
+            random_delay(0.5, 1)
+            close_all_message_modals(page)
+        # Si pas de modale ouverte (bouton Message non trouvé), pas de délai ni fermeture
 
 
 # --- Main Execution ---
 
 def main():
-    """Main function to run the LinkedIn birthday wisher bot."""
+    """Main function to run the LinkedIn birthday wisher bot - VERSION ANNIVERSAIRES DU JOUR UNIQUEMENT."""
+    
+    logging.info("╔════════════════════════════════════════════════════════════════╗")
+    logging.info("║    LinkedIn Birthday Wisher - ANNIVERSAIRES DU JOUR SEULS    ║")
+    logging.info("╚════════════════════════════════════════════════════════════════╝")
+    
     if DRY_RUN:
-        logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
-
-    # Add a random startup delay.
-    # In normal mode, this is set to 3-15 minutes to simulate realistic human behavior
-    # while avoiding bot detection (never start at 0 seconds).
-    # In DRY RUN mode, this is short for quick testing.
-    if DRY_RUN:
-        startup_delay = random.randint(1, 10) # 1 to 10 seconds for testing
+        logging.info("🧪 SCRIPT RUNNING IN DRY RUN MODE")
     else:
-        startup_delay = random.randint(180, 900) # 3 to 15 minutes for normal operation
+        logging.info("🚀 SCRIPT RUNNING IN PRODUCTION MODE")
+        logging.info("🎂 Traitement des anniversaires du jour uniquement")
+        logging.info("⏭️  Les anniversaires en retard sont ignorés")
+    
+    logging.info("")
 
-    logging.info(f"Startup delay: waiting for {startup_delay // 60}m {startup_delay % 60}s to start.")
-    time.sleep(startup_delay)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # VERSION ANNIVERSAIRES DU JOUR UNIQUEMENT
+    # - Traite seulement les anniversaires d'aujourd'hui
+    # - Ignore les anniversaires en retard
+    # - Parfait pour usage quotidien automatisé
+    # ═══════════════════════════════════════════════════════════════════════════
 
     if not BIRTHDAY_MESSAGES:
-        logging.error("Message list is empty. Please check messages.txt. Exiting.")
+        logging.error("❌ Message list is empty. Please check messages.txt. Exiting.")
         return
 
-    # Decode and save the auth state from the environment variable
     # --- Authentication Setup ---
-    if not LINKEDIN_AUTH_STATE:
-        logging.error("LINKEDIN_AUTH_STATE environment variable is not set. Exiting.")
-        return
-
-    try:
-        # Try to load the auth state as a JSON string directly
-        json.loads(LINKEDIN_AUTH_STATE)
-        logging.info("Auth state is a valid JSON string. Writing to file directly.")
-        with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write(LINKEDIN_AUTH_STATE)
-    except json.JSONDecodeError:
-        # If it's not a JSON string, assume it's a Base64 encoded binary file
-        logging.info("Auth state is not a JSON string, attempting to decode from Base64.")
+    if LINKEDIN_AUTH_STATE and LINKEDIN_AUTH_STATE.strip():
         try:
-            padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
-            auth_state_padded = LINKEDIN_AUTH_STATE + padding
-            auth_state_bytes = base64.b64decode(auth_state_padded)
-            with open(AUTH_FILE_PATH, "wb") as f:
-                f.write(auth_state_bytes)
-        except (base64.binascii.Error, TypeError) as e:
-            logging.error(f"Failed to decode Base64 auth state: {e}")
+            # Try to load as JSON
+            json.loads(LINKEDIN_AUTH_STATE)
+            logging.info("Auth state is valid JSON. Writing to file.")
+            with open(AUTH_FILE_PATH, "w", encoding="utf-8") as f:
+                f.write(LINKEDIN_AUTH_STATE)
+        except json.JSONDecodeError:
+            # Try Base64
+            logging.info("Auth state is Base64, decoding...")
+            try:
+                padding = '=' * (-len(LINKEDIN_AUTH_STATE) % 4)
+                auth_state_padded = LINKEDIN_AUTH_STATE + padding
+                auth_state_bytes = base64.b64decode(auth_state_padded)
+                with open(AUTH_FILE_PATH, "wb") as f:
+                    f.write(auth_state_bytes)
+            except (base64.binascii.Error, TypeError) as e:
+                logging.error(f"Failed to decode Base64 auth state: {e}")
+                return
+        except Exception as e:
+            logging.error(f"Unexpected error during auth state setup: {e}")
             return
-    except Exception as e:
-        logging.error(f"An unexpected error occurred during auth state setup: {e}")
+    else:
+        logging.info("Using existing auth_state.json file")
+
+    # Check if auth file exists
+    if not os.path.exists(AUTH_FILE_PATH):
+        logging.error(f"❌ {AUTH_FILE_PATH} not found. Please run generate_linkedin_auth.py first.")
         return
 
     with sync_playwright() as p:
-        # Initialize proxy manager
-        proxy_manager = ProxyManager()
+        # Initialize proxy manager if available
+        proxy_manager = None
         proxy_config = None
         proxy_start_time = None
 
-        if proxy_manager.is_enabled():
-            proxy_config = proxy_manager.get_playwright_proxy_config()
-            proxy_start_time = time.time()
-            if proxy_config:
-                logging.info(f"🌐 Proxy rotation enabled - using proxy")
-            else:
-                logging.warning("⚠️ Proxy rotation enabled but no proxy available, continuing without proxy")
+        if PROXY_AVAILABLE:
+            try:
+                proxy_manager = ProxyManager()
+                if proxy_manager.is_enabled():
+                    proxy_config = proxy_manager.get_playwright_proxy_config()
+                    proxy_start_time = time.time()
+                    if proxy_config:
+                        logging.info(f"🌐 Proxy enabled")
+            except Exception as e:
+                logging.warning(f"Proxy initialization failed: {e}")
 
-        # Randomize browser parameters for anti-detection
+        # Randomize browser parameters
         selected_user_agent = random.choice(USER_AGENTS)
         selected_viewport = random.choice(VIEWPORT_SIZES)
 
-        logging.info(f"🔧 Using User-Agent: {selected_user_agent[:50]}...")
-        logging.info(f"🔧 Using Viewport: {selected_viewport}")
+        logging.info(f"🔧 User-Agent: {selected_user_agent[:50]}...")
+        logging.info(f"🔧 Viewport: {selected_viewport}")
 
         browser = p.chromium.launch(
             headless=HEADLESS_BROWSER,
-            slow_mo=random.randint(80, 150),  # Randomize slow_mo
+            slow_mo=random.randint(80, 150),
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',
@@ -989,37 +885,39 @@ def main():
             'timezone_id': 'Europe/Paris'
         }
 
-        # Add proxy configuration if available
         if proxy_config:
             context_options['proxy'] = proxy_config
 
         context = browser.new_context(**context_options)
 
-        # Apply stealth mode to avoid bot detection
+        # Apply stealth mode if available
         try:
             from playwright_stealth import Stealth
             stealth = Stealth()
             stealth.apply_stealth_sync(context)
-            logging.info("✅ Playwright stealth mode activated")
+            logging.info("✅ Stealth mode activated")
         except ImportError:
-            logging.warning("⚠️ playwright-stealth not installed, skipping stealth mode")
+            logging.warning("⚠️ playwright-stealth not installed")
 
         page = context.new_page()
 
-        # Initialize debugging managers if advanced debug is enabled
+        # Initialize debugging managers if enabled
         screenshot_mgr = None
         enhanced_logger = None
         policy_detector = None
         alert_system = None
 
-        if ENABLE_ADVANCED_DEBUG:
-            logging.info("🔧 Advanced debugging enabled - initializing debug managers...")
-            screenshot_mgr = DebugScreenshotManager()
-            enhanced_logger = EnhancedLogger()
-            policy_detector = LinkedInPolicyDetector(page)
-            if ENABLE_EMAIL_ALERTS:
-                alert_system = AlertSystem()
-                logging.info("📧 Email alerts enabled")
+        if ENABLE_ADVANCED_DEBUG and DEBUG_UTILS_AVAILABLE:
+            logging.info("🔧 Advanced debugging enabled")
+            try:
+                screenshot_mgr = DebugScreenshotManager()
+                enhanced_logger = EnhancedLogger()
+                policy_detector = LinkedInPolicyDetector(page)
+                if ENABLE_EMAIL_ALERTS:
+                    alert_system = AlertSystem()
+                    logging.info("📧 Email alerts enabled")
+            except Exception as e:
+                logging.warning(f"Could not initialize debug tools: {e}")
 
         try:
             # Capture initial state
@@ -1027,248 +925,138 @@ def main():
                 screenshot_mgr.capture(page, "01_browser_start")
 
             if not check_login_status(page):
+                logging.error("❌ Login verification failed")
                 if screenshot_mgr:
                     screenshot_mgr.capture(page, "login_failed", error=True)
                 if alert_system:
-                    alert_system.send_alert(
-                        "Login Failed",
-                        f"Failed to verify login at {page.url}"
-                    )
-                return # Stop execution if login verification fails.
+                    alert_system.send_alert("Login Failed", f"Failed to verify login at {page.url}")
+                return
 
-            # Validate DOM structure after login
-            if ENABLE_ADVANCED_DEBUG:
-                dom_validator = DOMStructureValidator(page)
-                if screenshot_mgr:
-                    screenshot_mgr.capture(page, "02_after_login")
+            # Navigate to birthdays page
+            page.goto("https://www.linkedin.com/feed/", timeout=60000)
+            random_delay(1, 2)
 
-                if not dom_validator.validate_all_selectors(screenshot_mgr):
-                    logging.warning("⚠️ Some DOM selectors failed validation - check logs")
-                    dom_validator.export_validation_report()
-                    if alert_system:
-                        alert_system.send_alert(
-                            "DOM Structure Validation Failed",
-                            "Some LinkedIn selectors failed validation. Site structure may have changed."
-                        )
-
-                # Check for policy restrictions
-                is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
-                if not is_ok:
-                    logging.critical("🚨 Policy violation detected - stopping execution")
-                    if alert_system:
-                        screenshot_path = screenshot_mgr.capture(page, "policy_violation_critical", error=True)
-                        alert_system.alert_policy_violation(issues, screenshot_path)
-                    return
+            # Validate selectors if available
+            if VALIDATOR_AVAILABLE:
+                logging.info("🔍 Validating selectors...")
+                validate_birthday_feed_selectors(page)
 
             random_delay(2, 4)
 
             birthdays = get_birthday_contacts(page)
 
-            # Capture birthdays page state
+            # Capture state
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "03_birthdays_page_loaded")
-            if enhanced_logger:
-                enhanced_logger.log_page_state(page, "Birthdays page loaded")
 
-            # --- MODE UNLIMITED: Pas de limite sur les messages ---
-            total_birthdays = len(birthdays['today']) + len(birthdays['late'])
-            logging.info(f"📊 Total birthdays detected: {total_birthdays} (today: {len(birthdays['today'])}, late: {len(birthdays['late'])})")
-            logging.info(f"🚀 MODE UNLIMITED : Tous les anniversaires seront traités sans limite")
+            # ═══════════════════════════════════════════════════════════════
+            # VERSION SANS LIMITATIONS:
+            # - Tous les anniversaires sont traités
+            # - Aucune limite hebdomadaire
+            # - Délais fixes entre messages pour éviter la détection
+            # ═══════════════════════════════════════════════════════════════
 
-            # --- PRIORISATION: Anniversaires du jour traités plus rapidement ---
-            # Phase 1: Anniversaires du jour (délai réduit pour envoi rapide)
-            # Phase 2: Anniversaires en retard (délai normal)
-            logging.info(f"🎂 PRIORITÉ: Anniversaires du jour seront traités en premier avec délais réduits")
+            total_today = len(birthdays['today'])
+            total_late = len(birthdays['late'])
 
-            # Délais pour les anniversaires du jour (2-4 minutes au lieu de 3-7)
-            min_delay_today, max_delay_today = (120, 240)  # 2-4 minutes
-            # Délais pour les anniversaires en retard (3-7 minutes)
-            min_delay_late, max_delay_late = (180, 420)  # 3-7 minutes
+            logging.info(f"📊 Total birthdays detected: today={total_today}, late={total_late}")
+            
+            # ═══════════════════════════════════════════════════════════════════════════
+            # VERSION LIMITÉE AUX ANNIVERSAIRES DU JOUR
+            # Les anniversaires en retard sont IGNORÉS
+            # ═══════════════════════════════════════════════════════════════════════════
+            
+            if total_late > 0:
+                logging.info(f"⏭️  Ignoring {total_late} late birthdays (script configured for today only)")
+            
+            logging.info(f"✅ {total_today} birthdays from today will be processed")
+            logging.info(f"⏱️  Delay between messages: {MIN_DELAY_SECONDS//60}-{MAX_DELAY_SECONDS//60} minutes")
+            logging.info("")
 
-            # Track total messages sent for implementing periodic long breaks
+            # Track total messages sent
             total_messages_sent = 0
-            break_intervals = []  # Track when to take long breaks
 
-            # Process today's birthdays first, then late ones.
-            # This structure allows for easy expansion or prioritization.
-            for birthday_type, contacts in birthdays.items():
-                is_late = (birthday_type == 'late')
+            # Process ONLY today's birthdays
+            if birthdays['today']:
+                logging.info(f"🎂 Processing {len(birthdays['today'])} birthdays from today...")
+                for i, contact in enumerate(birthdays['today']):
+                    send_birthday_message(page, contact, is_late=False)
+                    total_messages_sent += 1
 
-                # We won't send messages to late birthdays in DRY_RUN to keep tests fast and focused.
-                if is_late and DRY_RUN:
-                    logging.info("Skipping late birthdays in DRY RUN mode.")
-                    continue
+                    # Simulate human activity occasionally
+                    if random.random() < 0.3:
+                        simulate_human_activity(page)
 
-                if not contacts:
-                    logging.info(f"No {birthday_type} birthdays to process.")
-                    continue
+                    # Pause between messages (except for last one)
+                    if i < len(birthdays['today']) - 1:
+                        if not DRY_RUN:
+                            delay = random.randint(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS)
+                            minutes = delay // 60
+                            seconds = delay % 60
+                            logging.info(f"⏸️  Pause: {minutes}m {seconds}s")
+                            time.sleep(delay)
+                        else:
+                            delay = random.randint(2, 5)
+                            logging.info(f"⏸️  Pause (DRY RUN): {delay}s")
+                            time.sleep(delay)
+            else:
+                logging.info("ℹ️  No birthdays today - nothing to do")
 
-                logging.info(f"--- Starting to process {len(contacts)} {birthday_type} birthdays ---")
+            logging.info("")
+            logging.info("╔════════════════════════════════════════════════════════════════╗")
+            logging.info(f"║  ✅ Script finished successfully - {total_messages_sent} messages sent  ║")
+            logging.info("╚════════════════════════════════════════════════════════════════╝")
 
-                if is_late:
-                    for i, (contact, days_late) in enumerate(contacts):
-                        send_birthday_message(page, contact, is_late=True, days_late=days_late)
-                        total_messages_sent += 1
-
-                        # Check for policy restrictions every 5 messages
-                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
-                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
-                            if not is_ok:
-                                logging.critical("🚨 Policy violation detected during execution - stopping")
-                                if alert_system:
-                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
-                                    alert_system.alert_policy_violation(issues, screenshot_path)
-                                return
-
-                        # Simulate occasional human activity
-                        if random.random() < 0.3:  # 30% chance
-                            simulate_human_activity(page)
-
-                        if i < len(contacts) - 1:
-                            # ANTI-DETECTION: Extra pause every 5 messages
-                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
-                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
-                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
-                                time.sleep(extra_pause)
-
-                            # Check if we need a long break (every 10-15 messages)
-                            if not DRY_RUN:
-                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
-                                if not break_taken:
-                                    # Delay for late birthdays using Gaussian distribution
-                                    gaussian_delay(min_delay_late, max_delay_late)  # 3-7 minutes
-                            elif DRY_RUN:
-                                # Short delay for testing
-                                delay = random.randint(2, 5)
-                                logging.info(f"Pausing for {delay}s (DRY RUN).")
-                                time.sleep(delay)
-                else:
-                    for i, contact in enumerate(contacts):
-                        send_birthday_message(page, contact, is_late=is_late)
-                        total_messages_sent += 1
-
-                        # Check for policy restrictions every 5 messages
-                        if ENABLE_ADVANCED_DEBUG and policy_detector and total_messages_sent % 5 == 0:
-                            is_ok, issues = policy_detector.check_for_restrictions(screenshot_mgr)
-                            if not is_ok:
-                                logging.critical("🚨 Policy violation detected during execution - stopping")
-                                if alert_system:
-                                    screenshot_path = screenshot_mgr.capture(page, "policy_violation_during_run", error=True)
-                                    alert_system.alert_policy_violation(issues, screenshot_path)
-                                return
-
-                        # Simulate occasional human activity
-                        if random.random() < 0.3:  # 30% chance
-                            simulate_human_activity(page)
-
-                        # Add a pause between messages
-                        if i < len(contacts) - 1:
-                            # ANTI-DETECTION: Extra pause every 5 messages
-                            if not DRY_RUN and total_messages_sent % 5 == 0 and total_messages_sent > 0:
-                                extra_pause = random.randint(600, 1200)  # 10-20 minutes
-                                logging.info(f"⏸️ Extra pause after 5 messages: {extra_pause // 60} minutes")
-                                time.sleep(extra_pause)
-
-                            # Check if we need a long break (every 10-15 messages)
-                            if not DRY_RUN:
-                                break_taken, break_intervals = long_break_if_needed(total_messages_sent, break_intervals)
-                                if not break_taken:
-                                    # Reduced delay for today's birthdays (priority)
-                                    gaussian_delay(min_delay_today, max_delay_today)  # 2-4 minutes
-                            elif DRY_RUN:
-                                # Short delay for testing
-                                delay = random.randint(2, 5)
-                                logging.info(f"Pausing for {delay}s (DRY RUN).")
-                                time.sleep(delay)
-
-            # Save weekly message count (pas de sauvegarde en mode unlimited)
-            if not DRY_RUN and total_messages_sent > 0:
-                if WEEKLY_MESSAGE_LIMIT is not None:
-                    weekly_data = load_weekly_count()
-                    new_count = weekly_data['count'] + total_messages_sent
-                    save_weekly_count(new_count)
-                    logging.info(f"📊 Weekly message count updated: {new_count}/{WEEKLY_MESSAGE_LIMIT}")
-                else:
-                    logging.info(f"🚀 MODE UNLIMITED : {total_messages_sent} messages envoyés (pas de tracking hebdomadaire)")
-
-            logging.info("Script finished successfully.")
-
-            # Final screenshot if debugging enabled
+            # Final screenshot
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "99_execution_completed")
 
         except PlaywrightTimeoutError as e:
-            logging.error(f"A timeout error occurred: {e}")
-
-            # Record proxy failure if proxy was used
-            if proxy_config and proxy_start_time:
-                response_time = time.time() - proxy_start_time
+            logging.error(f"❌ Timeout error: {e}")
+            if proxy_config and proxy_start_time and proxy_manager:
                 proxy_manager.record_proxy_result(
                     proxy_config.get('server', 'unknown'),
                     success=False,
-                    response_time=response_time,
-                    error_message=f"Timeout error: {str(e)}"
+                    response_time=time.time() - proxy_start_time,
+                    error_message=str(e)
                 )
-
-            # Enhanced error handling
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "error_timeout", error=True)
             else:
                 page.screenshot(path='error_timeout.png')
 
-            if alert_system:
-                alert_system.send_alert(
-                    "Timeout Error",
-                    f"Script encountered a timeout error:\n\n{str(e)}\n\nCheck debug screenshots for details.",
-                    attach_files=['error_timeout.png'] if not screenshot_mgr else None
-                )
-
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}")
-
-            # Record proxy failure if proxy was used
-            if proxy_config and proxy_start_time:
-                response_time = time.time() - proxy_start_time
+            logging.error(f"❌ Unexpected error: {e}")
+            if proxy_config and proxy_start_time and proxy_manager:
                 proxy_manager.record_proxy_result(
                     proxy_config.get('server', 'unknown'),
                     success=False,
-                    response_time=response_time,
-                    error_message=f"Unexpected error: {str(e)}"
+                    response_time=time.time() - proxy_start_time,
+                    error_message=str(e)
                 )
-
-            # Enhanced error handling
             if screenshot_mgr:
                 screenshot_mgr.capture(page, "error_unexpected", error=True)
             else:
                 page.screenshot(path='error_unexpected.png')
 
-            if alert_system:
-                alert_system.send_alert(
-                    "Unexpected Error",
-                    f"Script crashed with unexpected error:\n\n{str(e)}\n\nCheck debug screenshots and logs for details.",
-                    attach_files=['error_unexpected.png'] if not screenshot_mgr else None
-                )
-
         finally:
-            # Record proxy success if proxy was used and no exceptions occurred
-            if proxy_config and proxy_start_time:
-                response_time = time.time() - proxy_start_time
+            # Record proxy success if used
+            if proxy_config and proxy_start_time and proxy_manager:
                 proxy_manager.record_proxy_result(
                     proxy_config.get('server', 'unknown'),
                     success=True,
-                    response_time=response_time
+                    response_time=time.time() - proxy_start_time
                 )
-                logging.info(f"✅ Proxy completed successfully (response time: {response_time:.2f}s)")
 
-            logging.info("Closing browser.")
+            logging.info("🔒 Closing browser...")
             browser.close()
-            # Clean up the local auth file for security
-            if os.path.exists(AUTH_FILE_PATH):
+            
+            # Clean up auth file for security
+            if os.path.exists(AUTH_FILE_PATH) and LINKEDIN_AUTH_STATE:
                 os.remove(AUTH_FILE_PATH)
 
-            # Log debugging summary if enabled
             if ENABLE_ADVANCED_DEBUG:
-                logging.info("🔧 Advanced debugging session completed - check debug_screenshots/ folder for details")
+                logging.info("🔧 Check debug_screenshots/ for details")
 
 if __name__ == "__main__":
     main()
