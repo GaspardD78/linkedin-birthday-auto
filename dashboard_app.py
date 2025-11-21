@@ -668,7 +668,7 @@ def api_logs_content():
 
     filename = 'birthday_wisher.log'
     if log_type == 'visit':
-        filename = 'profil_visitor.log'
+        filename = 'visit_profiles.log'
     elif log_type == 'system':
         # Find the dashboard log if it exists, otherwise use default
         filename = 'dashboard.log'
