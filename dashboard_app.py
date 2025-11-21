@@ -393,10 +393,18 @@ def logs():
     selected_log = request.args.get('file', 'birthday_wisher.log')
     log_content = ""
 
+    # Valid log files (currently in use)
+    valid_log_files = ['birthday_wisher.log', 'visit_profiles.log', 'dashboard.log']
+
     # List available log files
     log_dir = 'logs'
     if os.path.exists(log_dir):
-        log_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+        all_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+        log_files = [{
+            'name': f,
+            'size': os.path.getsize(os.path.join(log_dir, f)),
+            'obsolete': f not in valid_log_files
+        } for f in all_files]
 
     # Read selected log
     if selected_log and os.path.exists(os.path.join(log_dir, selected_log)):
@@ -724,6 +732,84 @@ def api_export():
         'success': True,
         'file': output_path
     })
+
+
+@app.route('/api/logs/cleanup', methods=['POST'])
+@login_required
+def api_cleanup_logs():
+    """API endpoint pour nettoyer les fichiers de log obsolètes"""
+    valid_log_files = ['birthday_wisher.log', 'visit_profiles.log', 'dashboard.log']
+    log_dir = 'logs'
+
+    if not os.path.exists(log_dir):
+        return jsonify({
+            'success': False,
+            'message': 'Le répertoire logs n\'existe pas'
+        })
+
+    try:
+        all_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+        obsolete_files = [f for f in all_files if f not in valid_log_files]
+
+        deleted_count = 0
+        errors = []
+
+        for file in obsolete_files:
+            file_path = os.path.join(log_dir, file)
+            try:
+                os.remove(file_path)
+                deleted_count += 1
+                logging.info(f"Deleted obsolete log file: {file}")
+            except Exception as e:
+                errors.append(f"Erreur lors de la suppression de {file}: {str(e)}")
+                logging.error(f"Failed to delete {file}: {e}")
+
+        return jsonify({
+            'success': True,
+            'deleted_count': deleted_count,
+            'errors': errors
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
+
+@app.route('/api/logs/delete/<filename>', methods=['POST'])
+@login_required
+def api_delete_log(filename):
+    """API endpoint pour supprimer un fichier de log spécifique"""
+    log_dir = 'logs'
+    file_path = os.path.join(log_dir, filename)
+
+    # Vérifier que le fichier existe et est bien un fichier .log
+    if not filename.endswith('.log'):
+        return jsonify({
+            'success': False,
+            'message': 'Fichier invalide'
+        })
+
+    if not os.path.exists(file_path):
+        return jsonify({
+            'success': False,
+            'message': 'Fichier non trouvé'
+        })
+
+    try:
+        os.remove(file_path)
+        logging.info(f"Deleted log file: {filename}")
+        return jsonify({
+            'success': True,
+            'message': f'Fichier {filename} supprimé avec succès'
+        })
+    except Exception as e:
+        logging.error(f"Failed to delete {filename}: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
 
 
 # ==================== ERROR HANDLERS ====================
