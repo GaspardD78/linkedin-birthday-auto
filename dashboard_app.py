@@ -512,7 +512,7 @@ def api_chart_data(chart_type):
             'datasets': [
                 {
                     'label': 'Messages à temps',
-                    'data': [item['messages_count'] - item['late_messages'] for item in daily_activity],
+                    'data': [item['messages'] - item['late_messages'] for item in daily_activity],
                     'backgroundColor': 'rgba(75, 192, 192, 0.2)',
                     'borderColor': 'rgba(75, 192, 192, 1)',
                     'borderWidth': 2
@@ -532,7 +532,7 @@ def api_chart_data(chart_type):
             'datasets': [
                 {
                     'label': 'Profils visités',
-                    'data': [item['visits_count'] for item in daily_activity],
+                    'data': [item['visits'] for item in daily_activity],
                     'backgroundColor': 'rgba(54, 162, 235, 0.2)',
                     'borderColor': 'rgba(54, 162, 235, 1)',
                     'borderWidth': 2

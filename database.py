@@ -659,8 +659,10 @@ class Database:
                 "messages": {
                     "total": messages_stats['total'],
                     "on_time": messages_stats['total'] - messages_stats['late_messages'],
-                    "late": messages_stats['late_messages'],
-                    "unique_contacts": unique_contacts
+                    "late": messages_stats['late_messages']
+                },
+                "contacts": {
+                    "unique": unique_contacts
                 },
                 "profile_visits": {
                     "total": visits_stats['total'],
@@ -713,19 +715,33 @@ class Database:
 
             visits_by_day = {row['date']: dict(row) for row in cursor.fetchall()}
 
+            cursor.execute("""
+                SELECT
+                    DATE(created_at) as date,
+                    COUNT(*) as contacts_count
+                FROM contacts
+                WHERE DATE(created_at) >= ?
+                GROUP BY DATE(created_at)
+                ORDER BY date DESC
+            """, (cutoff_date,))
+
+            contacts_by_day = {row['date']: dict(row) for row in cursor.fetchall()}
+
             # Combiner les données
-            all_dates = set(messages_by_day.keys()) | set(visits_by_day.keys())
+            all_dates = set(messages_by_day.keys()) | set(visits_by_day.keys()) | set(contacts_by_day.keys())
 
             result = []
             for date in sorted(all_dates, reverse=True):
                 messages = messages_by_day.get(date, {})
                 visits = visits_by_day.get(date, {})
+                contacts = contacts_by_day.get(date, {})
 
                 result.append({
                     "date": date,
-                    "messages_count": messages.get('messages_count', 0),
+                    "messages": messages.get('messages_count', 0),
                     "late_messages": messages.get('late_messages', 0),
-                    "visits_count": visits.get('visits_count', 0)
+                    "visits": visits.get('visits_count', 0),
+                    "contacts": contacts.get('contacts_count', 0)
                 })
 
             return result
