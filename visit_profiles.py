@@ -38,9 +38,10 @@ LINKEDIN_AUTH_STATE = os.getenv('LINKEDIN_AUTH_STATE')
 AUTH_FILE_PATH = "auth_state.json"
 
 # General settings
-# En mode GitHub Actions, forcer headless. Sinon, utiliser headless=False pour réduire la détection
+# Force headless mode by default (especially for Raspberry Pi)
+# Set HEADLESS=false environment variable only if you need to see the browser for debugging
 IS_GITHUB_ACTIONS = os.getenv('GITHUB_ACTIONS', 'false').lower() == 'true'
-HEADLESS_BROWSER = IS_GITHUB_ACTIONS  # Headless uniquement sur GitHub Actions
+HEADLESS_BROWSER = os.getenv('HEADLESS', 'true').lower() == 'true'
 DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
 
 # User-Agents réalistes et à jour (2025)
@@ -831,6 +832,9 @@ def main():
     config = load_config()
     if not config:
         return
+
+    # Log browser mode
+    logging.info(f"=== Browser mode: {'HEADLESS' if HEADLESS_BROWSER else 'VISIBLE (with GUI)'} ===")
 
     # Clean up old screenshots
     cleanup_old_screenshots(max_age_days=7)
