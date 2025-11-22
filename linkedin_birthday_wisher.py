@@ -1107,9 +1107,9 @@ def main():
     if DRY_RUN:
         logging.info("=== SCRIPT RUNNING IN DRY RUN MODE ===")
 
-    # Vérification du fuseau horaire - arrêt automatique si hors fenêtre (7h-9h Paris)
-    # Cela permet aux doubles crons (6h et 7h UTC) de s'adapter automatiquement été/hiver
-    if not check_paris_timezone_window(target_hour_start=7, target_hour_end=9):
+    # Vérification du fuseau horaire - arrêt automatique si hors fenêtre (7h-12h Paris)
+    # Cela permet au script de s'exécuter le matin avec une fenêtre étendue
+    if not check_paris_timezone_window(target_hour_start=7, target_hour_end=12):
         logging.info("Script terminé (hors fenêtre horaire).")
         return
 
