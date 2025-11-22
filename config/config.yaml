@@ -1,0 +1,174 @@
+# ═══════════════════════════════════════════════════════════════════
+# Configuration LinkedIn Birthday Auto Bot
+# Version 2.0.0
+# ═══════════════════════════════════════════════════════════════════
+
+# Métadonnées
+version: "2.0.0"
+
+# Mode de fonctionnement
+# Options: standard (avec limites), unlimited (sans limites), custom
+bot_mode: "standard"
+
+# Mode test (ne pas envoyer de vrais messages)
+dry_run: false
+
+# ═══════════════════════════════════════════════════════════════════
+# NAVIGATEUR
+# ═══════════════════════════════════════════════════════════════════
+browser:
+  # Mode headless (sans interface graphique)
+  headless: true
+
+  # Ralentissement aléatoire en millisecondes (min, max)
+  slow_mo: [80, 150]
+
+  # Locale et fuseau horaire
+  locale: "fr-FR"
+  timezone: "Europe/Paris"
+
+  # User-Agents pour rotation anti-détection
+  user_agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+
+  # Tailles de viewport pour anti-détection
+  viewport_sizes:
+    - width: 1920
+      height: 1080
+    - width: 1366
+      height: 768
+    - width: 1440
+      height: 900
+    - width: 1536
+      height: 864
+
+# ═══════════════════════════════════════════════════════════════════
+# AUTHENTIFICATION
+# ═══════════════════════════════════════════════════════════════════
+auth:
+  # Variable d'environnement contenant l'auth state
+  auth_state_env_var: "LINKEDIN_AUTH_STATE"
+
+  # Chemin du fichier auth state
+  auth_file_path: "auth_state.json"
+
+  # Chemin de secours (optionnel)
+  auth_fallback_path: null
+
+# ═══════════════════════════════════════════════════════════════════
+# LIMITES D'ENVOI DE MESSAGES
+# ═══════════════════════════════════════════════════════════════════
+messaging_limits:
+  # Limite de messages par exécution (null = illimité)
+  max_messages_per_run: null
+
+  # Limite hebdomadaire (LinkedIn recommande < 100)
+  weekly_message_limit: 80
+
+  # Limite quotidienne (null = pas de limite quotidienne)
+  daily_message_limit: null
+
+# ═══════════════════════════════════════════════════════════════════
+# PLANIFICATION
+# ═══════════════════════════════════════════════════════════════════
+scheduling:
+  # Heures de début et fin d'envoi (0-23)
+  daily_start_hour: 7
+  daily_end_hour: 19
+
+  # Fuseau horaire pour la planification
+  timezone: "Europe/Paris"
+
+# ═══════════════════════════════════════════════════════════════════
+# DÉLAIS ENTRE ACTIONS
+# ═══════════════════════════════════════════════════════════════════
+delays:
+  # Délais entre messages (secondes)
+  min_delay_seconds: 120  # 2 minutes
+  max_delay_seconds: 300  # 5 minutes
+
+  # Délais entre micro-actions (secondes)
+  action_delay_min: 0.5
+  action_delay_max: 1.5
+
+# ═══════════════════════════════════════════════════════════════════
+# MESSAGES D'ANNIVERSAIRE
+# ═══════════════════════════════════════════════════════════════════
+messages:
+  # Fichiers de messages
+  messages_file: "messages.txt"
+  late_messages_file: "late_messages.txt"
+
+  # Années d'historique pour éviter la répétition
+  avoid_repetition_years: 2
+
+# ═══════════════════════════════════════════════════════════════════
+# FILTRAGE DES ANNIVERSAIRES
+# ═══════════════════════════════════════════════════════════════════
+birthday_filter:
+  # Traiter les anniversaires du jour
+  process_today: true
+
+  # Traiter les anniversaires en retard
+  process_late: true
+
+  # Nombre maximum de jours de retard (1-365)
+  max_days_late: 10
+
+# ═══════════════════════════════════════════════════════════════════
+# PROXY (optionnel)
+# ═══════════════════════════════════════════════════════════════════
+proxy:
+  # Activer le proxy
+  enabled: false
+
+  # Activer la rotation des proxies
+  rotation_enabled: false
+
+  # Fichier de configuration des proxies
+  config_file: "proxy_config.json"
+
+# ═══════════════════════════════════════════════════════════════════
+# DÉBOGAGE
+# ═══════════════════════════════════════════════════════════════════
+debug:
+  # Activer le débogage avancé
+  advanced_debug: false
+
+  # Sauvegarder les screenshots d'erreurs
+  save_screenshots: true
+
+  # Sauvegarder le HTML des pages
+  save_html: false
+
+  # Niveau de logging (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  log_level: "INFO"
+
+# ═══════════════════════════════════════════════════════════════════
+# BASE DE DONNÉES
+# ═══════════════════════════════════════════════════════════════════
+database:
+  # Activer la base de données
+  enabled: true
+
+  # Chemin du fichier SQLite
+  db_path: "linkedin_automation.db"
+
+  # Timeout des opérations DB (secondes)
+  timeout: 30
+
+# ═══════════════════════════════════════════════════════════════════
+# MONITORING
+# ═══════════════════════════════════════════════════════════════════
+monitoring:
+  # Activer le monitoring
+  enabled: false
+
+  # Activer les métriques Prometheus
+  prometheus_enabled: false
+
+  # Port pour Prometheus
+  prometheus_port: 9090
