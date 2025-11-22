@@ -192,6 +192,8 @@ messaging_limits:
 
     def test_export_to_dict(self):
         """export_to_dict() doit retourner un dict complet."""
+        # S'assurer d'avoir une config clean
+        ConfigManager._instance = None
         manager = ConfigManager()
         config_dict = manager.export_to_dict()
 

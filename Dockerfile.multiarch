@@ -1,0 +1,38 @@
+# Dockerfile.multiarch
+FROM --platform=$BUILDPLATFORM python:3.11-slim
+
+# Buildx args
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+RUN echo "Building for $TARGETPLATFORM on $BUILDPLATFORM"
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    gcc g++ make \
+    libffi-dev libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Playwright dependencies for ARM64 (Raspberry Pi) or AMD64
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+      pip install playwright==1.40.0 && \
+      playwright install-deps chromium; \
+    else \
+      pip install playwright==1.40.0 && \
+      playwright install-deps chromium; \
+    fi
+
+WORKDIR /app
+
+# Copy requirements first for cache
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Install playwright browsers
+RUN playwright install chromium
+
+# Default command
+CMD ["python", "main.py"]

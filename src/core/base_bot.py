@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 import random
 import time
 import re
-import logging
 from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime
 from pathlib import Path
@@ -27,8 +26,17 @@ from ..utils.exceptions import (
     PageLoadTimeoutError,
     MessageSendError
 )
+from ..monitoring.metrics import (
+    MESSAGES_SENT_TOTAL,
+    BIRTHDAYS_PROCESSED,
+    RUN_DURATION_SECONDS
+)
+from ..monitoring.prometheus import PrometheusClient
+from ..monitoring.tracing import setup_tracing
+from opentelemetry import trace
+from ..utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseLinkedInBot(ABC):
@@ -69,6 +77,14 @@ class BaseLinkedInBot(ABC):
         self.browser_manager: Optional[BrowserManager] = None
         self.auth_manager: Optional[AuthManager] = None
 
+        # Monitoring
+        self.prometheus_client = PrometheusClient(metrics_dir=self.config.paths.logs_dir)
+
+        # Tracing
+        self.tracer = trace.get_tracer(__name__)
+        # Note: Tracing provider should be initialized globally (e.g. in main.py or worker)
+        # but we can ensure it's used here
+
         # Page Playwright
         self.page: Optional[Page] = None
 
@@ -86,8 +102,9 @@ class BaseLinkedInBot(ABC):
         }
 
         logger.info(
-            f"{self.__class__.__name__} initialized "
-            f"(mode: {self.config.bot_mode}, dry_run: {self.config.dry_run})"
+            f"{self.__class__.__name__} initialized",
+            mode=self.config.bot_mode,
+            dry_run=self.config.dry_run
         )
 
     # ═══════════════════════════════════════════════════════════════
@@ -108,6 +125,12 @@ class BaseLinkedInBot(ABC):
         Raises:
             LinkedInBotError: En cas d'erreur durant l'exécution
         """
+        with self.tracer.start_as_current_span("bot_run"):
+            return self._run_internal()
+
+    @abstractmethod
+    def _run_internal(self) -> Dict[str, Any]:
+        """Internal abstract run method to be implemented by subclasses."""
         pass
 
     # ═══════════════════════════════════════════════════════════════
@@ -171,6 +194,10 @@ class BaseLinkedInBot(ABC):
             keep_file = self.auth_manager.get_auth_source() == "env"
             self.auth_manager.cleanup(keep_file=keep_file)
 
+        # Write metrics to file
+        if self.prometheus_client:
+            self.prometheus_client.write_metrics()
+
         logger.info("✅ Bot teardown completed")
 
     def check_login_status(self) -> bool:
@@ -214,28 +241,29 @@ class BaseLinkedInBot(ABC):
         Raises:
             PageLoadTimeoutError: Si la page ne charge pas
         """
-        logger.info("Navigating to birthdays page...")
-        self.page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000)
+        with self.tracer.start_as_current_span("get_birthday_contacts"):
+            logger.info("Navigating to birthdays page...")
+            self.page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000)
 
-        # Sélecteur des cartes d'anniversaire
-        card_selector = "div[role='listitem']"
+            # Sélecteur des cartes d'anniversaire
+            card_selector = "div[role='listitem']"
 
-        try:
-            logger.info(f"Waiting for birthday cards: '{card_selector}'")
-            self.page.wait_for_selector(card_selector, state="visible", timeout=15000)
-        except PlaywrightTimeoutError:
-            logger.info("No birthday cards found on the page")
-            self.browser_manager.take_screenshot("birthdays_page_no_cards.png")
-            return {'today': [], 'late': []}
+            try:
+                logger.info(f"Waiting for birthday cards: '{card_selector}'")
+                self.page.wait_for_selector(card_selector, state="visible", timeout=15000)
+            except PlaywrightTimeoutError:
+                logger.info("No birthday cards found on the page")
+                self.browser_manager.take_screenshot("birthdays_page_no_cards.png")
+                return {'today': [], 'late': []}
 
-        # Screenshot pour debug
-        self.browser_manager.take_screenshot("birthdays_page_loaded.png")
+            # Screenshot pour debug
+            self.browser_manager.take_screenshot("birthdays_page_loaded.png")
 
-        # Scroller pour charger toutes les cartes
-        all_contacts = self._scroll_and_collect_contacts(card_selector)
+            # Scroller pour charger toutes les cartes
+            all_contacts = self._scroll_and_collect_contacts(card_selector)
 
-        # Catégoriser les anniversaires
-        return self._categorize_birthdays(all_contacts)
+            # Catégoriser les anniversaires
+            return self._categorize_birthdays(all_contacts)
 
     def _scroll_and_collect_contacts(
         self,
@@ -329,6 +357,12 @@ class BaseLinkedInBot(ABC):
 
         # Afficher les statistiques
         self._log_birthday_stats(stats, len(contacts))
+
+        # Update metrics
+        BIRTHDAYS_PROCESSED.labels(type='today').set(stats['today'])
+        total_late = sum(stats[f'late_{i}d'] for i in range(1, 11))
+        BIRTHDAYS_PROCESSED.labels(type='late').set(total_late)
+        BIRTHDAYS_PROCESSED.labels(type='ignored').set(stats['ignored'])
 
         return birthdays
 
@@ -639,6 +673,16 @@ class BaseLinkedInBot(ABC):
         Raises:
             MessageSendError: Si l'envoi échoue
         """
+        with self.tracer.start_as_current_span("send_birthday_message"):
+            return self._send_birthday_message_internal(contact_element, is_late, days_late)
+
+    def _send_birthday_message_internal(
+        self,
+        contact_element,
+        is_late: bool,
+        days_late: int
+    ) -> bool:
+        """Logique interne d'envoi de message."""
         # Fermer toutes les modales ouvertes
         self._close_all_message_modals()
 
@@ -657,7 +701,7 @@ class BaseLinkedInBot(ABC):
             return False
 
         log_msg = f"late ({days_late}d)" if is_late else "today"
-        logger.info(f"--- Processing birthday ({log_msg}) for {full_name} ---")
+        logger.info(f"--- Processing birthday ({log_msg}) for {full_name} ---", contact=full_name)
 
         # Sélecteur du bouton Message
         message_button_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
@@ -789,7 +833,8 @@ class BaseLinkedInBot(ABC):
             # Envoyer
             if submit_button.is_enabled():
                 submit_button.click()
-                logger.info("✅ Message sent successfully")
+                logger.info("✅ Message sent successfully", contact=full_name)
+                MESSAGES_SENT_TOTAL.labels(status='success', type='late' if is_late else 'today').inc()
 
                 # Enregistrer en DB
                 if self.config.database.enabled and hasattr(self, 'db') and self.db:

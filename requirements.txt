@@ -5,3 +5,11 @@ flask
 gunicorn
 flask-login
 psutil
+prometheus-client==0.19.0
+structlog==23.2.0
+opentelemetry-api==1.22.0
+opentelemetry-sdk==1.22.0
+opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-exporter-otlp==1.22.0
+redis==5.0.1
+rq==1.16.0

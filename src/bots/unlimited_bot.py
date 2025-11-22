@@ -69,6 +69,9 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         )
 
     def run(self) -> Dict[str, Any]:
+        return super().run()
+
+    def _run_internal(self) -> Dict[str, Any]:
         """
         Exécute le bot pour envoyer des messages d'anniversaire (unlimited).
 

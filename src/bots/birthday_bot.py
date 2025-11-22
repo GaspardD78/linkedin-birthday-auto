@@ -5,7 +5,6 @@ Ce bot traite UNIQUEMENT les anniversaires du jour et respecte les limites
 hebdomadaires configurées pour éviter la détection LinkedIn.
 """
 
-import logging
 import random
 import time
 from typing import Dict, Any, List
@@ -18,8 +17,10 @@ from ..utils.exceptions import (
     DailyLimitReachedError,
     MessageSendError
 )
+from ..utils.logging import get_logger
+from ..monitoring.metrics import RUN_DURATION_SECONDS
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BirthdayBot(BaseLinkedInBot):
@@ -63,6 +64,9 @@ class BirthdayBot(BaseLinkedInBot):
         )
 
     def run(self) -> Dict[str, Any]:
+        return super().run()
+
+    def _run_internal(self) -> Dict[str, Any]:
         """
         Exécute le bot pour envoyer des messages d'anniversaire.
 
@@ -95,9 +99,11 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info("═" * 70)
         logger.info("🎂 Starting BirthdayBot (Standard Mode)")
         logger.info("═" * 70)
-        logger.info(f"Dry Run: {self.config.dry_run}")
-        logger.info(f"Weekly Limit: {self.config.messaging_limits.weekly_message_limit}")
-        logger.info("Processing: TODAY's birthdays only")
+        logger.info("configuration",
+            dry_run=self.config.dry_run,
+            weekly_limit=self.config.messaging_limits.weekly_message_limit,
+            mode="TODAY's birthdays only"
+        )
         logger.info("═" * 70)
 
         # Initialiser la database si activée
@@ -182,15 +188,18 @@ class BirthdayBot(BaseLinkedInBot):
 
         # Résumé final
         duration = time.time() - start_time
+        RUN_DURATION_SECONDS.observe(duration)
 
         logger.info("")
         logger.info("═" * 70)
         logger.info("✅ BirthdayBot execution completed")
         logger.info("═" * 70)
-        logger.info(f"Messages sent: {self.stats['messages_sent']}/{max_to_send}")
-        logger.info(f"Contacts processed: {self.stats['contacts_processed']}")
-        logger.info(f"Errors: {self.stats['errors']}")
-        logger.info(f"Duration: {duration:.1f}s")
+        logger.info("execution_stats",
+            messages_sent=f"{self.stats['messages_sent']}/{max_to_send}",
+            contacts_processed=self.stats['contacts_processed'],
+            errors=self.stats['errors'],
+            duration=f"{duration:.1f}s"
+        )
         logger.info("═" * 70)
 
         return self._build_result(

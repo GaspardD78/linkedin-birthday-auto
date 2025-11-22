@@ -296,6 +296,21 @@ class MonitoringConfig(BaseModel):
     )
 
 
+class PathsConfig(BaseModel):
+    """Configuration des chemins de fichiers."""
+
+    model_config = ConfigDict(frozen=False)
+
+    logs_dir: str = Field(
+        default="logs",
+        description="Dossier pour les logs"
+    )
+    data_dir: str = Field(
+        default="data",
+        description="Dossier pour les données"
+    )
+
+
 class LinkedInBotConfig(BaseModel):
     """Configuration complète du bot LinkedIn."""
 
@@ -330,6 +345,7 @@ class LinkedInBotConfig(BaseModel):
     debug: DebugConfig = Field(default_factory=DebugConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    paths: PathsConfig = Field(default_factory=PathsConfig)
 
     def get_daily_window_seconds(self) -> int:
         """Calcule la fenêtre quotidienne en secondes."""
