@@ -15,9 +15,10 @@ Ce guide **remplace** le guide générique et est **optimisé** pour cette confi
 2. [Configuration réseau Freebox](#configuration-réseau-freebox)
 3. [Configuration NAS Synology](#configuration-nas-synology)
 4. [Installation sur Raspberry Pi 4](#installation-sur-raspberry-pi-4)
-5. [Optimisations spécifiques](#optimisations-spécifiques)
-6. [Surveillance et maintenance](#surveillance-et-maintenance)
-7. [Troubleshooting](#troubleshooting)
+5. [Déploiement du Dashboard Web](#déploiement-du-dashboard-web)
+6. [Optimisations spécifiques](#optimisations-spécifiques)
+7. [Surveillance et maintenance](#surveillance-et-maintenance)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -43,11 +44,12 @@ Ce guide **remplace** le guide générique et est **optimisé** pour cette confi
   │ 4GB    │◄───┤ DS213J   │   │            │
   │        │NFS │ (Backup) │   │            │
   └────────┘    └──────────┘   └────────────┘
-     │
-     │ Exécute:
-     │ - Bot LinkedIn (Docker)
-     │ - Redis (Docker)
-     │ - Cron jobs
+     │              │
+     │ Exécute:     │ Héberge:
+     │ - Bot        │ - Base MySQL
+     │ - Dashboard  │ - Backups DB
+     │ - Redis      │ - Logs archivés
+     │ - Cron jobs  │
 ```
 
 ### Rôles de chaque composant
@@ -55,8 +57,8 @@ Ce guide **remplace** le guide générique et est **optimisé** pour cette confi
 | Composant | Rôle | Ressources |
 |-----------|------|------------|
 | **Freebox Pop** | - Connexion Internet<br>- IP résidentielle (légitime pour LinkedIn)<br>- DHCP/DNS local | - |
-| **Raspberry Pi 4** | - Exécution du bot 24/7<br>- Docker containers<br>- Cron automation | - 4 Go RAM<br>- 32 Go SD card<br>- 3-5W |
-| **Synology DS213J** | - Stockage des sauvegardes<br>- Logs archivés<br>- Base de données (optionnel) | - 512 Mo RAM<br>- Disques RAID |
+| **Raspberry Pi 4** | - Exécution du bot 24/7<br>- Dashboard Web (Next.js)<br>- Docker containers<br>- Cron automation | - 4 Go RAM<br>- 32 Go SD card<br>- 3-5W |
+| **Synology DS213J** | - Stockage des sauvegardes<br>- Base MySQL (pour dashboard)<br>- Logs archivés | - 512 Mo RAM<br>- Disques RAID |
 
 ---
 
@@ -365,6 +367,669 @@ gpu_freq=600
 ```
 
 ```bash
+
+---
+
+## 📊 Déploiement du Dashboard Web
+
+Le projet inclut un **Dashboard Web Next.js** pour surveiller et contrôler le bot via une interface graphique.
+
+### Architecture du Dashboard
+
+```
+┌─────────────────────────────────────────────────┐
+│                 NAVIGATEUR                      │
+│           http://192.168.1.50:3000             │
+└────────────────┬────────────────────────────────┘
+                 │
+      ┌──────────▼──────────┐
+      │  Raspberry Pi 4     │
+      │                     │
+      │  ┌──────────────┐   │
+      │  │ Dashboard    │   │ Port 3000
+      │  │ (Next.js)    │◄──┼─── Votre navigateur
+      │  └──────┬───────┘   │
+      │         │           │
+      │  ┌──────▼───────┐   │
+      │  │ Redis        │   │ Port 6379
+      │  │ (Cache)      │   │
+      │  └──────────────┘   │
+      └─────────┬───────────┘
+                │
+      ┌─────────▼──────────┐
+      │  Synology DS213J   │
+      │                    │
+      │  MySQL Database    │ Port 3306
+      │  (linkedin_bot)    │
+      └────────────────────┘
+```
+
+### Fonctionnalités du Dashboard
+
+✅ **Monitoring en temps réel**
+- Statistiques des messages envoyés
+- Anniversaires du jour
+- Historique des exécutions
+- État du bot (actif/inactif)
+
+✅ **Contrôle à distance**
+- Démarrer/arrêter le bot
+- Lancer une exécution manuelle
+- Voir les logs en direct
+
+✅ **Visualisations**
+- Graphiques d'activité
+- Calendrier des anniversaires
+- Taux de succès/échec
+
+### Prérequis
+
+1. **Base de données MySQL sur Synology** (recommandé)
+   - OU SQLite locale (moins performant)
+2. **Node.js 20+** installé sur Pi 4
+3. **Docker et Docker Compose**
+
+---
+
+## 🗄️ Configuration Base MySQL sur Synology DS213J
+
+### Option A : MariaDB sur Synology (Recommandé)
+
+#### Étape 1 : Installer MariaDB sur Synology
+
+1. **DSM** → **Package Center**
+2. Rechercher **"MariaDB 10"**
+3. Cliquer **Installer**
+4. Attendre l'installation (~2 min)
+
+#### Étape 2 : Configurer MariaDB
+
+```bash
+# SSH vers le Synology
+ssh admin@192.168.1.X  # Remplacer X par l'IP du NAS
+
+# Se connecter à MySQL en root
+sudo mysql -u root -p
+# Mot de passe: (celui configuré lors de l'installation)
+```
+
+```sql
+-- Créer la base de données
+CREATE DATABASE linkedin_bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Créer l'utilisateur
+CREATE USER 'linkedin_user'@'%' IDENTIFIED BY 'VotreMotDePasseSecurise';
+
+-- Donner les permissions
+GRANT ALL PRIVILEGES ON linkedin_bot.* TO 'linkedin_user'@'%';
+FLUSH PRIVILEGES;
+
+-- Vérifier
+SHOW DATABASES;
+SELECT User, Host FROM mysql.user WHERE User='linkedin_user';
+
+-- Quitter
+EXIT;
+```
+
+#### Étape 3 : Ouvrir le port MySQL (3306)
+
+**DSM** → **Panneau de configuration** → **Sécurité** → **Pare-feu**
+
+1. Modifier le profil actif
+2. Ajouter une règle :
+   - **Ports :** `3306`
+   - **Protocole :** TCP
+   - **Action :** Autoriser
+   - **Source :** IP du Pi 4 (`192.168.1.50`)
+
+#### Étape 4 : Tester depuis le Pi 4
+
+```bash
+# Installer client MySQL sur Pi 4
+sudo apt install -y mysql-client
+
+# Tester la connexion
+mysql -h 192.168.1.X -u linkedin_user -p linkedin_bot
+# Entrer le mot de passe
+
+# Si connexion réussie:
+SHOW TABLES;
+EXIT;
+```
+
+### Option B : SQLite locale (Simple mais moins performant)
+
+Si vous ne voulez pas utiliser MySQL sur le Synology :
+
+```bash
+# Le dashboard utilisera SQLite automatiquement
+# Aucune configuration nécessaire
+```
+
+⚠️ **Limitation :** SQLite est moins performant pour les requêtes concurrentes.
+
+---
+
+## 🚀 Installation du Dashboard sur Pi 4
+
+### Méthode 1 : Docker Compose (Recommandé)
+
+#### Étape 1 : Vérifier les prérequis
+
+```bash
+# Docker installé ?
+docker --version
+# Docker version 24.0.0+
+
+# Docker Compose installé ?
+docker-compose --version
+# Docker Compose version v2.20.0+
+```
+
+#### Étape 2 : Configurer les variables d'environnement
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+nano .env
+```
+
+**Contenu du fichier `.env` :**
+
+```bash
+# ===== BASE DE DONNÉES =====
+# Option A: MySQL sur Synology (RECOMMANDÉ)
+DATABASE_URL=mysql://linkedin_user:VotreMotDePasseSecurise@192.168.1.X:3306/linkedin_bot
+
+# Option B: SQLite locale (décommenter si pas de MySQL)
+# DATABASE_URL=sqlite:///app/data/dashboard.db
+
+# ===== REDIS =====
+REDIS_URL=redis://redis:6379
+
+# ===== CONFIGURATION BOT =====
+HEADLESS=true
+PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+
+# ===== ENVIRONNEMENT =====
+NODE_ENV=production
+NEXT_TELEMETRY_DISABLED=1
+```
+
+**Remplacer :**
+- `192.168.1.X` → IP de votre Synology
+- `VotreMotDePasseSecurise` → Mot de passe MySQL
+
+#### Étape 3 : Modifier docker-compose.yml pour Pi 4
+
+```bash
+nano docker-compose.yml
+```
+
+**Optimisations pour Pi 4 :**
+
+```yaml
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    container_name: linkedin_dashboard
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G      # Réduit pour Pi 4 (était 1.5G)
+          cpus: '1.5'     # Réduit pour Pi 4
+        reservations:
+          memory: 600M
+          cpus: '0.5'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - HEADLESS=true
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+    volumes:
+      - ./logs:/app/logs
+      - dashboard-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: linkedin_dashboard_redis
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data:
+  dashboard-data:
+```
+
+#### Étape 4 : Build de l'image (prend 15-20 min sur Pi 4)
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+
+# Build l'image Docker
+docker-compose build
+
+# Vérifier que l'image est créée
+docker images | grep linkedin
+```
+
+**Sortie attendue :**
+```
+dashboard-app    latest    abc123def456    2 minutes ago    450MB
+```
+
+#### Étape 5 : Initialiser la base de données
+
+```bash
+# Lancer temporairement pour créer les tables
+docker-compose up -d
+
+# Attendre 30 secondes que Next.js initialise
+sleep 30
+
+# Vérifier les logs
+docker-compose logs app | tail -20
+```
+
+**Rechercher dans les logs :**
+```
+✓ Ready in 5.2s
+✓ Local: http://localhost:3000
+```
+
+#### Étape 6 : Tester le dashboard
+
+```bash
+# Depuis le Pi 4
+curl http://localhost:3000
+
+# Depuis votre PC (sur le même réseau)
+# Ouvrir navigateur: http://192.168.1.50:3000
+```
+
+**Page d'accueil attendue :**
+- Dashboard LinkedIn Bot
+- Statistiques (0 messages pour l'instant)
+- Formulaire de connexion (si activé)
+
+#### Étape 7 : Vérifier les containers
+
+```bash
+docker-compose ps
+```
+
+**Sortie attendue :**
+```
+NAME                      STATUS    PORTS
+linkedin_dashboard        Up        0.0.0.0:3000->3000/tcp
+linkedin_dashboard_redis  Up        6379/tcp
+```
+
+---
+
+### Méthode 2 : Installation Native (Sans Docker)
+
+**⚠️ Moins recommandé sur Pi 4** (consommation mémoire plus élevée)
+
+#### Étape 1 : Installer Node.js 20
+
+```bash
+# Ajouter le repository NodeSource
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+
+# Installer Node.js
+sudo apt install -y nodejs
+
+# Vérifier
+node --version  # v20.x.x
+npm --version   # 10.x.x
+```
+
+#### Étape 2 : Installer les dépendances
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+
+# Installer les packages (prend 10-15 min sur Pi 4)
+npm ci --production
+```
+
+#### Étape 3 : Créer le fichier .env
+
+```bash
+nano .env.local
+```
+
+**Contenu :**
+```bash
+DATABASE_URL=mysql://linkedin_user:password@192.168.1.X:3306/linkedin_bot
+REDIS_URL=redis://localhost:6379
+NODE_ENV=production
+```
+
+#### Étape 4 : Build du projet
+
+```bash
+# Build Next.js (prend 5-10 min sur Pi 4)
+npm run build
+```
+
+#### Étape 5 : Installer Redis localement
+
+```bash
+sudo apt install -y redis-server
+
+# Configurer Redis
+sudo nano /etc/redis/redis.conf
+```
+
+**Modifier :**
+```
+maxmemory 128mb
+maxmemory-policy allkeys-lru
+```
+
+```bash
+# Redémarrer Redis
+sudo systemctl restart redis-server
+sudo systemctl enable redis-server
+```
+
+#### Étape 6 : Lancer le dashboard
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+
+# Démarrer en production
+npm start
+```
+
+**Sortie attendue :**
+```
+> linkedin-bot-dashboard@0.1.0 start
+> next start
+
+  ▲ Next.js 14.0.0
+  - Local:        http://localhost:3000
+  - Network:      http://192.168.1.50:3000
+
+✓ Ready in 2.5s
+```
+
+#### Étape 7 : Créer un service systemd
+
+```bash
+sudo nano /etc/systemd/system/linkedin-dashboard.service
+```
+
+**Contenu :**
+```ini
+[Unit]
+Description=LinkedIn Bot Dashboard
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/linkedin-birthday-auto/dashboard
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Activer le service
+sudo systemctl daemon-reload
+sudo systemctl enable linkedin-dashboard
+sudo systemctl start linkedin-dashboard
+
+# Vérifier le statut
+sudo systemctl status linkedin-dashboard
+```
+
+---
+
+## 🌐 Accès au Dashboard
+
+### Depuis le Réseau Local
+
+**URL :** `http://192.168.1.50:3000`
+
+**Navigation :**
+- **/** : Page d'accueil avec stats
+- **/birthdays** : Liste des anniversaires
+- **/history** : Historique des exécutions
+- **/settings** : Configuration du bot
+- **/logs** : Logs en temps réel
+
+### Sécuriser l'Accès
+
+#### Option A : Reverse Proxy Nginx (Recommandé)
+
+```bash
+# Installer Nginx
+sudo apt install -y nginx
+
+# Créer la configuration
+sudo nano /etc/nginx/sites-available/linkedin-dashboard
+```
+
+**Contenu :**
+```nginx
+server {
+    listen 80;
+    server_name linkedin-bot.local;  # Ou votre domaine
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+```bash
+# Activer le site
+sudo ln -s /etc/nginx/sites-available/linkedin-dashboard /etc/nginx/sites-enabled/
+
+# Tester la config
+sudo nginx -t
+
+# Redémarrer Nginx
+sudo systemctl restart nginx
+```
+
+**Accès :** `http://linkedin-bot.local` (après config DNS/hosts)
+
+#### Option B : Authentification Basic Auth
+
+```bash
+# Créer fichier de mots de passe
+sudo apt install -y apache2-utils
+sudo htpasswd -c /etc/nginx/.htpasswd admin
+
+# Modifier la config Nginx
+sudo nano /etc/nginx/sites-available/linkedin-dashboard
+```
+
+**Ajouter dans `location /` :**
+```nginx
+auth_basic "Dashboard LinkedIn Bot";
+auth_basic_user_file /etc/nginx/.htpasswd;
+```
+
+```bash
+sudo systemctl restart nginx
+```
+
+**Accès :** Demande login/mot de passe
+
+---
+
+## 📊 Métriques Dashboard sur Pi 4
+
+Consommation attendue avec Dashboard actif :
+
+| Service | RAM | CPU | Disque |
+|---------|-----|-----|--------|
+| **Dashboard Next.js** | 600-800 Mo | 10-15% | 450 Mo |
+| **Redis (dashboard)** | 50-100 Mo | <1% | 10 Mo |
+| **Bot Worker** | 900 Mo | 15-25% | 300 Mo |
+| **Redis (bot)** | 200 Mo | <1% | 50 Mo |
+| **Système** | 500 Mo | 5% | - |
+| **TOTAL** | **~2.5 Go / 4 Go** | **30-40%** | **~800 Mo** |
+
+**Marge restante :** ~1.5 Go RAM libre ✅
+
+---
+
+## 🔄 Mise à Jour du Dashboard
+
+### Docker Compose
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+
+# Arrêter les services
+docker-compose down
+
+# Pull les dernières modifications
+git pull origin main
+
+# Rebuild
+docker-compose build --no-cache
+
+# Redémarrer
+docker-compose up -d
+```
+
+### Installation Native
+
+```bash
+cd ~/linkedin-birthday-auto/dashboard
+
+# Arrêter le service
+sudo systemctl stop linkedin-dashboard
+
+# Pull les modifications
+git pull origin main
+
+# Réinstaller les dépendances
+npm ci --production
+
+# Rebuild
+npm run build
+
+# Redémarrer
+sudo systemctl start linkedin-dashboard
+```
+
+---
+
+## 🐛 Troubleshooting Dashboard
+
+### Problème : "Cannot connect to database"
+
+```bash
+# Vérifier la connexion MySQL depuis Pi 4
+mysql -h 192.168.1.X -u linkedin_user -p linkedin_bot
+
+# Si échec:
+# 1. Vérifier le pare-feu Synology (port 3306 ouvert?)
+# 2. Vérifier les credentials dans .env
+# 3. Vérifier que MariaDB est démarré sur Synology
+```
+
+### Problème : "Redis connection refused"
+
+```bash
+# Docker Compose:
+docker-compose logs redis
+
+# Native:
+sudo systemctl status redis-server
+
+# Tester Redis
+redis-cli ping
+# Doit répondre: PONG
+```
+
+### Problème : "Port 3000 already in use"
+
+```bash
+# Trouver le process
+sudo lsof -i :3000
+
+# Tuer le process
+sudo kill -9 <PID>
+
+# Ou changer le port dans docker-compose.yml
+ports:
+  - "3001:3000"  # Utiliser 3001 au lieu de 3000
+```
+
+### Problème : Dashboard très lent sur Pi 4
+
+**Solution 1 : Réduire la limite mémoire**
+```yaml
+# docker-compose.yml
+limits:
+  memory: 800M  # Au lieu de 1G
+```
+
+**Solution 2 : Désactiver le dashboard et utiliser uniquement le bot**
+```bash
+docker-compose down
+# Utiliser uniquement docker-compose.queue.yml pour le bot
+```
+
+### Problème : "Build failed" sur Pi 4
+
+```bash
+# Augmenter la swap temporairement
+sudo dphys-swapfile swapoff
+sudo nano /etc/dphys-swapfile
+# CONF_SWAPSIZE=2048
+
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+
+# Relancer le build
+docker-compose build
+```
+
+---
+
 sudo reboot
 ```
 
