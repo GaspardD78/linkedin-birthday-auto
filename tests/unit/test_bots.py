@@ -43,7 +43,7 @@ class TestBirthdayBot:
 
     def test_init_sets_correct_mode(self, mock_config):
         """Le bot doit s'initialiser en mode standard."""
-        with patch('src.bots.birthday_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = BirthdayBot(config=mock_config)
             assert bot.config.bot_mode == "standard"
 
@@ -51,7 +51,7 @@ class TestBirthdayBot:
         """_check_limits doit lever WeeklyLimitReachedError si limite atteinte."""
         mock_config.database.enabled = True
 
-        with patch('src.bots.birthday_bot.BrowserManager'), \
+        with patch('src.core.base_bot.BrowserManager'), \
              patch('src.bots.birthday_bot.get_database') as mock_get_db:
 
             # Mock database qui retourne une limite atteinte
@@ -72,7 +72,7 @@ class TestBirthdayBot:
         mock_config.database.enabled = True
         mock_config.messaging_limits.daily_message_limit = 10
 
-        with patch('src.bots.birthday_bot.BrowserManager'), \
+        with patch('src.core.base_bot.BrowserManager'), \
              patch('src.bots.birthday_bot.get_database') as mock_get_db:
 
             # Mock database
@@ -93,7 +93,7 @@ class TestBirthdayBot:
         mock_config.database.enabled = True
         mock_config.messaging_limits.weekly_message_limit = 80
 
-        with patch('src.bots.birthday_bot.BrowserManager'), \
+        with patch('src.core.base_bot.BrowserManager'), \
              patch('src.bots.birthday_bot.get_database') as mock_get_db:
 
             # Mock database : 75 messages cette semaine
@@ -115,7 +115,7 @@ class TestBirthdayBot:
         mock_config.messaging_limits.weekly_message_limit = 80
         mock_config.messaging_limits.daily_message_limit = 10
 
-        with patch('src.bots.birthday_bot.BrowserManager'), \
+        with patch('src.core.base_bot.BrowserManager'), \
              patch('src.bots.birthday_bot.get_database') as mock_get_db:
 
             # Mock database : 8 messages aujourd'hui
@@ -136,7 +136,7 @@ class TestBirthdayBot:
         mock_config.messaging_limits.max_messages_per_run = 5
         mock_config.database.enabled = False
 
-        with patch('src.bots.birthday_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = BirthdayBot(config=mock_config)
 
             # Avec 10 contacts, on ne devrait en traiter que 5 (limite par run)
@@ -145,7 +145,7 @@ class TestBirthdayBot:
 
     def test_build_result_structure(self, mock_config):
         """_build_result doit retourner la bonne structure."""
-        with patch('src.bots.birthday_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = BirthdayBot(config=mock_config)
 
             result = bot._build_result(
@@ -168,7 +168,7 @@ class TestBirthdayBot:
 
     def test_build_error_result_structure(self, mock_config):
         """_build_error_result doit retourner la bonne structure."""
-        with patch('src.bots.birthday_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = BirthdayBot(config=mock_config)
 
             result = bot._build_error_result("Test error")
@@ -198,13 +198,13 @@ class TestUnlimitedBirthdayBot:
 
     def test_init_sets_correct_mode(self, mock_config):
         """Le bot doit s'initialiser en mode unlimited."""
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=mock_config)
             assert bot.config.bot_mode == "unlimited"
 
     def test_estimate_duration_calculation(self, mock_config):
         """_estimate_duration doit calculer correctement la durée."""
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             # En dry-run, délai moyen = 3s
@@ -218,7 +218,7 @@ class TestUnlimitedBirthdayBot:
 
     def test_format_duration_with_hours(self, mock_config):
         """_format_duration doit formater avec heures/minutes/secondes."""
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             # 3665 secondes = 1h 1m 5s
@@ -241,7 +241,7 @@ class TestUnlimitedBirthdayBot:
 
     def test_build_result_structure(self, mock_config):
         """_build_result doit retourner la bonne structure."""
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             result = bot._build_result(
@@ -264,7 +264,7 @@ class TestUnlimitedBirthdayBot:
 
     def test_build_error_result_structure(self, mock_config):
         """_build_error_result doit retourner la bonne structure."""
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             result = bot._build_error_result("Test error")
@@ -287,7 +287,7 @@ class TestBotComparison:
         config.bot_mode = "standard"
         config.birthday_filter.process_late = False
 
-        with patch('src.bots.birthday_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = BirthdayBot(config=config)
             assert bot.config.birthday_filter.process_late is False
 
@@ -298,7 +298,7 @@ class TestBotComparison:
         config.bot_mode = "unlimited"
         config.birthday_filter.process_late = True
 
-        with patch('src.bots.unlimited_bot.BrowserManager'):
+        with patch('src.core.base_bot.BrowserManager'):
             bot = UnlimitedBirthdayBot(config=config)
             assert bot.config.birthday_filter.process_late is True
 

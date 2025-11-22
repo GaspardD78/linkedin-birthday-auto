@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header, Security
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -22,8 +22,12 @@ from ..core.database import get_database
 from ..bots.birthday_bot import BirthdayBot
 from ..bots.unlimited_bot import UnlimitedBirthdayBot
 from ..utils.exceptions import LinkedInBotError
+from ..utils.logging import get_logger
+from .security import verify_api_key
+from ..monitoring.tracing import instrument_app, setup_tracing
+from prometheus_client import make_asgi_app
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════
 # MODELS PYDANTIC POUR L'API
@@ -98,15 +102,18 @@ active_jobs: Dict[str, Dict[str, Any]] = {}
 async def lifespan(app: FastAPI):
     """Gère le lifecycle de l'application."""
     # Startup
-    logger.info("🚀 Starting LinkedIn Birthday Bot API...")
+    logger.info("starting_api")
     config = get_config()
-    logger.info(f"   Config mode: {config.bot_mode}")
-    logger.info(f"   Dry run: {config.dry_run}")
+
+    setup_tracing(service_name="linkedin-bot-api")
+    instrument_app(app)
+
+    logger.info("api_started", mode=config.bot_mode, dry_run=config.dry_run)
 
     yield  # L'application tourne
 
     # Shutdown
-    logger.info("🛑 Shutting down LinkedIn Birthday Bot API...")
+    logger.info("shutting_down_api")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -122,31 +129,12 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# Expose Prometheus metrics
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
-# ═══════════════════════════════════════════════════════════════════
-# AUTHENTIFICATION SIMPLE (API KEY)
-# ═══════════════════════════════════════════════════════════════════
 
-async def verify_api_key(x_api_key: Optional[str] = Header(None)):
-    """
-    Vérifie l'API key dans les headers.
-
-    Pour une vraie app, utilisez JWT ou OAuth2.
-    """
-    config = get_config()
-
-    # Si pas d'API key configurée, on accepte tout (dev)
-    expected_key = config.get("api.api_key")
-    if not expected_key:
-        return True
-
-    if x_api_key != expected_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-
-    return True
+# Authentification importée de security.py
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -217,13 +205,15 @@ async def health_check():
     )
 
 
-@app.get("/metrics", response_model=MetricsResponse, tags=["Metrics"])
-async def get_metrics(
+@app.get("/stats", response_model=MetricsResponse, tags=["Metrics"])
+async def get_stats(
     days: int = 30,
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Récupère les métriques d'activité.
+    Récupère les statistiques d'activité (DB).
+
+    Note: /metrics est réservé pour Prometheus.
 
     Args:
         days: Nombre de jours d'historique (défaut: 30)

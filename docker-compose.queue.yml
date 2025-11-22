@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  rq-worker:
+    build: .
+    command: python -m src.queue.worker
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LINKEDIN_AUTH_STATE=${LINKEDIN_AUTH_STATE}
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  redis-data:
