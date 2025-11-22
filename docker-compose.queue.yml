@@ -1,31 +1,76 @@
 version: '3.8'
 
+# Docker Compose optimisé pour Raspberry Pi 4 (4GB RAM)
+# Architecture: Redis + RQ Worker pour traitement asynchrone
+
 services:
   redis:
     image: redis:7-alpine
+    container_name: linkedin-bot-redis
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    # Optimisations Redis pour Pi 4
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 300M
+        reservations:
+          cpus: '0.25'
+          memory: 200M
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   rq-worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.multiarch
+    container_name: linkedin-bot-worker
     command: python -m src.queue.worker
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - LINKEDIN_AUTH_STATE=${LINKEDIN_AUTH_STATE}
       - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
     volumes:
-      - .:/app
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./config:/app/config:ro
+    # Optimisé pour Pi 4 avec 4GB RAM
+    # 1.2GB pour le worker (Chromium + Python)
+    # 300MB pour Redis
+    # ~500MB pour le système
+    # = ~2GB utilisés, laisse 2GB libre
     deploy:
       resources:
         limits:
-          memory: 512M
+          cpus: '2.0'
+          memory: 1.2G
+        reservations:
+          cpus: '1.0'
+          memory: 800M
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   redis-data:

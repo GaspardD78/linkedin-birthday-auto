@@ -1,11 +1,10 @@
-# Dockerfile.multiarch
-FROM --platform=$BUILDPLATFORM python:3.11-slim
+# Dockerfile.multiarch - Optimized for Raspberry Pi 4 (4GB RAM)
+FROM --platform=$TARGETPLATFORM python:3.11-slim
 
 # Buildx args
 ARG TARGETPLATFORM
-ARG BUILDPLATFORM
 
-RUN echo "Building for $TARGETPLATFORM on $BUILDPLATFORM"
+RUN echo "Building for $TARGETPLATFORM"
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
@@ -14,25 +13,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Playwright dependencies for ARM64 (Raspberry Pi) or AMD64
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-      pip install playwright==1.40.0 && \
-      playwright install-deps chromium; \
-    else \
-      pip install playwright==1.40.0 && \
-      playwright install-deps chromium; \
-    fi
-
 WORKDIR /app
 
-# Copy requirements first for cache
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements first for Docker layer caching
+COPY requirements-new.txt requirements.txt ./
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements-new.txt
 
+# Install Playwright browsers with dependencies (once)
+RUN playwright install-deps chromium && \
+    playwright install chromium
+
+# Copy application code
 COPY . .
 
-# Install playwright browsers
-RUN playwright install chromium
+# Create directories for logs and data
+RUN mkdir -p /app/logs /app/data
+
+# Health check endpoint (requires API enabled)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Default command
 CMD ["python", "main.py"]

@@ -82,6 +82,11 @@ class BrowserManager:
             ...     auth_state_path="auth_state.json"
             ... )
         """
+        # BUGFIX: Fermer les instances existantes pour éviter les fuites mémoire
+        if self.browser or self.context or self.page or self.playwright:
+            logger.warning("Browser already exists, closing previous instance")
+            self.close()
+
         try:
             # Lancer Playwright
             self.playwright = sync_playwright().start()
@@ -273,22 +278,31 @@ class BrowserManager:
         try:
             if self.page:
                 self.page.close()
+                self.page = None
                 logger.debug("Page closed")
 
             if self.context:
                 self.context.close()
+                self.context = None
                 logger.debug("Context closed")
 
             if self.browser:
                 self.browser.close()
+                self.browser = None
                 logger.debug("Browser closed")
 
             if self.playwright:
                 self.playwright.stop()
+                self.playwright = None
                 logger.debug("Playwright stopped")
 
         except Exception as e:
             logger.warning(f"Error during browser cleanup: {e}")
+            # Force cleanup même en cas d'erreur
+            self.page = None
+            self.context = None
+            self.browser = None
+            self.playwright = None
 
     def __enter__(self):
         """Context manager entry."""
