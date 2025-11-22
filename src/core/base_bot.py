@@ -659,9 +659,175 @@ class BaseLinkedInBot(ABC):
         log_msg = f"late ({days_late}d)" if is_late else "today"
         logger.info(f"--- Processing birthday ({log_msg}) for {full_name} ---")
 
-        # À compléter dans la suite...
-        # (Code trop long pour un seul message, je vais le faire en plusieurs parties)
-        return True
+        # Sélecteur du bouton Message
+        message_button_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+
+        try:
+            # Chercher le bouton Message
+            message_buttons = contact_element.query_selector_all(message_button_selector)
+        except Exception as e:
+            logger.error(f"❌ Error finding message button: {e}")
+            return False
+
+        if not message_buttons:
+            logger.warning(f"Could not find 'Message' button for {full_name}. Skipping.")
+            return False
+
+        # Cliquer sur le bouton Message
+        try:
+            message_buttons[0].click()
+            self.random_delay(1, 2)
+        except Exception as e:
+            logger.error(f"❌ Error clicking message button: {e}")
+            self.browser_manager.take_screenshot(f"error_click_{first_name.replace(' ', '_')}.png")
+            return False
+
+        # Attendre la modale de message
+        message_box_selector = "div.msg-form__contenteditable[role='textbox']"
+        try:
+            self.page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+        except Exception as e:
+            logger.error(f"❌ Message modal not found: {e}")
+            return False
+
+        # Vérifier s'il y a plusieurs modales (bug)
+        modal_count = self.page.locator(message_box_selector).count()
+        if modal_count > 1:
+            logger.warning(f"⚠️ Multiple modals detected ({modal_count}), cleaning up...")
+            self._close_all_message_modals()
+            self.random_delay(1, 2)
+
+            # Re-ouvrir la modale
+            try:
+                all_cards = self.page.query_selector_all("div[role='listitem']")
+                for card in all_cards:
+                    try:
+                        card_text = card.inner_text()
+                        if full_name in card_text or first_name in card_text:
+                            button = card.query_selector(message_button_selector)
+                            if button:
+                                button.click()
+                                self.random_delay(1, 2)
+                                self.page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+                                break
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.error(f"❌ Failed to re-open modal: {e}")
+                return False
+
+        # Toujours utiliser .last pour la modale la plus récente
+        message_box = self.page.locator(message_box_selector).last
+        logger.debug(f"Message modal opened for {first_name}")
+
+        # Sélectionner le message approprié
+        if is_late:
+            message_list = self.late_birthday_messages if self.late_birthday_messages else self.birthday_messages
+        else:
+            message_list = self.birthday_messages
+
+        if not message_list:
+            logger.error("No birthday messages available!")
+            return False
+
+        message = random.choice(message_list).format(name=first_name)
+
+        # Vérifier l'historique des messages si database disponible
+        if self.config.database.enabled and hasattr(self, 'db') and self.db:
+            try:
+                previous_messages = self.db.get_messages_sent_to_contact(
+                    full_name,
+                    years=self.config.messages.avoid_repetition_years
+                )
+
+                if previous_messages:
+                    used_messages = {msg['message_text'] for msg in previous_messages}
+                    available_messages = [
+                        msg for msg in message_list
+                        if msg.format(name=first_name) not in used_messages
+                    ]
+
+                    if available_messages:
+                        message = random.choice(available_messages).format(name=first_name)
+                        logger.debug(f"Selected unused message from {len(available_messages)} available")
+                    else:
+                        logger.warning(f"All messages used for {full_name}, reusing from pool")
+            except Exception as e:
+                logger.warning(f"Could not check message history: {e}")
+
+        # Mode dry-run
+        if self.config.dry_run:
+            logger.info(f"[DRY RUN] Would send to {first_name}: '{message}'")
+            if self.config.database.enabled and hasattr(self, 'db') and self.db:
+                try:
+                    self.db.add_birthday_message(full_name, message, is_late, days_late, "dry_run")
+                except Exception as e:
+                    logger.warning(f"Could not record dry-run to database: {e}")
+            return True
+
+        # Taper le message
+        try:
+            logger.info(f"Typing message: '{message}'")
+            message_box.clear()
+            self.random_delay(0.3, 0.5)
+            message_box.fill(message)
+            self.random_delay(1, 2)
+        except Exception as e:
+            logger.error(f"❌ Error typing message: {e}")
+            return False
+
+        # Bouton d'envoi
+        submit_button = self.page.locator("button.msg-form__send-button").last
+
+        try:
+            # Scroller pour rendre visible
+            message_box.scroll_into_view_if_needed(timeout=5000)
+            self.random_delay(0.3, 0.5)
+            submit_button.scroll_into_view_if_needed(timeout=5000)
+            self.random_delay(0.5, 1)
+
+            # Envoyer
+            if submit_button.is_enabled():
+                submit_button.click()
+                logger.info("✅ Message sent successfully")
+
+                # Enregistrer en DB
+                if self.config.database.enabled and hasattr(self, 'db') and self.db:
+                    try:
+                        self.db.add_birthday_message(full_name, message, is_late, days_late, "production")
+                    except Exception as e:
+                        logger.warning(f"Could not record to database: {e}")
+
+                return True
+            else:
+                logger.warning("⚠️ Send button is not enabled")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Could not send normally ({type(e).__name__}), trying force click...")
+            self.browser_manager.take_screenshot(f"warning_send_{first_name.replace(' ', '_')}.png")
+
+            try:
+                submit_button.click(force=True, timeout=10000)
+                logger.info("✅ Message sent (force click)")
+
+                if self.config.database.enabled and hasattr(self, 'db') and self.db:
+                    try:
+                        self.db.add_birthday_message(full_name, message, is_late, days_late, "production")
+                    except Exception as e:
+                        logger.warning(f"Could not record to database: {e}")
+
+                return True
+
+            except Exception as e2:
+                logger.error(f"❌ Failed to send message: {e2}")
+                self.browser_manager.take_screenshot(f"error_send_{first_name.replace(' ', '_')}.png")
+                return False
+
+        finally:
+            # Fermer la modale
+            self.random_delay(0.5, 1)
+            self._close_all_message_modals()
 
     def _close_all_message_modals(self) -> None:
         """Ferme toutes les modales de message ouvertes."""

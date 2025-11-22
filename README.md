@@ -1,404 +1,761 @@
-# 🍓 LinkedIn Birthday Bot pour Raspberry Pi
+# 🎂 LinkedIn Birthday Auto Bot v2.0
 
-Bot automatique pour souhaiter les anniversaires de vos contacts LinkedIn, optimisé pour fonctionner 24/7 sur **Raspberry Pi**.
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-## ✨ Fonctionnalités
+**Automatisez vos messages d'anniversaire LinkedIn** avec intelligence, flexibilité et sécurité.
 
-- ✅ **Détection automatique** des anniversaires du jour et en retard (jusqu'à 10 jours)
-- ✅ **Messages personnalisés** avec rotation aléatoire et mémorisation
-- ✅ **Comportement humain** : délais aléatoires, mouvements de souris, scrolling naturel
-- ✅ **Base de données SQLite** : historique complet des messages envoyés
-- ✅ **Dashboard Web** : visualisation en temps réel via interface Flask
-- ✅ **Gestion intelligente** : évite les doublons, adapte les messages selon l'historique
-- ✅ **Support 2FA** : authentification via fichier `auth_state.json`
-- ✅ **Correction automatique** : gestion des modales multiples et erreurs DOM
+Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière naturelle et personnalisée. Optimisé pour fonctionner en local, sur serveur, ou via GitHub Actions.
 
-## 🎯 Pourquoi Raspberry Pi ?
+---
 
-| Critère | Raspberry Pi | Cloud (GitHub Actions) |
-|---------|--------------|------------------------|
-| **IP** | ✅ Résidentielle légitime | ❌ Datacenter détectable |
-| **Détection LinkedIn** | ✅ Impossible | ⚠️ Risque élevé |
-| **Coût mensuel** | ✅ ~1€ d'électricité | ⚠️ Nécessite proxies payants |
-| **Configuration** | ✅ Une fois pour toutes | ⚠️ Secrets à maintenir |
-| **Disponibilité** | ✅ 24/7 garanti | ⚠️ Dépend de GitHub |
-| **Contrôle** | ✅ Total | ⚠️ Limité |
+## ✨ Caractéristiques principales
 
-## 🚀 Installation Rapide
+### 🎯 Modes d'exécution
+
+- **Mode Standard** : Anniversaires du jour uniquement avec limites hebdomadaires (80/semaine recommandé)
+- **Mode Unlimited** : Aujourd'hui + retard (jusqu'à N jours) sans limites hebdomadaires
+- **Mode API REST** : Contrôle via HTTP avec FastAPI (health checks, metrics, triggers)
+
+### 🧠 Intelligence
+
+- **Messages personnalisés** avec rotation automatique et historique anti-répétition
+- **Comportement humain** : délais aléatoires, mouvements, scrolling naturel
+- **Gestion d'erreurs** robuste avec retry et recovery automatique
+- **Anti-détection** : User-Agent rotation, viewport randomization, stealth mode
+
+### 📊 Monitoring
+
+- **Database SQLite** avec historique complet (messages, visites, erreurs)
+- **Statistiques en temps réel** via API `/metrics`
+- **Logs structurés** avec niveaux (DEBUG, INFO, WARNING, ERROR)
+- **Health checks** pour supervision
+
+### 🔧 Architecture v2.0
+
+- **Modulaire** : Configuration Pydantic, exceptions typées, managers séparés
+- **Testable** : 30+ tests (unitaires, intégration, E2E) avec 85%+ coverage
+- **Type-safe** : Type hints complets + mypy validation
+- **Production-ready** : Pre-commit hooks, CI/CD, Docker support
+
+---
+
+## 🚀 Quick Start
+
+### Installation (5 minutes)
 
 ```bash
 # 1. Cloner le projet
 git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
 cd linkedin-birthday-auto
 
-# 2. Installer les dépendances
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# 2. Créer environnement virtuel
+python3.9 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
+
+# 3. Installer dépendances
+pip install -r requirements-new.txt
 playwright install chromium
 playwright install-deps chromium
 
-# 3. Générer l'authentification (avec support 2FA)
-python3 generate_auth_simple.py
+# 4. Configurer (voir section suivante)
+cp config/config.yaml config/my_config.yaml
+nano config/my_config.yaml  # Éditer selon vos besoins
+```
 
-# 4. Configurer l'environnement
-cat > .env << EOF
-# Authentification (utilisée uniquement si auth_state.json n'existe pas)
-LINKEDIN_EMAIL=votre.email@example.com
-LINKEDIN_PASSWORD=VotreMotDePasse123
+### Configuration minimale
+
+**Option A: Variables d'environnement** (recommandé)
+
+```bash
+# Créer .env
+cat > .env << 'EOF'
+# Authentification LinkedIn (base64)
+LINKEDIN_AUTH_STATE=eyJjb29raWVzIjpbeyJuYW1lIjoibGlfYXQiLC...
 
 # Mode
-DRY_RUN=true  # false pour envoyer vraiment les messages
-HEADLESS_BROWSER=true
+LINKEDIN_BOT_DRY_RUN=false  # true pour tester
+LINKEDIN_BOT_MODE=standard
 
-# Proxies (désactivé pour IP locale)
-ENABLE_PROXY_ROTATION=false
+# Optionnel
+LINKEDIN_BOT_BROWSER_HEADLESS=true
 EOF
 
-# 5. Sécuriser .env
 chmod 600 .env
-
-# 6. Tester le bot
-python3 linkedin_birthday_wisher.py
 ```
 
-## 📋 Configuration Détaillée
+**Option B: Fichier YAML**
 
-### 1. Génération de auth_state.json (avec 2FA)
+```yaml
+# config/my_config.yaml
+version: "2.0.0"
+dry_run: false
+bot_mode: "standard"
 
-Le script `generate_auth_simple.py` simplifie l'authentification LinkedIn :
+browser:
+  headless: true
 
-```bash
-python3 generate_auth_simple.py
+messaging_limits:
+  weekly_message_limit: 80
+
+birthday_filter:
+  process_today: true
+  process_late: false
+
+database:
+  enabled: true
+  db_path: "data/linkedin_bot.db"
 ```
 
-**Ce script va :**
-1. Ouvrir un navigateur Chromium
-2. Vous rediriger vers la page de connexion LinkedIn
-3. Attendre que vous vous connectiez (email, mot de passe, **code 2FA**)
-4. Sauvegarder votre session dans `auth_state.json`
+### Authentification LinkedIn
 
-**Avantages :**
-- ✅ Plus besoin de saisir le code 2FA à chaque exécution
-- ✅ Session valide pendant plusieurs semaines/mois
-- ✅ Compatible avec tous les types d'authentification LinkedIn
+**Méthode 1: Exporter les cookies** (recommandé)
 
-**Si la session expire :**
-```bash
-rm auth_state.json
-python3 generate_auth_simple.py
-```
-
-### 2. Fichiers de Configuration
-
-#### `.env` - Variables d'environnement
-
-```bash
-# AUTHENTIFICATION
-LINKEDIN_EMAIL=votre.email@example.com
-LINKEDIN_PASSWORD=VotreMotDePasse123
-
-# Si auth_state.json existe, ces identifiants ne sont utilisés que pour le fallback
-
-# MODE DE TEST
-DRY_RUN=true  # true = test (affiche sans envoyer), false = production
-
-# NAVIGATEUR
-HEADLESS_BROWSER=true  # false pour voir le navigateur (debug)
-
-# PROXIES (optionnel)
-ENABLE_PROXY_ROTATION=false
-# Pour activer :
-# ENABLE_PROXY_ROTATION=true
-# PROXY_LIST=["http://user:pass@proxy1.com:8080", "http://user:pass@proxy2.com:8080"]
-
-# DEBUG AVANCÉ (optionnel)
-# ENABLE_ADVANCED_DEBUG=false
-# SCREENSHOT_ON_ERROR=true
-```
-
-#### `messages.txt` - Messages d'anniversaire
-
-```text
-Joyeux anniversaire, {name} ! J'espère que tu passes une excellente journée.
-Bon anniversaire {name} ! 🎉
-Hello {name}, happy birthday!
-Un grand bonjour et un excellent anniversaire {name} ! 🎂
-```
-
-Le placeholder `{name}` sera automatiquement remplacé par le prénom du contact.
-
-#### `late_messages.txt` - Messages pour anniversaires en retard
-
-```text
-Bonjour {name}, joyeux anniversaire avec un peu de retard ! 🎂
-{name}, j'espère que tu as passé un super anniversaire ! 🎉
-Meilleurs vœux d'anniversaire {name}, même s'ils arrivent un peu tard !
-```
-
-### 3. Personnalisation du Comportement
-
-Éditez `config.json` pour le script `visit_profiles.py` (optionnel) :
+1. Installez l'extension [Cookie-Editor](https://cookie-editor.cgagnier.ca/)
+2. Connectez-vous à LinkedIn (avec 2FA si activé)
+3. Exportez les cookies en JSON
+4. Sauvegardez dans `auth_state.json`:
 
 ```json
 {
-  "keywords": ["Azure", "DevOps", "Cloud"],
-  "location": "Ile-de-France",
-  "limits": {
-    "profiles_per_run": 15,
-    "max_pages_to_scrape": 100
+  "cookies": [
+    {
+      "name": "li_at",
+      "value": "VOTRE_TOKEN_ICI",
+      "domain": ".linkedin.com",
+      "path": "/",
+      "expires": 1234567890,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    }
+  ],
+  "origins": []
+}
+```
+
+**Méthode 2: Variable d'environnement**
+
+```bash
+export LINKEDIN_AUTH_STATE=$(cat auth_state.json | base64)
+```
+
+### Premiers tests
+
+```bash
+# 1. Valider configuration
+python main.py validate
+
+# 2. Dry-run (test sans envoyer)
+python main.py bot --dry-run
+
+# 3. Production mode standard
+python main.py bot
+
+# 4. Mode unlimited (rattraper retard)
+python main.py bot --mode unlimited --max-days-late 10
+```
+
+---
+
+## 📖 Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration depuis v1.x vers v2.0 |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker, GitHub Actions) |
+| **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** | Installation sur Raspberry Pi |
+
+---
+
+## 🎯 Utilisation
+
+### CLI (Command Line Interface)
+
+Le bot dispose d'une CLI riche avec 3 commandes principales:
+
+#### 1. Valider configuration
+
+```bash
+# Valider config + authentification
+python main.py validate
+
+# Avec config custom
+python main.py validate --config ./prod.yaml
+```
+
+#### 2. Exécuter le bot
+
+```bash
+# Mode standard (anniversaires du jour uniquement)
+python main.py bot
+
+# Mode unlimited (today + late birthdays)
+python main.py bot --mode unlimited --max-days-late 10
+
+# Dry-run (test sans envoyer)
+python main.py bot --dry-run
+
+# Debug mode
+python main.py bot --debug
+
+# Avec config custom
+python main.py bot --config ./prod.yaml
+
+# Toutes les options
+python main.py bot --help
+```
+
+#### 3. Lancer l'API REST
+
+```bash
+# Mode production
+python main.py api
+
+# Mode développement (auto-reload)
+python main.py api --reload
+
+# Custom host/port
+python main.py api --host 0.0.0.0 --port 8080
+```
+
+### API REST
+
+L'API REST FastAPI permet un contrôle à distance:
+
+```bash
+# Démarrer l'API
+python main.py api
+
+# Health check
+curl http://localhost:8000/health
+
+# Métriques (30 derniers jours)
+curl http://localhost:8000/metrics
+
+# Déclencher un job
+curl -X POST http://localhost:8000/trigger \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "bot_mode": "standard",
+    "dry_run": true
+  }'
+
+# Vérifier statut du job
+curl http://localhost:8000/jobs/{job_id}
+
+# Consulter les logs
+curl http://localhost:8000/logs?limit=100
+
+# Documentation interactive
+open http://localhost:8000/docs
+```
+
+### Python (usage programmatique)
+
+```python
+from src.bots.birthday_bot import BirthdayBot
+from src.bots.unlimited_bot import UnlimitedBirthdayBot
+from src.config import get_config
+
+# Configuration
+config = get_config()
+config.dry_run = True
+
+# Mode standard
+with BirthdayBot(config=config) as bot:
+    results = bot.run()
+    print(f"Messages sent: {results['messages_sent']}")
+
+# Mode unlimited
+with UnlimitedBirthdayBot(config=config) as bot:
+    results = bot.run()
+    print(f"Total processed: {results['contacts_processed']}")
+```
+
+---
+
+## 🔧 Configuration avancée
+
+### Structure du fichier config.yaml
+
+```yaml
+version: "2.0.0"
+dry_run: false
+bot_mode: "standard"  # ou "unlimited"
+
+# Navigateur
+browser:
+  headless: true
+  locale: "fr-FR"
+  timezone: "Europe/Paris"
+  slow_mo: [80, 150]  # Ralentissement (ms) pour paraître humain
+  viewport_sizes:  # Résolutions aléatoires
+    - [1920, 1080]
+    - [1366, 768]
+  user_agents:  # Rotation User-Agent
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64)..."
+
+# Authentification
+auth:
+  auth_file_path: "auth_state.json"
+  auth_env_var: "LINKEDIN_AUTH_STATE"
+
+# Limites de messages
+messaging_limits:
+  weekly_message_limit: 80
+  daily_message_limit: null  # null = pas de limite quotidienne
+  max_messages_per_run: null  # null = pas de limite par run
+
+# Filtrage des anniversaires
+birthday_filter:
+  process_today: true
+  process_late: false  # true pour mode unlimited
+  max_days_late: 10  # Si process_late=true
+
+# Délais entre messages
+delays:
+  min_delay_seconds: 180  # 3 minutes
+  max_delay_seconds: 300  # 5 minutes
+
+# Messages
+messages:
+  message_file_path: "messages.txt"
+  late_message_file_path: "late_messages.txt"
+  avoid_repetition_years: 2
+
+# Base de données
+database:
+  enabled: true
+  db_path: "data/linkedin_bot.db"
+
+# Scheduling
+scheduling:
+  daily_start_hour: 7
+  daily_end_hour: 19
+
+# Debug
+debug:
+  log_level: "INFO"
+  screenshot_on_error: true
+  save_html_on_error: false
+```
+
+### Variables d'environnement (overrides)
+
+Toutes les config YAML peuvent être overridées via env vars:
+
+```bash
+# Format: LINKEDIN_BOT_<SECTION>_<KEY>
+export LINKEDIN_BOT_DRY_RUN=true
+export LINKEDIN_BOT_BOT_MODE=unlimited
+export LINKEDIN_BOT_BROWSER_HEADLESS=false
+export LINKEDIN_BOT_MESSAGING_LIMITS_WEEKLY_MESSAGE_LIMIT=100
+```
+
+---
+
+## 🤖 Automatisation
+
+### Cron (Linux/macOS)
+
+```bash
+# Éditer crontab
+crontab -e
+
+# Ajouter (exécution quotidienne à 9h)
+0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot
+
+# Avec logs
+0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot >> /var/log/linkedin-bot.log 2>&1
+```
+
+### GitHub Actions
+
+Voir **[DEPLOYMENT.md](DEPLOYMENT.md#déploiement-github-actions)** pour configuration complète.
+
+```yaml
+# .github/workflows/daily-bot.yml
+name: Daily Birthday Bot
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 9h UTC
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - run: |
+          pip install -r requirements-new.txt
+          playwright install chromium
+          python main.py bot
+        env:
+          LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
+```
+
+### Docker
+
+```bash
+# Build
+docker build -t linkedin-bot .
+
+# Run
+docker run -e LINKEDIN_AUTH_STATE=$AUTH linkedin-bot
+
+# Docker Compose
+docker-compose up -d
+```
+
+### Systemd (Linux service)
+
+```ini
+# /etc/systemd/system/linkedin-bot.service
+[Unit]
+Description=LinkedIn Birthday Bot
+After=network.target
+
+[Service]
+Type=oneshot
+User=your-user
+WorkingDirectory=/path/to/linkedin-birthday-auto
+ExecStart=/path/to/venv/bin/python main.py bot
+EnvironmentFile=/path/to/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Activer et démarrer
+sudo systemctl enable linkedin-bot.service
+sudo systemctl start linkedin-bot.service
+```
+
+---
+
+## 🧪 Tests
+
+### Exécuter les tests
+
+```bash
+# Tous les tests
+pytest
+
+# Tests unitaires uniquement
+pytest tests/unit/ -v
+
+# Tests d'intégration
+pytest tests/integration/ -v
+
+# Tests E2E
+pytest tests/e2e/ -v -m e2e
+
+# Avec couverture
+pytest --cov=src --cov-report=html --cov-report=term-missing
+
+# Test spécifique
+pytest tests/unit/test_config.py::TestConfigSchema::test_default_config_is_valid -v
+```
+
+### Pre-commit hooks
+
+```bash
+# Installer
+pip install pre-commit
+pre-commit install
+
+# Exécuter manuellement
+pre-commit run --all-files
+
+# Hooks inclus:
+# - black (formatting)
+# - ruff (linting)
+# - mypy (type checking)
+# - bandit (security)
+# - markdown formatting
+```
+
+---
+
+## 📊 Monitoring
+
+### Logs
+
+```bash
+# Suivre les logs en temps réel
+tail -f logs/linkedin_bot.log
+
+# Rechercher des erreurs
+grep ERROR logs/linkedin_bot.log
+
+# Statistiques database
+sqlite3 data/linkedin_bot.db "SELECT COUNT(*) FROM birthday_messages WHERE DATE(timestamp) = DATE('now');"
+```
+
+### Métriques API
+
+```bash
+# Métriques des 30 derniers jours
+curl http://localhost:8000/metrics
+
+# Réponse:
+{
+  "period_days": 30,
+  "messages": {
+    "total": 45,
+    "per_day_avg": 1.5
   },
-  "delays": {
-    "min_seconds": 8,
-    "max_seconds": 20,
-    "profile_visit_min": 15,
-    "profile_visit_max": 55
+  "contacts": {
+    "unique": 42,
+    "repeated": 3
   },
-  "timezone": {
-    "start_hour": 7,
-    "end_hour": 20
+  "profile_visits": {
+    "total": 120
+  },
+  "errors": {
+    "total": 2,
+    "rate": 0.04
   }
 }
 ```
 
-## 🤖 Automatisation avec Cron
+---
 
-### Créer le Script de Lancement
+## 🔒 Sécurité & Bonnes pratiques
 
-```bash
-nano ~/linkedin-birthday-auto/run.sh
-```
+### Sécurité
 
-```bash
-#!/bin/bash
-PROJECT_DIR="/home/pi/linkedin-birthday-auto"
-LOG_FILE="$PROJECT_DIR/logs/cron.log"
+- ✅ **Jamais committer** `auth_state.json` ou `.env` (dans `.gitignore`)
+- ✅ **Permissions strictes** : `chmod 600 .env auth_state.json`
+- ✅ **Secrets chiffrés** : Utiliser GitHub Secrets ou variables d'environnement
+- ✅ **2FA activé** sur LinkedIn (recommandé)
+- ✅ **Rotation User-Agent** et anti-détection activés
+- ✅ **Pas de données transmises** à des tiers
 
-mkdir -p "$PROJECT_DIR/logs"
+### Limites recommandées
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Démarrage du bot" | tee -a "$LOG_FILE"
+Pour éviter la détection LinkedIn:
 
-cd "$PROJECT_DIR" || exit 1
-source "$PROJECT_DIR/venv/bin/activate"
+| Paramètre | Recommandation | Justification |
+|-----------|----------------|---------------|
+| **Messages/semaine** | 80 maximum | Limite LinkedIn non documentée ~100/semaine |
+| **Messages/jour** | 15-20 maximum | Éviter pics suspects |
+| **Délai entre messages** | 3-5 minutes | Comportement humain |
+| **Horaires** | 7h-19h | Heures ouvrables |
+| **Mode headless** | `true` en prod | Performance |
+| **IP** | Résidentielle > Datacenter | LinkedIn détecte les IPs cloud |
 
-export $(cat "$PROJECT_DIR/.env" | grep -v '^#' | xargs)
+### Utilisation responsable
 
-python3 "$PROJECT_DIR/linkedin_birthday_wisher.py" 2>&1 | tee -a "$LOG_FILE"
+⚠️ **Avertissement**: L'automatisation LinkedIn viole potentiellement leurs [CGU](https://www.linkedin.com/legal/user-agreement). Utilisez à vos propres risques.
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fin d'exécution" | tee -a "$LOG_FILE"
-```
+**Recommandations:**
 
-```bash
-chmod +x ~/linkedin-birthday-auto/run.sh
-```
+- 🟢 Utiliser pour un usage personnel raisonnable
+- 🟢 Messages authentiques et personnalisés
+- 🟢 Respecter les limites recommandées
+- 🔴 Pas de spam ou messages non sollicités
+- 🔴 Pas d'usage commercial massif
+- 🔴 Pas de collecte de données
 
-### Configurer Cron
-
-```bash
-crontab -e
-```
-
-Ajouter :
-
-```bash
-# Exécution tous les jours à 8h30
-30 8 * * * /home/pi/linkedin-birthday-auto/run.sh
-
-# Alternative : Heure aléatoire entre 8h et 10h (plus naturel)
-# 0 8 * * * sleep $((RANDOM \% 7200)) && /home/pi/linkedin-birthday-auto/run.sh
-```
-
-## 📊 Dashboard Web (Optionnel)
-
-Surveillez l'activité du bot via une interface web :
-
-```bash
-# Lancer le dashboard
-python3 dashboard_app.py
-
-# Accessible sur http://raspberrypi.local:5000
-```
-
-**Fonctionnalités du dashboard :**
-- 📈 Statistiques en temps réel
-- 📅 Historique des messages envoyés
-- 🔍 Recherche par contact ou date
-- 📊 Graphiques de performance
-
-## 🔧 Maintenance
-
-### Consulter les Logs
-
-```bash
-# Logs de cron
-tail -f ~/linkedin-birthday-auto/logs/cron.log
-
-# Base de données SQLite
-sqlite3 ~/linkedin-birthday-auto/linkedin_birthday.db
-
-# Voir les derniers messages envoyés
-sqlite3 ~/linkedin-birthday-auto/linkedin_birthday.db \
-  "SELECT * FROM birthday_messages ORDER BY timestamp DESC LIMIT 10;"
-```
-
-### Sauvegardes Automatiques
-
-Créer `backup.sh` :
-
-```bash
-#!/bin/bash
-BACKUP_DIR="/home/pi/linkedin-birthday-auto/backups"
-mkdir -p "$BACKUP_DIR"
-
-BACKUP_FILE="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).db"
-cp ~/linkedin-birthday-auto/linkedin_birthday.db "$BACKUP_FILE"
-
-# Garder seulement les 30 dernières sauvegardes
-cd "$BACKUP_DIR"
-ls -t | tail -n +31 | xargs -r rm --
-
-echo "[$(date)] Sauvegarde créée : $BACKUP_FILE"
-```
-
-```bash
-chmod +x backup.sh
-```
-
-Ajouter au crontab (hebdomadaire) :
-
-```bash
-# Sauvegarde hebdomadaire le dimanche à minuit
-0 0 * * 0 /home/pi/linkedin-birthday-auto/backup.sh
-```
-
-### Mise à Jour du Bot
-
-```bash
-cd ~/linkedin-birthday-auto
-git pull origin main
-source venv/bin/activate
-pip install --upgrade -r requirements.txt
-playwright install chromium
-```
+---
 
 ## 🐛 Dépannage
 
-### Le bot ne détecte pas les anniversaires
+### Problèmes courants
+
+**1. "Authentication failed"**
 
 ```bash
-# Tester la connexion
-python3 linkedin_birthday_wisher.py
+# Vérifier auth
+python main.py validate
 
-# Vérifier auth_state.json
-ls -la auth_state.json
-
-# Régénérer l'authentification
-rm auth_state.json
-python3 generate_auth_simple.py
+# Régénérer auth_state.json
+# Exporter à nouveau les cookies depuis LinkedIn
 ```
 
-### Erreur "Element is not attached to the DOM"
-
-✅ **Corrigé automatiquement !**
-
-Le bot détecte maintenant les modales multiples et :
-1. Ferme toutes les modales ouvertes
-2. Re-recherche le bouton Message (évite le détachement DOM)
-3. Ré-ouvre la modale proprement
-4. Continue le traitement
-
-### Erreur de mémoire sur Raspberry Pi 2GB
+**2. "Playwright browser not found"**
 
 ```bash
-# Augmenter la swap
-sudo dphys-swapfile swapoff
-sudo nano /etc/dphys-swapfile
-# Modifier : CONF_SWAPSIZE=2048
-sudo dphys-swapfile setup
-sudo dphys-swapfile swapon
+playwright install chromium
+playwright install-deps chromium
 ```
 
-### Températures élevées
+**3. "Weekly limit reached"**
 
 ```bash
-# Vérifier la température
-vcgencmd measure_temp
+# Vérifier limite actuelle
+python -c "from src.core.database import get_database; print(get_database().get_weekly_message_count())"
 
-# Si > 75°C, installer un ventilateur ou boîtier avec dissipateur
+# Attendre lundi ou passer en mode unlimited
+python main.py bot --mode unlimited
 ```
 
-## 📚 Documentation Complète
+**4. "Database locked"**
 
-Pour un guide pas-à-pas ultra-détaillé :
+```bash
+# Tuer processus existants
+pkill -f "python.*main.py"
 
-**[📖 RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** - Guide complet d'installation sur Raspberry Pi 4
+# Supprimer lock
+rm data/linkedin_bot.db-wal data/linkedin_bot.db-shm
+```
 
-**Contenu :**
-- ✅ Installation Raspberry Pi OS
-- ✅ Configuration initiale
-- ✅ Installation du bot
-- ✅ Gestion du 2FA (4 méthodes détaillées)
-- ✅ Automatisation avec cron
-- ✅ Monitoring et maintenance
-- ✅ Optimisations performances
-- ✅ Dépannage complet
+**5. Mode headless échoue**
 
-**Autres guides :**
-- [DEBUGGING.md](DEBUGGING.md) - Guide de débogage avancé
-- [SCRIPTS_USAGE.md](SCRIPTS_USAGE.md) - Utilisation des scripts auxiliaires
-- [PROXY_FREE_TRIALS_GUIDE.md](PROXY_FREE_TRIALS_GUIDE.md) - Guide des essais gratuits de proxies (optionnel)
+```bash
+# Tester en mode visible
+python main.py bot --headless false --debug
+```
 
-## 🔒 Sécurité
+Voir **[DEPLOYMENT.md](DEPLOYMENT.md#dépannage)** pour plus de solutions.
 
-- ✅ Fichier `.env` avec permissions `600` (lecture seule par vous)
-- ✅ `auth_state.json` jamais commité dans Git (dans `.gitignore`)
-- ✅ Pas de mot de passe en clair dans le code
-- ✅ Base de données locale uniquement
-- ✅ Pas de transmission de données à des tiers
+---
 
-## 🆘 Support
+## 📦 Structure du projet
 
-En cas de problème :
+```
+linkedin-birthday-auto/
+├── main.py                    # Point d'entrée CLI unifié
+├── config/
+│   └── config.yaml           # Configuration YAML
+├── src/
+│   ├── api/
+│   │   └── app.py           # API REST FastAPI
+│   ├── bots/
+│   │   ├── birthday_bot.py  # Bot standard
+│   │   └── unlimited_bot.py # Bot unlimited
+│   ├── config/
+│   │   ├── config_schema.py # Schémas Pydantic
+│   │   └── config_manager.py # Singleton config
+│   ├── core/
+│   │   ├── base_bot.py      # Classe abstraite
+│   │   ├── browser_manager.py
+│   │   ├── auth_manager.py
+│   │   └── database.py
+│   └── utils/
+│       └── exceptions.py     # Hiérarchie exceptions
+├── tests/
+│   ├── unit/                # Tests unitaires
+│   ├── integration/         # Tests intégration
+│   └── e2e/                 # Tests E2E
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # CI/CD
+├── pyproject.toml           # Config moderne (black, ruff, mypy, pytest)
+├── .pre-commit-config.yaml  # Pre-commit hooks
+├── ARCHITECTURE.md          # Architecture détaillée
+├── MIGRATION_GUIDE.md       # Migration v1 -> v2
+└── DEPLOYMENT.md            # Guide déploiement
+```
 
-1. **Consultez les logs** : `tail -f logs/cron.log`
-2. **Testez manuellement** : `python3 linkedin_birthday_wisher.py`
-3. **Vérifiez les issues GitHub** : [github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
-4. **Consultez le guide détaillé** : [RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)
+---
+
+## 🎉 Changelog v2.0
+
+### 🆕 Nouvelles fonctionnalités
+
+- ✅ **Architecture modulaire** avec Pydantic, managers, bots séparés
+- ✅ **API REST FastAPI** avec health checks, metrics, triggers
+- ✅ **CLI riche** avec 3 commandes (validate, bot, api)
+- ✅ **Tests complets** (30+ tests, 85%+ coverage)
+- ✅ **Mode unlimited** pour rattraper les retards
+- ✅ **Type hints** complets + mypy validation
+- ✅ **Pre-commit hooks** (black, ruff, mypy, bandit)
+- ✅ **CI/CD GitHub Actions** avec multi-Python
+- ✅ **Documentation complète** (ARCHITECTURE, MIGRATION, DEPLOYMENT)
+
+### 🐛 Bugs corrigés
+
+- ✅ **Modales multiples** : Détection et nettoyage automatique
+- ✅ **Element detached** : Re-recherche des éléments DOM
+- ✅ **Délais skip** : 1-3s au lieu de 3-4min
+- ✅ **Database locks** : WAL mode + retry avec backoff
+- ✅ **Memory leaks** : Cleanup proper des ressources
+
+### ⚡ Performances
+
+- ✅ **10x plus rapide** lors de contacts sans bouton Message
+- ✅ **Thread-safe** : Singleton avec locks
+- ✅ **Retry intelligent** : Exponential backoff
+- ✅ **Connection pooling** : Database WAL mode
+
+### 🔄 Breaking changes
+
+Voir **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** pour migration depuis v1.x.
+
+---
+
+## 🤝 Contribution
+
+Les contributions sont bienvenues !
+
+```bash
+# Fork et clone
+git clone https://github.com/your-username/linkedin-birthday-auto.git
+cd linkedin-birthday-auto
+
+# Installer dev dependencies
+pip install -r requirements-new.txt
+pip install -e ".[dev]"
+
+# Installer pre-commit
+pre-commit install
+
+# Créer branche
+git checkout -b feature/ma-fonctionnalite
+
+# Développer + tests
+# ...
+
+# Lancer tests et quality checks
+pytest
+pre-commit run --all-files
+
+# Commit et push
+git add .
+git commit -m "feat: ma nouvelle fonctionnalité"
+git push origin feature/ma-fonctionnalite
+```
+
+---
 
 ## 📜 Licence
 
 Ce projet est fourni "tel quel", sans garantie d'aucune sorte.
 
-Utilisation à vos propres risques. LinkedIn peut détecter et bloquer l'automatisation.
-
-**Recommandations :**
-- ⚠️ Limitez à 20-30 messages/jour maximum
-- ⚠️ Utilisez votre propre IP résidentielle (Raspberry Pi)
-- ⚠️ Variez les messages et les horaires
-- ⚠️ Ne sur-automatisez pas
-
-## 🎉 Améliorations Récentes
-
-### ✅ Version 2.0 - Corrections Majeures
-
-**Bugs corrigés :**
-
-1. **🐛 Bug des modales multiples**
-   - **Problème** : Erreur "Element is not attached to the DOM" lors de modales multiples
-   - **Solution** : Détection automatique, fermeture de toutes les modales, re-recherche du bouton
-   - **Résultat** : Plus d'erreurs de détachement DOM
-
-2. **⏱️ Attente inutile après skip**
-   - **Problème** : Pause de 3-4 minutes même quand le contact est skippé (pas de bouton Message)
-   - **Solution** : Pause de 1-3 secondes uniquement pour les skips
-   - **Résultat** : Script 10x plus rapide lors de contacts sans bouton
-
-**Fonctionnalités ajoutées :**
-
-3. **🔐 Script d'authentification simplifié**
-   - **Nouveau** : `generate_auth_simple.py`
-   - **Avantage** : Interface guidée, support 2FA natif, aucune configuration complexe
+**Utilisation à vos propres risques.** LinkedIn peut détecter et bloquer l'automatisation.
 
 ---
 
-**Conçu avec ❤️ pour Raspberry Pi**
+## 🙏 Crédits
+
+- **Playwright** pour l'automatisation browser
+- **FastAPI** pour l'API REST
+- **Pydantic** pour la validation
+- **Communauté open-source** pour les feedbacks et contributions
+
+---
+
+## 📧 Support
+
+- **Issues**: [GitHub Issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
+- **Documentation**: Voir les fichiers `.md` dans le repo
+
+---
+
+**Conçu avec ❤️ pour automatiser intelligemment**
+
+*LinkedIn Birthday Auto Bot v2.0 - Architecture moderne, tests complets, production-ready*
