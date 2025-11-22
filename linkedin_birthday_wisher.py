@@ -867,17 +867,32 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
         logging.info(f"--- Processing current birthday for {full_name} ---")
 
     # Use a robust selector for the message button
-    message_button = contact_element.query_selector(
-        'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
-    )
+    try:
+        message_button = contact_element.query_selector(
+            'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+        )
+    except Exception as e:
+        logging.error(f"❌ Erreur lors de la recherche du bouton Message: {e}")
+        logging.error(f"   contact_element est peut-être déjà détaché du DOM")
+        return False
+
     if not message_button:
         logging.warning(f"Message button not found for {full_name}. Skipping.")
         return False
 
     # Utiliser un try-finally pour garantir la fermeture de la modale même en cas d'erreur
     try:
-        message_button.click()
-        random_delay(0.5, 1)  # Petit délai après le clic
+        # Tenter de cliquer sur le bouton Message
+        try:
+            message_button.click()
+            random_delay(0.5, 1)  # Petit délai après le clic
+        except Exception as e:
+            # Si le clic échoue (élément détaché du DOM par exemple)
+            logging.error(f"❌ Erreur lors du clic initial sur le bouton Message: {e}")
+            logging.error(f"   Type d'erreur: {type(e).__name__}")
+            # Prendre un screenshot pour debug
+            page.screenshot(path=f'error_initial_click_{first_name.replace(" ", "_")}.png')
+            return False
 
         message_box_selector = "div.msg-form__contenteditable[role='textbox']"
         page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
@@ -903,9 +918,42 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
             # RE-CHERCHER le bouton Message (évite "Element is not attached to the DOM")
             logging.info(f"   Re-recherche du bouton Message pour {first_name}...")
-            message_button = contact_element.query_selector(
-                'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
-            )
+
+            # Essayer d'abord avec contact_element (peut être détaché du DOM)
+            message_button = None
+            try:
+                message_button = contact_element.query_selector(
+                    'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+                )
+            except Exception as e:
+                logging.warning(f"   ⚠️ contact_element est détaché du DOM: {e}")
+                message_button = None
+
+            # Si contact_element est détaché, chercher sur toute la page
+            if not message_button:
+                logging.info(f"   Recherche du bouton Message sur toute la page...")
+
+                # Attendre que le DOM se stabilise
+                random_delay(0.5, 1)
+
+                # Chercher toutes les cartes d'anniversaire
+                all_cards = page.query_selector_all("div[role='listitem']")
+
+                # Trouver la carte qui contient le nom du contact
+                for card in all_cards:
+                    try:
+                        card_text = card.inner_text()
+                        if full_name in card_text or first_name in card_text:
+                            # Trouver le bouton Message dans cette carte
+                            message_button = card.query_selector(
+                                'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+                            )
+                            if message_button:
+                                logging.info(f"   ✅ Bouton Message retrouvé dans la carte de {first_name}")
+                                break
+                    except Exception as e:
+                        logging.debug(f"   Carte ignorée lors de la recherche: {e}")
+                        continue
 
             if not message_button:
                 logging.error(f"   ❌ Impossible de retrouver le bouton Message après fermeture des modales. Skip.")
@@ -913,8 +961,12 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
 
             # Rouvrir la modale proprement
             logging.info(f"   Ré-ouverture de la modale pour {first_name}...")
-            message_button.click()
-            random_delay(0.5, 1)
+            try:
+                message_button.click()
+                random_delay(0.5, 1)
+            except Exception as e:
+                logging.error(f"   ❌ Erreur lors du clic sur le bouton Message: {e}")
+                return False
 
             # Vérifier que la modale s'est ouverte
             try:

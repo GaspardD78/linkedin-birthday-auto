@@ -596,15 +596,28 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
     try:
         # Trouver et cliquer sur le bouton de message en utilisant un locator pour éviter les problèmes de détachement
         message_button_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
-        message_buttons_in_contact = contact_element.query_selector_all(message_button_selector)
-        
+
+        # Chercher le bouton Message avec gestion d'erreur pour élément détaché
+        try:
+            message_buttons_in_contact = contact_element.query_selector_all(message_button_selector)
+        except Exception as e:
+            logging.error(f"❌ Erreur lors de la recherche du bouton Message: {e}")
+            logging.error(f"   contact_element est peut-être déjà détaché du DOM")
+            return
+
         if not message_buttons_in_contact:
             logging.warning(f"Could not find a 'Message' button for {full_name}. Skipping.")
             return  # Pas de modale ouverte, pas de délai nécessaire
-        
-        # Cliquer sur le premier bouton trouvé
-        message_buttons_in_contact[0].click()
-        random_delay(1, 2)  # Délai augmenté pour laisser le temps à la modale de s'ouvrir
+
+        # Cliquer sur le premier bouton trouvé avec gestion d'erreur
+        try:
+            message_buttons_in_contact[0].click()
+            random_delay(1, 2)  # Délai augmenté pour laisser le temps à la modale de s'ouvrir
+        except Exception as e:
+            logging.error(f"❌ Erreur lors du clic initial sur le bouton Message: {e}")
+            logging.error(f"   Type d'erreur: {type(e).__name__}")
+            page.screenshot(path=f'error_initial_click_{first_name.replace(" ", "_")}.png')
+            return
 
         message_box_selector = "div.msg-form__contenteditable[role='textbox']"
         page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
@@ -623,49 +636,40 @@ def send_birthday_message(page: Page, contact_element, is_late: bool = False, da
             random_delay(1, 2)  # Délai augmenté après fermeture
             
             # Re-trouver le bouton de message (l'ancien est détaché du DOM)
-            # On doit re-chercher l'élément contact dans la page
             logging.info("Re-opening message modal after cleanup...")
-            
-            # Chercher à nouveau le bouton dans le contexte actuel de la page
-            # On utilise le nom pour retrouver la carte de contact
+
+            # Attendre que le DOM se stabilise
+            random_delay(1, 1.5)
+
+            # Chercher directement dans les cartes d'anniversaire au lieu de parcourir tous les boutons
+            message_button_found = None
             try:
-                # Attendre que la page se stabilise
-                random_delay(1, 1.5)
-                
-                # Re-trouver le bouton de message pour ce contact spécifiquement
-                all_message_buttons = page.query_selector_all(message_button_selector)
-                
-                # Essayer de trouver le bon bouton en cherchant celui qui est proche du nom
-                button_clicked = False
-                for btn in all_message_buttons:
+                # Chercher toutes les cartes d'anniversaire
+                all_cards = page.query_selector_all("div[role='listitem']")
+                logging.info(f"   Recherche parmi {len(all_cards)} cartes...")
+
+                # Trouver la carte qui contient le nom du contact
+                for card in all_cards:
                     try:
-                        # Vérifier si le bouton est visible et attaché
-                        if btn.is_visible():
-                            # Regarder si le nom du contact est proche
-                            parent = btn
-                            for _ in range(5):  # Remonter jusqu'à 5 niveaux
-                                parent_text = parent.text_content()
-                                if full_name in parent_text or first_name in parent_text:
-                                    btn.click()
-                                    button_clicked = True
-                                    logging.info(f"✅ Re-clicked message button for {first_name}")
-                                    break
-                                try:
-                                    parent = parent.query_selector('..')  # Parent element
-                                except:
-                                    break
-                            if button_clicked:
+                        card_text = card.inner_text()
+                        if full_name in card_text or first_name in card_text:
+                            # Trouver le bouton Message dans cette carte
+                            message_button_found = card.query_selector(message_button_selector)
+                            if message_button_found:
+                                logging.info(f"   ✅ Bouton Message retrouvé dans la carte de {first_name}")
+                                message_button_found.click()
+                                random_delay(1, 2)
+                                page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+                                logging.info(f"   ✅ Modale ré-ouverte avec succès")
                                 break
-                    except:
+                    except Exception as e:
+                        logging.debug(f"   Carte ignorée lors de la recherche: {e}")
                         continue
-                
-                if not button_clicked:
-                    logging.warning(f"Could not re-find message button for {full_name} after cleanup. Skipping.")
+
+                if not message_button_found:
+                    logging.error(f"   ❌ Impossible de retrouver le bouton Message après fermeture. Skip.")
                     return
-                
-                random_delay(1, 2)
-                page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
-                
+
             except Exception as e:
                 logging.error(f"Failed to re-open modal for {full_name}: {e}")
                 return
