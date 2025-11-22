@@ -1,0 +1,180 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually:
+#   pre-commit run --all-files
+#
+# Update hooks:
+#   pre-commit autoupdate
+
+default_language_version:
+  python: python3.9
+
+repos:
+  # ═══════════════════════════════════════════════════════════════════
+  # General file checks
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # File formatting
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+      # File validation
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom YAML tags
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: destroyed-symlinks
+
+      # Python specific
+      - id: check-ast
+      - id: check-builtin-literals
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: fix-byte-order-marker
+      - id: name-tests-test
+        args: [--pytest-test-first]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Security checks
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+        exclude: |
+          (?x)^(
+            tests/.*|
+            .*\.lock|
+            poetry\.lock
+          )$
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Python code formatting
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.9
+        args: [--line-length=100]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Python import sorting
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Run the formatter
+      - id: ruff-format
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Python type checking
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.5.0
+          - types-PyYAML
+          - types-python-dotenv
+        args:
+          - --config-file=pyproject.toml
+          - --ignore-missing-imports
+        exclude: ^(tests/|docs/)
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Security vulnerability scanning
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        args:
+          - -r
+          - src/
+          - -ll  # Only report issues with medium/high severity
+        exclude: ^tests/
+
+  # ═══════════════════════════════════════════════════════════════════
+  # YAML formatting
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.11.0
+    hooks:
+      - id: pretty-format-yaml
+        args:
+          - --autofix
+          - --indent=2
+        exclude: |
+          (?x)^(
+            \.github/workflows/.*\.yml|
+            \.pre-commit-config\.yaml
+          )$
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Markdown formatting
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.17
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm  # GitHub Flavored Markdown
+          - mdformat-black  # Black code block formatting
+        args:
+          - --wrap=100
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Commit message validation
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.13.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Shell script checking
+  # ═══════════════════════════════════════════════════════════════════
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+
+# ═══════════════════════════════════════════════════════════════════
+# CI-specific configuration
+# ═══════════════════════════════════════════════════════════════════
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false
