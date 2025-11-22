@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    container_name: linkedin_dashboard_app
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G  # Laisser de la place au système (OS) et au navigateur Chrome
+          cpus: '2.0'   # Limiter l'usage CPU si nécessaire
+    environment:
+      - NODE_ENV=production
+      # Configuration Base de données (NAS Synology)
+      # Remplacer 192.168.1.XX par l'IP réelle du NAS
+      - DATABASE_URL=mysql://user:pass@192.168.1.XX:3306/linkedin_bot
+      # Configuration Redis (Local Container)
+      - REDIS_URL=redis://redis:6379
+      # Configuration Bot
+      - HEADLESS=true
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+    volumes:
+      # Mapper /tmp pour éviter que Puppeteer ne remplisse /dev/shm
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      # Pour accéder aux logs sur le disque si nécessaire
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: linkedin_dashboard_redis
+    command: redis-server --save 60 1 --loglevel warning
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M # Redis léger
+
+volumes:
+  redis_data:
