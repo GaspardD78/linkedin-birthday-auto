@@ -1,6 +1,11 @@
 # Docker Compose optimisé pour Raspberry Pi 4 (4GB RAM)
 # Architecture: Redis + RQ Worker pour traitement asynchrone
 #
+# Documentation:
+# - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
+# - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
+# - Verification: ./scripts/verify_rpi_docker.sh
+#
 # Note: Si vous voyez un warning Redis concernant vm.overcommit_memory,
 # exécutez cette commande sur l'hôte (nécessite sudo):
 # sudo sysctl vm.overcommit_memory=1
