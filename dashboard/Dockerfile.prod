@@ -5,6 +5,9 @@ WORKDIR /app
 
 # Copier package.json et lockfiles
 COPY package.json package-lock.json* ./
+
+# Skip Puppeteer Chromium download (Chrome is installed in runner stage)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm ci
 
 # Stage 2: Builder
