@@ -85,16 +85,43 @@ Ce guide **remplace** le guide générique et est **optimisé** pour cette confi
 
 Si vous voulez accéder au Pi depuis l'extérieur (⚠️ déconseillé pour la sécurité) :
 
-1. **Paramètres de la Freebox** → **Gestion des ports**
-2. **Ajouter une redirection**
-3. Configurer :
-   - **IP de destination :** `192.168.1.50`
-   - **Port externe :** `2222`
-   - **Port interne :** `22`
-   - **Protocole :** TCP
-4. **Sauvegarder**
+1. **Accéder à l'interface Freebox** → **Paramètres de la Freebox** → **Gestion des ports**
+2. Cliquer sur **"Ajouter une redirection"** ou **"Redirection de port"**
+3. Configurer dans l'interface de redirection :
+   - **IP Destination :** Sélectionner votre Raspberry Pi (ex: "Automotion" ou "raspberry-pi-linkedin")
+     - L'IP sera celle réservée à l'étape 2 (ex: `192.168.1.50` ou `192.168.1.145`)
+   - **Redirection active :** ✓ Cocher la case
+   - **IP source :** `Toutes` (ou laisser par défaut)
+   - **Protocole :** `TCP`
+   - **Port de début :** `2222` (port externe accessible depuis Internet)
+   - **Port de fin :** `2222`
+   - **Port de destination :** `22` (port SSH interne du Pi)
+     - ⚠️ Si vous avez changé le port SSH sur le Pi, utilisez le nouveau port ici
+   - **Commentaire :** `SSH Raspberry Pi` (optionnel)
+4. Cliquer sur **"Sauvegarder"**
 
-**⚠️ Recommandation :** Utiliser plutôt un VPN (Wireguard) pour accéder au réseau local de façon sécurisée.
+**📝 Note importante :**
+- Le **port de début/fin** (2222) est le port que vous utiliserez depuis l'extérieur
+- Le **port de destination** (22) est le port SSH sur lequel le Pi écoute (par défaut 22)
+- Si vous avez configuré SSH sur un port différent sur le Pi (ex: 2222), utilisez ce port dans "Port de destination"
+
+**Connexion depuis l'extérieur :**
+```bash
+# Récupérer votre IP publique Freebox
+curl ifconfig.me
+# Exemple: 90.XX.XX.XX
+
+# Se connecter via SSH depuis l'extérieur
+ssh -p 2222 pi@90.XX.XX.XX
+```
+
+**⚠️ Recommandations de sécurité :**
+- Utiliser plutôt un VPN (Wireguard/OpenVPN) pour accéder au réseau local de façon sécurisée
+- Si redirection SSH obligatoire :
+  - Désactiver l'authentification par mot de passe : `PasswordAuthentication no` dans `/etc/ssh/sshd_config`
+  - Utiliser uniquement l'authentification par clé SSH
+  - Installer fail2ban : `sudo apt install fail2ban`
+  - Changer le port SSH par défaut (22) vers un port non-standard
 
 ### Étape 4 : Vérifier l'IP publique Freebox
 
