@@ -168,6 +168,8 @@ python main.py bot --mode unlimited --max-days-late 10
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
 | **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration depuis v1.x vers v2.0 |
 | **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker, GitHub Actions) |
+| **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)** | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
+| **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)** | Déploiement Pi4 + Synology NAS + Freebox Pop |
 | **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** | Installation sur Raspberry Pi (méthode manuelle v1.x) |
 | **[docs/RASPBERRY_PI_DOCKER_SETUP.md](docs/RASPBERRY_PI_DOCKER_SETUP.md)** | Installation Docker sur Raspberry Pi (v2.0 recommandé) |
 | **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage pour Raspberry Pi |
@@ -408,6 +410,8 @@ jobs:
 
 ### Docker
 
+**Option 1: Configuration basique**
+
 ```bash
 # Build
 docker build -t linkedin-bot .
@@ -418,6 +422,28 @@ docker run -e LINKEDIN_AUTH_STATE=$AUTH linkedin-bot
 # Docker Compose
 docker-compose up -d
 ```
+
+**Option 2: Raspberry Pi 4 + Freebox (Standalone)**
+
+Configuration complète pour déploiement résidentiel sans NAS :
+
+```bash
+# Déploiement automatique (Bot + Dashboard + Redis + SQLite)
+./scripts/deploy_pi4_standalone.sh
+
+# Ou manuellement
+docker compose -f docker-compose.pi4-standalone.yml up -d
+
+# Accès dashboard: http://192.168.1.X:3000
+```
+
+📖 **Documentation complète** : [SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)
+
+**Option 3: Raspberry Pi 4 + Synology + Freebox**
+
+Si vous avez un NAS Synology pour MySQL/stockage :
+
+📖 **Documentation** : [SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)
 
 ### Systemd (Linux service)
 
