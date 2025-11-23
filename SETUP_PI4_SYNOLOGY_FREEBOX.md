@@ -139,6 +139,8 @@ Cette procédure est adaptée pour **Synology DiskStation Manager (DSM) 7.1+**.
 
 **C'est l'étape la plus importante pour éviter les erreurs "Permission Denied" !**
 
+⚠️ **Pour Synology DSM 7.1+ :** La configuration NFS a changé par rapport aux versions précédentes. Les options de sécurité sont plus strictes et nécessitent une configuration précise.
+
 1. Dans la liste des **Dossiers partagés**, sélectionnez `LinkedInBot`
 2. Cliquez sur **Modifier**
 3. Allez dans l'onglet **Autorisations NFS** (spécifique DSM 7)
@@ -146,13 +148,20 @@ Cette procédure est adaptée pour **Synology DiskStation Manager (DSM) 7.1+**.
 5. Remplissez le formulaire **avec précision** :
    - **Nom d'hôte ou IP :** `192.168.1.50` (IP fixe de votre Raspberry Pi)
    - **Privilège :** **Lecture/Écriture**
-   - **Squash :** **Mappage de tous les utilisateurs sur admin**
-     - ⚠️ Important pour éviter les problèmes de droits d'écriture
+   - **Squash :** 🔥 **CRITIQUE** : Sélectionnez **"Mappage de tous les utilisateurs sur admin"**
+     - ⚠️ C'est **impératif** pour éviter les problèmes de droits d'écriture
+     - Sans cette option, le Pi ne pourra pas écrire sur le NAS même avec Lecture/Écriture activée
    - **Sécurité :** `sys`
    - ✅ Cochez : **"Activer le mode asynchrone"** (meilleures performances)
-   - ✅ 🔥 **CRITIQUE** : Cochez **"Autoriser les connexions à partir des ports non privilégiés"**
-     - Sans cette option → **Échec garanti** avec erreur "Permission Denied"
+   - ✅ 🔥 **CRITIQUE DSM 7.x** : Cochez **"Autoriser les connexions à partir des ports non privilégiés"**
+     - Cette option autorise les connexions depuis les ports > 1024
+     - **Sans cette option → Échec garanti** avec erreur "Permission Denied" ou "access denied by server"
+     - Sur DSM 7.1+, cette option est **obligatoire** pour le montage NFS depuis le Raspberry Pi
 6. Cliquez sur **Sauvegarder** puis encore **Sauvegarder**
+
+**Résumé des options critiques DSM 7.1+ :**
+- ✅ Squash = "Mappage de tous les utilisateurs sur admin" (droits d'écriture)
+- ✅ "Autoriser les connexions à partir des ports non privilégiés" (connexion autorisée)
 
 #### Étape 4 : Récupérer le chemin de montage
 
@@ -296,19 +305,25 @@ Suivre le guide [RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md) jusqu'à l'éta
 # Mettre à jour le système
 sudo apt update && sudo apt upgrade -y
 
-# Installer Docker (méthode officielle)
+# Installer Docker (méthode officielle qui inclut le plugin compose)
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
 # Ajouter l'utilisateur au groupe docker
-sudo usermod -aG docker pi
+sudo usermod -aG docker $USER
 
-# Installer Docker Compose
-sudo apt install -y docker-compose
+# Créer un alias pour compatibilité (docker-compose -> docker compose)
+echo 'alias docker-compose="docker compose"' >> ~/.bashrc
+source ~/.bashrc
 
-# Redémarrer pour appliquer les changements
+# Vérifier l'installation
+docker compose version
+
+# Redémarrer pour appliquer les changements de groupe
 sudo reboot
 ```
+
+**⚠️ IMPORTANT :** Ne pas installer `docker-compose` via apt après avoir utilisé `get-docker.sh` ! Le script d'installation officiel inclut déjà le plugin moderne Docker Compose (commande `docker compose` avec espace). L'installation via apt créerait un conflit de paquets.
 
 ### Cloner le projet
 
