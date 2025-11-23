@@ -38,7 +38,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.set_exc_info,
+        structlog.processors.format_exc_info,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
