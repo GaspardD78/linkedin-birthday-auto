@@ -64,7 +64,7 @@ echo "────────────────────────�
 
 # Check if running on Raspberry Pi
 if [ -f /proc/device-tree/model ]; then
-    RPI_MODEL=$(cat /proc/device-tree/model)
+    RPI_MODEL=$(cat /proc/device-tree/model | tr -d '\0')
     print_status "info" "Device: ${RPI_MODEL}"
 else
     print_status "warn" "Not a Raspberry Pi or model file not found"
