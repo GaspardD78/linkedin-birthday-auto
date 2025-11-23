@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose optimisé pour Raspberry Pi 4 (4GB RAM)
 # Architecture: Redis + RQ Worker pour traitement asynchrone
 
