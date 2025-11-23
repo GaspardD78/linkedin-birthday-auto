@@ -7,8 +7,6 @@
 # Docker Compose setup is running correctly on Raspberry Pi
 # ============================================================
 
-set -e
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,18 +39,18 @@ print_status() {
 
     if [ "$status" = "ok" ]; then
         echo -e "${GREEN}${CHECK}${NC} ${message}"
-        [ -n "$detail" ] && echo -e "  ${detail}"
+        [ -n "$detail" ] && echo -e "  ${detail}" || true
     elif [ "$status" = "error" ]; then
         echo -e "${RED}${CROSS}${NC} ${message}"
-        [ -n "$detail" ] && echo -e "  ${detail}"
+        [ -n "$detail" ] && echo -e "  ${detail}" || true
         ((ERRORS++))
     elif [ "$status" = "warn" ]; then
         echo -e "${YELLOW}${WARN}${NC} ${message}"
-        [ -n "$detail" ] && echo -e "  ${detail}"
+        [ -n "$detail" ] && echo -e "  ${detail}" || true
         ((WARNINGS++))
     else
         echo -e "${BLUE}${INFO}${NC} ${message}"
-        [ -n "$detail" ] && echo -e "  ${detail}"
+        [ -n "$detail" ] && echo -e "  ${detail}" || true
     fi
 }
 
