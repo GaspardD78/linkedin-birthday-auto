@@ -112,20 +112,59 @@ curl ifconfig.me
 
 ### Option A : Partage NFS pour sauvegardes (Recommandé)
 
-#### Sur le Synology DS213J
+Cette procédure est adaptée pour **Synology DiskStation Manager (DSM) 7.1+**.
 
-1. **Panneau de configuration** → **Services de fichiers** → **NFS**
-2. **Activer NFS**
-3. Créer un dossier partagé :
+#### Étape 1 : Activer le service NFS (Sur le Synology)
+
+1. Allez dans **Panneau de configuration**
+2. Cliquez sur **Services de fichiers** (section "Partage de fichiers")
+3. Allez dans l'onglet **NFS**
+4. Cochez la case **Activer le service NFS**
+5. Dans "Protocole NFS maximum", sélectionnez **NFSv4.1** (ou NFSv3 minimum)
+   - **NFSv4.1** est recommandé (plus moderne et performant)
+   - NFSv3 fonctionne aussi si nécessaire
+6. Cliquez sur **Appliquer**
+
+#### Étape 2 : Créer le Dossier Partagé
+
+1. Toujours dans **Panneau de configuration**, allez dans **Dossier partagé**
+2. Cliquez sur **Créer** → **Créer**
+3. Remplissez le formulaire :
    - **Nom :** `LinkedInBot`
-   - **Permissions :** Lecture/Écriture
-4. **NFS Permissions** → **Créer**
-   - **Nom d'hôte :** `192.168.1.50` (IP du Pi)
-   - **Privilège :** Lecture/Écriture
-   - **Squash :** Map all users to admin
-   - **Sécurité :** `sys`
+   - **Volume :** Volume 1 (généralement)
+   - **Corbeille :** Décocher "Activer la corbeille" (inutile pour backups automatisés)
+4. Cliquez sur **Suivant** jusqu'à la fin et validez
 
-#### Sur le Raspberry Pi 4
+#### Étape 3 : Réglage des Permissions NFS 🔥 CRITIQUE
+
+**C'est l'étape la plus importante pour éviter les erreurs "Permission Denied" !**
+
+1. Dans la liste des **Dossiers partagés**, sélectionnez `LinkedInBot`
+2. Cliquez sur **Modifier**
+3. Allez dans l'onglet **Autorisations NFS** (spécifique DSM 7)
+4. Cliquez sur **Créer**
+5. Remplissez le formulaire **avec précision** :
+   - **Nom d'hôte ou IP :** `192.168.1.50` (IP fixe de votre Raspberry Pi)
+   - **Privilège :** **Lecture/Écriture**
+   - **Squash :** **Mappage de tous les utilisateurs sur admin**
+     - ⚠️ Important pour éviter les problèmes de droits d'écriture
+   - **Sécurité :** `sys`
+   - ✅ Cochez : **"Activer le mode asynchrone"** (meilleures performances)
+   - ✅ 🔥 **CRITIQUE** : Cochez **"Autoriser les connexions à partir des ports non privilégiés"**
+     - Sans cette option → **Échec garanti** avec erreur "Permission Denied"
+6. Cliquez sur **Sauvegarder** puis encore **Sauvegarder**
+
+#### Étape 4 : Récupérer le chemin de montage
+
+En bas de la fenêtre d'édition du dossier partagé, notez le chemin :
+
+```
+Chemin de montage : /volume1/LinkedInBot
+```
+
+**Notez ce chemin exact**, vous en aurez besoin pour le Pi.
+
+#### Étape 5 : Configuration sur le Raspberry Pi 4
 
 ```bash
 # Installer le client NFS
@@ -135,18 +174,28 @@ sudo apt install -y nfs-common
 sudo mkdir -p /mnt/synology
 
 # Monter le partage NFS
+# Remplacer 192.168.1.X par l'IP de votre Synology
 sudo mount -t nfs 192.168.1.X:/volume1/LinkedInBot /mnt/synology
 
-# Tester l'accès
+# Tester l'accès en écriture
 ls -la /mnt/synology
 touch /mnt/synology/test.txt
 rm /mnt/synology/test.txt
 
-# Rendre le montage permanent
+# Si le test réussit, rendre le montage permanent
 echo "192.168.1.X:/volume1/LinkedInBot /mnt/synology nfs defaults 0 0" | sudo tee -a /etc/fstab
+
+# Vérifier que le montage automatique fonctionne
+sudo mount -a
+df -h | grep synology
 ```
 
 **Remplacer `192.168.1.X`** par l'IP de votre Synology.
+
+**En cas d'erreur "Permission Denied" :**
+- Vérifiez l'étape 3, option "Autoriser les connexions à partir des ports non privilégiés"
+- Vérifiez que l'IP du Pi (192.168.1.50) est bien autorisée dans les permissions NFS
+- Vérifiez le Squash : doit être "Mappage de tous les utilisateurs sur admin"
 
 ### Option B : Partage SMB/CIFS (Alternative)
 
