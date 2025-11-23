@@ -113,9 +113,9 @@ rich==13.7.0  # Beautiful terminal output
 # OPTIONAL (QUEUE SYSTEM - REDIS)
 # ────────────────────────────────────────────────────────────────────
 
-# Redis for queue management (optional)
-# redis==5.0.1
-# rq==1.15.1  # Redis Queue
+# Redis for queue management
+redis==5.0.1
+rq==1.15.1  # Redis Queue
 
 # ────────────────────────────────────────────────────────────────────
 # OPTIONAL (ADVANCED MONITORING)
