@@ -125,7 +125,9 @@ fi
 
 # Vérifier l'espace disque
 DISK_SPACE=$(df -h . | awk 'NR==2{print $4}' | sed 's/G//')
-if (( $(echo "$DISK_SPACE < 5" | bc -l) )); then
+# Convertir en entier pour la comparaison (supprime les décimales)
+DISK_SPACE_INT=${DISK_SPACE%.*}
+if [ "$DISK_SPACE_INT" -lt 5 ] 2>/dev/null; then
     print_warning "Espace disque disponible: ${DISK_SPACE}GB (minimum recommandé: 5GB)"
 fi
 print_success "Espace disque disponible: ${DISK_SPACE}GB"

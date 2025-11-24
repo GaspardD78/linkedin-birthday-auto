@@ -138,7 +138,7 @@ services:
   dashboard:
     build:
       context: ./dashboard
-      dockerfile: Dockerfile.prod
+      dockerfile: Dockerfile.prod.pi4
     restart: unless-stopped
     container_name: linkedin-dashboard
     ports:
