@@ -223,18 +223,36 @@ else
 fi
 
 # =========================================================================
-# Build des images
+# Build des images (Séquentiel pour éviter l'OOM sur Pi4)
 # =========================================================================
 
 print_header "Construction des images Docker"
 
-print_info "Construction des images (peut prendre 10-15 minutes sur Pi4)..."
-if docker compose -f "$COMPOSE_FILE" build --pull; then
-    print_success "Images construites avec succès"
+print_info "Construction séquentielle pour stabilité (peut prendre 20-30 min)..."
+
+# 1. Pull des images de base et Redis
+print_info "1/3 Téléchargement des images de base..."
+docker compose -f "$COMPOSE_FILE" pull
+
+# 2. Build du Bot Worker (lourd car Playwright + Pandas)
+print_info "2/3 Construction du Bot Worker..."
+if docker compose -f "$COMPOSE_FILE" build bot-worker; then
+    print_success "Bot Worker construit"
 else
-    print_error "Échec de la construction des images"
+    print_error "Échec de la construction du Bot Worker"
     exit 1
 fi
+
+# 3. Build du Dashboard (lourd car compilation Next.js)
+print_info "3/3 Construction du Dashboard..."
+if docker compose -f "$COMPOSE_FILE" build dashboard; then
+    print_success "Dashboard construit"
+else
+    print_error "Échec de la construction du Dashboard"
+    exit 1
+fi
+
+print_success "Toutes les images sont construites"
 
 # =========================================================================
 # Démarrage des services
