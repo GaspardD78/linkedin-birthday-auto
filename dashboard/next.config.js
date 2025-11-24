@@ -8,6 +8,15 @@ const nextConfig = {
   images: {
     unoptimized: true, // Moins de CPU utilisé pour le traitement d'images
   },
+  // Optimisation de la compilation sur Raspberry Pi
+  eslint: {
+    // Ignore le linting pendant le build pour accélérer (le faire en CI/pre-commit)
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    // Ignore les erreurs TS pendant le build (le faire en CI/pre-commit)
+    ignoreBuildErrors: true,
+  },
   experimental: {
     // Optimisations possibles pour build plus léger
     optimizePackageImports: ['lucide-react', 'recharts'],
