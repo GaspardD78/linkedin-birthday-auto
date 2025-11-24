@@ -21,6 +21,10 @@ COPY package.json package-lock.json* ./
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm install --production=false
 
+# Explicitement installer le binaire SWC pour ARM64
+# car il est parfois manqué lors de l'installation des dépendances optionnelles
+RUN npm install @next/swc-linux-arm64-gnu --no-save
+
 # Stage 2: Builder
 FROM node:20-slim AS builder
 WORKDIR /app
