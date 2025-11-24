@@ -14,8 +14,6 @@
 # - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
 # - Verification: ./scripts/verify_rpi_docker.sh
 
-version: '3.8'
-
 services:
   # ========================================
   # REDIS (Queue pour Bot Worker)
