@@ -123,26 +123,12 @@ else
     print_success "RAM disponible: ${TOTAL_RAM}MB"
 fi
 
-# Vérification et configuration du SWAP
+# Vérification du SWAP
 SWAP_TOTAL=$(free -m | awk '/Swap/ {print $2}')
 if [ "$SWAP_TOTAL" -lt 2000 ]; then
-    print_warning "Swap insuffisant : ${SWAP_TOTAL}MB (Recommandé : 2048MB)"
-    print_info "La compilation sur Pi4 nécessite plus de Swap pour éviter le crash."
-    read -p "Voulez-vous augmenter le Swap à 2GB ? (O/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Oo]$ ]] || [[ -z $REPLY ]]; then
-        print_info "Configuration du Swap à 2GB..."
-        # Désactiver le swap actuel
-        sudo dphys-swapfile swapoff
-        # Modifier la taille (backup de l'original)
-        sudo sed -i.bak 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
-        # Regénérer et activer
-        sudo dphys-swapfile setup
-        sudo dphys-swapfile swapon
-        print_success "Swap augmenté à 2GB"
-    else
-        print_warning "Continuation avec Swap faible (Risque de crash élevé)"
-    fi
+    print_warning "Swap détecté : ${SWAP_TOTAL}MB"
+    print_warning "La compilation peut échouer par manque de RAM."
+    print_info "Si le build plante, fermez les autres applications lourdes."
 else
     print_success "Swap suffisant: ${SWAP_TOTAL}MB"
 fi
