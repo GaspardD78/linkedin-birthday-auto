@@ -123,14 +123,15 @@ else
     print_success "RAM disponible: ${TOTAL_RAM}MB"
 fi
 
-# Vérifier l'espace disque
-DISK_SPACE=$(df -h . | awk 'NR==2{print $4}' | sed 's/G//')
-# Convertir en entier pour la comparaison (supprime les décimales)
-DISK_SPACE_INT=${DISK_SPACE%.*}
-if [ "$DISK_SPACE_INT" -lt 5 ] 2>/dev/null; then
-    print_warning "Espace disque disponible: ${DISK_SPACE}GB (minimum recommandé: 5GB)"
+# Vérifier l'espace disque (en GB)
+DISK_SPACE_KB=$(df -k . | awk 'NR==2{print $4}')
+DISK_SPACE_GB=$((DISK_SPACE_KB / 1024 / 1024))
+if [ "$DISK_SPACE_GB" -lt 5 ]; then
+    print_warning "Espace disque disponible: ${DISK_SPACE_GB}GB (minimum recommandé: 5GB)"
+    print_info "Libérez de l'espace disque avant de continuer"
+else
+    print_success "Espace disque disponible: ${DISK_SPACE_GB}GB"
 fi
-print_success "Espace disque disponible: ${DISK_SPACE}GB"
 
 # =========================================================================
 # Configuration de l'environnement
@@ -168,6 +169,16 @@ fi
 # Créer les répertoires nécessaires
 print_info "Création des répertoires de données..."
 mkdir -p data logs config
+
+# Ajuster les permissions pour les conteneurs Docker (monde lisible/écrivable)
+chmod 755 data logs config 2>/dev/null || true
+if [ -f "auth_state.json" ]; then
+    chmod 644 auth_state.json 2>/dev/null || true
+fi
+if [ -f "config/config.yaml" ]; then
+    chmod 644 config/config.yaml 2>/dev/null || true
+fi
+
 print_success "Répertoires créés: data/, logs/, config/"
 
 # Vérifier config.yaml

@@ -47,6 +47,7 @@ RUN apt-get update \
     && apt-get install -y \
     chromium \
     chromium-driver \
+    curl \
     fonts-liberation \
     fonts-ipafont-gothic \
     fonts-wqy-zenhei \
