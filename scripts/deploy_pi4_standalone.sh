@@ -123,14 +123,15 @@ else
     print_success "RAM disponible: ${TOTAL_RAM}MB"
 fi
 
-# Vérifier l'espace disque
-DISK_SPACE=$(df -h . | awk 'NR==2{print $4}' | sed 's/G//')
-# Convertir en entier pour la comparaison (supprime les décimales)
-DISK_SPACE_INT=${DISK_SPACE%.*}
-if [ "$DISK_SPACE_INT" -lt 5 ] 2>/dev/null; then
-    print_warning "Espace disque disponible: ${DISK_SPACE}GB (minimum recommandé: 5GB)"
+# Vérifier l'espace disque (en GB)
+DISK_SPACE_KB=$(df -k . | awk 'NR==2{print $4}')
+DISK_SPACE_GB=$((DISK_SPACE_KB / 1024 / 1024))
+if [ "$DISK_SPACE_GB" -lt 5 ]; then
+    print_warning "Espace disque disponible: ${DISK_SPACE_GB}GB (minimum recommandé: 5GB)"
+    print_info "Libérez de l'espace disque avant de continuer"
+else
+    print_success "Espace disque disponible: ${DISK_SPACE_GB}GB"
 fi
-print_success "Espace disque disponible: ${DISK_SPACE}GB"
 
 # =========================================================================
 # Configuration de l'environnement
