@@ -2,32 +2,38 @@
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Cpu, HardDrive, Server } from "lucide-react"
-
-interface SystemHealthData {
-  cpuTemp: number;
-  memoryUsage: number;
-  diskSpace?: number;
-}
+import { Cpu, HardDrive, Server, Clock } from "lucide-react"
+import { api, type SystemHealth } from "@/lib/api"
 
 export function SystemHealthWidget() {
-  // État simulé pour le moment, à connecter avec l'API plus tard
-  const [data, setData] = useState<SystemHealthData>({
-    cpuTemp: 45,
-    memoryUsage: 1.2, // GB
+  const [data, setData] = useState<SystemHealth>({
+    cpuTemp: 0,
+    memoryUsage: 0,
+    totalMemory: 0,
+    uptime: 0
   })
 
-  // Simulation de mise à jour
   useEffect(() => {
-    const interval = setInterval(() => {
-      // En production, fetch('/api/system/health') ici
-      setData(prev => ({
-        cpuTemp: 40 + Math.random() * 15,
-        memoryUsage: 0.8 + Math.random() * 0.5,
-      }))
-    }, 3000)
+    const fetchHealth = async () => {
+      try {
+        const health = await api.getHealth()
+        setData(health)
+      } catch (error) {
+        console.error("Failed to fetch health stats", error)
+      }
+    }
+
+    fetchHealth()
+    const interval = setInterval(fetchHealth, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / (3600 * 24));
+    const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${days}d ${hours}h ${minutes}m`;
+  }
 
   return (
     <Card className="bg-slate-900 border-slate-800">
@@ -60,7 +66,16 @@ export function SystemHealthWidget() {
             <div className="text-2xl font-bold text-blue-500">
               {data.memoryUsage.toFixed(1)} GB
             </div>
-            <p className="text-[10px] text-slate-500">/ 4.0 GB Total</p>
+            <p className="text-[10px] text-slate-500">
+              / {data.totalMemory ? data.totalMemory.toFixed(1) : '4.0'} GB Total
+            </p>
+          </div>
+
+          {/* Uptime (Full width) */}
+          <div className="col-span-2 flex items-center gap-2 pt-2 border-t border-slate-800">
+             <Clock className="h-3 w-3 text-slate-500" />
+             <span className="text-xs text-slate-400">Uptime:</span>
+             <span className="text-xs font-mono text-slate-200">{formatUptime(data.uptime)}</span>
           </div>
 
         </div>
