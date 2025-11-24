@@ -143,6 +143,8 @@ class BrowserManager:
             '--disable-setuid-sandbox',
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-gl-drawing-for-tests',  # Save GPU memory
+            '--mute-audio',  # Save audio resources
             f'--window-size={self.viewport["width"]},{self.viewport["height"]}'
         ]
 
