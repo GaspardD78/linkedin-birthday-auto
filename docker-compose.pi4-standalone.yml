@@ -40,6 +40,11 @@ services:
         reservations:
           cpus: '0.25'
           memory: 200M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -73,6 +78,11 @@ services:
         reservations:
           memory: 100M
           cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -119,6 +129,11 @@ services:
         reservations:
           cpus: '1.0'
           memory: 800M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import redis; r = redis.Redis(host='redis-bot', port=6379); r.ping()"]
@@ -148,6 +163,11 @@ services:
         reservations:
           memory: 600M
           cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
