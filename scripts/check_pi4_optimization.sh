@@ -30,8 +30,9 @@ print_error() {
 print_header "Vérification de la mémoire SWAP"
 SWAP_TOTAL=$(free -m | awk '/Swap/ {print $2}')
 if [ "$SWAP_TOTAL" -lt 2000 ]; then
-    print_warning "Swap insuffisant : ${SWAP_TOTAL}MB (Recommandé : 2048MB)"
-    print_warning "Exécutez : sudo dphys-swapfile swapoff && sudo sed -i 's/CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile && sudo dphys-swapfile setup && sudo dphys-swapfile swapon"
+    print_warning "Swap détecté : ${SWAP_TOTAL}MB"
+    print_warning "Attention : Une utilisation excessive du Swap peut user la carte SD."
+    print_warning "Assurez-vous que peu d'applications tournent en parallèle."
 else
     print_success "Swap OK : ${SWAP_TOTAL}MB"
 fi
