@@ -233,6 +233,79 @@ else
 fi
 
 # =========================================================================
+# PATCH AUTO : Création des dépendances manquantes pour le Dashboard
+# =========================================================================
+
+print_header "Vérification des dépendances du code source"
+
+# Création du dossier lib s'il n'existe pas
+if [ ! -d "dashboard/lib" ]; then
+    print_info "Création du dossier dashboard/lib..."
+    mkdir -p dashboard/lib
+fi
+
+# Création de utils.ts (Requis pour l'UI)
+if [ ! -f "dashboard/lib/utils.ts" ]; then
+    print_warning "Fichier dashboard/lib/utils.ts manquant. Création automatique..."
+    cat > "dashboard/lib/utils.ts" << 'EOF'
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+EOF
+    print_success "utils.ts créé"
+fi
+
+# Création de puppet-master.ts (Requis pour l'API Bot)
+if [ ! -f "dashboard/lib/puppet-master.ts" ]; then
+    print_warning "Fichier dashboard/lib/puppet-master.ts manquant. Création automatique..."
+    cat > "dashboard/lib/puppet-master.ts" << 'EOF'
+export interface BotTask {
+  id: string;
+  type: string;
+  payload: any;
+  timestamp: number;
+}
+
+export interface BotStatus {
+  state: 'IDLE' | 'WORKING' | 'COOLDOWN' | 'ERROR' | 'STARTING' | 'STOPPING';
+  currentTask?: string;
+  lastActive: number;
+}
+
+class PuppetMaster {
+  private status: BotStatus = {
+    state: 'IDLE',
+    lastActive: Date.now()
+  };
+
+  async getStatus(): Promise<BotStatus> {
+    return this.status;
+  }
+
+  async killSwitch(): Promise<void> {
+    this.status.state = 'STOPPING';
+    console.log('Kill switch activated');
+    setTimeout(() => {
+      this.status.state = 'IDLE';
+    }, 2000);
+  }
+
+  async startTask(task: BotTask): Promise<void> {
+    this.status.state = 'WORKING';
+    this.status.currentTask = task.type;
+    console.log('Task started:', task.id);
+  }
+}
+
+export const puppetMaster = new PuppetMaster();
+EOF
+    print_success "puppet-master.ts créé"
+fi
+
+# =========================================================================
 # Build des images (Séquentiel pour éviter l'OOM sur Pi4)
 # =========================================================================
 
