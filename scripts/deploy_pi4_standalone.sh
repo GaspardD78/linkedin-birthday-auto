@@ -169,6 +169,16 @@ fi
 # Créer les répertoires nécessaires
 print_info "Création des répertoires de données..."
 mkdir -p data logs config
+
+# Ajuster les permissions pour les conteneurs Docker (monde lisible/écrivable)
+chmod 755 data logs config 2>/dev/null || true
+if [ -f "auth_state.json" ]; then
+    chmod 644 auth_state.json 2>/dev/null || true
+fi
+if [ -f "config/config.yaml" ]; then
+    chmod 644 config/config.yaml 2>/dev/null || true
+fi
+
 print_success "Répertoires créés: data/, logs/, config/"
 
 # Vérifier config.yaml
