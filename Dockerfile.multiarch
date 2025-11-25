@@ -1,5 +1,5 @@
 # Dockerfile optimisé pour Raspberry Pi 4 (ARM64)
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ARG TARGETPLATFORM
 ENV PYTHONDONTWRITEBYTECODE=1 \
