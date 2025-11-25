@@ -2,33 +2,59 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, Mail, Eye } from "lucide-react"
+import { useState, useEffect } from "react"
+import { api, type BotStats } from "@/lib/api"
 
 export function StatsWidget() {
-  // Static data for now, will connect to API later
-  const stats = [
+  const [stats, setStats] = useState<BotStats>({
+    messages_sent: 0,
+    profiles_visited: 0,
+    contacts_found: 0,
+    messages_24h: 0,
+    profiles_24h: 0,
+    contacts_24h: 0
+  })
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const data = await api.getStats()
+        setStats(data)
+      } catch (error) {
+        console.error("Failed to fetch stats", error)
+      }
+    }
+
+    fetchStats()
+    // Refresh every minute
+    const interval = setInterval(fetchStats, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const statItems = [
     {
       title: "Messages Sent",
-      value: "12",
+      value: stats.messages_sent.toString(),
       icon: Mail,
-      description: "+2 from yesterday"
+      description: `+${stats.messages_24h} from yesterday`
     },
     {
       title: "Profiles Visited",
-      value: "45",
+      value: stats.profiles_visited.toString(),
       icon: Eye,
-      description: "+15 from yesterday"
+      description: `+${stats.profiles_24h} from yesterday`
     },
     {
       title: "Contacts Found",
-      value: "128",
+      value: stats.contacts_found.toString(),
       icon: Users,
-      description: "+5 from yesterday"
+      description: `+${stats.contacts_24h} from yesterday`
     }
   ]
 
   return (
     <div className="grid gap-4 md:grid-cols-3">
-      {stats.map((stat, index) => (
+      {statItems.map((stat, index) => (
         <Card key={index} className="bg-slate-900 border-slate-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-slate-200">
