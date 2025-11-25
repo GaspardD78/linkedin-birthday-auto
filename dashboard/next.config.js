@@ -9,10 +9,6 @@ const nextConfig = {
     unoptimized: true, // Moins de CPU utilisé pour le traitement d'images
   },
   // Optimisation de la compilation sur Raspberry Pi
-  eslint: {
-    // Ignore le linting pendant le build pour accélérer (le faire en CI/pre-commit)
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     // Ignore les erreurs TS pendant le build (le faire en CI/pre-commit)
     ignoreBuildErrors: true,
@@ -20,10 +16,6 @@ const nextConfig = {
   experimental: {
     // Optimisations possibles pour build plus léger
     optimizePackageImports: ['lucide-react', 'recharts'],
-  },
-  webpack: (config) => {
-    // Configuration spécifique si besoin (ex: exclusion de certaines libs côté client)
-    return config;
   },
 };
 
