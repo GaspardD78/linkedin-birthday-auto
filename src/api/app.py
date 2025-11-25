@@ -30,6 +30,7 @@ from .security import verify_api_key
 from ..queue.tasks import run_bot_task, run_profile_visit_task
 from ..monitoring.tracing import instrument_app, setup_tracing
 from prometheus_client import make_asgi_app
+from . import auth_routes # Import the new auth router
 
 logger = get_logger(__name__)
 
@@ -134,6 +135,9 @@ app = FastAPI(
 # Expose Prometheus metrics
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
+
+# Include the authentication router
+app.include_router(auth_routes.router)
 
 
 # Authentification importée de security.py
