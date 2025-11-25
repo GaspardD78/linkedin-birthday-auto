@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Terminal, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
-import { api } from "@/lib/api"
+import { getLogs } from "@/lib/api"
 
 export function LogsWidget() {
   const [logs, setLogs] = useState<string>("")
@@ -13,8 +13,9 @@ export function LogsWidget() {
   const fetchLogs = async () => {
     setLoading(true)
     try {
-      const content = await api.getLogs()
-      setLogs(content)
+      const logEntries = await getLogs()
+      const logContent = logEntries.map(log => `[${log.timestamp}] [${log.level}] ${log.message}`).join('\n');
+      setLogs(logContent)
     } catch (error) {
       console.error("Failed to fetch logs", error)
       setLogs("Error loading logs...")

@@ -3,22 +3,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, Mail, Eye } from "lucide-react"
 import { useState, useEffect } from "react"
-import { api, type BotStats } from "@/lib/api"
+import { getBotStats, type BotStats } from "@/lib/api"
 
 export function StatsWidget() {
-  const [stats, setStats] = useState<BotStats>({
-    messages_sent: 0,
-    profiles_visited: 0,
-    contacts_found: 0,
-    messages_24h: 0,
-    profiles_24h: 0,
-    contacts_24h: 0
-  })
+  const [stats, setStats] = useState<BotStats | null>(null)
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await api.getStats()
+        const data = await getBotStats()
         setStats(data)
       } catch (error) {
         console.error("Failed to fetch stats", error)
@@ -31,29 +24,41 @@ export function StatsWidget() {
     return () => clearInterval(interval)
   }, [])
 
+  if (!stats) {
+    return (
+      <div className="grid gap-4 md:grid-cols-3">
+        {Array(3).fill(0).map((_, index) => (
+          <Card key={index} className="bg-slate-900 border-slate-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div className="h-4 bg-slate-700 rounded w-2/4"></div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-8 bg-slate-700 rounded w-1/4 mb-2"></div>
+              <div className="h-3 bg-slate-700 rounded w-3/4"></div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
   const statItems = [
     {
-      title: "Messages Sent",
-      value: stats.messages_sent.toString(),
+      title: "Wishes Sent",
+      value: stats.wishes_sent_total.toString(),
       icon: Mail,
-      description: `+${stats.messages_24h} from yesterday`
+      description: `+${stats.wishes_sent_today} today`
     },
     {
       title: "Profiles Visited",
-      value: stats.profiles_visited.toString(),
+      value: stats.profiles_visited_total.toString(),
       icon: Eye,
-      description: `+${stats.profiles_24h} from yesterday`
-    },
-    {
-      title: "Contacts Found",
-      value: stats.contacts_found.toString(),
-      icon: Users,
-      description: `+${stats.contacts_24h} from yesterday`
+      description: `+${stats.profiles_visited_today} today`
     }
   ]
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       {statItems.map((stat, index) => (
         <Card key={index} className="bg-slate-900 border-slate-800">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

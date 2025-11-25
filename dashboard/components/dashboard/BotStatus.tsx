@@ -11,10 +11,10 @@ interface BotStatusData {
 }
 
 export function BotStatusWidget() {
-  const [status, setStatus] = useState<BotStatusData>({
+  const [status, setStatus] = useState<BotStatusData>(() => ({
     state: 'IDLE',
     lastActive: Date.now()
-  })
+  }))
 
   const getStatusColor = (state: string) => {
     switch (state) {
