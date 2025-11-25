@@ -34,6 +34,11 @@ services:
       # Configuration Redis (Container local)
       - REDIS_URL=redis://redis:6379
 
+      # 🔐 Authentification Dashboard
+      # Mot de passe pour accéder à l'interface web (minimum 32 caractères)
+      # À configurer dans le fichier .env : DASHBOARD_PASSWORD=your_secure_password_here
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+
       # Configuration Puppeteer (si utilisé dans le dashboard)
       - HEADLESS=true
       - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
