@@ -92,6 +92,39 @@ services:
       - linkedin-network
 
   # ========================================
+  # API (Pont entre Dashboard et Worker)
+  # ========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.multiarch
+    container_name: linkedin-bot-api
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_HOST=redis-bot
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=sqlite:///app/data/linkedin.db
+      # Clé API pour sécuriser les appels internes
+      - API_KEY=internal_secret_key
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+      - ./auth_state.json:/app/auth_state.json:ro
+      - shared-data:/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 200M
+        reservations:
+          memory: 100M
+    restart: unless-stopped
+    networks:
+      - linkedin-network
+
+  # ========================================
   # BOT WORKER (RQ Worker avec Playwright)
   # ========================================
   bot-worker:
@@ -186,6 +219,8 @@ services:
       - BOT_REDIS_URL=redis://redis-bot:6379
       - BOT_REDIS_HOST=redis-bot
       - BOT_REDIS_PORT=6379
+      - BOT_API_URL=http://linkedin-bot-api:8000
+      - BOT_API_KEY=internal_secret_key
     volumes:
       # Logs partagés avec le bot
       - ./logs:/app/logs
