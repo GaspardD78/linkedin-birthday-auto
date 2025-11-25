@@ -19,7 +19,14 @@ COPY package.json package-lock.json* ./
 # Installation des dépendances avec npm install (plus tolérant que npm ci sur ARM64)
 # Skip Puppeteer Chromium download (sera installé plus tard)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-RUN npm install --production=false
+RUN npm install \
+    --fetch-timeout=300000 \
+    --fetch-retry-mintimeout=20000 \
+    --fetch-retry-maxtimeout=120000 \
+    --maxsockets=3 \
+    --no-audit \
+    --no-fund \
+    && npm cache clean --force
 
 # Explicitement installer le binaire SWC pour ARM64
 # car il est parfois manqué lors de l'installation des dépendances optionnelles
