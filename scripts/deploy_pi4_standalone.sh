@@ -1,441 +1,261 @@
 #!/bin/bash
 
 # =========================================================================
-# Script de déploiement simplifié pour Raspberry Pi 4
-# Architecture: Pi4 + Freebox Pop (sans Synology)
-# =========================================================================
-#
-# Services déployés:
-# - Bot Worker (LinkedIn automation avec RQ)
-# - Dashboard (Next.js sur port 3000)
-# - Redis x2 (queue bot + cache dashboard)
-# - SQLite (base de données locale partagée)
-#
-# Utilisation:
-#   ./scripts/deploy_pi4_standalone.sh
-#
-# Prérequis:
-# - Raspberry Pi 4 (4GB RAM minimum)
-# - Docker + Docker Compose installés
-# - Connexion Freebox Pop (IP résidentielle)
+# Script de déploiement OPTIMISÉ pour Raspberry Pi 4 (4GB)
+# Architecture: Standalone (Bot + Dashboard + Redis + SQLite)
 # =========================================================================
 
-set -e  # Arrêt en cas d'erreur
+set -e  # Arrêt immédiat en cas d'erreur
 
-# Couleurs pour les messages
+# --- Configuration ---
+COMPOSE_FILE="docker-compose.pi4-standalone.yml"
+ENV_FILE=".env"
+ENV_TEMPLATE=".env.pi4"
+MIN_RAM_MB=3500
+MIN_SWAP_MB=2000
+MIN_DISK_GB=5
+
+# --- Couleurs ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Emojis
-CHECKMARK="✅"
-CROSS="❌"
-WARNING="⚠️"
-INFO="ℹ️"
-ROCKET="🚀"
+# --- Fonctions ---
 
-# Variables
-COMPOSE_FILE="docker-compose.pi4-standalone.yml"
-ENV_FILE=".env"
-ENV_TEMPLATE=".env.pi4"
-PROJECT_NAME="linkedin-bot-pi4"
+print_header() { echo -e "\n${BLUE}=== $1 ===${NC}\n"; }
+print_success() { echo -e "${GREEN}✅ $1${NC}"; }
+print_error() { echo -e "${RED}❌ $1${NC}"; }
+print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+print_info() { echo -e "ℹ️  $1"; }
 
 # =========================================================================
-# Fonctions utilitaires
+# 1. Vérifications Système Approfondies
 # =========================================================================
+print_header "1. Vérifications Système"
 
-print_header() {
-    echo ""
-    echo -e "${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}"
-    echo ""
-}
-
-print_success() {
-    echo -e "${GREEN}${CHECKMARK} $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}${CROSS} $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}${WARNING} $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}${INFO} $1${NC}"
-}
-
-# =========================================================================
-# Vérifications préalables
-# =========================================================================
-
-print_header "Vérifications système"
-
-# Vérifier que le script est exécuté depuis le répertoire racine
+# Vérification de l'emplacement
 if [ ! -f "$COMPOSE_FILE" ]; then
-    print_error "Le fichier $COMPOSE_FILE n'existe pas"
-    print_info "Exécutez ce script depuis le répertoire racine du projet"
+    print_error "Fichier $COMPOSE_FILE introuvable !"
+    print_info "Exécutez ce script à la racine du projet."
     exit 1
 fi
-print_success "Fichier docker-compose trouvé"
 
-# Vérifier Docker
-if ! command -v docker &> /dev/null; then
-    print_error "Docker n'est pas installé"
-    print_info "Installez Docker avec: curl -fsSL https://get.docker.com | sh"
+# Vérification Docker & Compose V2
+if docker compose version &> /dev/null; then
+    print_success "Docker Compose V2 détecté"
+else
+    print_error "Docker Compose V2 non trouvé. (Essayez: sudo apt install docker-compose-plugin)"
     exit 1
 fi
-print_success "Docker installé: $(docker --version | cut -d' ' -f3 | tr -d ',')"
 
-# Vérifier Docker Compose
-if ! docker compose version &> /dev/null; then
-    print_error "Docker Compose n'est pas disponible"
-    print_info "Installez Docker Compose ou mettez à jour Docker"
-    exit 1
-fi
-print_success "Docker Compose installé: $(docker compose version | cut -d' ' -f4)"
-
-# Vérifier les permissions Docker
+# Vérification Permissions Docker
 if ! docker ps &> /dev/null; then
-    print_error "Impossible d'accéder à Docker"
-    print_info "Ajoutez votre utilisateur au groupe docker: sudo usermod -aG docker $USER"
-    print_info "Puis déconnectez-vous et reconnectez-vous"
+    print_error "L'utilisateur actuel n'a pas les droits Docker."
+    print_info "Exécutez: sudo usermod -aG docker $USER (puis redémarrez)"
     exit 1
 fi
-print_success "Permissions Docker OK"
 
-# Vérifier la RAM disponible
-TOTAL_RAM=$(free -m | awk 'NR==2{print $2}')
-if [ "$TOTAL_RAM" -lt 3500 ]; then
-    print_warning "RAM détectée: ${TOTAL_RAM}MB (minimum recommandé: 4GB)"
-    print_info "Le déploiement peut être instable avec moins de 4GB"
-    read -p "Voulez-vous continuer ? (o/N) " -n 1 -r
+# Vérification Espace Disque
+DISK_AVAIL=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
+if [ "$DISK_AVAIL" -lt "$MIN_DISK_GB" ]; then
+    print_warning "Espace disque faible: ${DISK_AVAIL}GB (Recommandé: ${MIN_DISK_GB}GB+)"
+    print_warning "Le build Docker risque d'échouer."
+    read -p "Continuer quand même ? [y/N] " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Oo]$ ]]; then
+    [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+else
+    print_success "Espace disque OK (${DISK_AVAIL}GB)"
+fi
+
+# Vérification & Gestion du SWAP (CRITIQUE pour Next.js build)
+SWAP_TOTAL=$(free -m | awk '/Swap:/ {print $2}')
+print_info "SWAP Actif: ${SWAP_TOTAL}MB"
+
+if [ "$SWAP_TOTAL" -lt "$MIN_SWAP_MB" ]; then
+    print_warning "SWAP Actif insuffisant (${SWAP_TOTAL}MB) pour compiler le Dashboard."
+
+    SWAP_CONFIG_SIZE=$(grep -oP '^CONF_SWAPSIZE=\K\d+' /etc/dphys-swapfile || echo 0)
+
+    if [ "$SWAP_CONFIG_SIZE" -lt "$MIN_SWAP_MB" ]; then
+        print_error "Le SWAP est mal configuré (/etc/dphys-swapfile)."
+        print_info "Veuillez le reconfigurer et l'activer avec les commandes suivantes :"
+        echo "  sudo dphys-swapfile swapoff"
+        echo "  sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile"
+        echo "  sudo dphys-swapfile setup"
+        echo "  sudo dphys-swapfile swapon"
+        exit 1
+    else
+        print_error "Le SWAP est configuré mais pas actif."
+        print_info "Veuillez l'activer avec la commande : sudo dphys-swapfile swapon"
         exit 1
     fi
 else
-    print_success "RAM disponible: ${TOTAL_RAM}MB"
-fi
-
-# Vérification du SWAP
-SWAP_TOTAL=$(free -m | awk '/Swap/ {print $2}')
-if [ "$SWAP_TOTAL" -lt 2000 ]; then
-    print_warning "Swap détecté : ${SWAP_TOTAL}MB"
-    print_warning "La compilation peut échouer par manque de RAM."
-    print_info "Si le build plante, fermez les autres applications lourdes."
-else
-    print_success "Swap suffisant: ${SWAP_TOTAL}MB"
-fi
-
-# Vérifier l'espace disque (en GB)
-DISK_SPACE_KB=$(df -k . | awk 'NR==2{print $4}')
-DISK_SPACE_GB=$((DISK_SPACE_KB / 1024 / 1024))
-if [ "$DISK_SPACE_GB" -lt 5 ]; then
-    print_warning "Espace disque disponible: ${DISK_SPACE_GB}GB (minimum recommandé: 5GB)"
-    print_info "Libérez de l'espace disque avant de continuer"
-else
-    print_success "Espace disque disponible: ${DISK_SPACE_GB}GB"
+    print_success "Swap suffisant pour la compilation."
 fi
 
 # =========================================================================
-# Configuration de l'environnement
+# 2. Configuration Environnement & Fichiers
 # =========================================================================
+print_header "2. Configuration Environnement"
 
-print_header "Configuration de l'environnement"
-
-# Créer le fichier .env si nécessaire
+# Gestion .env
 if [ ! -f "$ENV_FILE" ]; then
     if [ -f "$ENV_TEMPLATE" ]; then
-        print_info "Copie de $ENV_TEMPLATE vers $ENV_FILE"
         cp "$ENV_TEMPLATE" "$ENV_FILE"
-        print_success "Fichier .env créé"
-        print_warning "Vérifiez et modifiez les variables dans $ENV_FILE si nécessaire"
+        print_success "Fichier .env créé depuis le template"
+        # Sécurisation basique d'une clé secrète si elle est vide
+        sed -i "s/SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" "$ENV_FILE"
     else
-        print_warning "Template $ENV_TEMPLATE introuvable, création d'un .env minimal"
-        cat > "$ENV_FILE" << 'EOF'
-# Configuration Pi4 Standalone
-DASHBOARD_PORT=3000
-DATABASE_URL=sqlite:///app/data/linkedin.db
-REDIS_URL=redis://redis-dashboard:6379
-REDIS_HOST=redis-bot
-REDIS_PORT=6379
-LOG_LEVEL=INFO
-PYTHONPATH=/app
-HEADLESS=true
-NEXT_TELEMETRY_DISABLED=1
-EOF
-        print_success "Fichier .env minimal créé"
+        print_error "Template .env.pi4 introuvable !"
+        exit 1
     fi
-else
-    print_success "Fichier .env existant trouvé"
 fi
 
-# Créer les répertoires nécessaires
-print_info "Création des répertoires de données..."
+# Création structure dossiers
 mkdir -p data logs config
 
-# Ajuster les permissions pour les conteneurs Docker (monde lisible/écrivable)
-chmod 755 data logs config 2>/dev/null || true
-if [ -f "auth_state.json" ]; then
-    chmod 644 auth_state.json 2>/dev/null || true
-fi
-if [ -f "config/config.yaml" ]; then
-    chmod 644 config/config.yaml 2>/dev/null || true
-fi
+# Gestion des permissions CRITIQUE pour SQLite dans Docker
+print_info "Application des permissions pour SQLite..."
+chmod 777 data logs
+touch data/linkedin.db
+chmod 666 data/linkedin.db 2>/dev/null || true
 
-print_success "Répertoires créés: data/, logs/, config/"
-
-# Vérifier config.yaml
-if [ ! -f "config/config.yaml" ]; then
-    print_warning "Fichier config/config.yaml manquant"
-    print_info "Créez config/config.yaml avec vos paramètres LinkedIn"
-fi
-
-# Vérifier auth_state.json
-if [ ! -f "auth_state.json" ]; then
-    print_warning "Fichier auth_state.json manquant"
-    print_info "Vous devrez vous authentifier au premier lancement"
-fi
+# Vérification fichiers requis
+for file in "auth_state.json" "config/config.yaml"; do
+    if [ ! -f "$file" ]; then
+        print_warning "Manquant: $file (Le bot en aura besoin au démarrage)"
+        touch "$file" # Crée un fichier vide pour éviter que Docker ne crée un dossier
+    fi
+done
 
 # =========================================================================
-# Affichage de l'IP locale
+# 3. Patching Automatique (Dashboard)
 # =========================================================================
+print_header "3. Vérification Code Source"
 
-print_header "Configuration réseau"
+mkdir -p dashboard/lib
 
-# Détecter l'IP locale
-LOCAL_IP=$(hostname -I | awk '{print $1}')
-print_info "IP locale détectée: $LOCAL_IP"
-print_info "Le dashboard sera accessible sur: http://${LOCAL_IP}:3000"
-print_warning "Configurez une IP fixe sur votre Freebox pour cette adresse MAC"
-
-# =========================================================================
-# Arrêt des anciens containers
-# =========================================================================
-
-print_header "Nettoyage des anciens containers"
-
-# Arrêter les anciens containers s'ils existent
-if docker ps -a | grep -q linkedin; then
-    print_info "Arrêt des anciens containers LinkedIn..."
-    docker compose -f docker-compose.queue.yml down 2>/dev/null || true
-    docker compose -f dashboard/docker-compose.yml down 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-    print_success "Anciens containers arrêtés"
-else
-    print_info "Aucun ancien container trouvé"
-fi
-
-# =========================================================================
-# PATCH AUTO : Création des dépendances manquantes pour le Dashboard
-# =========================================================================
-
-print_header "Vérification des dépendances du code source"
-
-# Création du dossier lib s'il n'existe pas
-if [ ! -d "dashboard/lib" ]; then
-    print_info "Création du dossier dashboard/lib..."
-    mkdir -p dashboard/lib
-fi
-
-# Création de utils.ts (Requis pour l'UI)
+# Patch utils.ts
 if [ ! -f "dashboard/lib/utils.ts" ]; then
-    print_warning "Fichier dashboard/lib/utils.ts manquant. Création automatique..."
+    print_info "Création dashboard/lib/utils.ts..."
     cat > "dashboard/lib/utils.ts" << 'EOF'
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
-
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 EOF
-    print_success "utils.ts créé"
 fi
 
-# Création de puppet-master.ts (Requis pour l'API Bot)
+# Patch puppet-master.ts
 if [ ! -f "dashboard/lib/puppet-master.ts" ]; then
-    print_warning "Fichier dashboard/lib/puppet-master.ts manquant. Création automatique..."
+    print_info "Création dashboard/lib/puppet-master.ts..."
     cat > "dashboard/lib/puppet-master.ts" << 'EOF'
-export interface BotTask {
-  id: string;
-  type: string;
-  payload: any;
-  timestamp: number;
-}
-
-export interface BotStatus {
-  state: 'IDLE' | 'WORKING' | 'COOLDOWN' | 'ERROR' | 'STARTING' | 'STOPPING';
-  currentTask?: string;
-  lastActive: number;
-}
-
+export interface BotTask { id: string; type: string; payload: any; timestamp: number; }
+export interface BotStatus { state: 'IDLE' | 'WORKING' | 'COOLDOWN' | 'ERROR' | 'STARTING' | 'STOPPING'; currentTask?: string; lastActive: number; }
 class PuppetMaster {
-  private status: BotStatus = {
-    state: 'IDLE',
-    lastActive: Date.now()
-  };
-
-  async getStatus(): Promise<BotStatus> {
-    return this.status;
-  }
-
-  async killSwitch(): Promise<void> {
-    this.status.state = 'STOPPING';
-    console.log('Kill switch activated');
-    setTimeout(() => {
-      this.status.state = 'IDLE';
-    }, 2000);
-  }
-
-  async startTask(task: BotTask): Promise<void> {
-    this.status.state = 'WORKING';
-    this.status.currentTask = task.type;
-    console.log('Task started:', task.id);
-  }
+  private status: BotStatus = { state: 'IDLE', lastActive: Date.now() };
+  async getStatus(): Promise<BotStatus> { return this.status; }
+  async killSwitch(): Promise<void> { this.status.state = 'STOPPING'; setTimeout(() => { this.status.state = 'IDLE'; }, 2000); }
+  async startTask(task: BotTask): Promise<void> { this.status.state = 'WORKING'; this.status.currentTask = task.type; }
 }
-
 export const puppetMaster = new PuppetMaster();
 EOF
-    print_success "puppet-master.ts créé"
 fi
+print_success "Dépendances du dashboard vérifiées"
 
 # =========================================================================
-# Build des images (Séquentiel pour éviter l'OOM sur Pi4)
+# 4. Nettoyage Préalable
 # =========================================================================
+print_header "4. Nettoyage"
 
-print_header "Construction des images Docker"
+print_info "Arrêt des conteneurs existants..."
+docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 
-print_info "Construction séquentielle pour stabilité (peut prendre 20-30 min)..."
+# =========================================================================
+# 5. Construction des Images (Build)
+# =========================================================================
+print_header "5. Construction (Patience... ~15-20 min)"
 
-# 1. Pull des images de base et Redis
-print_info "1/3 Téléchargement des images de base..."
+export DOCKER_BUILDKIT=1
+
+print_info "[1/3] Pull des images de base..."
 docker compose -f "$COMPOSE_FILE" pull
 
-# 2. Build du Bot Worker (lourd car Playwright + Pandas)
-print_info "2/3 Construction du Bot Worker..."
+print_info "[2/3] Build Bot Worker..."
 if docker compose -f "$COMPOSE_FILE" build bot-worker; then
-    print_success "Bot Worker construit"
+    print_success "Bot Worker construit."
 else
-    print_error "Échec de la construction du Bot Worker"
+    print_error "Échec build Bot Worker."
     exit 1
 fi
 
-# 3. Build du Dashboard (lourd car compilation Next.js)
-print_info "3/3 Construction du Dashboard..."
+sleep 5
+
+print_info "[3/3] Build Dashboard (C'est le plus long)..."
+export NPM_CONFIG_TIMEOUT=600000
 if docker compose -f "$COMPOSE_FILE" build dashboard; then
-    print_success "Dashboard construit"
+    print_success "Dashboard construit."
 else
-    print_error "Échec de la construction du Dashboard"
+    print_error "Échec build Dashboard."
+    print_warning "Vérifiez le SWAP si cela a échoué."
     exit 1
 fi
 
-print_success "Toutes les images sont construites"
+print_info "Nettoyage des images intermédiaires..."
+docker image prune -f > /dev/null 2>&1 || true
 
 # =========================================================================
-# Démarrage des services
+# 6. Démarrage
 # =========================================================================
+print_header "6. Démarrage des Services"
 
-print_header "Démarrage des services"
-
-print_info "Démarrage de tous les services..."
 if docker compose -f "$COMPOSE_FILE" up -d; then
-    print_success "Services démarrés"
+    print_success "Conteneurs lancés."
 else
-    print_error "Échec du démarrage des services"
+    print_error "Erreur au lancement."
     exit 1
 fi
 
-# Attendre que les services soient prêts
-print_info "Attente du démarrage complet des services (30s)..."
-sleep 30
+print_info "Attente de l'initialisation (30s)..."
+for i in {1..30}; do echo -n "."; sleep 1; done
+echo ""
 
 # =========================================================================
-# Vérification des services
+# 7. Vérification Finale
 # =========================================================================
+print_header "7. Vérification État"
 
-print_header "Vérification des services"
+check_service() {
+    local service_name=$1
+    local container_id
+    container_id=$(docker compose -f "$COMPOSE_FILE" ps -q "$service_name")
 
-# Fonction pour vérifier un container
-check_container() {
-    local container_name=$1
-    local service_name=$2
-
-    if docker ps | grep -q "$container_name"; then
-        local status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "unknown")
-        if [ "$status" = "healthy" ] || [ "$status" = "unknown" ]; then
-            print_success "$service_name: OK"
-            return 0
-        else
-            print_warning "$service_name: Démarrage en cours (status: $status)"
-            return 1
-        fi
+    if [ -n "$container_id" ]; then
+        local state
+        state=$(docker inspect --format='{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "running")
+        echo -e "  • $service_name: ${GREEN}UP${NC} (Health: $state)"
     else
-        print_error "$service_name: NON DÉMARRÉ"
+        echo -e "  • $service_name: ${RED}DOWN${NC}"
         return 1
     fi
 }
 
-# Vérifier chaque service
-check_container "linkedin-bot-redis" "Redis Bot"
-check_container "linkedin-dashboard-redis" "Redis Dashboard"
-check_container "linkedin-bot-worker" "Bot Worker"
-check_container "linkedin-dashboard" "Dashboard"
+check_service "bot-worker"
+check_service "dashboard"
+check_service "redis-bot"
+check_service "redis-dashboard"
 
-# =========================================================================
-# Affichage des logs
-# =========================================================================
+LOCAL_IP=$(hostname -I | awk '{print $1}')
 
-print_header "Derniers logs"
+print_header "🚀 DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
+echo -e "
+📍 \033[1mAccès Dashboard :\033[0m http://${LOCAL_IP}:3000
+📂 \033[1mBase de données :\033[0m ./data/linkedin.db
+📄 \033[1mLogs :\033[0m           docker compose -f $COMPOSE_FILE logs -f
 
-print_info "Logs du Dashboard:"
-docker compose -f "$COMPOSE_FILE" logs --tail=10 dashboard
-
-print_info "Logs du Bot Worker:"
-docker compose -f "$COMPOSE_FILE" logs --tail=10 bot-worker
-
-# =========================================================================
-# Statistiques ressources
-# =========================================================================
-
-print_header "Utilisation des ressources"
-
-echo ""
-docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" \
-    linkedin-dashboard linkedin-bot-worker linkedin-bot-redis linkedin-dashboard-redis 2>/dev/null || true
-
-# =========================================================================
-# Résumé final
-# =========================================================================
-
-print_header "Déploiement terminé ${ROCKET}"
-
-echo ""
-print_success "Tous les services sont démarrés"
-echo ""
-print_info "URLs d'accès:"
-echo "  • Dashboard: http://${LOCAL_IP}:3000"
-echo "  • Health Check: http://${LOCAL_IP}:3000/api/health"
-echo ""
-print_info "Commandes utiles:"
-echo "  • Voir les logs:        docker compose -f $COMPOSE_FILE logs -f"
-echo "  • Arrêter les services: docker compose -f $COMPOSE_FILE down"
-echo "  • Redémarrer:           docker compose -f $COMPOSE_FILE restart"
-echo "  • Voir le statut:       docker compose -f $COMPOSE_FILE ps"
-echo ""
-print_info "Fichiers de données:"
-echo "  • Base de données: ./data/linkedin.db"
-echo "  • Logs:            ./logs/"
-echo "  • Config:          ./config/config.yaml"
-echo ""
-print_warning "Prochaines étapes:"
-echo "  1. Accédez au dashboard: http://${LOCAL_IP}:3000"
-echo "  2. Vérifiez la configuration: ./config/config.yaml"
-echo "  3. Authentifiez-vous sur LinkedIn si nécessaire"
-echo "  4. Configurez une IP fixe sur la Freebox (DHCP statique)"
-echo ""
+\033[1mNote :\033[0m Si le dashboard affiche une erreur 500 au début, attendez
+encore 1-2 minutes que Next.js finisse son premier démarrage/compilation.
+"
