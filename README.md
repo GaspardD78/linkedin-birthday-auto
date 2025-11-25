@@ -168,6 +168,7 @@ python main.py bot --mode unlimited --max-days-late 10
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
 | **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration depuis v1.x vers v2.0 |
 | **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker, GitHub Actions) |
+| **[DASHBOARD_PASSWORD_GUIDE.md](DASHBOARD_PASSWORD_GUIDE.md)** | 🔐 **Gestion du mot de passe Dashboard** (configuration, changement, récupération) |
 | **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)** | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
 | **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)** | Déploiement Pi4 + Synology NAS + Freebox Pop |
 | **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** | Installation sur Raspberry Pi (méthode manuelle v1.x) |
@@ -435,9 +436,11 @@ Configuration complète pour déploiement résidentiel sans NAS :
 docker compose -f docker-compose.pi4-standalone.yml up -d
 
 # Accès dashboard: http://192.168.1.X:3000
+# ⚠️ Configurez DASHBOARD_PASSWORD dans .env avant le déploiement (voir guide ci-dessous)
 ```
 
 📖 **Documentation complète** : [SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)
+🔐 **Gestion du mot de passe** : [DASHBOARD_PASSWORD_GUIDE.md](DASHBOARD_PASSWORD_GUIDE.md)
 
 **Option 3: Raspberry Pi 4 + Synology + Freebox**
 
