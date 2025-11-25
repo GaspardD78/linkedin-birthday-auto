@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Cpu, HardDrive, Server, Clock } from "lucide-react"
-import { getSystemHealth, type SystemHealth } from "@/lib/api"
+import { getSystemHealth, type SystemHealth } from "../../lib/api"
 
 export function SystemHealthWidget() {
   const [data, setData] = useState<SystemHealth | null>(null)

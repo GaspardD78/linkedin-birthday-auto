@@ -1,13 +1,13 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Play, Square, Pause, Loader2 } from "lucide-react"
+import { Play, Square, Pause, Loader2, Users } from "lucide-react"
 import { useState } from "react"
 
 export function BotControlsWidget() {
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleAction = async (action: 'start' | 'stop' | 'pause') => {
+  const handleAction = async (action: 'start' | 'stop' | 'pause' | 'visit') => {
     setIsLoading(true);
     try {
       const response = await fetch('/api/bot/action', {
@@ -64,6 +64,13 @@ export function BotControlsWidget() {
             <Pause className="h-4 w-4" />
             Pause
           </button>
+<button
+  onClick={() => handleAction('visit')} // Nouvelle action 'visit'
+  className="col-span-2 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-md transition-colors text-sm font-medium mt-2"
+>
+  <Users className="h-4 w-4" />
+  Lancer Visites Profils
+</button>
         </div>
       </CardContent>
     </Card>

@@ -9,18 +9,20 @@ export async function POST(request: Request) {
     const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
 
     let endpoint = '';
-    let payload = {};
+    let payload: any = {};
 
-    if (action === 'start') {
+    if (action === 'visit') {
+        endpoint = '/trigger';
+        payload = { job_type: 'visit', dry_run: false };
+    } else if (action === 'start') {
       endpoint = '/trigger';
       payload = {
+        job_type: 'birthday',
         bot_mode: 'standard',
         dry_run: false
       };
-    } else if (action === 'stop') {
-        // Note: L'arrêt n'est pas encore implémenté dans src/api/app.py
-        // Pour l'instant on ne fait rien ou on implémente une logique custom
-        return NextResponse.json({ message: "Stop not yet implemented via API" }, { status: 501 });
+    } else {
+        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
 
     const response = await fetch(`${apiUrl}${endpoint}`, {

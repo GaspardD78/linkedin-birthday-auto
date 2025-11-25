@@ -1,57 +1,47 @@
-"""
-Définition des tâches RQ (Redis Queue) pour le bot LinkedIn.
-"""
-
+import sys
+import subprocess
 from typing import Optional, Dict, Any
-import time
 from ..bots.birthday_bot import run_birthday_bot
-# from ..bots.unlimited_bot import run_unlimited_bot # To be implemented if needed
+from ..bots.unlimited_bot import run_unlimited_bot
 from ..utils.logging import get_logger
-from ..monitoring.metrics import RUN_DURATION_SECONDS
 
 logger = get_logger(__name__)
 
-def run_bot_task(bot_mode: str = 'standard', dry_run: bool = False, config: Optional[Dict] = None) -> Dict[str, Any]:
-    """
-    Tâche RQ pour exécuter le bot.
-
-    Args:
-        bot_mode: 'standard' ou 'unlimited'
-        dry_run: Mode test
-        config: Configuration override (dictionnaire)
-
-    Returns:
-        Résultats de l'exécution
-    """
-    job_id = "unknown"
+def run_bot_task(bot_mode: str = 'standard', dry_run: bool = False, max_days_late: int = 10) -> Dict[str, Any]:
+    """Tâche pour le bot anniversaire"""
+    logger.info("task_start", type="birthday", mode=bot_mode, dry_run=dry_run)
     try:
-        from rq import get_current_job
-        job = get_current_job()
-        if job:
-            job_id = job.id
-    except ImportError:
-        pass
-
-    logger.info("starting_bot_task", job_id=job_id, mode=bot_mode, dry_run=dry_run)
-
-    start_time = time.time()
-
-    try:
-        # Configuration override handling would go here if we were passing a dict
-        # For now we assume standard config loading inside run_birthday_bot
-
         if bot_mode == 'standard':
-            result = run_birthday_bot(dry_run=dry_run)
-        # elif bot_mode == 'unlimited':
-        #     result = run_unlimited_bot(dry_run=dry_run)
-        else:
-            raise ValueError(f"Unknown bot mode: {bot_mode}")
+            return run_birthday_bot(dry_run=dry_run)
+        elif bot_mode == 'unlimited':
+            return run_unlimited_bot(dry_run=dry_run, max_days_late=max_days_late)
+    except Exception as e:
+        logger.error("task_failed", error=str(e))
+        raise e
 
-        duration = time.time() - start_time
-        logger.info("bot_task_completed", job_id=job_id, duration=duration, success=True)
-        return result
+def run_profile_visit_task(dry_run: bool = False) -> Dict[str, Any]:
+    """Tâche pour la visite de profils (Wrapper du script legacy)"""
+    logger.info("task_start", type="visit_profiles", dry_run=dry_run)
+
+    # Commande pour lancer le script legacy
+    cmd = [sys.executable, "legacy/visit_profiles.py"]
+
+    # On passe les variables d'env nécessaires
+    import os
+    env = os.environ.copy()
+    env.update({"DRY_RUN": str(dry_run).lower(), "HEADLESS": "true"})
+
+    try:
+        # Exécution du script
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, check=False)
+
+        if result.returncode == 0:
+            logger.info("visit_profiles_success", output=result.stdout)
+            return {"success": True, "logs": result.stdout}
+        else:
+            logger.error("visit_profiles_failed", error=result.stderr, stdout=result.stdout)
+            return {"success": False, "error": result.stderr, "logs": result.stdout}
 
     except Exception as e:
-        duration = time.time() - start_time
-        logger.error("bot_task_failed", job_id=job_id, error=str(e), duration=duration)
-        raise e
+        logger.error("task_execution_error", error=str(e))
+        return {"success": False, "error": str(e)}
