@@ -147,10 +147,10 @@ database:
 
   # Chemin du fichier SQLite (peut être sur NAS Synology via NFS/SMB)
   # Exemple NAS: /mnt/synology/linkedin-bot/linkedin_automation.db
-  db_path: "linkedin_automation.db"
+  db_path: "data/linkedin_automation.db"
 
-  # Timeout réduit pour SD card
-  timeout: 20
+  # Timeout augmenté pour SD card lente (Pi4)
+  timeout: 60
 
 # ═══════════════════════════════════════════════════════════════════
 # MONITORING
