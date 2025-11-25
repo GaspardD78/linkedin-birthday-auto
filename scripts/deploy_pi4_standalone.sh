@@ -165,31 +165,6 @@ export const puppetMaster = new PuppetMaster();
 EOF
 fi
 
-# Patch api.ts
-if [ ! -f "dashboard/lib/api.ts" ]; then
-    print_info "Création dashboard/lib/api.ts..."
-    cat > "dashboard/lib/api.ts" << 'EOF'
-export interface SystemHealth { cpu_usage: number; memory_usage: { total: number; used: number; free: number; }; uptime: string; temperature: number; }
-export interface LogEntry { timestamp: string; level: string; message: string; }
-export interface BotStats { wishes_sent_total: number; wishes_sent_today: number; profiles_visited_total: number; profiles_visited_today: number; }
-
-export async function getSystemHealth(): Promise<SystemHealth> {
-  try {
-    const res = await fetch('/api/system/health', { cache: 'no-store' });
-    const data = await res.json();
-    const toBytes = (gb: number) => (gb || 0) * 1024 * 1024 * 1024;
-    return {
-      cpu_usage: 0,
-      memory_usage: { total: toBytes(data.totalMemory), used: toBytes(data.memoryUsage), free: 0 },
-      uptime: data.uptime || "0",
-      temperature: data.cpuTemp || 0
-    };
-  } catch (e) { return { cpu_usage: 0, memory_usage: { total: 1, used: 0, free: 0 }, uptime: "0", temperature: 0 }; }
-}
-export async function getLogs(): Promise<LogEntry[]> { return []; }
-export async function getBotStats(): Promise<BotStats> { return { wishes_sent_total: 0, wishes_sent_today: 0, profiles_visited_total: 0, profiles_visited_today: 0 }; }
-EOF
-fi
 print_success "Dépendances du dashboard vérifiées"
 
 # =========================================================================
