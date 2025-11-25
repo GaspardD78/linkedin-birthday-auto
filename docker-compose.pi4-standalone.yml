@@ -184,6 +184,8 @@ services:
 
       # Configuration Bot (optionnel)
       - BOT_REDIS_URL=redis://redis-bot:6379
+      - BOT_REDIS_HOST=redis-bot
+      - BOT_REDIS_PORT=6379
     volumes:
       # Logs partagés avec le bot
       - ./logs:/app/logs
