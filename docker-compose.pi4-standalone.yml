@@ -43,8 +43,9 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -81,8 +82,9 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -149,24 +151,26 @@ services:
       - ./auth_state.json:/app/auth_state.json
       - shared-data:/app/data
     # Optimisé pour Pi 4 avec 4GB RAM
-    # Bot Worker: 1.0GB (Chromium + Python) - Réduit pour éviter le swap
-    # Dashboard: 800MB - Réduit pour éviter le swap
+    # Bot Worker: 900MB (Chromium + Python) - Optimisé après audit
+    # Dashboard: 700MB - Optimisé après audit
     # Redis: 300MB (2x)
-    # Système: 500MB
-    # = ~2.6GB utilisés, laisse ~1.4GB libre (marge de sécurité)
+    # API: 200MB
+    # Système: ~1GB
+    # = ~2.4GB utilisés, laisse ~1.6GB libre (marge de sécurité)
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 1.0G
+          cpus: '1.5'
+          memory: 900M
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 450M
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import redis; r = redis.Redis(host='redis-bot', port=6379); r.ping()"]
@@ -191,16 +195,17 @@ services:
     deploy:
       resources:
         limits:
-          memory: 800M    # Encore plus réduit pour éviter le swap
-          cpus: '1.5'
+          memory: 700M    # Optimisé après audit pour éviter le swap
+          cpus: '1.0'
         reservations:
-          memory: 400M
+          memory: 350M
           cpus: '0.25'
     logging:
       driver: "json-file"
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "5m"
+        max-file: "2"
+        compress: "true"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
