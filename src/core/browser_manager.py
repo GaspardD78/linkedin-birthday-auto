@@ -137,21 +137,27 @@ class BrowserManager:
             Liste d'arguments pour chromium.launch()
         """
         """Construit les arguments de lancement optimisés pour Pi 4."""
-        return [
+        args = [
             '--disable-blink-features=AutomationControlled',
             '--disable-dev-shm-usage',
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process',
-            # Optimisations RAM spécifiques Pi 4
+            f'--window-size={self.viewport["width"]},{self.viewport["height"]}'
+        ]
+
+        # Optimisations RAM Spécifiques Pi 4 :
+        pi4_args = [
             '--disable-gl-drawing-for-tests',
             '--mute-audio',
             '--disable-extensions',
-            '--disable-component-extensions-with-background-pages',
             '--disable-background-networking',
-            f'--window-size={self.viewport["width"]},{self.viewport["height"]}'
+            '--disable-component-extensions-with-background-pages',
         ]
+        args.extend(pi4_args)
+
+        return args
 
     def _get_context_options(
         self,

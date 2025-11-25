@@ -27,13 +27,11 @@ browser:
   locale: "fr-FR"
   timezone: "Europe/Paris"
 
-  # User-Agent unique (économie mémoire vs rotation)
-  # Un seul UA suffit pour IP résidentielle Freebox
+  # Un seul User-Agent (Linux ARM64) pour éviter la rotation
   user_agents:
     - "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-  # Viewport unique optimisé pour économie mémoire
-  # Résolution standard qui charge moins d'assets
+  # Un seul viewport fixe
   viewport_sizes:
     - width: 1366
       height: 768

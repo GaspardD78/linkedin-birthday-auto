@@ -49,12 +49,12 @@ services:
       - ./data:/app/data
       - ./config:/app/config:ro
       - ./auth_state.json:/app/auth_state.json:ro
-    # Optimisé pour Pi 4 (4GB) cohabitant avec Dashboard
+    # Optimisation pour cohabitation avec Dashboard sur Pi 4 (4GB)
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 1.0G
+          cpus: '1.5'     # Légèrement réduit pour éviter de figer le système
+          memory: 1.0G    # Réduit de 1.2G à 1.0G
         reservations:
           cpus: '0.25'
           memory: 512M
