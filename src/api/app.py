@@ -20,10 +20,14 @@ from pydantic import BaseModel, Field
 from ..config.config_manager import get_config
 from ..core.database import get_database
 from ..bots.birthday_bot import BirthdayBot
+import yaml
+from pathlib import Path
+
 from ..bots.unlimited_bot import UnlimitedBirthdayBot
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 from .security import verify_api_key
+from ..queue.tasks import run_bot_task, run_profile_visit_task
 from ..monitoring.tracing import instrument_app, setup_tracing
 from prometheus_client import make_asgi_app
 
@@ -53,19 +57,17 @@ class MetricsResponse(BaseModel):
 
 
 class TriggerRequest(BaseModel):
-    """Modèle de requête pour /trigger."""
-    bot_mode: str = Field(
-        default="standard",
-        description="Mode du bot (standard ou unlimited)"
-    )
-    dry_run: bool = Field(
-        default=True,
-        description="Mode dry-run (ne pas envoyer de vrais messages)"
-    )
-    max_days_late: Optional[int] = Field(
-        default=10,
-        description="Nombre maximum de jours de retard (unlimited uniquement)"
-    )
+    job_type: str = Field(..., description="Type de job: 'birthday' ou 'visit'")
+    bot_mode: str = "standard"
+    dry_run: bool = True
+    max_days_late: Optional[int] = 10
+
+class ConfigUpdate(BaseModel):
+    content: str
+
+# --- Config ---
+CONFIG_PATH = Path("config/config.yaml")
+MESSAGES_PATH = Path("messages.txt")
 
 
 class TriggerResponse(BaseModel):
@@ -239,61 +241,34 @@ async def get_stats(
         )
 
 
-@app.post("/trigger", response_model=TriggerResponse, tags=["Bot"])
-async def trigger_bot(
+@app.post("/trigger")
+async def trigger_job(
     request: TriggerRequest,
     background_tasks: BackgroundTasks,
     authenticated: bool = Depends(verify_api_key)
 ):
-    """
-    Déclenche l'exécution du bot en arrière-plan.
+    """Déclenche une tâche (Anniversaire ou Visite)"""
+    job_id = f"{request.job_type}-{int(datetime.now().timestamp())}"
 
-    Args:
-        request: Paramètres d'exécution
-
-    Returns:
-        Job ID pour suivre l'exécution
-    """
-    import uuid
-
-    # Générer un job ID
-    job_id = str(uuid.uuid4())
-
-    # Vérifier mode valide
-    if request.bot_mode not in ["standard", "unlimited"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid bot_mode: {request.bot_mode}. Must be 'standard' or 'unlimited'"
+    if request.job_type == "birthday":
+        # On utilise RQ ou BackgroundTasks selon votre infra. Ici BackgroundTasks pour simplifier l'exemple docker autonome
+        # Dans une vraie prod avec beaucoup de charge, utilisez queue.enqueue(run_bot_task, ...)
+        background_tasks.add_task(
+            run_bot_task,
+            bot_mode=request.bot_mode,
+            dry_run=request.dry_run,
+            max_days_late=request.max_days_late
         )
+    elif request.job_type == "visit":
+        background_tasks.add_task(
+            run_profile_visit_task,
+            dry_run=request.dry_run
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Unknown job type")
 
-    # Enregistrer le job
-    active_jobs[job_id] = {
-        "status": "pending",
-        "bot_mode": request.bot_mode,
-        "dry_run": request.dry_run,
-        "created_at": datetime.now().isoformat(),
-        "started_at": None,
-        "completed_at": None,
-        "result": None,
-        "error": None
-    }
-
-    # Lancer en background
-    background_tasks.add_task(
-        execute_bot_job,
-        job_id=job_id,
-        bot_mode=request.bot_mode,
-        dry_run=request.dry_run,
-        max_days_late=request.max_days_late
-    )
-
-    logger.info(f"🚀 Bot job {job_id} triggered (mode: {request.bot_mode}, dry_run: {request.dry_run})")
-
-    return TriggerResponse(
-        job_id=job_id,
-        status="pending",
-        message=f"Bot execution started in background (job_id: {job_id})"
-    )
+    logger.info(f"🚀 Job triggered: {job_id}")
+    return {"job_id": job_id, "status": "started", "type": request.job_type}
 
 
 @app.get("/jobs/{job_id}", tags=["Bot"])
@@ -355,69 +330,39 @@ async def get_recent_logs(
         )
 
 
+@app.get("/config/yaml")
+async def get_yaml_config(authenticated: bool = Depends(verify_api_key)):
+    """Lit le fichier config.yaml"""
+    if not CONFIG_PATH.exists():
+        raise HTTPException(404, "Config file not found")
+    return {"content": CONFIG_PATH.read_text(encoding="utf-8")}
+
+@app.post("/config/yaml")
+async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
+    """Met à jour config.yaml"""
+    try:
+        # Vérifier que c'est du YAML valide
+        yaml.safe_load(config.content)
+        CONFIG_PATH.write_text(config.content, encoding="utf-8")
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(400, f"Invalid YAML: {str(e)}")
+
+@app.get("/config/messages")
+async def get_messages(authenticated: bool = Depends(verify_api_key)):
+    """Lit le fichier messages.txt"""
+    if not MESSAGES_PATH.exists():
+        return {"content": ""}
+    return {"content": MESSAGES_PATH.read_text(encoding="utf-8")}
+
+@app.post("/config/messages")
+async def update_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
+    """Met à jour messages.txt"""
+    MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    return {"status": "updated"}
 # ═══════════════════════════════════════════════════════════════════
 # BACKGROUND TASKS
 # ═══════════════════════════════════════════════════════════════════
-
-async def execute_bot_job(
-    job_id: str,
-    bot_mode: str,
-    dry_run: bool,
-    max_days_late: Optional[int] = 10
-):
-    """
-    Exécute le bot en arrière-plan.
-
-    Args:
-        job_id: ID du job
-        bot_mode: Mode du bot (standard/unlimited)
-        dry_run: Mode dry-run
-        max_days_late: Nombre max de jours de retard (unlimited)
-    """
-    active_jobs[job_id]["status"] = "running"
-    active_jobs[job_id]["started_at"] = datetime.now().isoformat()
-
-    try:
-        logger.info(f"Starting bot execution for job {job_id}...")
-
-        # Charger la config
-        config = get_config()
-        config.dry_run = dry_run
-
-        # Exécuter le bot approprié
-        if bot_mode == "standard":
-            with BirthdayBot(config=config) as bot:
-                result = bot.run()
-        else:  # unlimited
-            config.birthday_filter.max_days_late = max_days_late
-            with UnlimitedBirthdayBot(config=config) as bot:
-                result = bot.run()
-
-        # Marquer comme complété
-        active_jobs[job_id]["status"] = "completed"
-        active_jobs[job_id]["completed_at"] = datetime.now().isoformat()
-        active_jobs[job_id]["result"] = result
-
-        logger.info(f"✅ Bot job {job_id} completed successfully")
-
-    except LinkedInBotError as e:
-        logger.error(f"❌ Bot job {job_id} failed: {e}")
-        active_jobs[job_id]["status"] = "failed"
-        active_jobs[job_id]["completed_at"] = datetime.now().isoformat()
-        active_jobs[job_id]["error"] = {
-            "type": e.__class__.__name__,
-            "message": str(e),
-            "code": e.error_code.name if hasattr(e, 'error_code') else None
-        }
-
-    except Exception as e:
-        logger.exception(f"❌ Unexpected error in job {job_id}: {e}")
-        active_jobs[job_id]["status"] = "failed"
-        active_jobs[job_id]["completed_at"] = datetime.now().isoformat()
-        active_jobs[job_id]["error"] = {
-            "type": type(e).__name__,
-            "message": str(e)
-        }
 
 
 # ═══════════════════════════════════════════════════════════════════

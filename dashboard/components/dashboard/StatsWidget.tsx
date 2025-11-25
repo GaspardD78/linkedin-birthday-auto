@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, Mail, Eye } from "lucide-react"
 import { useState, useEffect } from "react"
-import { getBotStats, type BotStats } from "@/lib/api"
+import { getBotStats, type BotStats } from "../../lib/api"
 
 export function StatsWidget() {
   const [stats, setStats] = useState<BotStats | null>(null)

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Terminal, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
-import { getLogs } from "@/lib/api"
+import { getLogs } from "../../lib/api"
 
 export function LogsWidget() {
   const [logs, setLogs] = useState<string>("")
