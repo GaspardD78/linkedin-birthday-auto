@@ -351,6 +351,36 @@ class AuthManager:
             f"<AuthManager(source={source}, available={available})>"
         )
 
+    def save_cookies(self, cookies: list, output_path: Optional[str] = None):
+        """
+        Saves a list of cookies to the auth file.
+
+        Args:
+            cookies: A list of cookie dictionaries.
+            output_path: The file path to save to. Defaults to the configured path.
+        """
+        if output_path is None:
+            output_path = self.config.auth_file_path
+
+        auth_data = {"cookies": cookies}
+        self.save_new_auth_state(auth_data, output_path)
+
+    async def save_cookies_from_context(self, context, output_path: Optional[str] = None):
+        """
+        Extracts cookies from a Playwright context and saves them.
+
+        Args:
+            context: The Playwright BrowserContext.
+            output_path: The file path to save to.
+        """
+        if not context:
+            raise ValueError("Playwright context cannot be None.")
+
+        logger.info("Extracting cookies from browser context...")
+        cookies = await context.cookies()
+        self.save_cookies(cookies, output_path)
+        logger.info(f"Successfully saved {len(cookies)} cookies.")
+
 
 # Fonctions helper pour accès rapide
 

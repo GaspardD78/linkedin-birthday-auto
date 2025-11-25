@@ -6,7 +6,8 @@ import {
   Send,
   Settings,
   Activity,
-  Terminal
+  Terminal,
+  KeyRound
 } from "lucide-react"
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/contacts", icon: Users, label: "Contacts" },
   { href: "/campaigns", icon: Send, label: "Campagnes" },
   { href: "/logs", icon: Terminal, label: "Logs & Console" },
+  { href: "/auth", icon: KeyRound, label: "Authentification" },
   { href: "/settings", icon: Settings, label: "Paramètres" },
 ]
 
