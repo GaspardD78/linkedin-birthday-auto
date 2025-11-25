@@ -136,6 +136,7 @@ class BrowserManager:
         Returns:
             Liste d'arguments pour chromium.launch()
         """
+        """Construit les arguments de lancement optimisés pour Pi 4."""
         return [
             '--disable-blink-features=AutomationControlled',
             '--disable-dev-shm-usage',
@@ -143,8 +144,12 @@ class BrowserManager:
             '--disable-setuid-sandbox',
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-gl-drawing-for-tests',  # Save GPU memory
-            '--mute-audio',  # Save audio resources
+            # Optimisations RAM spécifiques Pi 4
+            '--disable-gl-drawing-for-tests',
+            '--mute-audio',
+            '--disable-extensions',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-background-networking',
             f'--window-size={self.viewport["width"]},{self.viewport["height"]}'
         ]
 

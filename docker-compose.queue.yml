@@ -1,23 +1,10 @@
-# Docker Compose optimisé pour Raspberry Pi 4 (4GB RAM)
-# Architecture: Redis + RQ Worker pour traitement asynchrone
-#
-# Documentation:
-# - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
-# - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
-# - Verification: ./scripts/verify_rpi_docker.sh
-#
-# Note: Si vous voyez un warning Redis concernant vm.overcommit_memory,
-# exécutez cette commande sur l'hôte (nécessite sudo):
-# sudo sysctl vm.overcommit_memory=1
-# Pour rendre ce changement permanent, ajoutez 'vm.overcommit_memory = 1' dans /etc/sysctl.conf
-
 services:
   redis:
     image: redis:7-alpine
     container_name: linkedin-bot-redis
     volumes:
       - redis-data:/data
-    # Optimisations Redis pour Pi 4
+    # Optimisation Redis pour faible mémoire
     command: >
       redis-server
       --appendonly yes
@@ -29,10 +16,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 300M
+          memory: 256M
         reservations:
-          cpus: '0.25'
-          memory: 200M
+          cpus: '0.1'
+          memory: 128M
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -46,6 +33,7 @@ services:
       dockerfile: Dockerfile.multiarch
     container_name: linkedin-bot-worker
     command: python -m src.queue.worker
+    stop_grace_period: 1m  # Laisser finir le job en cours
     depends_on:
       redis:
         condition: service_healthy
@@ -54,31 +42,30 @@ services:
       - REDIS_PORT=6379
       - PYTHONPATH=/app
       - LOG_LEVEL=INFO
+      # Désactiver la télémétrie lourde sur Pi
+      - ENABLE_TELEMETRY=false
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./config:/app/config:ro
       - ./auth_state.json:/app/auth_state.json:ro
-    # Optimisé pour Pi 4 avec 4GB RAM
-    # 1.2GB pour le worker (Chromium + Python)
-    # 300MB pour Redis
-    # ~500MB pour le système
-    # = ~2GB utilisés, laisse 2GB libre
+    # Optimisé pour Pi 4 (4GB) cohabitant avec Dashboard
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 1.2G
+          cpus: '1.5'
+          memory: 1.0G
         reservations:
-          cpus: '1.0'
-          memory: 800M
+          cpus: '0.25'
+          memory: 512M
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      # Test simple d'import pour vérifier que Python répond
+      test: ["CMD", "python", "-c", "print('Health OK')"]
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 45s
 
 volumes:
   redis-data:
