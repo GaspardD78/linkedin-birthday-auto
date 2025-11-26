@@ -4,11 +4,13 @@ import {
   Settings,
   Activity,
   Terminal,
-  KeyRound
+  KeyRound,
+  History
 } from "lucide-react"
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Pilotage" },
+  { href: "/history", icon: History, label: "Historique" },
   { href: "/logs", icon: Terminal, label: "Logs & Console" },
   { href: "/auth", icon: KeyRound, label: "Authentification" },
   { href: "/settings", icon: Settings, label: "Paramètres" },

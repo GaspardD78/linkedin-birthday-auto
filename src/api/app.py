@@ -245,6 +245,46 @@ async def get_stats(
         )
 
 
+@app.get("/activity", tags=["Metrics"])
+async def get_activity(
+    days: int = 30,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Récupère l'activité quotidienne détaillée (messages, visites, etc.).
+
+    Args:
+        days: Nombre de jours d'historique (défaut: 30)
+
+    Returns:
+        Liste des activités par jour avec le format:
+        - date: Date au format YYYY-MM-DD
+        - messages: Nombre total de messages envoyés
+        - late_messages: Nombre de messages envoyés en retard
+        - visits: Nombre de profils visités
+        - contacts: Nombre de nouveaux contacts
+    """
+    config = get_config()
+
+    if not config.database.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not enabled in configuration"
+        )
+
+    try:
+        db = get_database(config.database.db_path)
+        activity = db.get_daily_activity(days=days)
+        return {"activity": activity, "days": days}
+
+    except Exception as e:
+        logger.error(f"Failed to get activity: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve activity: {str(e)}"
+        )
+
+
 @app.post("/trigger")
 async def trigger_job(
     request: TriggerRequest,
