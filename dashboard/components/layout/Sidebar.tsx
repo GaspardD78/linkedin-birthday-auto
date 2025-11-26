@@ -1,4 +1,7 @@
+"use client"
+
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Settings,
@@ -17,6 +20,8 @@ const navItems = [
 ]
 
 export function Sidebar() {
+  const pathname = usePathname()
+
   return (
     <div className="flex h-full flex-col gap-4 py-6">
       <div className="px-6 flex items-center gap-2 font-bold text-xl text-blue-400">
@@ -25,16 +30,23 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-4 space-y-2 mt-4">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-300 transition-all hover:text-white hover:bg-slate-800"
-          >
-            <item.icon className="h-5 w-5" />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+        {navItems.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${
+                isActive
+                  ? "bg-slate-800 text-white font-medium"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800"
+              }`}
+            >
+              <item.icon className="h-5 w-5" />
+              <span>{item.label}</span>
+            </Link>
+          )
+        })}
       </nav>
 
       <div className="px-6 mt-auto">
