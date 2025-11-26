@@ -21,6 +21,10 @@ services:
           cpus: '0.1'
           memory: 128M
     restart: unless-stopped
+    # Fix Redis memory overcommit warning
+    sysctls:
+      - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
