@@ -283,6 +283,111 @@ def bot_command(args) -> int:
         return 1
 
 
+def visit_command(args) -> int:
+    """
+    Exécute le bot de visite de profils.
+
+    Args:
+        args: Arguments de la ligne de commande
+
+    Returns:
+        Code de sortie (0 = succès, 1 = erreur)
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Charger la configuration
+        config_manager = ConfigManager.get_instance(config_path=args.config)
+        config = config_manager.config
+
+        # Appliquer les overrides CLI
+        if args.dry_run:
+            config.dry_run = True
+
+        if args.headless is not None:
+            config.browser.headless = args.headless
+
+        # Override keywords et location si fournis
+        if args.keywords:
+            config.visitor.keywords = args.keywords
+
+        if args.location:
+            config.visitor.location = args.location
+
+        if args.profiles_per_run is not None:
+            config.visitor.limits.profiles_per_run = args.profiles_per_run
+
+        logger.info("═" * 70)
+        logger.info("🔍 LinkedIn Profile Visitor Bot v2.0")
+        logger.info("═" * 70)
+        logger.info(f"Keywords: {config.visitor.keywords}")
+        logger.info(f"Location: {config.visitor.location}")
+        logger.info(f"Profiles per run: {config.visitor.limits.profiles_per_run}")
+        logger.info(f"Dry Run: {config.dry_run}")
+        logger.info("═" * 70)
+
+        # Valider la configuration
+        if not config_manager.validate():
+            logger.error("❌ Configuration validation failed")
+            return 1
+
+        # Vérifier l'authentification
+        from src.core.auth_manager import validate_auth
+        if not validate_auth():
+            logger.error("❌ No valid authentication found")
+            logger.error("   Please set LINKEDIN_AUTH_STATE or create auth_state.json")
+            return 1
+
+        logger.info("✅ Authentication available")
+
+        logger.info("\n" + "═" * 70)
+        logger.info("🚀 Starting VisitorBot...")
+        logger.info("═" * 70 + "\n")
+
+        # Exécuter le bot
+        from src.bots.visitor_bot import VisitorBot
+        with VisitorBot(config=config) as bot:
+            results = bot.run()
+
+        # Afficher les résultats
+        logger.info("\n" + "═" * 70)
+        logger.info("📊 EXECUTION SUMMARY")
+        logger.info("═" * 70)
+        logger.info(f"Success: {results.get('success', False)}")
+        logger.info(f"Profiles Visited: {results.get('profiles_visited', 0)}")
+        logger.info(f"Profiles Attempted: {results.get('profiles_attempted', 0)}")
+        logger.info(f"Profiles Failed: {results.get('profiles_failed', 0)}")
+        logger.info(f"Success Rate: {results.get('success_rate', 0):.1f}%")
+        logger.info(f"Pages Scraped: {results.get('pages_scraped', 0)}")
+        logger.info(f"Duration: {results.get('duration_seconds', 0):.1f}s")
+        logger.info(f"Dry Run: {results.get('dry_run', False)}")
+        logger.info("═" * 70)
+
+        if not results.get('success', False):
+            logger.error(f"❌ Bot execution failed: {results.get('error', 'Unknown error')}")
+            return 1
+
+        return 0
+
+    except LinkedInBotError as e:
+        logger.error(f"❌ LinkedIn Bot Error: {e}")
+        logger.error(f"   Error Code: {e.error_code}")
+        logger.error(f"   Recoverable: {e.recoverable}")
+
+        if is_critical_error(e):
+            logger.critical("🚨 Critical error detected - immediate intervention required")
+
+        return 1
+
+    except KeyboardInterrupt:
+        logger.info("\n⏸️  Bot interrupted by user")
+        return 130  # Standard exit code for SIGINT
+
+    except Exception as e:
+        logger.exception(f"❌ Unexpected error: {e}")
+        return 1
+
+
 def api_command(args) -> int:
     """
     Démarre le serveur API REST.
@@ -347,6 +452,12 @@ Examples:
 
   # Dry-run mode (test without sending)
   python main.py bot --dry-run
+
+  # Run profile visitor bot
+  python main.py visit --keywords python developer --location France
+
+  # Profile visitor in dry-run mode
+  python main.py visit --dry-run --profiles-per-run 10
 
   # Start API server
   python main.py api
@@ -437,6 +548,47 @@ For more information, see: https://github.com/GaspardD78/linkedin-birthday-auto
         help='Run browser in headless mode (true/false)'
     )
 
+    # Commande: visit
+    visit_parser = subparsers.add_parser(
+        'visit',
+        help='Run the profile visitor bot'
+    )
+
+    visit_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Test mode - do not visit real profiles'
+    )
+
+    visit_parser.add_argument(
+        '--keywords',
+        nargs='+',
+        type=str,
+        default=None,
+        help='Keywords for profile search (e.g., --keywords python developer)'
+    )
+
+    visit_parser.add_argument(
+        '--location',
+        type=str,
+        default=None,
+        help='Location for profile search (e.g., --location "France")'
+    )
+
+    visit_parser.add_argument(
+        '--profiles-per-run',
+        type=int,
+        default=None,
+        help='Number of profiles to visit per run (default: from config)'
+    )
+
+    visit_parser.add_argument(
+        '--headless',
+        type=lambda x: x.lower() in ['true', '1', 'yes'],
+        default=None,
+        help='Run browser in headless mode (true/false)'
+    )
+
     # Commande: api
     api_parser = subparsers.add_parser(
         'api',
@@ -475,6 +627,8 @@ For more information, see: https://github.com/GaspardD78/linkedin-birthday-auto
         return validate_command(args)
     elif args.command == 'bot':
         return bot_command(args)
+    elif args.command == 'visit':
+        return visit_command(args)
     elif args.command == 'api':
         return api_command(args)
     else:

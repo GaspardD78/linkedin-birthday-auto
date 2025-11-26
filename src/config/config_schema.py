@@ -311,6 +311,124 @@ class PathsConfig(BaseModel):
     )
 
 
+class VisitorLimitsConfig(BaseModel):
+    """Configuration des limites pour la visite de profils."""
+
+    model_config = ConfigDict(frozen=False)
+
+    profiles_per_run: int = Field(
+        default=15,
+        ge=1,
+        le=100,
+        description="Nombre de profils à visiter par exécution"
+    )
+    max_pages_to_scrape: int = Field(
+        default=100,
+        ge=1,
+        le=500,
+        description="Nombre maximum de pages de résultats à scraper"
+    )
+    max_pages_without_new: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Nombre max de pages sans nouveaux profils avant arrêt"
+    )
+
+
+class VisitorDelaysConfig(BaseModel):
+    """Configuration des délais pour la visite de profils."""
+
+    model_config = ConfigDict(frozen=False)
+
+    min_seconds: int = Field(
+        default=8,
+        ge=1,
+        description="Délai minimum entre actions générales (secondes)"
+    )
+    max_seconds: int = Field(
+        default=20,
+        ge=5,
+        description="Délai maximum entre actions générales (secondes)"
+    )
+    profile_visit_min: int = Field(
+        default=15,
+        ge=5,
+        description="Temps minimum de visite d'un profil (secondes)"
+    )
+    profile_visit_max: int = Field(
+        default=35,
+        ge=10,
+        description="Temps maximum de visite d'un profil (secondes)"
+    )
+    page_navigation_min: int = Field(
+        default=3,
+        ge=1,
+        description="Délai minimum entre navigations de page (secondes)"
+    )
+    page_navigation_max: int = Field(
+        default=6,
+        ge=2,
+        description="Délai maximum entre navigations de page (secondes)"
+    )
+
+
+class VisitorRetryConfig(BaseModel):
+    """Configuration des tentatives de retry pour la visite de profils."""
+
+    model_config = ConfigDict(frozen=False)
+
+    max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Nombre maximum de tentatives par profil"
+    )
+    backoff_factor: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="Facteur d'augmentation du délai entre tentatives"
+    )
+
+
+class VisitorConfig(BaseModel):
+    """Configuration complète pour la visite de profils LinkedIn."""
+
+    model_config = ConfigDict(frozen=False)
+
+    enabled: bool = Field(
+        default=True,
+        description="Activer la fonctionnalité de visite de profils"
+    )
+    keywords: List[str] = Field(
+        default_factory=list,
+        description="Mots-clés pour la recherche de profils"
+    )
+    location: str = Field(
+        default="France",
+        description="Localisation pour la recherche de profils"
+    )
+    limits: VisitorLimitsConfig = Field(
+        default_factory=VisitorLimitsConfig
+    )
+    delays: VisitorDelaysConfig = Field(
+        default_factory=VisitorDelaysConfig
+    )
+    retry: VisitorRetryConfig = Field(
+        default_factory=VisitorRetryConfig
+    )
+
+    @field_validator('keywords')
+    @classmethod
+    def validate_keywords(cls, v: List[str]) -> List[str]:
+        """Valide le format des keywords."""
+        # Allow empty list as keywords may be loaded from config.json later
+        if v and any(not isinstance(k, str) or not k.strip() for k in v):
+            raise ValueError("keywords doit contenir uniquement des chaînes non vides")
+        return v
+
+
 class LinkedInBotConfig(BaseModel):
     """Configuration complète du bot LinkedIn."""
 
@@ -341,6 +459,7 @@ class LinkedInBotConfig(BaseModel):
     birthday_filter: BirthdayFilterConfig = Field(
         default_factory=BirthdayFilterConfig
     )
+    visitor: VisitorConfig = Field(default_factory=VisitorConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     debug: DebugConfig = Field(default_factory=DebugConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
