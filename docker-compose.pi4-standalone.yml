@@ -33,10 +33,9 @@ services:
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
-    # Fix memory overcommit warning
+    # Note: vm.overcommit_memory must be set at system level (see README)
     sysctls:
       - net.core.somaxconn=511
-      - vm.overcommit_memory=1
     deploy:
       resources:
         limits:
@@ -74,10 +73,9 @@ services:
       --save ""
       --appendonly no
       --loglevel warning
-    # Fix memory overcommit warning
+    # Note: vm.overcommit_memory must be set at system level (see README)
     sysctls:
       - net.core.somaxconn=511
-      - vm.overcommit_memory=1
     restart: unless-stopped
     volumes:
       - redis-dashboard-data:/data
