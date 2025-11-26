@@ -111,6 +111,7 @@ services:
       # Clé API pour sécuriser les appels internes
       - API_KEY=internal_secret_key
     volumes:
+      - ./src:/app/src  # Hot reload du code source
       - ./logs:/app/logs
       - ./config:/app/config
       - ./auth_state.json:/app/auth_state.json:ro
@@ -148,6 +149,7 @@ services:
       # Utilisation SQLite partagé avec le dashboard
       - DATABASE_URL=sqlite:///app/data/linkedin.db
     volumes:
+      - ./src:/app/src  # Hot reload du code source
       - ./logs:/app/logs
       - ./config:/app/config
       - ./auth_state.json:/app/auth_state.json
