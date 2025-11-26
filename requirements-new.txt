@@ -28,8 +28,8 @@ structlog==23.2.0
 # Garder prometheus-client si vous voulez des stats simples, sinon commenter
 prometheus-client==0.19.0
 
-# Télémétrie lourde (À DÉSACTIVER pour Pi 4 Standalone)
-# opentelemetry-api==1.22.0
-# opentelemetry-sdk==1.22.0
-# opentelemetry-instrumentation-fastapi==0.43b0
-# opentelemetry-exporter-otlp==1.22.0
+# Télémétrie lourde (RÉACTIVÉ car nécessaire au code)
+opentelemetry-api==1.22.0
+opentelemetry-sdk==1.22.0
+opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-exporter-otlp==1.22.0
