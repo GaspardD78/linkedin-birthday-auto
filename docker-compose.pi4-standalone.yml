@@ -112,8 +112,10 @@ services:
       - API_KEY=internal_secret_key
     volumes:
       - ./logs:/app/logs
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./auth_state.json:/app/auth_state.json:ro
+      - ./messages.txt:/app/messages.txt
+      - ./late_messages.txt:/app/late_messages.txt
       - shared-data:/app/data
     deploy:
       resources:
@@ -147,8 +149,10 @@ services:
       - DATABASE_URL=sqlite:///app/data/linkedin.db
     volumes:
       - ./logs:/app/logs
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./auth_state.json:/app/auth_state.json
+      - ./messages.txt:/app/messages.txt
+      - ./late_messages.txt:/app/late_messages.txt
       - shared-data:/app/data
     # Optimisé pour Pi 4 avec 4GB RAM
     # Bot Worker: 900MB (Chromium + Python) - Optimisé après audit
@@ -229,6 +233,10 @@ services:
     volumes:
       # Logs partagés avec le bot
       - ./logs:/app/logs
+      # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
+      - ./config:/app/config
+      - ./messages.txt:/app/messages.txt
+      - ./late_messages.txt:/app/late_messages.txt
       # Base de données SQLite partagée avec le bot
       - shared-data:/app/data
     depends_on:
