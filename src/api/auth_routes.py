@@ -74,7 +74,21 @@ async def start_authentication(request: StartAuthRequest):
     logger.info("Starting LinkedIn authentication process.")
     try:
         p = await async_playwright().start()
-        browser = await p.chromium.launch(headless=True)
+        # Optimized browser launch for Raspberry Pi 4
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding'
+            ]
+        )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
         )
@@ -82,9 +96,15 @@ async def start_authentication(request: StartAuthRequest):
 
         auth_session.update({"browser": browser, "page": page, "context": context})
 
-        await page.goto("https://www.linkedin.com/login", timeout=30000)
+        # Increased timeouts for Raspberry Pi 4
+        logger.info("Navigating to LinkedIn login page...")
+        await page.goto("https://www.linkedin.com/login", timeout=60000)
+
+        logger.info("Filling credentials...")
         await page.fill("#username", request.email)
         await page.fill("#password", request.password)
+
+        logger.info("Submitting login form...")
         await page.click("button[type='submit']")
 
         # Wait for one of the possible outcomes after login attempt
@@ -92,9 +112,10 @@ async def start_authentication(request: StartAuthRequest):
         feed_selector = "div.feed-identity-module"
         error_selector = ".login__form_action_container .error"
 
+        logger.info("Waiting for login response...")
         await page.wait_for_selector(
             f"{pin_input_selector}, {feed_selector}, {error_selector}",
-            timeout=15000
+            timeout=45000
         )
 
         if await page.is_visible(pin_input_selector):
@@ -146,7 +167,8 @@ async def verify_2fa_code(request: Verify2FARequest):
         feed_selector = "div.feed-identity-module"
         error_selector = ".form__subtitle--error"
 
-        await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=15000)
+        logger.info("Waiting for 2FA verification response...")
+        await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=45000)
 
         if await page.is_visible(error_selector):
             error_message = await page.text_content(error_selector)

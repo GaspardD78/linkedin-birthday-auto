@@ -120,7 +120,6 @@ async def lifespan(app: FastAPI):
     config = get_config()
 
     setup_tracing(service_name="linkedin-bot-api")
-    instrument_app(app)
 
     logger.info("api_started", mode=config.bot_mode, dry_run=config.dry_run)
 
@@ -142,6 +141,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Instrument the app with OpenTelemetry BEFORE adding routes/middleware
+# This must be done before the app starts serving requests
+instrument_app(app)
 
 # Expose Prometheus metrics
 metrics_app = make_asgi_app()

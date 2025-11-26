@@ -33,6 +33,10 @@ services:
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
+    # Fix memory overcommit warning
+    sysctls:
+      - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     deploy:
       resources:
         limits:
@@ -70,6 +74,10 @@ services:
       --save ""
       --appendonly no
       --loglevel warning
+    # Fix memory overcommit warning
+    sysctls:
+      - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     restart: unless-stopped
     volumes:
       - redis-dashboard-data:/data
@@ -230,7 +238,7 @@ services:
       - BOT_REDIS_URL=redis://redis-bot:6379
       - BOT_REDIS_HOST=redis-bot
       - BOT_REDIS_PORT=6379
-      - BOT_API_URL=http://linkedin-bot-api:8000
+      - BOT_API_URL=http://api:8000
       - BOT_API_KEY=internal_secret_key
     volumes:
       # Logs partagés avec le bot
