@@ -113,10 +113,13 @@ class AuthenticationError(LinkedInBotError):
     """Erreur d'authentification générique."""
 
     def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.AUTH_FAILED)
+        recoverable = kwargs.pop('recoverable', False)
         super().__init__(
             message=message,
-            error_code=ErrorCode.AUTH_FAILED,
-            recoverable=False,
+            error_code=error_code,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -125,10 +128,13 @@ class SessionExpiredError(AuthenticationError):
     """Session LinkedIn expirée."""
 
     def __init__(self, message: str = "LinkedIn session has expired", **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.SESSION_EXPIRED)
+        recoverable = kwargs.pop('recoverable', False)
         super().__init__(
             message=message,
-            error_code=ErrorCode.SESSION_EXPIRED,
-            recoverable=False,
+            error_code=error_code,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -137,10 +143,13 @@ class InvalidAuthStateError(AuthenticationError):
     """État d'authentification invalide."""
 
     def __init__(self, message: str = "Invalid auth state", **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.AUTH_INVALID)
+        recoverable = kwargs.pop('recoverable', False)
         super().__init__(
             message=message,
-            error_code=ErrorCode.AUTH_INVALID,
-            recoverable=False,
+            error_code=error_code,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -153,11 +162,15 @@ class BrowserError(LinkedInBotError):
     """Erreur du navigateur."""
 
     def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.BROWSER_LAUNCH_FAILED)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 30)
         super().__init__(
             message=message,
-            error_code=ErrorCode.BROWSER_LAUNCH_FAILED,
-            recoverable=True,
-            retry_after=30,
+            error_code=error_code,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -166,12 +179,18 @@ class PageLoadTimeoutError(BrowserError):
     """Timeout lors du chargement d'une page."""
 
     def __init__(self, url: str, timeout: int, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.PAGE_LOAD_TIMEOUT)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 10)
+        details = kwargs.pop('details', {})
+        details.update({"url": url, "timeout": timeout})
         super().__init__(
             message=f"Page load timeout after {timeout}s",
-            error_code=ErrorCode.PAGE_LOAD_TIMEOUT,
-            details={"url": url, "timeout": timeout},
-            recoverable=True,
-            retry_after=10,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -180,12 +199,18 @@ class ElementNotFoundError(BrowserError):
     """Élément DOM introuvable."""
 
     def __init__(self, selector: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.ELEMENT_NOT_FOUND)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 5)
+        details = kwargs.pop('details', {})
+        details.update({"selector": selector})
         super().__init__(
             message=f"Element not found: {selector}",
-            error_code=ErrorCode.ELEMENT_NOT_FOUND,
-            details={"selector": selector},
-            recoverable=True,
-            retry_after=5,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -194,12 +219,18 @@ class ElementDetachedError(BrowserError):
     """Élément détaché du DOM."""
 
     def __init__(self, selector: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.ELEMENT_DETACHED)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 2)
+        details = kwargs.pop('details', {})
+        details.update({"selector": selector})
         super().__init__(
             message=f"Element detached from DOM: {selector}",
-            error_code=ErrorCode.ELEMENT_DETACHED,
-            details={"selector": selector},
-            recoverable=True,
-            retry_after=2,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -208,11 +239,15 @@ class NetworkError(BrowserError):
     """Erreur réseau."""
 
     def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.NETWORK_ERROR)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 60)
         super().__init__(
             message=message,
-            error_code=ErrorCode.NETWORK_ERROR,
-            recoverable=True,
-            retry_after=60,
+            error_code=error_code,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -230,10 +265,15 @@ class RateLimitError(LinkedInBotError):
         retry_after: int = 3600,
         **kwargs
     ):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.RATE_LIMIT_EXCEEDED)
+        recoverable = kwargs.pop('recoverable', True)
+        # retry_after est déjà un paramètre explicite, mais on vérifie quand même
+        retry_after = kwargs.pop('retry_after', retry_after)
         super().__init__(
             message=message,
-            error_code=ErrorCode.RATE_LIMIT_EXCEEDED,
-            recoverable=True,
+            error_code=error_code,
+            recoverable=recoverable,
             retry_after=retry_after,
             **kwargs
         )
@@ -248,11 +288,16 @@ class WeeklyLimitReachedError(LinkedInBotError):
         limit: int,
         **kwargs
     ):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.WEEKLY_LIMIT_REACHED)
+        recoverable = kwargs.pop('recoverable', False)
+        details = kwargs.pop('details', {})
+        details.update({"current": current, "limit": limit})
         super().__init__(
             message=f"Weekly message limit reached ({current}/{limit})",
-            error_code=ErrorCode.WEEKLY_LIMIT_REACHED,
-            details={"current": current, "limit": limit},
-            recoverable=False,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -266,11 +311,16 @@ class DailyLimitReachedError(LinkedInBotError):
         limit: int,
         **kwargs
     ):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.DAILY_LIMIT_REACHED)
+        recoverable = kwargs.pop('recoverable', False)
+        details = kwargs.pop('details', {})
+        details.update({"current": current, "limit": limit})
         super().__init__(
             message=f"Daily message limit reached ({current}/{limit})",
-            error_code=ErrorCode.DAILY_LIMIT_REACHED,
-            details={"current": current, "limit": limit},
-            recoverable=False,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -279,14 +329,19 @@ class AccountRestrictedError(LinkedInBotError):
     """Compte LinkedIn restreint."""
 
     def __init__(self, reason: Optional[str] = None, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.ACCOUNT_RESTRICTED)
+        recoverable = kwargs.pop('recoverable', False)
+        details = kwargs.pop('details', {})
         message = "LinkedIn account is restricted"
         if reason:
             message += f": {reason}"
+            details.update({"reason": reason})
         super().__init__(
             message=message,
-            error_code=ErrorCode.ACCOUNT_RESTRICTED,
-            details={"reason": reason} if reason else {},
-            recoverable=False,
+            error_code=error_code,
+            details=details if details else {},
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -295,10 +350,13 @@ class CaptchaRequiredError(LinkedInBotError):
     """Captcha requis par LinkedIn."""
 
     def __init__(self, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.CAPTCHA_REQUIRED)
+        recoverable = kwargs.pop('recoverable', False)
         super().__init__(
             message="LinkedIn requires captcha verification",
-            error_code=ErrorCode.CAPTCHA_REQUIRED,
-            recoverable=False,
+            error_code=error_code,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -311,12 +369,18 @@ class MessageSendError(LinkedInBotError):
     """Erreur lors de l'envoi d'un message."""
 
     def __init__(self, contact_name: str, reason: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.MESSAGE_SEND_FAILED)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 10)
+        details = kwargs.pop('details', {})
+        details.update({"contact": contact_name, "reason": reason})
         super().__init__(
             message=f"Failed to send message to {contact_name}: {reason}",
-            error_code=ErrorCode.MESSAGE_SEND_FAILED,
-            details={"contact": contact_name, "reason": reason},
-            recoverable=True,
-            retry_after=10,
+            error_code=error_code,
+            details=details,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -325,10 +389,12 @@ class ModalNotFoundError(MessageSendError):
     """Modale de message introuvable."""
 
     def __init__(self, contact_name: str, **kwargs):
+        # Extraire error_code pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.MODAL_NOT_FOUND)
+        kwargs['error_code'] = error_code
         super().__init__(
             contact_name=contact_name,
             reason="Message modal not found",
-            error_code=ErrorCode.MODAL_NOT_FOUND,
             **kwargs
         )
 
@@ -337,10 +403,12 @@ class MessageBoxNotFoundError(MessageSendError):
     """Zone de texte du message introuvable."""
 
     def __init__(self, contact_name: str, **kwargs):
+        # Extraire error_code pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.MESSAGE_BOX_NOT_FOUND)
+        kwargs['error_code'] = error_code
         super().__init__(
             contact_name=contact_name,
             reason="Message text box not found",
-            error_code=ErrorCode.MESSAGE_BOX_NOT_FOUND,
             **kwargs
         )
 
@@ -349,10 +417,12 @@ class SendButtonDisabledError(MessageSendError):
     """Bouton d'envoi désactivé."""
 
     def __init__(self, contact_name: str, **kwargs):
+        # Extraire error_code pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.SEND_BUTTON_DISABLED)
+        kwargs['error_code'] = error_code
         super().__init__(
             contact_name=contact_name,
             reason="Send button is disabled",
-            error_code=ErrorCode.SEND_BUTTON_DISABLED,
             **kwargs
         )
 
@@ -365,11 +435,15 @@ class DatabaseError(LinkedInBotError):
     """Erreur de base de données."""
 
     def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.DATABASE_CONNECTION_FAILED)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 5)
         super().__init__(
             message=message,
-            error_code=ErrorCode.DATABASE_CONNECTION_FAILED,
-            recoverable=True,
-            retry_after=5,
+            error_code=error_code,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -378,11 +452,15 @@ class DatabaseLockedError(DatabaseError):
     """Base de données verrouillée."""
 
     def __init__(self, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.DATABASE_LOCKED)
+        recoverable = kwargs.pop('recoverable', True)
+        retry_after = kwargs.pop('retry_after', 2)
         super().__init__(
             message="Database is locked",
-            error_code=ErrorCode.DATABASE_LOCKED,
-            recoverable=True,
-            retry_after=2,
+            error_code=error_code,
+            recoverable=recoverable,
+            retry_after=retry_after,
             **kwargs
         )
 
@@ -391,10 +469,14 @@ class DatabaseQueryError(DatabaseError):
     """Erreur lors d'une requête."""
 
     def __init__(self, query: str, error: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.DATABASE_QUERY_FAILED)
+        details = kwargs.pop('details', {})
+        details.update({"query": query, "error": error})
         super().__init__(
             message=f"Database query failed: {error}",
-            error_code=ErrorCode.DATABASE_QUERY_FAILED,
-            details={"query": query, "error": error},
+            error_code=error_code,
+            details=details,
             **kwargs
         )
 
@@ -407,10 +489,13 @@ class ConfigurationError(LinkedInBotError):
     """Erreur de configuration."""
 
     def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.CONFIG_INVALID)
+        recoverable = kwargs.pop('recoverable', False)
         super().__init__(
             message=message,
-            error_code=ErrorCode.CONFIG_INVALID,
-            recoverable=False,
+            error_code=error_code,
+            recoverable=recoverable,
             **kwargs
         )
 
@@ -419,10 +504,14 @@ class ConfigFileNotFoundError(ConfigurationError):
     """Fichier de configuration introuvable."""
 
     def __init__(self, config_path: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.CONFIG_FILE_NOT_FOUND)
+        details = kwargs.pop('details', {})
+        details.update({"config_path": config_path})
         super().__init__(
             message=f"Config file not found: {config_path}",
-            error_code=ErrorCode.CONFIG_FILE_NOT_FOUND,
-            details={"config_path": config_path},
+            error_code=error_code,
+            details=details,
             **kwargs
         )
 
@@ -431,10 +520,14 @@ class ConfigValidationError(ConfigurationError):
     """Erreur de validation de configuration."""
 
     def __init__(self, errors: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop('error_code', ErrorCode.CONFIG_VALIDATION_FAILED)
+        details = kwargs.pop('details', {})
+        details.update({"validation_errors": errors})
         super().__init__(
             message=f"Configuration validation failed: {errors}",
-            error_code=ErrorCode.CONFIG_VALIDATION_FAILED,
-            details={"validation_errors": errors},
+            error_code=error_code,
+            details=details,
             **kwargs
         )
 
