@@ -5,13 +5,14 @@ services:
     volumes:
       - redis-data:/data
     # Optimisation Redis pour faible mémoire
+    # AOF only (no RDB snapshots) to avoid fork-based BGSAVE warnings
     command: >
       redis-server
       --appendonly yes
+      --appendfsync everysec
+      --no-appendfsync-on-rewrite yes
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
     deploy:
       resources:
         limits:
@@ -21,10 +22,6 @@ services:
           cpus: '0.1'
           memory: 128M
     restart: unless-stopped
-    # Fix Redis memory overcommit warning
-    sysctls:
-      - net.core.somaxconn=511
-      - vm.overcommit_memory=1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s

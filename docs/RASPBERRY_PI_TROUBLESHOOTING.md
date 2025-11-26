@@ -351,6 +351,8 @@ docker-compose -f docker-compose.queue.yml restart rq-worker
 
 ### Issue: Redis memory warnings
 
+#### Warning 1: Kernel memory soft limit
+
 **Warning:**
 ```
 WARNING: kernel does not support memory soft limit capabilities
@@ -358,18 +360,45 @@ WARNING: kernel does not support memory soft limit capabilities
 
 **This is EXPECTED on Raspberry Pi and can be safely ignored.**
 
-If you want to silence it:
+#### Warning 2: Memory overcommit
+
+**Warning:**
+```
+WARNING Memory overcommit must be enabled! Without it, a background save or
+replication may fail under low memory condition.
+```
+
+**This warning has been addressed in the Docker Compose configuration** by:
+- Using AOF (Append-Only File) instead of RDB snapshots for bot Redis
+- Disabling persistence for dashboard Redis (cache only)
+- Configuring `--no-appendfsync-on-rewrite yes` to avoid fork during AOF rewrite
+
+**This approach works within Docker constraints and requires no host configuration.**
+
+#### Optional: Host-level optimization (advanced)
+
+For optimal Redis performance, you can enable memory overcommit at the host level:
 
 ```bash
-# Enable memory overcommit
+# Enable memory overcommit (temporary)
 sudo sysctl vm.overcommit_memory=1
 
-# Make permanent
+# Make permanent (survives reboots)
 echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
 
-# Restart Redis
-docker-compose -f docker-compose.queue.yml restart redis
+# Verify the setting
+sysctl vm.overcommit_memory
+
+# Restart Redis containers to benefit from the change
+docker-compose -f docker-compose.pi4-standalone.yml restart redis-bot redis-dashboard
 ```
+
+**Benefits of host-level configuration:**
+- Allows Redis to use RDB snapshots (faster startup recovery)
+- Slightly better performance during heavy write loads
+- Eliminates the warning completely
+
+**Note:** The Docker configuration already works well without this optimization.
 
 ### Issue: System running out of memory
 
