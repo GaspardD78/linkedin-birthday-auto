@@ -14,7 +14,9 @@ REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 QUEUES = ['linkedin-bot']
 
-setup_logging(log_level="INFO")
+# Configuration du logging avec fichier pour Docker
+LOG_FILE = os.getenv('LOG_FILE', '/app/logs/linkedin_bot.log')
+setup_logging(log_level="INFO", log_file=LOG_FILE)
 logger = get_logger("worker")
 
 def start_worker():
