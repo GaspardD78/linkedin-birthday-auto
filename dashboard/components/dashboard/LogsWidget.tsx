@@ -1,14 +1,16 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Terminal, RefreshCw } from "lucide-react"
+import { Terminal, RefreshCw, Plug } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { useState, useEffect, useRef } from "react"
 import { getLogs } from "../../lib/api"
 
 export function LogsWidget() {
   const [logs, setLogs] = useState<string>("")
   const [loading, setLoading] = useState(false)
+  const [logsConnected, setLogsConnected] = useState<boolean | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom
@@ -19,6 +21,17 @@ export function LogsWidget() {
   useEffect(() => {
     scrollToBottom()
   }, [logs])
+
+  const checkLogsStatus = async () => {
+    try {
+      const response = await fetch('/api/logs/status')
+      const data = await response.json()
+      setLogsConnected(data.connected)
+    } catch (error) {
+      console.error("Failed to check logs status", error)
+      setLogsConnected(false)
+    }
+  }
 
   const fetchLogs = async () => {
     setLoading(true)
@@ -35,19 +48,36 @@ export function LogsWidget() {
   }
 
   useEffect(() => {
+    checkLogsStatus()
     fetchLogs()
     // Polling toutes les 3 secondes
     const interval = setInterval(fetchLogs, 3000)
-    return () => clearInterval(interval)
+    // Vérifier le statut toutes les 30 secondes
+    const statusInterval = setInterval(checkLogsStatus, 30000)
+    return () => {
+      clearInterval(interval)
+      clearInterval(statusInterval)
+    }
   }, [])
 
   return (
     <Card className="bg-slate-900 border-slate-800 h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Terminal className="h-5 w-5 text-emerald-500" />
-          🖥️ Console Logs (Temps Réel)
-        </CardTitle>
+          <CardTitle className="text-lg font-semibold text-slate-200">
+            🖥️ Console Logs (Temps Réel)
+          </CardTitle>
+          {logsConnected !== null && (
+            <Badge
+              variant={logsConnected ? "default" : "destructive"}
+              className={logsConnected ? "bg-emerald-600 text-white" : ""}
+            >
+              <Plug className="h-3 w-3 mr-1" />
+              {logsConnected ? "Connecté" : "Déconnecté"}
+            </Badge>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"

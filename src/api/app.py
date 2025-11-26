@@ -476,8 +476,10 @@ async def get_recent_logs(
     """
     try:
         from pathlib import Path
+        import os
 
-        log_file = Path("logs/linkedin_bot.log")
+        # Chemin absolu Docker (cohérent avec le volume monté)
+        log_file = Path(os.getenv('LOG_FILE', '/app/logs/linkedin_bot.log'))
 
         if not log_file.exists():
             return {"logs": [], "message": "Log file not found"}
