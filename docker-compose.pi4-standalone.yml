@@ -24,13 +24,14 @@ services:
     volumes:
       - redis-bot-data:/data
     # Optimisations Redis pour Pi 4
+    # AOF only (no RDB snapshots) to avoid fork-based BGSAVE warnings
     command: >
       redis-server
       --appendonly yes
+      --appendfsync everysec
+      --no-appendfsync-on-rewrite yes
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
       --loglevel warning
     deploy:
       resources:
@@ -47,10 +48,6 @@ services:
         max-file: "2"
         compress: "true"
     restart: unless-stopped
-    # Fix Redis memory overcommit warning
-    sysctls:
-      - net.core.somaxconn=511
-      - vm.overcommit_memory=1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -65,12 +62,13 @@ services:
   redis-dashboard:
     image: redis:7-alpine
     container_name: linkedin-dashboard-redis
+    # Cache only (no persistence) to avoid fork operations and memory overcommit warnings
     command: >
       redis-server
       --maxmemory 128mb
       --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
+      --save ""
+      --appendonly no
       --loglevel warning
     restart: unless-stopped
     volumes:
@@ -89,10 +87,6 @@ services:
         max-size: "5m"
         max-file: "2"
         compress: "true"
-    # Fix Redis memory overcommit warning
-    sysctls:
-      - net.core.somaxconn=511
-      - vm.overcommit_memory=1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
