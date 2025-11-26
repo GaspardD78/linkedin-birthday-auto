@@ -126,7 +126,7 @@ async def start_authentication(request: StartAuthRequest):
                 span.add_event("wait_for_response")
                 await page.wait_for_selector(
                     f"{pin_input_selector}, {feed_selector}, {error_selector}",
-                    timeout=45000
+                    timeout=90000  # Augmenté à 90s pour Raspberry Pi 4
                 )
 
                 if await page.is_visible(pin_input_selector):
@@ -192,7 +192,7 @@ async def verify_2fa_code(request: Verify2FARequest):
 
                 logger.info("Waiting for 2FA verification response...")
                 span.add_event("wait_for_2fa_response")
-                await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=45000)
+                await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=90000)  # Augmenté à 90s pour Raspberry Pi 4
 
                 if await page.is_visible(error_selector):
                     error_message = await page.text_content(error_selector)
