@@ -135,7 +135,12 @@ class TemporaryTracing:
             self.temp_provider.add_span_processor(processor)
 
             # Activer le provider temporaire
-            trace.set_tracer_provider(self.temp_provider)
+            try:
+                trace.set_tracer_provider(self.temp_provider)
+            except Exception:
+                # Si un provider existe déjà, on log un warning mais on ne plante pas
+                # On continuera d'utiliser le provider existant ou celui qu'on vient de créer localement
+                logger.warning("Could not set global tracer provider (already set). Using existing one.")
 
             logger.info("temporary_tracing_active", endpoint=self.endpoint)
 
