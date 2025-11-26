@@ -112,10 +112,13 @@ class LinkedInBotError(Exception):
 class AuthenticationError(LinkedInBotError):
     """Erreur d'authentification générique."""
 
-    def __init__(self, message: str, **kwargs):
-        # Extraire les arguments pour éviter les doublons
-        error_code = kwargs.pop('error_code', ErrorCode.AUTH_FAILED)
-        recoverable = kwargs.pop('recoverable', False)
+    def __init__(
+        self,
+        message: str,
+        error_code: ErrorCode = ErrorCode.AUTH_FAILED,
+        recoverable: bool = False,
+        **kwargs
+    ):
         super().__init__(
             message=message,
             error_code=error_code,
@@ -127,10 +130,13 @@ class AuthenticationError(LinkedInBotError):
 class SessionExpiredError(AuthenticationError):
     """Session LinkedIn expirée."""
 
-    def __init__(self, message: str = "LinkedIn session has expired", **kwargs):
-        # Extraire les arguments pour éviter les doublons
-        error_code = kwargs.pop('error_code', ErrorCode.SESSION_EXPIRED)
-        recoverable = kwargs.pop('recoverable', False)
+    def __init__(
+        self,
+        message: str = "LinkedIn session has expired",
+        error_code: ErrorCode = ErrorCode.SESSION_EXPIRED,
+        recoverable: bool = False,
+        **kwargs
+    ):
         super().__init__(
             message=message,
             error_code=error_code,
@@ -142,10 +148,13 @@ class SessionExpiredError(AuthenticationError):
 class InvalidAuthStateError(AuthenticationError):
     """État d'authentification invalide."""
 
-    def __init__(self, message: str = "Invalid auth state", **kwargs):
-        # Extraire les arguments pour éviter les doublons
-        error_code = kwargs.pop('error_code', ErrorCode.AUTH_INVALID)
-        recoverable = kwargs.pop('recoverable', False)
+    def __init__(
+        self,
+        message: str = "Invalid auth state",
+        error_code: ErrorCode = ErrorCode.AUTH_INVALID,
+        recoverable: bool = False,
+        **kwargs
+    ):
         super().__init__(
             message=message,
             error_code=error_code,
