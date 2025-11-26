@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   const { code } = body;
 
   try {
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
+    const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
     const apiResponse = await fetch(`${apiUrl}/auth/verify-2fa`, {
       method: 'POST',
       headers: {

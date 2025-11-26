@@ -53,21 +53,13 @@ export async function getLogs(): Promise<LogEntry[]> {
 
 // Récupérer les statistiques
 export async function getBotStats(): Promise<BotStats> {
-  try {
-    // On tente de récupérer les stats réelles
-    const res = await fetch('/api/stats', { cache: 'no-store' });
-    if (!res.ok) throw new Error("Failed to fetch stats");
-    return await res.json();
-  } catch (e) {
-    console.warn("Error fetching stats (API might be unreachable):", e);
-    // Valeurs par défaut en cas d'erreur pour éviter le crash UI
-    return {
-      wishes_sent_total: 0,
-      wishes_sent_today: 0,
-      profiles_visited_total: 0,
-      profiles_visited_today: 0
-    };
+  // Ne plus masquer les erreurs - les propager au composant
+  // pour afficher un message d'erreur visible à l'utilisateur
+  const res = await fetch('/api/stats', { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Erreur API : ${res.status} ${res.statusText}`);
   }
+  return await res.json();
 }
 
 // Récupérer la santé du système

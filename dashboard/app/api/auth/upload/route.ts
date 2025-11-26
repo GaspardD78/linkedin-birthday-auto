@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
+    const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
 
     const apiResponse = await fetch(`${apiUrl}/auth/upload`, {
       method: 'POST',

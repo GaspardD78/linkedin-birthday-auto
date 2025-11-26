@@ -2,19 +2,23 @@
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Cpu, HardDrive, Server, Clock } from "lucide-react"
+import { Cpu, HardDrive, Server, Clock, AlertCircle } from "lucide-react"
 import { getSystemHealth, type SystemHealth } from "../../lib/api"
 
 export function SystemHealthWidget() {
   const [data, setData] = useState<SystemHealth | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchHealth = async () => {
       try {
         const health = await getSystemHealth()
         setData(health)
+        setError(null) // Clear error on success
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Erreur de connexion système"
         console.error("Failed to fetch health stats", error)
+        setError(errorMsg)
       }
     }
 
@@ -22,6 +26,23 @@ export function SystemHealthWidget() {
     const interval = setInterval(fetchHealth, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Display error state if health check fails
+  if (error) {
+    return (
+      <Card className="bg-yellow-900/20 border-yellow-600">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-yellow-400 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Health Check Failed
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-yellow-300">{error}</p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const formatUptime = (uptimeStr: string) => {
     // Assuming uptime is a string representing seconds.

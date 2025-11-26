@@ -17,14 +17,15 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      console.warn('Failed to fetch stats from bot API:', response.statusText);
-      // Retourner des valeurs par défaut si l'API ne répond pas
-      return NextResponse.json({
-        wishes_sent_total: 0,
-        wishes_sent_today: 0,
-        profiles_visited_total: 0,
-        profiles_visited_today: 0
-      });
+      console.error('Failed to fetch stats from bot API:', response.statusText);
+      // Retourner une erreur explicite au lieu de valeurs par défaut silencieuses
+      return NextResponse.json(
+        {
+          error: 'Bot API unreachable',
+          detail: `API returned ${response.status}: ${response.statusText}`
+        },
+        { status: 503 } // Service Unavailable
+      );
     }
 
     const data = await response.json();
@@ -39,12 +40,13 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error fetching stats:', error);
-    // Retourner des valeurs par défaut en cas d'erreur
-    return NextResponse.json({
-      wishes_sent_total: 0,
-      wishes_sent_today: 0,
-      profiles_visited_total: 0,
-      profiles_visited_today: 0
-    });
+    // Retourner une erreur 500 pour permettre au frontend de détecter le problème
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        detail: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
   }
 }
