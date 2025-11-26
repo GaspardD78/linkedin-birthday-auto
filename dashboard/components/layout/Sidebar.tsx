@@ -1,9 +1,6 @@
 import Link from "next/link"
 import {
   LayoutDashboard,
-  MessageSquare,
-  Users,
-  Send,
   Settings,
   Activity,
   Terminal,
@@ -11,10 +8,7 @@ import {
 } from "lucide-react"
 
 const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/messages", icon: MessageSquare, label: "Messages" },
-  { href: "/contacts", icon: Users, label: "Contacts" },
-  { href: "/campaigns", icon: Send, label: "Campagnes" },
+  { href: "/", icon: LayoutDashboard, label: "Pilotage" },
   { href: "/logs", icon: Terminal, label: "Logs & Console" },
   { href: "/auth", icon: KeyRound, label: "Authentification" },
   { href: "/settings", icon: Settings, label: "Paramètres" },
