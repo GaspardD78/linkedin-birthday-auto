@@ -63,6 +63,17 @@ class TriggerRequest(BaseModel):
     dry_run: bool = True
     max_days_late: Optional[int] = 10
 
+class BirthdayConfig(BaseModel):
+    """Configuration pour le bot d'anniversaire."""
+    dry_run: bool = Field(default=True, description="Mode test sans envoi réel")
+    process_late: bool = Field(default=False, description="Traiter les anniversaires en retard")
+    max_days_late: Optional[int] = Field(default=10, description="Nombre de jours maximum de retard")
+
+class VisitorConfig(BaseModel):
+    """Configuration pour le bot de visite de profils."""
+    dry_run: bool = Field(default=True, description="Mode test sans visite réelle")
+    limit: int = Field(default=10, description="Nombre de profils à visiter")
+
 class ConfigUpdate(BaseModel):
     content: str
 
@@ -313,6 +324,123 @@ async def trigger_job(
 
     logger.info(f"🚀 Job triggered: {job_id}")
     return {"job_id": job_id, "status": "started", "type": request.job_type}
+
+
+@app.post("/start-birthday-bot", tags=["Bot"])
+async def start_birthday_bot(
+    config: BirthdayConfig,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Démarre le bot d'anniversaire avec la configuration fournie.
+
+    Args:
+        config: Configuration du bot (dry_run, process_late, max_days_late)
+
+    Returns:
+        job_id: Identifiant du job démarré
+        status: Statut du démarrage
+        message: Message de confirmation
+    """
+    job_id = f"birthday-{int(datetime.now().timestamp())}"
+
+    # Log de réception de la requête
+    logger.info(
+        f"🎂 [BIRTHDAY BOT] Requête reçue - dry_run={config.dry_run}, "
+        f"process_late={config.process_late}, max_days_late={config.max_days_late}"
+    )
+
+    # Calculer max_days_late en fonction de process_late
+    max_days = config.max_days_late if config.process_late else 0
+
+    # Lancer la tâche en arrière-plan
+    background_tasks.add_task(
+        run_bot_task,
+        bot_mode="standard",
+        dry_run=config.dry_run,
+        max_days_late=max_days
+    )
+
+    logger.info(f"✅ [BIRTHDAY BOT] Job {job_id} démarré avec succès")
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "message": f"Bot d'anniversaire démarré (dry_run={config.dry_run}, process_late={config.process_late})"
+    }
+
+
+@app.post("/start-visitor-bot", tags=["Bot"])
+async def start_visitor_bot(
+    config: VisitorConfig,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Démarre le bot de visite de profils avec la configuration fournie.
+
+    Args:
+        config: Configuration du bot (dry_run, limit)
+
+    Returns:
+        job_id: Identifiant du job démarré
+        status: Statut du démarrage
+        message: Message de confirmation
+    """
+    job_id = f"visitor-{int(datetime.now().timestamp())}"
+
+    # Log de réception de la requête
+    logger.info(
+        f"🔍 [VISITOR BOT] Requête reçue - dry_run={config.dry_run}, limit={config.limit}"
+    )
+
+    # Lancer la tâche en arrière-plan
+    background_tasks.add_task(
+        run_profile_visit_task,
+        dry_run=config.dry_run,
+        limit=config.limit
+    )
+
+    logger.info(f"✅ [VISITOR BOT] Job {job_id} démarré avec succès")
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "message": f"Bot de visite démarré (dry_run={config.dry_run}, limit={config.limit})"
+    }
+
+
+@app.post("/stop", tags=["Bot"])
+async def stop_bot(
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Arrête tous les bots actifs.
+
+    Note: Pour l'instant, cette fonction loggue simplement l'arrêt.
+    Dans une implémentation complète avec Redis Queue, elle viderait la queue
+    et terminerait les workers.
+
+    Returns:
+        status: Statut de l'arrêt
+        message: Message de confirmation
+    """
+    logger.info("🛑 [STOP] Requête d'arrêt reçue")
+
+    # TODO: Implémenter l'arrêt réel avec Redis Queue
+    # from redis import Redis
+    # from rq import Queue
+    # redis_conn = Redis()
+    # q = Queue(connection=redis_conn)
+    # q.empty()  # Vider la queue
+
+    logger.warning("⚠️  [STOP] Arrêt des bots non implémenté - les jobs en cours continueront")
+
+    return {
+        "status": "acknowledged",
+        "message": "Commande d'arrêt reçue (arrêt complet non implémenté)"
+    }
 
 
 @app.get("/jobs/{job_id}", tags=["Bot"])

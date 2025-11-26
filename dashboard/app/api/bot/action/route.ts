@@ -5,33 +5,41 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, job_type, dry_run, process_late, limit } = body;
 
+    console.log('📡 [PROXY] Requête reçue du dashboard:', { action, job_type, dry_run, process_late, limit });
+
+    // URL interne Docker (CRITIQUE: ne jamais utiliser localhost)
     const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
     const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
 
     let endpoint = '';
     let payload: any = {};
 
+    // Routage vers les endpoints spécifiques
     if (action === 'start' && job_type === 'birthday') {
-      endpoint = '/trigger';
+      endpoint = '/start-birthday-bot';
       payload = {
-        job_type: 'birthday',
-        bot_mode: 'standard',
         dry_run: dry_run ?? true,
-        max_days_late: process_late ? 10 : 0
+        process_late: process_late ?? false,
+        max_days_late: 10
       };
+      console.log('🎂 [PROXY] Appel Birthday Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'start' && job_type === 'visit') {
-      endpoint = '/trigger';
+      endpoint = '/start-visitor-bot';
       payload = {
-        job_type: 'visit',
         dry_run: dry_run ?? true,
         limit: limit ?? 10
       };
+      console.log('🔍 [PROXY] Appel Visitor Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'stop') {
-      // TODO: Implémenter l'arrêt du bot
-      return NextResponse.json({ message: "Stop action not yet implemented" }, { status: 501 });
+      endpoint = '/stop';
+      payload = {};
+      console.log('🛑 [PROXY] Appel Stop Bot:', `${apiUrl}${endpoint}`);
     } else {
+      console.error('❌ [PROXY] Action invalide:', { action, job_type });
       return NextResponse.json({ error: "Invalid action or job_type" }, { status: 400 });
     }
+
+    console.log('🚀 [PROXY] Envoi vers API Python:', `${apiUrl}${endpoint}`);
 
     const response = await fetch(`${apiUrl}${endpoint}`, {
       method: 'POST',
@@ -44,14 +52,19 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ [PROXY] Erreur API:', response.status, errorText);
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
     const data = await response.json();
+    console.log('✅ [PROXY] Réponse de l\'API:', data);
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('Bot Action Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('❌ [PROXY] Erreur fatale:', error);
+    return NextResponse.json({
+      error: 'Internal Server Error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

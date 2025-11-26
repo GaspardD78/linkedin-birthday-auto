@@ -34,6 +34,7 @@ export function BotControlsWidget() {
           dry_run: birthdayDryRun,
           process_late: processLate
         };
+        console.log('🎂 [FRONTEND] Envoi Birthday Bot:', body);
       } else if (jobType === 'visit') {
         body = {
           action,
@@ -41,6 +42,9 @@ export function BotControlsWidget() {
           dry_run: visitDryRun,
           limit: visitLimit
         };
+        console.log('🔍 [FRONTEND] Envoi Visitor Bot:', body);
+      } else if (action === 'stop') {
+        console.log('🛑 [FRONTEND] Envoi Stop:', body);
       }
 
       const response = await fetch('/api/bot/action', {
@@ -52,11 +56,14 @@ export function BotControlsWidget() {
       const data = await response.json();
 
       if (response.ok) {
+        console.log('✅ [FRONTEND] Succès:', data);
         alert(`✅ Commande envoyée : ${data.message || 'Succès'}`);
       } else {
+        console.error('❌ [FRONTEND] Erreur API:', data);
         alert(`❌ Erreur : ${data.error || 'Une erreur est survenue'}`);
       }
     } catch (error) {
+      console.error('❌ [FRONTEND] Erreur fatale:', error);
       alert('❌ Erreur de communication avec le serveur');
     } finally {
       setLoadingTask(null);
