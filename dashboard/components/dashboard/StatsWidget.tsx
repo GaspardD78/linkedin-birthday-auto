@@ -1,20 +1,24 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, Mail, Eye } from "lucide-react"
+import { Users, Mail, Eye, AlertCircle } from "lucide-react"
 import { useState, useEffect } from "react"
 import { getBotStats, type BotStats } from "../../lib/api"
 
 export function StatsWidget() {
   const [stats, setStats] = useState<BotStats | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const data = await getBotStats()
         setStats(data)
+        setError(null) // Clear error on success
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
         console.error("Failed to fetch stats", error)
+        setError(errorMsg)
       }
     }
 
@@ -23,6 +27,24 @@ export function StatsWidget() {
     const interval = setInterval(fetchStats, 60000)
     return () => clearInterval(interval)
   }, [])
+
+  // Display error state if API is unreachable
+  if (error) {
+    return (
+      <Card className="bg-red-900/20 border-red-600">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-red-400 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" />
+            Erreur de connexion
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-red-300">{error}</p>
+          <p className="text-xs text-slate-400 mt-2">Vérifiez que le conteneur API est actif</p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (!stats) {
     return (
