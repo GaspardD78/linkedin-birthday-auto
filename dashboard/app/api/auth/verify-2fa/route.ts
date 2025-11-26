@@ -5,11 +5,12 @@ export async function POST(request: Request) {
   const { code } = body;
 
   try {
-    const apiResponse = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/verify-2fa`, {
+    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
+    const apiResponse = await fetch(`${apiUrl}/auth/verify-2fa`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': process.env.BOT_API_KEY || '',
+        'X-API-Key': process.env.BOT_API_KEY || 'internal_secret_key',
       },
       body: JSON.stringify({ code }),
     });
