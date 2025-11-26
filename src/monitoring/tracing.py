@@ -114,6 +114,14 @@ class TemporaryTracing:
 
     def __enter__(self):
         """Active le tracing temporairement."""
+        # Vérifier si ENABLE_TELEMETRY est activé
+        telemetry_enabled = os.getenv("ENABLE_TELEMETRY", "false").lower() in ("true", "1", "yes")
+
+        if not telemetry_enabled:
+            logger.debug("temporary_tracing_skipped", reason="ENABLE_TELEMETRY not set")
+            # Retourner un tracer no-op
+            return trace.get_tracer(self.service_name)
+
         logger.info("temporary_tracing_enabled", service=self.service_name, endpoint=self.endpoint)
 
         # Sauvegarder le provider actuel
@@ -134,36 +142,30 @@ class TemporaryTracing:
             processor = BatchSpanProcessor(otlp_exporter)
             self.temp_provider.add_span_processor(processor)
 
-            # Activer le provider temporaire
-            trace.set_tracer_provider(self.temp_provider)
+            # Remplacer le provider global
+            # Note: OpenTelemetry peut produire un warning si un provider était déjà défini
+            trace._set_tracer_provider(self.temp_provider, log=False)
 
             logger.info("temporary_tracing_active", endpoint=self.endpoint)
 
         except Exception as e:
             logger.warning("temporary_tracing_setup_failed", error=str(e))
-            # En cas d'erreur, utiliser un provider par défaut
-            trace.set_tracer_provider(TracerProvider())
+            # En cas d'erreur, continuer sans tracing
 
         return trace.get_tracer(self.service_name)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Désactive le tracing et force l'export des spans."""
+        if not self.temp_provider:
+            # Pas de tracing temporaire actif, rien à faire
+            return
+
         try:
             # Forcer l'export des spans en attente
-            if self.temp_provider:
-                # Force shutdown pour exporter tous les spans
-                self.temp_provider.force_flush(timeout_millis=5000)
-                self.temp_provider.shutdown()
+            self.temp_provider.force_flush(timeout_millis=5000)
+            self.temp_provider.shutdown()
 
             logger.info("temporary_tracing_disabled", service=self.service_name)
 
         except Exception as e:
             logger.warning("temporary_tracing_cleanup_error", error=str(e))
-
-        finally:
-            # Restaurer le provider original
-            if self.original_provider:
-                trace.set_tracer_provider(self.original_provider)
-            else:
-                # Si pas de provider original, utiliser un provider par défaut
-                trace.set_tracer_provider(TracerProvider())
