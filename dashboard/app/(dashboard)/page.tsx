@@ -1,35 +1,49 @@
 import { SystemHealthWidget } from "@/components/dashboard/HealthWidget"
-import { BotStatusWidget } from "@/components/dashboard/BotStatus"
 import { LogsWidget } from "@/components/dashboard/LogsWidget"
 import { BotControlsWidget } from "@/components/dashboard/BotControls"
-import { StatsWidget } from "@/components/dashboard/StatsWidget"
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-8 p-8 bg-slate-950 min-h-screen">
+    <div className="space-y-6 p-8 bg-slate-950 min-h-screen">
+      {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-white tracking-tight">LinkedIn Bot Dashboard</h1>
-        <div className="text-sm text-slate-500">v2.0.0</div>
+        <div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">
+            🎯 Mission Control - LinkedIn Bot
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Console de Pilotage Raspberry Pi 4
+          </p>
+        </div>
+        <div className="text-sm text-slate-500 flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          v2.0.0
+        </div>
       </div>
 
-      {/* Top Stats Row */}
-      <StatsWidget />
+      {/* Main Grid Layout */}
+      <div className="grid gap-6">
 
-      {/* Main Content Grid */}
-      <div className="grid gap-4 md:grid-cols-12">
-
-        {/* Left Column: Status & Controls (4 cols) */}
-        <div className="md:col-span-4 space-y-4">
-          <BotStatusWidget />
+        {/* Haut: System Health */}
+        <div className="w-full">
           <SystemHealthWidget />
+        </div>
+
+        {/* Milieu: Task Runner */}
+        <div className="w-full">
           <BotControlsWidget />
         </div>
 
-        {/* Right Column: Logs & Activity (8 cols) */}
-        <div className="md:col-span-8 space-y-4">
-           {/* We can add an Activity Graph here later */}
-           <LogsWidget />
+        {/* Bas: Logs Console (grande zone) */}
+        <div className="w-full min-h-[500px]">
+          <LogsWidget />
         </div>
+
+      </div>
+
+      {/* Footer Info */}
+      <div className="text-center text-xs text-slate-700 pt-4 border-t border-slate-800">
+        <p>LinkedIn Bot Dashboard v2 - Powered by Next.js & Python 🚀</p>
       </div>
     </div>
   )

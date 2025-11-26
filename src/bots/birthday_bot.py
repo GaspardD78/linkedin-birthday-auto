@@ -361,7 +361,7 @@ def run_birthday_bot(config=None, dry_run: bool = False) -> Dict[str, Any]:
         >>> # Mode production
         >>> results = run_birthday_bot()
     """
-    from ..config import get_config
+    from ..config.config_manager import get_config
 
     if config is None:
         config = get_config()
