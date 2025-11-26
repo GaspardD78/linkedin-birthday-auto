@@ -163,31 +163,6 @@ cp .env.pi4 .env
 nano .env
 ```
 
-#### ⚠️ IMPORTANT : Configurer le mot de passe Dashboard
-
-Avant le déploiement, vous **devez** configurer un mot de passe sécurisé pour accéder au dashboard :
-
-```bash
-# Générer un mot de passe sécurisé (32+ caractères)
-openssl rand -hex 32
-
-# Éditer le fichier .env
-nano .env
-
-# Remplacer la ligne DASHBOARD_PASSWORD par :
-DASHBOARD_PASSWORD=le_mot_de_passe_généré_ci_dessus
-
-# Sauvegarder : Ctrl+O puis Entrée
-# Quitter : Ctrl+X
-
-# Sécuriser le fichier
-chmod 600 .env
-```
-
-**💾 Sauvegardez ce mot de passe dans un gestionnaire de mots de passe** (Bitwarden, 1Password, etc.) - vous en aurez besoin pour vous connecter au dashboard !
-
-📖 **Guide complet** : Voir [DASHBOARD_PASSWORD_GUIDE.md](DASHBOARD_PASSWORD_GUIDE.md) pour plus de détails sur la gestion du mot de passe.
-
 ### 4. Déployer avec le script automatique
 
 ```bash
@@ -214,12 +189,7 @@ hostname -I
 
 **Connexion au dashboard** :
 1. Ouvrez un navigateur et allez à `http://192.168.1.X:3000` (remplacez X par l'IP de votre Pi4)
-2. Vous serez automatiquement redirigé vers `/login`
-3. Saisissez le mot de passe configuré dans `DASHBOARD_PASSWORD`
-4. Cliquez sur "Sign In"
-5. Vous êtes connecté pour 7 jours (cookie sécurisé)
-
-💡 **Mot de passe oublié ?** Consultez [DASHBOARD_PASSWORD_GUIDE.md](DASHBOARD_PASSWORD_GUIDE.md#récupération-en-cas-doubli)
+2. Le dashboard est accessible directement sans authentification
 
 ---
 

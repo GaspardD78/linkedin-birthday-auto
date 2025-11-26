@@ -216,11 +216,6 @@ services:
       # Configuration Redis Dashboard
       - REDIS_URL=redis://redis-dashboard:6379
 
-      # 🔐 Authentification Dashboard
-      # Mot de passe pour accéder à l'interface web (minimum 32 caractères)
-      # À configurer dans le fichier .env avant le déploiement
-      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
-
       # Configuration Puppeteer (si utilisé dans le dashboard)
       - HEADLESS=true
       - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
