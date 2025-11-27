@@ -209,7 +209,9 @@ async def start_authentication(request: StartAuthRequest):
                     logger.info("Login successful, saving session.")
                     span.set_attribute("result", "success")
                     auth_manager = AuthManager()
-                    await auth_manager.save_cookies_from_context(context)
+                    # Save to writable /app/data directory instead of read-only mounted file
+                    writable_auth_path = "/app/data/auth_state.json"
+                    await auth_manager.save_cookies_from_context(context, output_path=writable_auth_path)
                     await close_browser_session()
                     return {"status": "success"}
 
@@ -293,7 +295,9 @@ async def verify_2fa_code(request: Verify2FARequest):
                     logger.info("2FA verification successful, saving session.")
                     span.set_attribute("result", "success")
                     auth_manager = AuthManager()
-                    await auth_manager.save_cookies_from_context(context)
+                    # Save to writable /app/data directory instead of read-only mounted file
+                    writable_auth_path = "/app/data/auth_state.json"
+                    await auth_manager.save_cookies_from_context(context, output_path=writable_auth_path)
                     await close_browser_session()
                     return {"status": "success"}
 
@@ -332,9 +336,11 @@ async def upload_auth_file(file: UploadFile = File(...)):
             raise ValueError("JSON content must be a list of cookies or an object with a 'cookies' key.")
 
         auth_manager = AuthManager()
-        auth_manager.save_cookies(cookies)
-        logger.info("Successfully saved cookies from uploaded file.")
-        return {"status": "success", "filename": file.filename}
+        # Save to writable /app/data directory instead of read-only mounted file
+        writable_auth_path = "/app/data/auth_state.json"
+        auth_manager.save_cookies(cookies, output_path=writable_auth_path)
+        logger.info(f"Successfully saved cookies from uploaded file to: {writable_auth_path}")
+        return {"status": "success", "filename": file.filename, "saved_to": writable_auth_path}
     except json.JSONDecodeError:
         logger.error("Failed to decode uploaded JSON file.")
         raise HTTPException(status_code=400, detail="Invalid JSON format.")

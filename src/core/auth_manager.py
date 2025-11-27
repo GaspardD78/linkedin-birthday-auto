@@ -80,7 +80,16 @@ class AuthManager:
             except Exception as e:
                 logger.warning(f"Failed to write auth from env: {e}")
 
-        # 2. Essayer depuis le fichier principal
+        # 2. Essayer depuis le répertoire data writable (prioritaire pour les fichiers uploadés)
+        writable_auth_file = Path("/app/data/auth_state.json")
+        if writable_auth_file.exists():
+            if self._validate_auth_file(writable_auth_file):
+                logger.info(f"Using auth state from writable data dir: {writable_auth_file}")
+                return str(writable_auth_file)
+            else:
+                logger.warning(f"Invalid auth state in: {writable_auth_file}")
+
+        # 3. Essayer depuis le fichier principal
         auth_file = Path(self.config.auth_file_path)
         if auth_file.exists():
             if self._validate_auth_file(auth_file):
@@ -89,7 +98,7 @@ class AuthManager:
             else:
                 logger.warning(f"Invalid auth state in: {auth_file}")
 
-        # 3. Essayer depuis le fichier de secours
+        # 4. Essayer depuis le fichier de secours
         if self.config.auth_fallback_path:
             fallback_file = Path(self.config.auth_fallback_path)
             if fallback_file.exists():
@@ -319,6 +328,11 @@ class AuthManager:
         if self._load_from_env():
             return True
 
+        # Vérifier répertoire data writable
+        writable_auth_file = Path("/app/data/auth_state.json")
+        if writable_auth_file.exists() and self._validate_auth_file(writable_auth_file):
+            return True
+
         # Vérifier fichier principal
         auth_file = Path(self.config.auth_file_path)
         if auth_file.exists() and self._validate_auth_file(auth_file):
@@ -337,7 +351,7 @@ class AuthManager:
         Retourne la source d'authentification active.
 
         Returns:
-            String décrivant la source ("env", "file", "fallback") ou None
+            String décrivant la source ("env", "data", "file", "fallback") ou None
 
         Exemples:
             >>> auth_mgr = AuthManager()
@@ -347,6 +361,11 @@ class AuthManager:
         # Vérifier env var
         if self._load_from_env():
             return "env"
+
+        # Vérifier répertoire data writable
+        writable_auth_file = Path("/app/data/auth_state.json")
+        if writable_auth_file.exists() and self._validate_auth_file(writable_auth_file):
+            return "data"
 
         # Vérifier fichier principal
         auth_file = Path(self.config.auth_file_path)
