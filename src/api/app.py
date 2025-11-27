@@ -16,6 +16,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header, Security
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from redis import Redis
+from rq import Queue
+import os
 
 from ..config.config_manager import get_config
 from ..core.database import get_database
@@ -33,6 +36,21 @@ from prometheus_client import make_asgi_app
 from . import auth_routes # Import the new auth router
 
 logger = get_logger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════
+# CONFIGURATION REDIS (RQ)
+# ═══════════════════════════════════════════════════════════════════
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis-bot')
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+
+# Connexion Redis pour enqueuing
+try:
+    redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
+    # Queue 'linkedin-bot' (doit matcher src/queue/worker.py)
+    job_queue = Queue('linkedin-bot', connection=redis_conn)
+except Exception as e:
+    logger.error(f"Failed to connect to Redis: {e}")
+    job_queue = None
 
 # ═══════════════════════════════════════════════════════════════════
 # MODELS PYDANTIC POUR L'API
@@ -302,116 +320,101 @@ async def get_activity(
 @app.post("/trigger")
 async def trigger_job(
     request: TriggerRequest,
-    background_tasks: BackgroundTasks,
     authenticated: bool = Depends(verify_api_key)
 ):
-    """Déclenche une tâche (Anniversaire ou Visite)"""
-    job_id = f"{request.job_type}-{int(datetime.now().timestamp())}"
+    """Déclenche une tâche (Anniversaire ou Visite) via Redis Queue"""
+    if not job_queue:
+        raise HTTPException(status_code=503, detail="Redis Queue not available")
 
-    if request.job_type == "birthday":
-        # On utilise RQ ou BackgroundTasks selon votre infra. Ici BackgroundTasks pour simplifier l'exemple docker autonome
-        # Dans une vraie prod avec beaucoup de charge, utilisez queue.enqueue(run_bot_task, ...)
-        background_tasks.add_task(
-            run_bot_task,
-            bot_mode=request.bot_mode,
-            dry_run=request.dry_run,
-            max_days_late=request.max_days_late
-        )
-    elif request.job_type == "visit":
-        background_tasks.add_task(
-            run_profile_visit_task,
-            dry_run=request.dry_run
-        )
-    else:
-        raise HTTPException(status_code=400, detail="Unknown job type")
+    try:
+        if request.job_type == "birthday":
+            job = job_queue.enqueue(
+                run_bot_task,
+                bot_mode=request.bot_mode,
+                dry_run=request.dry_run,
+                max_days_late=request.max_days_late,
+                job_timeout='30m' # Timeout généreux pour le bot
+            )
+        elif request.job_type == "visit":
+            job = job_queue.enqueue(
+                run_profile_visit_task,
+                dry_run=request.dry_run,
+                job_timeout='45m'
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Unknown job type")
 
-    logger.info(f"🚀 Job triggered: {job_id}")
-    return {"job_id": job_id, "status": "started", "type": request.job_type}
+        logger.info(f"🚀 Job triggered: {job.id} ({request.job_type})")
+        return {"job_id": job.id, "status": "queued", "type": request.job_type}
+    except Exception as e:
+        logger.error(f"Failed to enqueue job: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {str(e)}")
 
 
 @app.post("/start-birthday-bot", tags=["Bot"])
 async def start_birthday_bot(
     config: BirthdayConfig,
-    background_tasks: BackgroundTasks,
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Démarre le bot d'anniversaire avec la configuration fournie.
-
-    Args:
-        config: Configuration du bot (dry_run, process_late, max_days_late)
-
-    Returns:
-        job_id: Identifiant du job démarré
-        status: Statut du démarrage
-        message: Message de confirmation
+    Démarre le bot d'anniversaire avec la configuration fournie (via RQ).
     """
-    job_id = f"birthday-{int(datetime.now().timestamp())}"
-
-    # Log de réception de la requête
-    logger.info(
-        f"🎂 [BIRTHDAY BOT] Requête reçue - dry_run={config.dry_run}, "
-        f"process_late={config.process_late}, max_days_late={config.max_days_late}"
-    )
+    if not job_queue:
+        raise HTTPException(status_code=503, detail="Redis Queue not available")
 
     # Calculer max_days_late en fonction de process_late
     max_days = config.max_days_late if config.process_late else 0
 
-    # Lancer la tâche en arrière-plan
-    background_tasks.add_task(
-        run_bot_task,
-        bot_mode="standard",
-        dry_run=config.dry_run,
-        max_days_late=max_days
-    )
+    try:
+        job = job_queue.enqueue(
+            run_bot_task,
+            bot_mode="standard",
+            dry_run=config.dry_run,
+            max_days_late=max_days,
+            job_timeout='30m'
+        )
 
-    logger.info(f"✅ [BIRTHDAY BOT] Job {job_id} démarré avec succès")
+        logger.info(f"✅ [BIRTHDAY BOT] Job {job.id} queued successfully")
 
-    return {
-        "job_id": job_id,
-        "status": "started",
-        "message": f"Bot d'anniversaire démarré (dry_run={config.dry_run}, process_late={config.process_late})"
-    }
+        return {
+            "job_id": job.id,
+            "status": "queued",
+            "message": f"Bot d'anniversaire mis en file d'attente (id={job.id})"
+        }
+    except Exception as e:
+        logger.error(f"Failed to enqueue birthday bot: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start bot: {str(e)}")
 
 
 @app.post("/start-visitor-bot", tags=["Bot"])
 async def start_visitor_bot(
     config: VisitorConfig,
-    background_tasks: BackgroundTasks,
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Démarre le bot de visite de profils avec la configuration fournie.
-
-    Args:
-        config: Configuration du bot (dry_run, limit)
-
-    Returns:
-        job_id: Identifiant du job démarré
-        status: Statut du démarrage
-        message: Message de confirmation
+    Démarre le bot de visite de profils avec la configuration fournie (via RQ).
     """
-    job_id = f"visitor-{int(datetime.now().timestamp())}"
+    if not job_queue:
+        raise HTTPException(status_code=503, detail="Redis Queue not available")
 
-    # Log de réception de la requête
-    logger.info(
-        f"🔍 [VISITOR BOT] Requête reçue - dry_run={config.dry_run}, limit={config.limit}"
-    )
+    try:
+        job = job_queue.enqueue(
+            run_profile_visit_task,
+            dry_run=config.dry_run,
+            limit=config.limit,
+            job_timeout='45m'
+        )
 
-    # Lancer la tâche en arrière-plan
-    background_tasks.add_task(
-        run_profile_visit_task,
-        dry_run=config.dry_run,
-        limit=config.limit
-    )
+        logger.info(f"✅ [VISITOR BOT] Job {job.id} queued successfully")
 
-    logger.info(f"✅ [VISITOR BOT] Job {job_id} démarré avec succès")
-
-    return {
-        "job_id": job_id,
-        "status": "started",
-        "message": f"Bot de visite démarré (dry_run={config.dry_run}, limit={config.limit})"
-    }
+        return {
+            "job_id": job.id,
+            "status": "queued",
+            "message": f"Bot de visite mis en file d'attente (id={job.id})"
+        }
+    except Exception as e:
+        logger.error(f"Failed to enqueue visitor bot: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start bot: {str(e)}")
 
 
 @app.post("/stop", tags=["Bot"])
