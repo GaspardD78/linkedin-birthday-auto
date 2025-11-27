@@ -58,6 +58,12 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      backgroundImage: {
+        'gradient-purple': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        'gradient-teal': 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
+        'gradient-blue': 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+        'gradient-pink': 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
