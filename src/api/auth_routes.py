@@ -118,16 +118,24 @@ async def start_authentication(request: StartAuthRequest):
                 await page.click("button[type='submit']")
 
                 # Wait for one of the possible outcomes after login attempt
-                pin_input_selector = "#input__phone_verification_pin"
-                feed_selector = "div.feed-identity-module"
-                error_selector = ".login__form_action_container .error"
+                pin_input_selector = "#input__phone_verification_pin, input[name='pin'], #id_verification_pin"
+                feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
+                error_selector = ".login__form_action_container .error, .alert-content"
+                captcha_selector = "#captcha-internal, iframe[src*='captcha']"
 
                 logger.info("Waiting for login response...")
                 span.add_event("wait_for_response")
+
                 await page.wait_for_selector(
-                    f"{pin_input_selector}, {feed_selector}, {error_selector}",
+                    f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}",
                     timeout=90000
                 )
+
+                if await page.is_visible(captcha_selector):
+                    logger.warning("Captcha detected! Automated login blocked.")
+                    span.set_attribute("result", "captcha")
+                    await close_browser_session()
+                    raise HTTPException(status_code=403, detail="Captcha detected. Please use manual cookie export.")
 
                 if await page.is_visible(pin_input_selector):
                     logger.info("2FA required.")
@@ -187,8 +195,8 @@ async def verify_2fa_code(request: Verify2FARequest):
                 await page.fill("#input__phone_verification_pin", request.code)
                 await page.click("button[type='submit']")
 
-                feed_selector = "div.feed-identity-module"
-                error_selector = ".form__subtitle--error"
+                feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
+                error_selector = ".form__subtitle--error, .alert-content, .error-label"
 
                 logger.info("Waiting for 2FA verification response...")
                 span.add_event("wait_for_2fa_response")
@@ -199,8 +207,8 @@ async def verify_2fa_code(request: Verify2FARequest):
                     logger.warning(f"2FA verification failed: {error_message}")
                     span.set_attribute("result", "error")
                     span.set_attribute("error_message", error_message or "Unknown")
-                    await close_browser_session()
-                    raise HTTPException(status_code=401, detail=error_message or "Invalid 2FA code.")
+                    # DO NOT close browser session here to allow retry
+                    raise HTTPException(status_code=401, detail=error_message or "Invalid 2FA code. Please try again.")
 
                 if await page.is_visible(feed_selector):
                     logger.info("2FA verification successful, saving session.")
