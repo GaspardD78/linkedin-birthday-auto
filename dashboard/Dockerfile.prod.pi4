@@ -5,7 +5,7 @@
 FROM node:20-slim AS deps
 WORKDIR /app
 
-# Installation des dépendances système pour ARM64
+# Installation des dépendances système pour ARM64 (minimales)
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -16,9 +16,7 @@ RUN apt-get update && apt-get install -y \
 # Copier package files
 COPY package.json package-lock.json* ./
 
-# Installation des dépendances avec npm install (plus tolérant que npm ci sur ARM64)
-# Skip Puppeteer Chromium download (sera installé plus tard)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# Installation des dépendances
 RUN npm install \
     --fetch-timeout=300000 \
     --fetch-retry-mintimeout=20000 \
@@ -53,23 +51,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Installation de Chromium pour ARM64 (pas Google Chrome)
-RUN apt-get update \
-    && apt-get install -y \
-    chromium \
-    chromium-driver \
-    curl \
-    fonts-liberation \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-freefont-ttf \
-    libxss1 \
-    ca-certificates \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
 # Création utilisateur non-root
 RUN groupadd -r nodejs && useradd -r -g nodejs nextjs
 
@@ -80,10 +61,6 @@ RUN mkdir -p /app/data /app/logs && chown -R nextjs:nodejs /app
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Puppeteer config: utiliser le Chromium installé (compatible ARM64)
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 USER nextjs
 
