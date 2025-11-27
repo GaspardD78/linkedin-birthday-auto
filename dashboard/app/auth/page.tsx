@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
 
-type AuthState = 'idle' | 'pending-2fa' | 'loading' | 'success' | 'error';
+type AuthState = 'idle' | 'pending-2fa' | 'pending-mobile' | 'loading' | 'success' | 'error';
 
 export default function AuthPage() {
   const [authState, setAuthState] = useState<AuthState>('idle');
@@ -32,6 +32,9 @@ export default function AuthPage() {
         if (data.status === '2fa_required') {
           setAuthState('pending-2fa');
           setFeedbackMessage('Two-factor authentication required. Please enter the code sent to your device.');
+        } else if (data.status === '2fa_mobile_required') {
+          setAuthState('pending-mobile');
+          setFeedbackMessage('Check your mobile device! LinkedIn sent a notification. Click "Yes" on your phone.');
         } else if (data.status === 'success') {
           setAuthState('success');
           setFeedbackMessage('Authentication successful! The auth_state.json has been generated.');
@@ -48,19 +51,28 @@ export default function AuthPage() {
   const handleVerify2FA = async (e: FormEvent) => {
     e.preventDefault();
     setAuthState('loading');
-    setFeedbackMessage('Verifying 2FA code...');
+    setFeedbackMessage('Verifying...');
     try {
+      // If we are in mobile pending state, we don't send a code
+      const body = authState === 'pending-mobile' ? {} : { code: twoFaCode };
+
       const response = await fetch('/api/auth/verify-2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: twoFaCode }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        setAuthState('success');
-        setFeedbackMessage('2FA verification successful! The auth_state.json has been generated.');
+
+      if (response.ok) {
+        if (data.status === 'success') {
+          setAuthState('success');
+          setFeedbackMessage('Verification successful! The auth_state.json has been generated.');
+        } else if (data.status === 'waiting_for_approval') {
+          setAuthState('pending-mobile');
+          setFeedbackMessage('Still waiting for approval on phone... Please try "I approved" again.');
+        }
       } else {
-        throw new Error(data.detail || 'Failed to verify 2FA code.');
+        throw new Error(data.detail || 'Failed to verify.');
       }
     } catch (error: any) {
       setAuthState('error');
@@ -105,7 +117,7 @@ export default function AuthPage() {
           {authState === 'loading' && 'In Progress'}
           {authState === 'success' && 'Success'}
           {authState === 'error' && 'Error'}
-          {authState === 'pending-2fa' && 'Action Required'}
+          {(authState === 'pending-2fa' || authState === 'pending-mobile') && 'Action Required'}
         </AlertTitle>
         <AlertDescription>
           {feedbackMessage}
@@ -124,7 +136,24 @@ export default function AuthPage() {
             <CardDescription>Enter your LinkedIn credentials to generate the authentication file automatically.</CardDescription>
           </CardHeader>
           <CardContent>
-            {authState !== 'pending-2fa' ? (
+            {authState === 'pending-2fa' ? (
+              <form onSubmit={handleVerify2FA}>
+                <div>
+                  <label htmlFor="2fa">Verification Code</label>
+                  <Input id="2fa" type="text" placeholder="Enter 6-digit code" value={twoFaCode} onChange={(e) => setTwoFaCode(e.target.value)} disabled={authState === 'loading' || authState === 'success'} />
+                </div>
+                <Button type="submit" className="mt-4 w-full" disabled={authState === 'loading' || authState === 'success'}>
+                  {authState === 'loading' ? 'Verifying...' : 'Verify'}
+                </Button>
+              </form>
+            ) : authState === 'pending-mobile' ? (
+              <div className="text-center py-4">
+                 <p className="mb-4 text-sm text-slate-500">Please open the LinkedIn app on your mobile device and approve the login request.</p>
+                 <Button onClick={handleVerify2FA} className="w-full" disabled={authState === 'loading'}>
+                  {authState === 'loading' ? 'Checking...' : 'I have approved'}
+                </Button>
+              </div>
+            ) : (
               <form onSubmit={handleLogin}>
                 <div className="space-y-4">
                   <div>
@@ -138,16 +167,6 @@ export default function AuthPage() {
                 </div>
                 <Button type="submit" className="mt-4 w-full" disabled={authState === 'loading' || authState === 'success'}>
                   {authState === 'loading' ? 'Connecting...' : 'Connect'}
-                </Button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerify2FA}>
-                <div>
-                  <label htmlFor="2fa">Verification Code</label>
-                  <Input id="2fa" type="text" placeholder="Enter 6-digit code" value={twoFaCode} onChange={(e) => setTwoFaCode(e.target.value)} disabled={authState === 'loading' || authState === 'success'} />
-                </div>
-                <Button type="submit" className="mt-4 w-full" disabled={authState === 'loading' || authState === 'success'}>
-                  {authState === 'loading' ? 'Verifying...' : 'Verify'}
                 </Button>
               </form>
             )}

@@ -40,8 +40,10 @@ class StartAuthRequest(BaseModel):
     email: str
     password: str
 
+from typing import Optional
+
 class Verify2FARequest(BaseModel):
-    code: str
+    code: Optional[str] = None
 
 # ═══════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -118,16 +120,30 @@ async def start_authentication(request: StartAuthRequest):
                 await page.click("button[type='submit']")
 
                 # Wait for one of the possible outcomes after login attempt
-                pin_input_selector = "#input__phone_verification_pin"
-                feed_selector = "div.feed-identity-module"
-                error_selector = ".login__form_action_container .error"
+                pin_input_selector = "#input__phone_verification_pin, input[name='pin'], #id_verification_pin"
+                feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
+                error_selector = ".login__form_action_container .error, .alert-content"
+                captcha_selector = "#captcha-internal, iframe[src*='captcha']"
+                mobile_challenge_selector = "h1:has-text('Check your mobile device'), div:has-text('Open the LinkedIn app'), .challenge-dialog"
 
                 logger.info("Waiting for login response...")
                 span.add_event("wait_for_response")
+
                 await page.wait_for_selector(
-                    f"{pin_input_selector}, {feed_selector}, {error_selector}",
+                    f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}, {mobile_challenge_selector}",
                     timeout=90000
                 )
+
+                if await page.is_visible(captcha_selector):
+                    logger.warning("Captcha detected! Automated login blocked.")
+                    span.set_attribute("result", "captcha")
+                    await close_browser_session()
+                    raise HTTPException(status_code=403, detail="Captcha detected. Please use manual cookie export.")
+
+                if await page.is_visible(mobile_challenge_selector):
+                    logger.info("Mobile 2FA challenge detected.")
+                    span.set_attribute("result", "2fa_mobile_required")
+                    return {"status": "2fa_mobile_required"}
 
                 if await page.is_visible(pin_input_selector):
                     logger.info("2FA required.")
@@ -177,30 +193,40 @@ async def verify_2fa_code(request: Verify2FARequest):
     if not page or not context:
         raise HTTPException(status_code=400, detail="No active authentication session found.")
 
-    logger.info("Submitting 2FA code.")
-
     # Activer le tracing temporairement pour déboguer la vérification 2FA
     with TemporaryTracing(service_name="linkedin-auth-2fa") as tracer:
         with tracer.start_as_current_span("authentication_2fa_verify") as span:
             try:
-                span.add_event("submit_2fa_code")
-                await page.fill("#input__phone_verification_pin", request.code)
-                await page.click("button[type='submit']")
+                feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
+                error_selector = ".form__subtitle--error, .alert-content, .error-label"
 
-                feed_selector = "div.feed-identity-module"
-                error_selector = ".form__subtitle--error"
+                if request.code:
+                    logger.info("Submitting 2FA code.")
+                    span.add_event("submit_2fa_code")
+                    await page.fill("#input__phone_verification_pin", request.code)
+                    await page.click("button[type='submit']")
 
-                logger.info("Waiting for 2FA verification response...")
-                span.add_event("wait_for_2fa_response")
-                await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=90000)
+                    logger.info("Waiting for 2FA verification response...")
+                    span.add_event("wait_for_2fa_response")
+                    await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=90000)
+                else:
+                    logger.info("Checking for mobile approval completion...")
+                    span.add_event("wait_for_mobile_approval")
+                    # Wait for feed to appear (user approved on phone)
+                    # We might need to wait longer here
+                    try:
+                        await page.wait_for_selector(feed_selector, timeout=30000)
+                    except PlaywrightTimeoutError:
+                        # If timeout, just return specific status so user can try again
+                        return {"status": "waiting_for_approval"}
 
                 if await page.is_visible(error_selector):
                     error_message = await page.text_content(error_selector)
                     logger.warning(f"2FA verification failed: {error_message}")
                     span.set_attribute("result", "error")
                     span.set_attribute("error_message", error_message or "Unknown")
-                    await close_browser_session()
-                    raise HTTPException(status_code=401, detail=error_message or "Invalid 2FA code.")
+                    # DO NOT close browser session here to allow retry
+                    raise HTTPException(status_code=401, detail=error_message or "Invalid 2FA code. Please try again.")
 
                 if await page.is_visible(feed_selector):
                     logger.info("2FA verification successful, saving session.")

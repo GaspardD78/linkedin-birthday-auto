@@ -423,12 +423,16 @@ docker run -e LINKEDIN_AUTH_STATE=$AUTH linkedin-bot
 docker-compose up -d
 ```
 
-**Option 2: Raspberry Pi 4 + Freebox (Standalone)**
+**Option 2: Raspberry Pi 4 + Freebox (Standalone) - Recommandé**
 
-Configuration complète pour déploiement résidentiel sans NAS :
+Configuration optimisée pour RPi4 (4GB RAM) en mode autonome.
+* **Backend**: FastAPI (Python) + RQ Worker (Redis)
+* **Frontend**: Next.js 14 (Optimisé sans Puppeteer)
+* **Database**: SQLite (local) + Redis (Queue/Cache)
 
 ```bash
 # Déploiement automatique (Bot + Dashboard + Redis + SQLite)
+# Ce script gère le nettoyage, le build optimisé et le déploiement
 ./scripts/deploy_pi4_standalone.sh
 
 # Ou manuellement
@@ -436,6 +440,11 @@ docker compose -f docker-compose.pi4-standalone.yml up -d
 
 # Accès dashboard: http://192.168.1.X:3000
 ```
+
+*Optimisations appliquées :*
+* Image Dashboard ultra-légère (Puppeteer retiré)
+* Limites mémoire strictes (API: 300MB, Dashboard: 400MB, Worker: 900MB)
+* Utilisation de `rq.Queue` pour décharger l'API des tâches lourdes
 
 📖 **Documentation complète** : [SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)
 

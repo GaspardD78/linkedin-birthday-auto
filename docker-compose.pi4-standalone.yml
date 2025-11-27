@@ -72,28 +72,21 @@ services:
     # Cache only (no persistence) to avoid fork operations and memory overcommit warnings
     command: >
       redis-server
-      --maxmemory 128mb
+      --maxmemory 64mb
       --maxmemory-policy allkeys-lru
       --save ""
       --appendonly no
       --loglevel warning
-    # Fix memory overcommit warning
-    # NOTE: vm.overcommit_memory must be set on the Raspberry Pi host with:
-    #   sudo sysctl vm.overcommit_memory=1
-    #   echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
-    # sysctls:
-    #   - net.core.somaxconn=511
-    #   - vm.overcommit_memory=1
     restart: unless-stopped
     volumes:
       - redis-dashboard-data:/data
     deploy:
       resources:
         limits:
-          memory: 150M
+          memory: 100M
           cpus: '0.5'
         reservations:
-          memory: 100M
+          memory: 50M
           cpus: '0.25'
     logging:
       driver: "json-file"
@@ -138,10 +131,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 200M
+          cpus: '1.0'
+          memory: 600M # Increased to handle Playwright Auth flow
         reservations:
-          memory: 100M
+          memory: 300M
     restart: unless-stopped
     networks:
       - linkedin-network
@@ -175,12 +168,6 @@ services:
       - ./late_messages.txt:/app/late_messages.txt
       - shared-data:/app/data
     # Optimisé pour Pi 4 avec 4GB RAM
-    # Bot Worker: 900MB (Chromium + Python) - Optimisé après audit
-    # Dashboard: 700MB - Optimisé après audit
-    # Redis: 300MB (2x)
-    # API: 200MB
-    # Système: ~1GB
-    # = ~2.4GB utilisés, laisse ~1.6GB libre (marge de sécurité)
     deploy:
       resources:
         limits:
@@ -219,10 +206,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 700M    # Optimisé après audit pour éviter le swap
+          memory: 400M    # Optimisé après suppression de Chromium
           cpus: '1.0'
         reservations:
-          memory: 350M
+          memory: 200M
           cpus: '0.25'
     logging:
       driver: "json-file"
@@ -234,20 +221,13 @@ services:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
 
-      # ✅ SQLite Local (pas de MySQL Synology)
+      # ✅ SQLite Local
       - DATABASE_URL=sqlite:///app/data/linkedin.db
 
       # Configuration Redis Dashboard
       - REDIS_URL=redis://redis-dashboard:6379
 
-      # Configuration Puppeteer (si utilisé dans le dashboard)
-      - HEADLESS=true
-      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
-
-      # Configuration Bot (optionnel)
-      - BOT_REDIS_URL=redis://redis-bot:6379
-      - BOT_REDIS_HOST=redis-bot
-      - BOT_REDIS_PORT=6379
+      # Configuration Bot (pour Proxy API)
       - BOT_API_URL=http://api:8000
       - BOT_API_KEY=internal_secret_key
     volumes:
@@ -262,6 +242,8 @@ services:
     depends_on:
       redis-dashboard:
         condition: service_healthy
+      api:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/system/health"]
       interval: 60s
