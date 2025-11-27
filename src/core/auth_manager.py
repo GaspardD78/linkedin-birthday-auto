@@ -190,6 +190,7 @@ class AuthManager:
         Un auth state valide doit contenir au minimum :
         - Un tableau "cookies" non vide
         - Des propriétés "origins" (optionnel mais recommandé)
+        - Des cookies non expirés (ou sans date d'expiration)
         """
         try:
             with open(auth_file, 'r', encoding='utf-8') as f:
@@ -222,7 +223,33 @@ class AuthManager:
                 logger.warning("Auth state has no LinkedIn cookies")
                 return False
 
-            logger.debug(f"Auth state validated: {len(linkedin_cookies)} LinkedIn cookies")
+            # BUGFIX: Vérifier l'expiration des cookies
+            import time
+            current_time = time.time()
+            expired_count = 0
+            valid_count = 0
+
+            for cookie in linkedin_cookies:
+                expires = cookie.get('expires')
+                if expires is not None and expires != -1:
+                    # Cookie a une date d'expiration
+                    if expires < current_time:
+                        expired_count += 1
+                        logger.debug(f"Expired cookie: {cookie.get('name', 'unknown')}")
+                    else:
+                        valid_count += 1
+                else:
+                    # Cookie de session (pas d'expiration) - considéré valide
+                    valid_count += 1
+
+            if valid_count == 0:
+                logger.warning(f"All LinkedIn cookies are expired ({expired_count} expired)")
+                return False
+
+            if expired_count > 0:
+                logger.warning(f"Some cookies expired ({expired_count}/{len(linkedin_cookies)}), but {valid_count} still valid")
+
+            logger.debug(f"Auth state validated: {valid_count} valid LinkedIn cookies (={expired_count} expired)")
             return True
 
         except json.JSONDecodeError as e:

@@ -817,6 +817,125 @@ class Database:
 
         return output_path
 
+    @retry_on_lock(max_retries=3)
+    def vacuum(self) -> Dict[str, Any]:
+        """
+        Exécute VACUUM pour optimiser la base de données.
+
+        VACUUM défragmente la base SQLite et récupère l'espace disque.
+        Particulièrement important sur Raspberry Pi 4 avec SD card.
+
+        Returns:
+            Dict avec les statistiques du vacuum
+
+        Note:
+            VACUUM peut prendre du temps sur de grandes bases.
+            Il est recommandé de l'exécuter pendant les heures creuses.
+        """
+        logger.info("Starting database VACUUM...")
+        start_time = time.time()
+
+        # Get database size before vacuum
+        db_size_before = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # VACUUM ne peut pas être exécuté dans une transaction
+                conn.isolation_level = None
+                cursor.execute("VACUUM")
+                conn.isolation_level = ''
+
+            # Get database size after vacuum
+            db_size_after = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+            space_saved = db_size_before - db_size_after
+            duration = time.time() - start_time
+
+            result = {
+                "success": True,
+                "duration_seconds": round(duration, 2),
+                "size_before_bytes": db_size_before,
+                "size_after_bytes": db_size_after,
+                "space_saved_bytes": space_saved,
+                "space_saved_mb": round(space_saved / (1024 * 1024), 2),
+                "timestamp": datetime.now().isoformat()
+            }
+
+            logger.info(
+                f"✅ VACUUM completed in {duration:.2f}s, "
+                f"saved {space_saved / (1024 * 1024):.2f} MB"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ VACUUM failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def should_vacuum(self, days_since_last_vacuum: int = 7) -> bool:
+        """
+        Détermine si un VACUUM est nécessaire.
+
+        Args:
+            days_since_last_vacuum: Nombre de jours depuis le dernier VACUUM
+
+        Returns:
+            True si VACUUM recommandé, False sinon
+        """
+        # Vérifier la taille de la base
+        if not os.path.exists(self.db_path):
+            return False
+
+        db_size = os.path.getsize(self.db_path)
+
+        # VACUUM recommandé si > 10 MB sur Pi4 (économie SD card)
+        if db_size > 10 * 1024 * 1024:
+            logger.info(f"VACUUM recommended: database size is {db_size / (1024 * 1024):.2f} MB")
+            return True
+
+        # Vérifier la fragmentation via page count
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA page_count")
+                page_count = cursor.fetchone()[0]
+
+                cursor.execute("PRAGMA freelist_count")
+                freelist_count = cursor.fetchone()[0]
+
+                # Si plus de 20% de pages libres, VACUUM recommandé
+                if page_count > 0:
+                    fragmentation_ratio = freelist_count / page_count
+                    if fragmentation_ratio > 0.2:
+                        logger.info(
+                            f"VACUUM recommended: {fragmentation_ratio * 100:.1f}% fragmentation"
+                        )
+                        return True
+
+        except Exception as e:
+            logger.warning(f"Could not check fragmentation: {e}")
+
+        return False
+
+    def auto_vacuum_if_needed(self) -> Optional[Dict[str, Any]]:
+        """
+        Exécute automatiquement VACUUM si nécessaire.
+
+        Returns:
+            Résultat du VACUUM ou None si non nécessaire
+        """
+        if self.should_vacuum():
+            logger.info("Auto-vacuum triggered")
+            return self.vacuum()
+        else:
+            logger.debug("Auto-vacuum skipped: not needed")
+            return None
+
 
 # Fonction utilitaire pour obtenir l'instance de base de données (thread-safe)
 _db_instance = None
