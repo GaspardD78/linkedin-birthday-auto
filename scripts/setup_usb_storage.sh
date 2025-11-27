@@ -37,10 +37,41 @@ echo -e "${YELLOW}Périphériques disponibles:${NC}"
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE | grep -E "(disk|part)"
 
 echo ""
-read -p "Entrez le périphérique de votre clé USB (ex: sda1, sdb1): " USB_DEVICE
+read -p "Entrez le périphérique de votre clé USB (ex: sda1, sdb1, ou juste sda): " USB_DEVICE
 
 if [ -z "$USB_DEVICE" ]; then
     error_exit "Périphérique non spécifié"
+fi
+
+# BUGFIX: Si l'utilisateur entre "sda" au lieu de "sda1", on détecte et on corrige
+if [[ "$USB_DEVICE" =~ ^sd[a-z]$ ]] || [[ "$USB_DEVICE" =~ ^nvme[0-9]n[0-9]$ ]]; then
+    # C'est un disque sans numéro de partition
+    DISK_DEVICE="/dev/$USB_DEVICE"
+
+    # Vérifier si une partition existe déjà
+    if [ -b "${DISK_DEVICE}1" ]; then
+        echo -e "${GREEN}✓ Partition ${DISK_DEVICE}1 détectée${NC}"
+        USB_DEVICE="${USB_DEVICE}1"
+    else
+        echo -e "${YELLOW}⚠️  Aucune partition détectée sur $DISK_DEVICE${NC}"
+        echo "Création automatique d'une partition..."
+
+        # Créer une partition automatiquement
+        sudo parted -s "$DISK_DEVICE" mklabel gpt
+        sudo parted -s "$DISK_DEVICE" mkpart primary ext4 0% 100%
+
+        # Attendre que le système détecte la partition
+        sleep 2
+        sudo partprobe "$DISK_DEVICE"
+        sleep 1
+
+        if [ -b "${DISK_DEVICE}1" ]; then
+            echo -e "${GREEN}✓ Partition ${DISK_DEVICE}1 créée${NC}"
+            USB_DEVICE="${USB_DEVICE}1"
+        else
+            error_exit "Échec de la création de partition sur $DISK_DEVICE"
+        fi
+    fi
 fi
 
 USB_DEVICE="/dev/$USB_DEVICE"
