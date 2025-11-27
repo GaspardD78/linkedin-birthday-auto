@@ -1,18 +1,23 @@
 import { SystemHealthWidget } from "@/components/dashboard/HealthWidget"
 import { LogsWidget } from "@/components/dashboard/LogsWidget"
 import { BotControlsWidget } from "@/components/dashboard/BotControls"
+import { EnhancedStatsWidget } from "@/components/dashboard/EnhancedStatsWidget"
+import { WeeklyLimitWidget } from "@/components/dashboard/WeeklyLimitWidget"
+import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
+import { ActivityChartWidget } from "@/components/dashboard/ActivityChartWidget"
+import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-6 p-8 bg-slate-950 min-h-screen">
+    <div className="space-y-6 bg-slate-950 min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            🎯 Mission Control - LinkedIn Bot
+            Dashboard - LinkedIn Birthday Auto
           </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Console de Pilotage Raspberry Pi 4
+          <p className="text-slate-400 text-sm mt-1">
+            Console de pilotage et monitoring
           </p>
         </div>
         <div className="text-sm text-slate-500 flex items-center gap-2">
@@ -21,22 +26,43 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Main Grid Layout */}
-      <div className="grid gap-6">
+      {/* Statistics Cards - 4 columns like V1 */}
+      <EnhancedStatsWidget />
 
-        {/* Haut: System Health */}
-        <div className="w-full">
-          <SystemHealthWidget />
+      {/* Weekly Limit Progress Bar */}
+      <WeeklyLimitWidget />
+
+      {/* Main Grid Layout - 2 columns like V1 (8/12 + 4/12) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        {/* Left Column (8/12) - Activity Chart + Logs */}
+        <div className="lg:col-span-8 space-y-6">
+
+          {/* Activity Chart */}
+          <ActivityChartWidget />
+
+          {/* Logs Console */}
+          <div className="min-h-[400px]">
+            <LogsWidget />
+          </div>
+
         </div>
 
-        {/* Milieu: Task Runner */}
-        <div className="w-full">
+        {/* Right Column (4/12) - Controls + Weekly Limit + Contacts + Errors */}
+        <div className="lg:col-span-4 space-y-6">
+
+          {/* Bot Controls */}
           <BotControlsWidget />
-        </div>
 
-        {/* Bas: Logs Console (grande zone) */}
-        <div className="w-full min-h-[500px]">
-          <LogsWidget />
+          {/* System Health */}
+          <SystemHealthWidget />
+
+          {/* Top 5 Contacts */}
+          <TopContactsWidget />
+
+          {/* Recent Errors */}
+          <RecentErrorsWidget />
+
         </div>
 
       </div>
