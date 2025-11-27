@@ -9,6 +9,10 @@ const nextConfig = {
     unoptimized: true, // Moins de CPU utilisé pour le traitement d'images
   },
   // Optimisation de la compilation sur Raspberry Pi
+  eslint: {
+    // Ignore le linting pendant le build pour accélérer (le faire en CI/pre-commit)
+    ignoreDuringBuilds: true,
+  },
   typescript: {
     // Ignore les erreurs TS pendant le build (le faire en CI/pre-commit)
     ignoreBuildErrors: true,
