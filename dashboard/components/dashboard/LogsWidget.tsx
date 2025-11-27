@@ -89,12 +89,37 @@ export function LogsWidget() {
         </Button>
       </CardHeader>
       <CardContent className="flex-1 min-h-0">
-        <div className="bg-slate-950 rounded-md p-4 h-[400px] overflow-y-auto font-mono text-sm text-emerald-500 border border-slate-800 whitespace-pre-wrap shadow-inner">
-          {logs || (
-            <div className="text-slate-600 italic">
-              <span className="text-emerald-500">$</span> Waiting for logs...
+        <div
+          className="rounded-md p-4 h-[400px] overflow-y-auto font-mono text-sm border whitespace-pre-wrap shadow-inner custom-scrollbar"
+          style={{
+            backgroundColor: '#1e1e1e',
+            borderColor: '#333333',
+            color: '#d4d4d4'
+          }}
+        >
+          {logs ? (
+            <div className="space-y-0.5">
+              {logs.split('\n').map((line, index) => {
+                // Color-code based on log level
+                let lineColor = '#d4d4d4' // Default
+                if (line.includes('[ERROR]')) lineColor = '#f87171' // Red
+                else if (line.includes('[WARNING]') || line.includes('[WARN]')) lineColor = '#fbbf24' // Yellow
+                else if (line.includes('[INFO]')) lineColor = '#60a5fa' // Blue
+                else if (line.includes('[SUCCESS]')) lineColor = '#4ade80' // Green
+                else if (line.includes('[DEBUG]')) lineColor = '#a78bfa' // Purple
+
+                return (
+                  <div key={index} style={{ color: lineColor }}>
+                    {line}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-slate-500 italic">
+              <span className="text-emerald-400">$</span> Waiting for logs...
               <br />
-              <span className="text-slate-700">→ Logs will appear here in real-time (refresh every 3s)</span>
+              <span className="text-slate-600">→ Logs will appear here in real-time (refresh every 3s)</span>
             </div>
           )}
           <div ref={logsEndRef} />

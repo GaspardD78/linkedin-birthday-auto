@@ -9,20 +9,20 @@ import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-6 bg-slate-950 min-h-screen">
+    <div className="space-y-5 bg-slate-950 min-h-screen">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-1">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">
             Dashboard - LinkedIn Birthday Auto
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            Console de pilotage et monitoring
+            Console de pilotage et monitoring en temps réel
           </p>
         </div>
         <div className="text-sm text-slate-500 flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          v2.0.0
+          <div className="h-2 w-2 rounded-full bg-emerald-500 pulse-glow" />
+          <span className="font-mono">v2.0.0</span>
         </div>
       </div>
 
@@ -33,10 +33,10 @@ export default function DashboardPage() {
       <WeeklyLimitWidget />
 
       {/* Main Grid Layout - 2 columns like V1 (8/12 + 4/12) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
         {/* Left Column (8/12) - Activity Chart + Logs */}
-        <div className="lg:col-span-8 space-y-6">
+        <div className="lg:col-span-8 space-y-5">
 
           {/* Activity Chart */}
           <ActivityChartWidget />
@@ -49,7 +49,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Right Column (4/12) - Controls + Weekly Limit + Contacts + Errors */}
-        <div className="lg:col-span-4 space-y-6">
+        <div className="lg:col-span-4 space-y-5">
 
           {/* Bot Controls */}
           <BotControlsWidget />
