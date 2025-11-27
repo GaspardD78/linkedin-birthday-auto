@@ -73,10 +73,11 @@ export function BotControlsWidget() {
   const isLoading = (task: TaskType) => loadingTask === task;
 
   return (
-    <Card className="bg-slate-900 border-slate-800">
+    <Card className="bg-slate-900 border-slate-800 shadow-xl">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold text-slate-200">
-          🎯 Mission Control - Task Runner
+        <CardTitle className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+          <Settings2 className="h-5 w-5 text-emerald-400" />
+          Contrôle des Scripts
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -75,47 +75,82 @@ export function SystemHealthWidget() {
   const memoryUsedGB = data.memory_usage.used / (1024 ** 3);
   const memoryTotalGB = data.memory_usage.total / (1024 ** 3);
 
+  const memoryPercent = (memoryUsedGB / memoryTotalGB) * 100;
+
   return (
-    <Card className="bg-slate-900 border-slate-800">
+    <Card className="bg-slate-900 border-slate-800 shadow-xl">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-slate-200">
-          Hardware Health (RPi 4)
+        <CardTitle className="text-sm font-medium text-slate-200 flex items-center gap-2">
+          <Server className="h-4 w-4 text-slate-400" />
+          Santé du Système
         </CardTitle>
-        <Server className="h-4 w-4 text-slate-500" />
+        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-4 mt-2">
+        <div className="space-y-4">
 
-          {/* CPU Temp */}
-          <div className="flex flex-col">
-            <div className="flex items-center text-slate-400 mb-1 text-xs">
-              <Cpu className="mr-2 h-3 w-3" />
-              CPU Usage
+          {/* CPU Usage */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <Cpu className="h-3 w-3" />
+                <span>CPU</span>
+              </div>
+              <span className={`text-sm font-bold ${data.cpu_usage > 70 ? 'text-red-400' : 'text-emerald-400'}`}>
+                {Math.round(data.cpu_usage)}%
+              </span>
             </div>
-            <div className={`text-2xl font-bold ${data.cpu_usage > 70 ? 'text-red-500' : 'text-emerald-500'}`}>
-              {Math.round(data.cpu_usage)}%
+            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-300 ${data.cpu_usage > 70 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                style={{ width: `${Math.min(data.cpu_usage, 100)}%` }}
+              />
             </div>
           </div>
 
           {/* RAM Usage */}
-          <div className="flex flex-col">
-            <div className="flex items-center text-slate-400 mb-1 text-xs">
-              <HardDrive className="mr-2 h-3 w-3" />
-              RAM Usage
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <HardDrive className="h-3 w-3" />
+                <span>RAM</span>
+              </div>
+              <span className="text-sm font-bold text-blue-400">
+                {memoryUsedGB.toFixed(1)} / {memoryTotalGB.toFixed(1)} GB
+              </span>
             </div>
-            <div className="text-2xl font-bold text-blue-500">
-              {memoryUsedGB.toFixed(1)} GB
+            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${Math.min(memoryPercent, 100)}%` }}
+              />
             </div>
-            <p className="text-[10px] text-slate-500">
-              / {memoryTotalGB.toFixed(1)} GB Total
-            </p>
           </div>
 
-          {/* Uptime (Full width) */}
-          <div className="col-span-2 flex items-center gap-2 pt-2 border-t border-slate-800">
-             <Clock className="h-3 w-3 text-slate-500" />
-             <span className="text-xs text-slate-400">Uptime:</span>
-             <span className="text-xs font-mono text-slate-200">{formatUptime(data.uptime)}</span>
+          {/* Temperature */}
+          {data.temperature > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-400 text-xs">
+                  <span>🌡️</span>
+                  <span>Température</span>
+                </div>
+                <span className={`text-sm font-bold ${data.temperature > 70 ? 'text-orange-400' : 'text-slate-300'}`}>
+                  {data.temperature.toFixed(1)}°C
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Uptime */}
+          <div className="pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-400 text-xs">
+                <Clock className="h-3 w-3" />
+                <span>Uptime</span>
+              </div>
+              <span className="text-xs font-mono text-slate-200">{formatUptime(data.uptime)}</span>
+            </div>
           </div>
 
         </div>
