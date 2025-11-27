@@ -287,35 +287,75 @@ class BrowserManager:
             raise BrowserError(f"Failed to take screenshot: {e}")
 
     def close(self) -> None:
-        """Ferme proprement le browser et Playwright."""
+        """Ferme proprement le browser et Playwright avec timeout protection."""
+        # BUGFIX: Amélioration de la robustesse du nettoyage avec timeout
+        import signal
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Browser cleanup timeout")
+
+        # Set 10 second timeout for cleanup
+        if hasattr(signal, 'SIGALRM'):
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(10)
+
         try:
             if self.page:
-                self.page.close()
-                self.page = None
-                logger.debug("Page closed")
+                try:
+                    self.page.close()
+                    logger.debug("Page closed")
+                except Exception as e:
+                    logger.warning(f"Error closing page: {e}")
+                finally:
+                    self.page = None
 
             if self.context:
-                self.context.close()
-                self.context = None
-                logger.debug("Context closed")
+                try:
+                    self.context.close()
+                    logger.debug("Context closed")
+                except Exception as e:
+                    logger.warning(f"Error closing context: {e}")
+                finally:
+                    self.context = None
 
             if self.browser:
-                self.browser.close()
-                self.browser = None
-                logger.debug("Browser closed")
+                try:
+                    self.browser.close()
+                    logger.debug("Browser closed")
+                except Exception as e:
+                    logger.warning(f"Error closing browser: {e}")
+                finally:
+                    self.browser = None
 
             if self.playwright:
-                self.playwright.stop()
-                self.playwright = None
-                logger.debug("Playwright stopped")
+                try:
+                    self.playwright.stop()
+                    logger.debug("Playwright stopped")
+                except Exception as e:
+                    logger.warning(f"Error stopping Playwright: {e}")
+                finally:
+                    self.playwright = None
 
+            logger.info("✅ Browser cleanup completed")
+
+        except TimeoutError:
+            logger.error("⚠️ Browser cleanup timeout - forcing cleanup")
+            # Force cleanup
+            self.page = None
+            self.context = None
+            self.browser = None
+            self.playwright = None
         except Exception as e:
-            logger.warning(f"Error during browser cleanup: {e}")
+            logger.error(f"Error during browser cleanup: {e}")
             # Force cleanup même en cas d'erreur
             self.page = None
             self.context = None
             self.browser = None
             self.playwright = None
+        finally:
+            # Cancel alarm
+            if hasattr(signal, 'SIGALRM'):
+                signal.alarm(0)
 
     def __enter__(self):
         """Context manager entry."""

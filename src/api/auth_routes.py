@@ -14,6 +14,13 @@ from ..monitoring.tracing import TemporaryTracing
 logger = get_logger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════
+# CONSTANTS
+# ═══════════════════════════════════════════════════════════════════
+
+MAX_2FA_RETRIES = 3  # Maximum number of 2FA code attempts
+SESSION_TIMEOUT_SECONDS = 300  # 5 minutes session timeout
+
+# ═══════════════════════════════════════════════════════════════════
 # GLOBAL STATE & ROUTER
 # ═══════════════════════════════════════════════════════════════════
 
@@ -24,6 +31,9 @@ auth_session: Dict[str, Any] = {
     "browser": None,
     "page": None,
     "context": None,
+    "playwright": None,  # BUGFIX: Store Playwright instance to close properly
+    "retry_count": 0,    # BUGFIX: Track 2FA retry attempts
+    "created_at": None,  # BUGFIX: Track session creation time
 }
 
 router = APIRouter(
@@ -50,12 +60,31 @@ class Verify2FARequest(BaseModel):
 async def close_browser_session():
     """Safely closes any active Playwright browser session."""
     logger.info("Closing browser session.")
+
+    # Close browser first
     if auth_session.get("browser"):
         try:
             await auth_session["browser"].close()
         except Exception as e:
             logger.error(f"Error closing browser: {e}", exc_info=True)
-    auth_session.update({"browser": None, "page": None, "context": None})
+
+    # BUGFIX: Close Playwright instance to prevent resource leak
+    if auth_session.get("playwright"):
+        try:
+            await auth_session["playwright"].stop()
+            logger.debug("Playwright instance stopped")
+        except Exception as e:
+            logger.error(f"Error stopping Playwright: {e}", exc_info=True)
+
+    # Reset session state
+    auth_session.update({
+        "browser": None,
+        "page": None,
+        "context": None,
+        "playwright": None,
+        "retry_count": 0,
+        "created_at": None
+    })
 
 # ═══════════════════════════════════════════════════════════════════
 # API ROUTES
@@ -101,7 +130,16 @@ async def start_authentication(request: StartAuthRequest):
                 )
                 page = await context.new_page()
 
-                auth_session.update({"browser": browser, "page": page, "context": context})
+                # BUGFIX: Store Playwright instance and session metadata
+                import time as time_module
+                auth_session.update({
+                    "browser": browser,
+                    "page": page,
+                    "context": context,
+                    "playwright": p,
+                    "retry_count": 0,
+                    "created_at": time_module.time()
+                })
 
                 # Increased timeouts for Raspberry Pi 4
                 logger.info("Navigating to LinkedIn login page...")
@@ -181,11 +219,26 @@ async def verify_2fa_code(request: Verify2FARequest):
     """
     page = auth_session.get("page")
     context = auth_session.get("context")
+    retry_count = auth_session.get("retry_count", 0)
+    created_at = auth_session.get("created_at")
 
     if not page or not context:
         raise HTTPException(status_code=400, detail="No active authentication session found.")
 
-    logger.info("Submitting 2FA code.")
+    # BUGFIX: Check session timeout
+    import time as time_module
+    if created_at and (time_module.time() - created_at) > SESSION_TIMEOUT_SECONDS:
+        logger.warning("Session timeout exceeded")
+        await close_browser_session()
+        raise HTTPException(status_code=408, detail="Session timeout. Please restart authentication.")
+
+    # BUGFIX: Check retry limit
+    if retry_count >= MAX_2FA_RETRIES:
+        logger.warning(f"Max 2FA retries exceeded ({MAX_2FA_RETRIES})")
+        await close_browser_session()
+        raise HTTPException(status_code=429, detail=f"Too many attempts. Maximum {MAX_2FA_RETRIES} retries allowed.")
+
+    logger.info(f"Submitting 2FA code (attempt {retry_count + 1}/{MAX_2FA_RETRIES})")
 
     # Activer le tracing temporairement pour déboguer la vérification 2FA
     with TemporaryTracing(service_name="linkedin-auth-2fa") as tracer:
@@ -207,8 +260,16 @@ async def verify_2fa_code(request: Verify2FARequest):
                     logger.warning(f"2FA verification failed: {error_message}")
                     span.set_attribute("result", "error")
                     span.set_attribute("error_message", error_message or "Unknown")
+
+                    # BUGFIX: Increment retry count on failure
+                    auth_session["retry_count"] = retry_count + 1
+                    remaining = MAX_2FA_RETRIES - (retry_count + 1)
+
                     # DO NOT close browser session here to allow retry
-                    raise HTTPException(status_code=401, detail=error_message or "Invalid 2FA code. Please try again.")
+                    detail = error_message or "Invalid 2FA code."
+                    if remaining > 0:
+                        detail += f" {remaining} attempt(s) remaining."
+                    raise HTTPException(status_code=401, detail=detail)
 
                 if await page.is_visible(feed_selector):
                     logger.info("2FA verification successful, saving session.")
