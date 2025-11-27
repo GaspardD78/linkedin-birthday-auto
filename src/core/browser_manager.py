@@ -265,26 +265,31 @@ class BrowserManager:
             logger.error(f"Failed to save auth state: {e}")
             raise BrowserError(f"Failed to save auth state: {e}")
 
-    def take_screenshot(self, path: str, full_page: bool = False) -> None:
+    def take_screenshot(self, path: str, full_page: bool = False, timeout: int = 10000) -> None:
         """
-        Prend une capture d'écran.
+        Prend une capture d'écran (non-bloquant pour le debug).
 
         Args:
             path: Chemin du fichier de sortie
             full_page: Capturer la page entière ou seulement le viewport
+            timeout: Timeout en millisecondes (défaut: 10000ms = 10s)
 
-        Raises:
-            BrowserError: Si la capture échoue
+        Note:
+            Les erreurs de screenshot sont loguées mais ne lèvent pas d'exception
+            car les screenshots sont principalement utilisés pour le debug.
         """
         if not self.page:
-            raise BrowserError("No page created. Call create_browser() first.")
+            logger.warning(f"Cannot take screenshot '{path}': No page created")
+            return
 
         try:
-            self.page.screenshot(path=path, full_page=full_page)
+            # Petit délai pour stabiliser la page avant screenshot
+            self.page.wait_for_timeout(500)
+            self.page.screenshot(path=path, full_page=full_page, timeout=timeout)
             logger.debug(f"Screenshot saved to: {path}")
         except Exception as e:
-            logger.error(f"Failed to take screenshot: {e}")
-            raise BrowserError(f"Failed to take screenshot: {e}")
+            # Screenshots sont pour debug uniquement - ne pas bloquer l'exécution
+            logger.warning(f"Failed to take screenshot '{path}': {e}")
 
     def close(self) -> None:
         """Ferme proprement le browser et Playwright avec timeout protection."""
