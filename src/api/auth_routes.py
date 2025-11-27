@@ -164,10 +164,27 @@ async def start_authentication(request: StartAuthRequest):
                 logger.info("Waiting for login response...")
                 span.add_event("wait_for_response")
 
-                await page.wait_for_selector(
-                    f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}",
-                    timeout=90000
-                )
+                # Increased timeout for Raspberry Pi 4 (from 90s to 180s)
+                try:
+                    await page.wait_for_selector(
+                        f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}",
+                        timeout=180000
+                    )
+                except PlaywrightTimeoutError:
+                    # Capture current page state for debugging
+                    current_url = page.url
+                    page_title = await page.title()
+                    logger.error(f"Timeout waiting for login response. Current URL: {current_url}, Title: {page_title}")
+
+                    # Take screenshot for debugging
+                    try:
+                        screenshot_path = "/app/logs/auth_timeout.png"
+                        await page.screenshot(path=screenshot_path)
+                        logger.info(f"Screenshot saved to: {screenshot_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to capture screenshot: {e}")
+
+                    raise
 
                 if await page.is_visible(captcha_selector):
                     logger.warning("Captcha detected! Automated login blocked.")
@@ -253,7 +270,8 @@ async def verify_2fa_code(request: Verify2FARequest):
 
                 logger.info("Waiting for 2FA verification response...")
                 span.add_event("wait_for_2fa_response")
-                await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=90000)
+                # Increased timeout for Raspberry Pi 4 (from 90s to 180s)
+                await page.wait_for_selector(f"{feed_selector}, {error_selector}", timeout=180000)
 
                 if await page.is_visible(error_selector):
                     error_message = await page.text_content(error_selector)
