@@ -11,11 +11,13 @@ export function LogsWidget() {
   const [logs, setLogs] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [logsConnected, setLogsConnected] = useState<boolean | null>(null)
-  const logsEndRef = useRef<HTMLDivElement>(null)
+  const logsContainerRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom of logs container only (not entire page)
   const scrollToBottom = () => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight
+    }
   }
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export function LogsWidget() {
       </CardHeader>
       <CardContent className="flex-1 min-h-0">
         <div
+          ref={logsContainerRef}
           className="rounded-md p-4 h-[400px] overflow-y-auto font-mono text-sm border whitespace-pre-wrap shadow-inner custom-scrollbar"
           style={{
             backgroundColor: '#1e1e1e',
@@ -122,7 +125,6 @@ export function LogsWidget() {
               <span className="text-slate-600">→ Logs will appear here in real-time (refresh every 3s)</span>
             </div>
           )}
-          <div ref={logsEndRef} />
         </div>
         <div className="mt-2 text-xs text-slate-600 flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
