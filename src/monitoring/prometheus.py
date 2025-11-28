@@ -3,16 +3,13 @@ Client Prometheus pour l'export des métriques.
 """
 
 import os
-from prometheus_client import start_http_server, write_to_textfile, CollectorRegistry, REGISTRY
-from .metrics import (
-    MESSAGES_SENT_TOTAL,
-    BIRTHDAYS_PROCESSED,
-    RUN_DURATION_SECONDS,
-    WEEKLY_LIMIT_REMAINING
-)
+
+from prometheus_client import REGISTRY, start_http_server, write_to_textfile
+
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
+
 
 class PrometheusClient:
     """

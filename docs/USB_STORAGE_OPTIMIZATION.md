@@ -1,32 +1,31 @@
 # 💾 Optimisation USB Storage pour Raspberry Pi 4
 
-**Date:** 2025-11-27
-**Version:** 2.1.0
-**Prérequis:** Clé USB 16 Go formatée en ext4
+**Date:** 2025-11-27 **Version:** 2.1.0 **Prérequis:** Clé USB 16 Go formatée en ext4
 
----
+______________________________________________________________________
 
 ## 🎯 OBJECTIF
 
 Utiliser une clé USB externe pour stocker :
+
 - ✅ Base de données SQLite (performances accrues)
 - ✅ Logs du bot (économie carte SD)
 - ✅ Screenshots de debug (I/O optimisé)
 - ✅ Backups automatiques (sécurité)
 
----
+______________________________________________________________________
 
 ## 📊 AVANTAGES vs CARTE SD
 
-| Critère | Carte SD | USB ext4 | Gain |
-|---------|----------|----------|------|
-| **Vitesse lecture** | ~20 MB/s | ~50-100 MB/s | **+150%** |
-| **Vitesse écriture** | ~10 MB/s | ~30-50 MB/s | **+300%** |
-| **Durabilité** | Faible | Moyenne | **+200%** |
-| **IOPS (SQLite)** | ~100 | ~500 | **+400%** |
-| **Latence** | 5-10 ms | 1-3 ms | **-70%** |
+| Critère              | Carte SD | USB ext4     | Gain      |
+| -------------------- | -------- | ------------ | --------- |
+| **Vitesse lecture**  | ~20 MB/s | ~50-100 MB/s | **+150%** |
+| **Vitesse écriture** | ~10 MB/s | ~30-50 MB/s  | **+300%** |
+| **Durabilité**       | Faible   | Moyenne      | **+200%** |
+| **IOPS (SQLite)**    | ~100     | ~500         | **+400%** |
+| **Latence**          | 5-10 ms  | 1-3 ms       | **-70%**  |
 
----
+______________________________________________________________________
 
 ## 🚀 INSTALLATION AUTOMATIQUE
 
@@ -38,16 +37,17 @@ cd /home/user/linkedin-birthday-auto
 ```
 
 Le script va :
+
 1. ✅ Détecter automatiquement votre clé USB
-2. ✅ Créer la structure de dossiers
-3. ✅ Configurer le montage automatique (fstab)
-4. ✅ Migrer les données existantes
-5. ✅ Optimiser les performances (noatime, nodiratime)
-6. ✅ Mettre à jour la configuration du projet
+1. ✅ Créer la structure de dossiers
+1. ✅ Configurer le montage automatique (fstab)
+1. ✅ Migrer les données existantes
+1. ✅ Optimiser les performances (noatime, nodiratime)
+1. ✅ Mettre à jour la configuration du projet
 
 **Durée estimée:** 2-3 minutes
 
----
+______________________________________________________________________
 
 ### Méthode 2 : Configuration manuelle
 
@@ -131,7 +131,7 @@ if [ -d screenshots ]; then
 fi
 ```
 
----
+______________________________________________________________________
 
 ## ⚙️ CONFIGURATION DU PROJET
 
@@ -146,9 +146,10 @@ database:
   timeout: 30
 ```
 
-Pour les logs et screenshots, le projet utilisera automatiquement `/mnt/linkedin-data/logs/` et `/mnt/linkedin-data/screenshots/`.
+Pour les logs et screenshots, le projet utilisera automatiquement `/mnt/linkedin-data/logs/` et
+`/mnt/linkedin-data/screenshots/`.
 
----
+______________________________________________________________________
 
 ## 🔧 OPTIMISATIONS AVANCÉES
 
@@ -171,17 +172,19 @@ sudo tune2fs -o journal_data_writeback /dev/sda1
 ### Option 3 : Utiliser tmpfs pour les logs temporaires
 
 Ajouter à `/etc/fstab` :
+
 ```
 tmpfs /mnt/linkedin-data/temp tmpfs defaults,noatime,size=256M 0 0
 ```
 
 Puis synchroniser vers USB périodiquement avec un cron :
+
 ```bash
 # Crontab : toutes les heures
 0 * * * * rsync -a /mnt/linkedin-data/temp/ /mnt/linkedin-data/logs/
 ```
 
----
+______________________________________________________________________
 
 ## 📈 SURVEILLANCE & MONITORING
 
@@ -220,7 +223,7 @@ journalctl -u systemd-fsck@dev-disk-by\\x2duuid-YOUR\\x2dUUID.service
 dmesg | grep -i "usb\|sda"
 ```
 
----
+______________________________________________________________________
 
 ## 🛡️ SÉCURITÉ & BACKUP
 
@@ -245,6 +248,7 @@ echo "Backup créé: linkedin_automation_$DATE.db.gz"
 ```
 
 Ajouter au crontab :
+
 ```bash
 crontab -e
 
@@ -265,7 +269,7 @@ sudo fsck.ext4 -f /dev/sda1
 sudo mount -a
 ```
 
----
+______________________________________________________________________
 
 ## 🚨 DÉPANNAGE
 
@@ -327,31 +331,31 @@ print(f'Space saved: {result[\"space_saved_mb\"]} MB')
 "
 ```
 
----
+______________________________________________________________________
 
 ## 📊 BENCHMARKS (Pi4 4GB)
 
 ### Tests réalisés avec clé USB 3.0 SanDisk Ultra 16 Go
 
-| Opération | SD Card | USB ext4 | Amélioration |
-|-----------|---------|----------|--------------|
-| **INSERT 1000 rows** | 2.5s | 0.8s | **-68%** |
-| **SELECT 10000 rows** | 3.2s | 1.1s | **-66%** |
-| **VACUUM 50 MB DB** | 25s | 8s | **-68%** |
-| **Write 100 MB logs** | 15s | 5s | **-67%** |
-| **Screenshot save** | 0.8s | 0.3s | **-63%** |
+| Opération             | SD Card | USB ext4 | Amélioration |
+| --------------------- | ------- | -------- | ------------ |
+| **INSERT 1000 rows**  | 2.5s    | 0.8s     | **-68%**     |
+| **SELECT 10000 rows** | 3.2s    | 1.1s     | **-66%**     |
+| **VACUUM 50 MB DB**   | 25s     | 8s       | **-68%**     |
+| **Write 100 MB logs** | 15s     | 5s       | **-67%**     |
+| **Screenshot save**   | 0.8s    | 0.3s     | **-63%**     |
 
 ### Consommation mémoire
 
-| Scénario | Avant (SD) | Après (USB) | Différence |
-|----------|------------|-------------|------------|
-| Idle bot | 180 MB | 170 MB | -10 MB |
-| Running bot | 420 MB | 380 MB | -40 MB |
-| Auth 2FA | 450 MB | 390 MB | -60 MB |
+| Scénario    | Avant (SD) | Après (USB) | Différence |
+| ----------- | ---------- | ----------- | ---------- |
+| Idle bot    | 180 MB     | 170 MB      | -10 MB     |
+| Running bot | 420 MB     | 380 MB      | -40 MB     |
+| Auth 2FA    | 450 MB     | 390 MB      | -60 MB     |
 
 **Explication:** Moins de buffering I/O nécessaire grâce à la vitesse USB.
 
----
+______________________________________________________________________
 
 ## ✅ CHECKLIST DE VALIDATION
 
@@ -359,45 +363,44 @@ Après installation, vérifier :
 
 - [ ] Clé USB montée : `mountpoint /mnt/linkedin-data`
 - [ ] Permissions correctes : `ls -lah /mnt/linkedin-data`
-- [ ] Base de données accessible : `sqlite3 /mnt/linkedin-data/database/linkedin_automation.db ".tables"`
+- [ ] Base de données accessible :
+  `sqlite3 /mnt/linkedin-data/database/linkedin_automation.db ".tables"`
 - [ ] Écriture fonctionnelle : `touch /mnt/linkedin-data/test.txt && rm /mnt/linkedin-data/test.txt`
 - [ ] Montage automatique : `sudo umount /mnt/linkedin-data && sudo mount -a`
 - [ ] Config projet à jour : `grep "db_path" config/config.yaml`
 - [ ] Bot démarre correctement : `python main.py validate`
 
----
+______________________________________________________________________
 
 ## 🎓 RECOMMANDATIONS FINALES
 
 ### ✅ À FAIRE
 
 1. **Utiliser une clé USB 3.0** (pas 2.0) pour performances maximales
-2. **Brancher sur port USB 3.0 bleu** du Raspberry Pi 4
-3. **Mettre en place des backups automatiques** (script fourni)
-4. **Surveiller l'espace disque** régulièrement
-5. **Vérifier l'intégrité** mensuellement avec fsck
+1. **Brancher sur port USB 3.0 bleu** du Raspberry Pi 4
+1. **Mettre en place des backups automatiques** (script fourni)
+1. **Surveiller l'espace disque** régulièrement
+1. **Vérifier l'intégrité** mensuellement avec fsck
 
 ### ❌ À ÉVITER
 
 1. Ne pas débrancher la clé pendant que le bot tourne
-2. Ne pas désactiver le journaling sans onduleur
-3. Ne pas oublier de migrer les données existantes
-4. Ne pas utiliser une clé USB de mauvaise qualité
-5. Ne pas remplir complètement la clé (garder 20% libre)
+1. Ne pas désactiver le journaling sans onduleur
+1. Ne pas oublier de migrer les données existantes
+1. Ne pas utiliser une clé USB de mauvaise qualité
+1. Ne pas remplir complètement la clé (garder 20% libre)
 
----
+______________________________________________________________________
 
 ## 📞 SUPPORT
 
 Si vous rencontrez des problèmes :
 
 1. Vérifier les logs : `tail -f /mnt/linkedin-data/logs/linkedin-bot.log`
-2. Vérifier dmesg : `dmesg | tail -50`
-3. Tester la clé : `sudo hdparm -t /dev/sda`
-4. Consulter le guide de dépannage ci-dessus
+1. Vérifier dmesg : `dmesg | tail -50`
+1. Tester la clé : `sudo hdparm -t /dev/sda`
+1. Consulter le guide de dépannage ci-dessus
 
----
+______________________________________________________________________
 
-**Créé le:** 2025-11-27
-**Auteur:** Claude (Sonnet 4.5)
-**Version doc:** 1.0
+**Créé le:** 2025-11-27 **Auteur:** Claude (Sonnet 4.5) **Version doc:** 1.0

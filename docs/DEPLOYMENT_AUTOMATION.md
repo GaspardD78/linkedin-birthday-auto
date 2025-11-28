@@ -1,32 +1,37 @@
 # Système de Déploiement et Maintenance Automatisé
 
-Ce document décrit le système de déploiement et maintenance automatisé ajouté au LinkedIn Birthday Auto Bot.
+Ce document décrit le système de déploiement et maintenance automatisé ajouté au LinkedIn Birthday
+Auto Bot.
 
 ## 📋 Table des matières
 
 - [Vue d'ensemble](#vue-densemble)
 - [Widget Dashboard](#widget-dashboard)
 - [Endpoints API](#endpoints-api)
-- [Script de déploiement](#script-de-déploiement)
-- [Bouton d'arrêt d'urgence](#bouton-darrêt-durgence)
-- [Tâches de maintenance](#tâches-de-maintenance)
-- [Sécurité](#sécurité)
+- [Script de déploiement](#script-de-d%C3%A9ploiement)
+- [Bouton d'arrêt d'urgence](#bouton-darr%C3%AAt-durgence)
+- [Tâches de maintenance](#t%C3%A2ches-de-maintenance)
+- [Sécurité](#s%C3%A9curit%C3%A9)
 
 ## 🎯 Vue d'ensemble
 
 Le système de déploiement et maintenance automatisé fournit :
 
-1. **Surveillance des services** : Monitoring en temps réel de l'état des services Docker (API, Worker, Redis, Dashboard)
-2. **Gestion des jobs** : Visualisation et gestion des jobs RQ (en attente, en cours, terminés, échoués)
-3. **Maintenance automatisée** : Nettoyage des logs, queue, jobs terminés, optimisation de la base de données
-4. **Déploiement simplifié** : Script automatique pour git pull, rebuild et restart des services
-5. **Arrêt d'urgence** : Bouton pour arrêter immédiatement tous les workers actifs
+1. **Surveillance des services** : Monitoring en temps réel de l'état des services Docker (API,
+   Worker, Redis, Dashboard)
+1. **Gestion des jobs** : Visualisation et gestion des jobs RQ (en attente, en cours, terminés,
+   échoués)
+1. **Maintenance automatisée** : Nettoyage des logs, queue, jobs terminés, optimisation de la base
+   de données
+1. **Déploiement simplifié** : Script automatique pour git pull, rebuild et restart des services
+1. **Arrêt d'urgence** : Bouton pour arrêter immédiatement tous les workers actifs
 
 ## 📊 Widget Dashboard
 
 ### Emplacement
 
-Le widget "Déploiement & Maintenance" est situé dans la colonne de droite du dashboard principal, entre "System Health" et "Top 5 Contacts".
+Le widget "Déploiement & Maintenance" est situé dans la colonne de droite du dashboard principal,
+entre "System Health" et "Top 5 Contacts".
 
 ### Sections du Widget
 
@@ -39,6 +44,7 @@ Affiche l'état de chaque service :
 - ⚠️ **Error** : Service en erreur
 
 Services surveillés :
+
 - Redis Bot (queue)
 - Bot Worker (RQ worker)
 - API (FastAPI)
@@ -83,6 +89,7 @@ Base URL : `http://linkedin-bot-api:8000/deployment`
 Récupère le statut de tous les services.
 
 **Réponse** :
+
 ```json
 {
   "services": [
@@ -101,6 +108,7 @@ Récupère le statut de tous les services.
 Liste tous les jobs RQ.
 
 **Réponse** :
+
 ```json
 {
   "queued": [...],
@@ -116,6 +124,7 @@ Liste tous les jobs RQ.
 Exécute une action de maintenance.
 
 **Requête** :
+
 ```json
 {
   "action": "clean_logs" | "clean_queue" | "clean_finished_jobs" | "vacuum_db"
@@ -123,6 +132,7 @@ Exécute une action de maintenance.
 ```
 
 **Réponse** :
+
 ```json
 {
   "action": "clean_logs",
@@ -141,6 +151,7 @@ Exécute une action de maintenance.
 Exécute une action de déploiement.
 
 **Requête** :
+
 ```json
 {
   "action": "pull" | "rebuild" | "restart" | "full_deploy",
@@ -149,6 +160,7 @@ Exécute une action de déploiement.
 ```
 
 **Réponse** :
+
 ```json
 {
   "action": "pull",
@@ -199,11 +211,11 @@ Routes proxy vers l'API Python :
 Le script automatise :
 
 1. **Git pull** : Récupère les dernières modifications
-2. **Stash automatique** : Sauvegarde les modifications locales
-3. **Rebuild Docker** : Reconstruit les images
-4. **Restart services** : Redémarre les services
-5. **Health check** : Vérifie que les services sont opérationnels
-6. **Logs** : Affiche les logs récents
+1. **Stash automatique** : Sauvegarde les modifications locales
+1. **Rebuild Docker** : Reconstruit les images
+1. **Restart services** : Redémarre les services
+1. **Health check** : Vérifie que les services sont opérationnels
+1. **Logs** : Affiche les logs récents
 
 ## ⏹️ Bouton d'Arrêt d'Urgence
 
@@ -212,8 +224,8 @@ Le script automatise :
 Le bouton d'arrêt d'urgence (dans le widget "Contrôle des Scripts") :
 
 1. **Annule** tous les jobs en cours d'exécution
-2. **Vide** la queue des jobs en attente
-3. **Retourne** un rapport détaillé :
+1. **Vide** la queue des jobs en attente
+1. **Retourne** un rapport détaillé :
    - Nombre de jobs annulés
    - Nombre de jobs supprimés de la queue
    - Total des jobs arrêtés
@@ -227,7 +239,7 @@ Implémenté dans `src/api/app.py:460-541` :
 async def stop_bot(authenticated: bool = Depends(verify_api_key)):
     """Arrête tous les bots actifs."""
     # 1. Annuler tous les jobs en cours
-    started_registry = StartedJobRegistry('linkedin-bot', connection=redis_conn)
+    started_registry = StartedJobRegistry("linkedin-bot", connection=redis_conn)
     for job_id in started_registry.get_job_ids():
         job = Job.fetch(job_id, connection=redis_conn)
         job.cancel()
@@ -245,9 +257,9 @@ async def stop_bot(authenticated: bool = Depends(verify_api_key)):
 Pour vérifier que le bouton fonctionne :
 
 1. Lancer un job (Birthday ou Visitor)
-2. Cliquer sur "Arrêt d'Urgence"
-3. Vérifier dans les logs que les jobs sont bien annulés
-4. Vérifier dans le widget "Jobs RQ" que les queues sont vides
+1. Cliquer sur "Arrêt d'Urgence"
+1. Vérifier dans les logs que les jobs sont bien annulés
+1. Vérifier dans le widget "Jobs RQ" que les queues sont vides
 
 ## 🧹 Tâches de Maintenance
 
@@ -256,11 +268,13 @@ Pour vérifier que le bouton fonctionne :
 Nettoie les fichiers de logs anciens.
 
 **Comportement** :
+
 - Garde uniquement les 1000 dernières lignes
 - Calcule et retourne la taille avant/après
 - Fichier : `/app/logs/linkedin_bot.log`
 
 **Exemple** :
+
 ```bash
 curl -X POST http://localhost:8000/deployment/maintenance \
   -H "X-API-Key: internal_secret_key" \
@@ -273,6 +287,7 @@ curl -X POST http://localhost:8000/deployment/maintenance \
 Vide complètement la queue Redis des jobs en attente.
 
 **Comportement** :
+
 - Supprime tous les jobs de la queue `linkedin-bot`
 - Retourne le nombre de jobs supprimés
 
@@ -281,6 +296,7 @@ Vide complètement la queue Redis des jobs en attente.
 Supprime les jobs terminés et échoués de Redis.
 
 **Comportement** :
+
 - Nettoie les registres `FinishedJobRegistry` et `FailedJobRegistry`
 - Garde uniquement les jobs en cours et en attente
 - Libère de la mémoire Redis
@@ -290,6 +306,7 @@ Supprime les jobs terminés et échoués de Redis.
 Optimise la base de données SQLite.
 
 **Comportement** :
+
 - Exécute `VACUUM` sur la base SQLite
 - Défragmente et récupère l'espace disque
 - Améliore les performances des requêtes
@@ -323,19 +340,20 @@ environment:
 
 ### Limitations
 
-Les actions de déploiement (rebuild, restart) nécessitent d'être exécutées depuis l'hôte Docker car :
+Les actions de déploiement (rebuild, restart) nécessitent d'être exécutées depuis l'hôte Docker car
+:
 
 1. Le conteneur n'a pas accès au Docker daemon de l'hôte
-2. Cela évite les risques de sécurité (privilege escalation)
-3. Utilisez le script `scripts/deploy.sh` pour ces opérations
+1. Cela évite les risques de sécurité (privilege escalation)
+1. Utilisez le script `scripts/deploy.sh` pour ces opérations
 
 ### Bonnes Pratiques
 
 1. **Changez l'API Key** en production
-2. **Limitez l'accès** au dashboard (firewall, VPN)
-3. **Surveillez les logs** après chaque maintenance
-4. **Testez** les actions sur un environnement de dev d'abord
-5. **Backupez** la base de données avant VACUUM
+1. **Limitez l'accès** au dashboard (firewall, VPN)
+1. **Surveillez les logs** après chaque maintenance
+1. **Testez** les actions sur un environnement de dev d'abord
+1. **Backupez** la base de données avant VACUUM
 
 ## 📝 Dépendances
 
@@ -356,30 +374,35 @@ Aucune dépendance supplémentaire requise.
 ### Le widget ne charge pas
 
 1. Vérifier que l'API Python est accessible :
+
    ```bash
    curl http://localhost:8000/health
    ```
 
-2. Vérifier les logs du dashboard :
+1. Vérifier les logs du dashboard :
+
    ```bash
    docker compose logs dashboard
    ```
 
-3. Vérifier la configuration des variables d'environnement
+1. Vérifier la configuration des variables d'environnement
 
 ### Les actions de maintenance échouent
 
 1. Vérifier les permissions sur les fichiers :
+
    ```bash
    ls -la /app/logs/linkedin_bot.log
    ```
 
-2. Vérifier que Redis est accessible :
+1. Vérifier que Redis est accessible :
+
    ```bash
    docker compose exec redis-bot redis-cli ping
    ```
 
-3. Vérifier les logs de l'API :
+1. Vérifier les logs de l'API :
+
    ```bash
    docker compose logs api
    ```
@@ -387,16 +410,19 @@ Aucune dépendance supplémentaire requise.
 ### Le script de déploiement échoue
 
 1. Vérifier que Docker Compose est installé :
+
    ```bash
    docker compose version
    ```
 
-2. Vérifier les permissions du script :
+1. Vérifier les permissions du script :
+
    ```bash
    chmod +x scripts/deploy.sh
    ```
 
-3. Exécuter avec plus de verbosité :
+1. Exécuter avec plus de verbosité :
+
    ```bash
    bash -x scripts/deploy.sh
    ```
@@ -413,8 +439,8 @@ Aucune dépendance supplémentaire requise.
 Améliorations possibles :
 
 1. **Webhooks** : Notification Slack/Discord lors des déploiements
-2. **Rollback automatique** : Revenir à la version précédente en cas d'échec
-3. **Blue-Green Deployment** : Déploiement sans interruption de service
-4. **Health checks avancés** : Vérification de la cohérence des données
-5. **Backup automatique** : Sauvegarde avant chaque déploiement
-6. **Monitoring Prometheus** : Métriques détaillées des déploiements
+1. **Rollback automatique** : Revenir à la version précédente en cas d'échec
+1. **Blue-Green Deployment** : Déploiement sans interruption de service
+1. **Health checks avancés** : Vérification de la cohérence des données
+1. **Backup automatique** : Sauvegarde avant chaque déploiement
+1. **Monitoring Prometheus** : Métriques détaillées des déploiements

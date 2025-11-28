@@ -12,7 +12,7 @@
 #   pre-commit autoupdate
 
 default_language_version:
-  python: python3.9
+  python: python3.12
 
 repos:
   # ═══════════════════════════════════════════════════════════════════
@@ -74,7 +74,7 @@ repos:
     rev: 23.12.1
     hooks:
       - id: black
-        language_version: python3.9
+        language_version: python3.12
         args: [--line-length=100]
 
   # ═══════════════════════════════════════════════════════════════════
@@ -99,7 +99,6 @@ repos:
         additional_dependencies:
           - pydantic>=2.5.0
           - types-PyYAML
-          - types-python-dotenv
         args:
           - --config-file=pyproject.toml
           - --ignore-missing-imports

@@ -1,6 +1,7 @@
 # 🚀 Déploiement - LinkedIn Birthday Auto Bot
 
-Ce répertoire contient les fichiers de configuration pour le déploiement automatisé du LinkedIn Birthday Bot.
+Ce répertoire contient les fichiers de configuration pour le déploiement automatisé du LinkedIn
+Birthday Bot.
 
 ## 📁 Structure
 
@@ -63,6 +64,7 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Fichier:** `systemd/linkedin-bot.service`
 
 **Commandes:**
+
 - Démarrer: `sudo systemctl start linkedin-bot`
 - Arrêter: `sudo systemctl stop linkedin-bot`
 - Statut: `sudo systemctl status linkedin-bot`
@@ -73,10 +75,12 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Rôle:** Monitoring automatique des ressources toutes les heures
 
 **Fichiers:**
+
 - `systemd/linkedin-bot-monitor.service`
 - `systemd/linkedin-bot-monitor.timer`
 
 **Métriques:**
+
 - CPU usage et température
 - RAM et SWAP
 - Espace disque
@@ -85,6 +89,7 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Logs:** `/var/log/linkedin-bot-health.log`
 
 **Commandes:**
+
 - Statut: `sudo systemctl status linkedin-bot-monitor.timer`
 - Voir logs: `tail -f /var/log/linkedin-bot-health.log`
 - Test manuel: `sudo systemctl start linkedin-bot-monitor.service`
@@ -94,10 +99,12 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Rôle:** Backup automatique quotidien de la base de données (3h du matin)
 
 **Fichiers:**
+
 - `systemd/linkedin-bot-backup.service`
 - `systemd/linkedin-bot-backup.timer`
 
 **Fonctionnalités:**
+
 - Backup compressé (gzip)
 - Rotation automatique (30 derniers)
 - Logs détaillés
@@ -105,6 +112,7 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Logs:** `/var/log/linkedin-bot-backup.log`
 
 **Commandes:**
+
 - Statut: `sudo systemctl status linkedin-bot-backup.timer`
 - Backup manuel: `sudo systemctl start linkedin-bot-backup.service`
 - Voir backups: `ls -lh ~/linkedin-birthday-auto/backups/`
@@ -114,19 +122,22 @@ sudo systemctl start linkedin-bot-cleanup.timer
 **Rôle:** Nettoyage automatique hebdomadaire (dimanche 2h du matin)
 
 **Fichiers:**
+
 - `systemd/linkedin-bot-cleanup.service`
 - `systemd/linkedin-bot-cleanup.timer`
 
 **Éléments nettoyés:**
+
 - Images Docker non utilisées (> 7 jours)
 - Logs applicatifs anciens (> 30 jours)
 - Screenshots de debug (> 7 jours)
-- Cache Python (__pycache__, *.pyc)
+- Cache Python (__pycache__, \*.pyc)
 - Cache APT et journaux système
 
 **Script:** `scripts/cleanup_pi4.sh`
 
 **Commandes:**
+
 - Statut: `sudo systemctl status linkedin-bot-cleanup.timer`
 - Nettoyage manuel: `sudo systemctl start linkedin-bot-cleanup.service`
 - Logs: `sudo journalctl -u linkedin-bot-cleanup.service`
@@ -268,7 +279,8 @@ sudo -u pi bash ~/linkedin-birthday-auto/scripts/monitor_pi4_health.sh
 
 Pour plus de détails, consultez:
 
-- **[AUTOMATION_DEPLOYMENT_PI4.md](../AUTOMATION_DEPLOYMENT_PI4.md)** - Guide complet d'automatisation
+- **[AUTOMATION_DEPLOYMENT_PI4.md](../AUTOMATION_DEPLOYMENT_PI4.md)** - Guide complet
+  d'automatisation
 - **[SETUP_PI4_FREEBOX.md](../SETUP_PI4_FREEBOX.md)** - Configuration initiale Pi4
 - **[README.md](../README.md)** - Documentation principale
 
@@ -277,10 +289,10 @@ Pour plus de détails, consultez:
 En cas de problème:
 
 1. Vérifier les logs: `sudo journalctl -u linkedin-bot*`
-2. Consulter le troubleshooting dans [AUTOMATION_DEPLOYMENT_PI4.md](../AUTOMATION_DEPLOYMENT_PI4.md#troubleshooting)
-3. Ouvrir une issue sur GitHub
+1. Consulter le troubleshooting dans
+   [AUTOMATION_DEPLOYMENT_PI4.md](../AUTOMATION_DEPLOYMENT_PI4.md#troubleshooting)
+1. Ouvrir une issue sur GitHub
 
----
+______________________________________________________________________
 
-**Version:** 2.0.0
-**Date:** 2024-11-28
+**Version:** 2.0.0 **Date:** 2024-11-28

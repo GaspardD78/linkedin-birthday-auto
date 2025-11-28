@@ -8,15 +8,17 @@
 
 **Automatisez vos messages d'anniversaire LinkedIn** avec intelligence, flexibilité et sécurité.
 
-Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière naturelle et personnalisée. Optimisé pour fonctionner en local ou sur serveur (Raspberry Pi, VPS).
+Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière
+naturelle et personnalisée. Optimisé pour fonctionner en local ou sur serveur (Raspberry Pi, VPS).
 
----
+______________________________________________________________________
 
 ## ✨ Caractéristiques principales
 
 ### 🎯 Modes d'exécution
 
-- **Mode Standard** : Anniversaires du jour uniquement avec limites hebdomadaires (80/semaine recommandé)
+- **Mode Standard** : Anniversaires du jour uniquement avec limites hebdomadaires (80/semaine
+  recommandé)
 - **Mode Unlimited** : Aujourd'hui + retard (jusqu'à N jours) sans limites hebdomadaires
 - **Mode API REST** : Contrôle via HTTP avec FastAPI (health checks, metrics, triggers)
 
@@ -33,7 +35,8 @@ Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts Linked
 - **Statistiques en temps réel** via API `/metrics`
 - **Logs structurés** avec niveaux (DEBUG, INFO, WARNING, ERROR)
 - **Health checks** pour supervision
-- **🆕 Dashboard de déploiement** : surveillance des services, gestion des jobs, maintenance automatisée
+- **🆕 Dashboard de déploiement** : surveillance des services, gestion des jobs, maintenance
+  automatisée
 - **🆕 Script de déploiement** : automatisation complète (pull, rebuild, restart)
 - **🆕 Arrêt d'urgence** : bouton pour arrêter immédiatement tous les workers
 
@@ -44,17 +47,18 @@ Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts Linked
 - **Type-safe** : Type hints complets + mypy validation
 - **Production-ready** : Pre-commit hooks, CI/CD, Docker support
 
----
+______________________________________________________________________
 
 ## 🚀 Quick Start
 
 ### 🍓 Raspberry Pi 4 Users
 
-**⚠️ NE PAS UTILISER `pip install` !** L'installation sur Raspberry Pi est entièrement automatisée via Docker pour éviter les problèmes de compilation.
+**⚠️ NE PAS UTILISER `pip install` !** L'installation sur Raspberry Pi est entièrement automatisée
+via Docker pour éviter les problèmes de compilation.
 
 👉 **[SUIVRE LE GUIDE D'INSTALLATION RPI 4 (CLIQUEZ ICI)](docs/RPI_QUICKSTART.md)**
 
----
+______________________________________________________________________
 
 ### Installation Standard (PC/Mac/Linux)
 
@@ -127,9 +131,9 @@ database:
 **Méthode 1: Exporter les cookies** (recommandé)
 
 1. Installez l'extension [Cookie-Editor](https://cookie-editor.cgagnier.ca/)
-2. Connectez-vous à LinkedIn (avec 2FA si activé)
-3. Exportez les cookies en JSON
-4. Sauvegardez dans `auth_state.json`:
+1. Connectez-vous à LinkedIn (avec 2FA si activé)
+1. Exportez les cookies en JSON
+1. Sauvegardez dans `auth_state.json`:
 
 ```json
 {
@@ -171,22 +175,22 @@ python main.py bot
 python main.py bot --mode unlimited --max-days-late 10
 ```
 
----
+______________________________________________________________________
 
 ## 📖 Documentation
 
-| Document | Description |
-|----------|-------------|
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
-| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration depuis v1.x vers v2.0 |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker) |
-| **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)** | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
-| **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)** | Déploiement Pi4 + Synology NAS + Freebox Pop |
-| **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** | Installation sur Raspberry Pi (méthode manuelle v1.x) |
-| **[docs/RASPBERRY_PI_DOCKER_SETUP.md](docs/RASPBERRY_PI_DOCKER_SETUP.md)** | Installation Docker sur Raspberry Pi (v2.0 recommandé) |
-| **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage pour Raspberry Pi |
+| Document                                                                         | Description                                                   |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)**                                           | Architecture détaillée, patterns, composants                  |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**                                     | Migration depuis v1.x vers v2.0                               |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**                                               | Guide déploiement (local, cloud, Docker)                      |
+| **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)**                                 | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
+| **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)**               | Déploiement Pi4 + Synology NAS + Freebox Pop                  |
+| **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)**                             | Installation sur Raspberry Pi (méthode manuelle v1.x)         |
+| **[docs/RASPBERRY_PI_DOCKER_SETUP.md](docs/RASPBERRY_PI_DOCKER_SETUP.md)**       | Installation Docker sur Raspberry Pi (v2.0 recommandé)        |
+| **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage pour Raspberry Pi                          |
 
----
+______________________________________________________________________
 
 ## 🎯 Utilisation
 
@@ -294,7 +298,7 @@ with UnlimitedBirthdayBot(config=config) as bot:
     print(f"Total processed: {results['contacts_processed']}")
 ```
 
----
+______________________________________________________________________
 
 ## 🔧 Configuration avancée
 
@@ -374,7 +378,7 @@ export LINKEDIN_BOT_BROWSER_HEADLESS=false
 export LINKEDIN_BOT_MESSAGING_LIMITS_WEEKLY_MESSAGE_LIMIT=100
 ```
 
----
+______________________________________________________________________
 
 ## 🤖 Automatisation
 
@@ -409,9 +413,10 @@ docker-compose up -d
 **Option 2: Raspberry Pi 4 + Freebox (Standalone) - Recommandé**
 
 Configuration optimisée pour RPi4 (4GB RAM) en mode autonome.
-* **Backend**: FastAPI (Python) + RQ Worker (Redis)
-* **Frontend**: Next.js 14 (Optimisé sans Puppeteer)
-* **Database**: SQLite (local) + Redis (Queue/Cache)
+
+- **Backend**: FastAPI (Python) + RQ Worker (Redis)
+- **Frontend**: Next.js 14 (Optimisé sans Puppeteer)
+- **Database**: SQLite (local) + Redis (Queue/Cache)
 
 ```bash
 # Déploiement automatique (Bot + Dashboard + Redis + SQLite)
@@ -425,9 +430,10 @@ docker compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 *Optimisations appliquées :*
-* Image Dashboard ultra-légère (Puppeteer retiré)
-* Limites mémoire strictes (API: 300MB, Dashboard: 400MB, Worker: 900MB)
-* Utilisation de `rq.Queue` pour décharger l'API des tâches lourdes
+
+- Image Dashboard ultra-légère (Puppeteer retiré)
+- Limites mémoire strictes (API: 300MB, Dashboard: 400MB, Worker: 900MB)
+- Utilisation de `rq.Queue` pour décharger l'API des tâches lourdes
 
 📖 **Documentation complète** : [SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)
 
@@ -462,7 +468,7 @@ sudo systemctl enable linkedin-bot.service
 sudo systemctl start linkedin-bot.service
 ```
 
----
+______________________________________________________________________
 
 ## 🧪 Tests
 
@@ -506,7 +512,7 @@ pre-commit run --all-files
 # - markdown formatting
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Monitoring
 
@@ -550,7 +556,7 @@ curl http://localhost:8000/metrics
 }
 ```
 
----
+______________________________________________________________________
 
 ## 🔒 Sécurité & Bonnes pratiques
 
@@ -567,18 +573,19 @@ curl http://localhost:8000/metrics
 
 Pour éviter la détection LinkedIn:
 
-| Paramètre | Recommandation | Justification |
-|-----------|----------------|---------------|
-| **Messages/semaine** | 80 maximum | Limite LinkedIn non documentée ~100/semaine |
-| **Messages/jour** | 15-20 maximum | Éviter pics suspects |
-| **Délai entre messages** | 3-5 minutes | Comportement humain |
-| **Horaires** | 7h-19h | Heures ouvrables |
-| **Mode headless** | `true` en prod | Performance |
-| **IP** | Résidentielle > Datacenter | LinkedIn détecte les IPs cloud |
+| Paramètre                | Recommandation             | Justification                               |
+| ------------------------ | -------------------------- | ------------------------------------------- |
+| **Messages/semaine**     | 80 maximum                 | Limite LinkedIn non documentée ~100/semaine |
+| **Messages/jour**        | 15-20 maximum              | Éviter pics suspects                        |
+| **Délai entre messages** | 3-5 minutes                | Comportement humain                         |
+| **Horaires**             | 7h-19h                     | Heures ouvrables                            |
+| **Mode headless**        | `true` en prod             | Performance                                 |
+| **IP**                   | Résidentielle > Datacenter | LinkedIn détecte les IPs cloud              |
 
 ### Utilisation responsable
 
-⚠️ **Avertissement**: L'automatisation LinkedIn viole potentiellement leurs [CGU](https://www.linkedin.com/legal/user-agreement). Utilisez à vos propres risques.
+⚠️ **Avertissement**: L'automatisation LinkedIn viole potentiellement leurs
+[CGU](https://www.linkedin.com/legal/user-agreement). Utilisez à vos propres risques.
 
 **Recommandations:**
 
@@ -589,7 +596,7 @@ Pour éviter la détection LinkedIn:
 - 🔴 Pas d'usage commercial massif
 - 🔴 Pas de collecte de données
 
----
+______________________________________________________________________
 
 ## 🐛 Dépannage
 
@@ -639,9 +646,9 @@ rm data/linkedin_bot.db-wal data/linkedin_bot.db-shm
 python main.py bot --headless false --debug
 ```
 
-Voir **[DEPLOYMENT.md](DEPLOYMENT.md#dépannage)** pour plus de solutions.
+Voir **[DEPLOYMENT.md](DEPLOYMENT.md#d%C3%A9pannage)** pour plus de solutions.
 
----
+______________________________________________________________________
 
 ## 📦 Structure du projet
 
@@ -677,7 +684,7 @@ linkedin-birthday-auto/
 └── DEPLOYMENT.md            # Guide déploiement
 ```
 
----
+______________________________________________________________________
 
 ## 🎉 Changelog v2.0
 
@@ -711,7 +718,7 @@ linkedin-birthday-auto/
 
 Voir **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** pour migration depuis v1.x.
 
----
+______________________________________________________________________
 
 ## 🤝 Contribution
 
@@ -745,7 +752,7 @@ git commit -m "feat: ma nouvelle fonctionnalité"
 git push origin feature/ma-fonctionnalite
 ```
 
----
+______________________________________________________________________
 
 ## 📜 Licence
 
@@ -753,7 +760,7 @@ Ce projet est fourni "tel quel", sans garantie d'aucune sorte.
 
 **Utilisation à vos propres risques.** LinkedIn peut détecter et bloquer l'automatisation.
 
----
+______________________________________________________________________
 
 ## 🙏 Crédits
 
@@ -762,15 +769,16 @@ Ce projet est fourni "tel quel", sans garantie d'aucune sorte.
 - **Pydantic** pour la validation
 - **Communauté open-source** pour les feedbacks et contributions
 
----
+______________________________________________________________________
 
 ## 📧 Support
 
 - **Issues**: [GitHub Issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
+- **Discussions**:
+  [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
 - **Documentation**: Voir les fichiers `.md` dans le repo
 
----
+______________________________________________________________________
 
 **Conçu avec ❤️ pour automatiser intelligemment**
 

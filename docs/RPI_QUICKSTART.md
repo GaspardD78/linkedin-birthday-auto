@@ -1,10 +1,12 @@
 # 🥧 Guide Rapide: Raspberry Pi 4 (Docker)
 
-> **⚠️ AVERTISSEMENT :** Ne suivez PAS la procédure d'installation standard (pip install) sur Raspberry Pi. Utilisez ce guide pour une installation conteneurisée (Docker) qui gère toutes les dépendances automatiquement.
+> **⚠️ AVERTISSEMENT :** Ne suivez PAS la procédure d'installation standard (pip install) sur
+> Raspberry Pi. Utilisez ce guide pour une installation conteneurisée (Docker) qui gère toutes les
+> dépendances automatiquement.
 
 Ce guide est optimisé pour **Raspberry Pi OS (Bookworm/Trixie) 64-bit**.
 
----
+______________________________________________________________________
 
 ## 🚀 Installation "Zero to Hero"
 
@@ -20,7 +22,8 @@ cd linkedin-birthday-auto
 
 ### 2. Lancer l'Installation Automatisée
 
-Nous avons créé un script qui installe tout pour vous (Docker, Docker Compose, Services Systemd, SWAP, etc.).
+Nous avons créé un script qui installe tout pour vous (Docker, Docker Compose, Services Systemd,
+SWAP, etc.).
 
 **Exécutez simplement cette commande :**
 
@@ -29,6 +32,7 @@ sudo ./scripts/install_automation_pi4.sh
 ```
 
 > ☕ **Prenez un café !** Le script va :
+>
 > - Installer Docker (si manquant)
 > - Configurer le SWAP pour éviter les crashs de mémoire
 > - Créer les services de démarrage automatique
@@ -57,6 +61,7 @@ LINKEDIN_BOT_MODE=standard      # 'standard' ou 'unlimited'
 ```
 
 *Pour convertir votre JSON de cookies en Base64 :*
+
 ```bash
 # Si vous avez le fichier auth_state.json sur votre PC, utilisez un site comme base64encode.org
 # Ou en ligne de commande locale : cat auth_state.json | base64 -w 0
@@ -64,7 +69,8 @@ LINKEDIN_BOT_MODE=standard      # 'standard' ou 'unlimited'
 
 ### 4. Redémarrer
 
-Une fois le script terminé et le fichier `.env` créé, redémarrez votre Pi pour appliquer les changements (notamment les permissions Docker).
+Une fois le script terminé et le fichier `.env` créé, redémarrez votre Pi pour appliquer les
+changements (notamment les permissions Docker).
 
 ```bash
 sudo reboot
@@ -75,6 +81,7 @@ sudo reboot
 Après le redémarrage, attendez 2-3 minutes que les conteneurs se lancent, puis vérifiez :
 
 **Via le Terminal :**
+
 ```bash
 # Vérifier que les conteneurs tournent
 cd ~/linkedin-birthday-auto
@@ -84,34 +91,38 @@ docker compose -f docker-compose.pi4-standalone.yml ps
 docker compose -f docker-compose.pi4-standalone.yml logs -f bot-worker
 ```
 
-**Via le Dashboard Web :**
-Ouvrez votre navigateur et allez sur :
-`http://<IP_DE_VOTRE_RPI>:3000`
+**Via le Dashboard Web :** Ouvrez votre navigateur et allez sur : `http://<IP_DE_VOTRE_RPI>:3000`
 (Exemple: `http://192.168.1.145:3000`)
 
----
+______________________________________________________________________
 
 ## ❓ FAQ / Dépannage
 
 ### "Command not found: docker"
-Assurez-vous d'avoir redémarré après l'installation (`sudo reboot`). Si cela persiste, exécutez `newgrp docker`.
+
+Assurez-vous d'avoir redémarré après l'installation (`sudo reboot`). Si cela persiste, exécutez
+`newgrp docker`.
 
 ### "ModuleNotFoundError" ou erreurs Python
-🛑 **STOP !** N'essayez pas de lancer `python main.py` directement sur le Pi.
-Le bot tourne **dans Docker**. Toute commande doit passer par Docker ou utiliser le script de déploiement.
+
+🛑 **STOP !** N'essayez pas de lancer `python main.py` directement sur le Pi. Le bot tourne **dans
+Docker**. Toute commande doit passer par Docker ou utiliser le script de déploiement.
 
 Pour lancer une commande manuellement (ex: validation) :
+
 ```bash
 docker compose -f docker-compose.pi4-standalone.yml exec bot-worker python main.py validate
 ```
 
 ### Mettre à jour le bot
+
 ```bash
 cd ~/linkedin-birthday-auto
 git pull
 ./scripts/deploy_pi4_standalone.sh
 ```
 
----
+______________________________________________________________________
 
-📄 Pour une documentation technique détaillée, voir [AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md).
+📄 Pour une documentation technique détaillée, voir
+[AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md).

@@ -1,31 +1,37 @@
 # 🔧 Système de Debugging Avancé
 
-Le script LinkedIn Birthday Wisher inclut maintenant un système complet de debugging et monitoring pour détecter les changements de LinkedIn et les problèmes potentiels.
+Le script LinkedIn Birthday Wisher inclut maintenant un système complet de debugging et monitoring
+pour détecter les changements de LinkedIn et les problèmes potentiels.
 
 ## 🎯 Fonctionnalités
 
 ### 1. **Captures d'écran Automatiques**
+
 - Screenshots à chaque étape critique de l'exécution
 - Screenshots d'erreur avec préfixe `ERROR_`
 - Stockage organisé dans `debug_screenshots/` avec timestamps
 
 ### 2. **Validation de Structure DOM**
+
 - Vérifie que tous les sélecteurs LinkedIn critiques sont valides
 - Détecte les changements de structure du site
 - Génère un rapport JSON : `dom_validation_report.json`
 
 ### 3. **Détection de Restrictions**
+
 - Détecte automatiquement les CAPTCHAs
 - Identifie les rate limits
 - Repère les suspensions de compte
 - Arrête le script avant d'aggraver la situation
 
 ### 4. **Logging Enrichi**
+
 - Logs détaillés avec numéro de ligne et fonction
 - Fichier de log séparé : `linkedin_bot_detailed.log`
 - Contexte complet pour chaque action
 
 ### 5. **Système d'Alertes Email**
+
 - Notifications par email en cas d'erreur critique
 - Attache automatiquement screenshots et logs
 - Configurable via variables d'environnement
@@ -74,26 +80,28 @@ env:
 ### Structure des Screenshots
 
 Les screenshots sont nommés selon le pattern :
+
 ```
 [TYPE]_[SESSION_ID]_[TIME]_[STEP_NAME].png
 ```
 
 **Exemples :**
+
 - `DEBUG_20250118_143022_103045_01_browser_start.png` - Screenshot normal
 - `ERROR_20250118_143022_105234_policy_violation_critical.png` - Erreur critique
 
 ### Types de Screenshots
 
-| Étape | Description |
-|-------|-------------|
-| `01_browser_start` | Démarrage initial |
-| `02_after_login` | Après connexion LinkedIn |
-| `03_birthdays_page_loaded` | Page anniversaires chargée |
-| `policy_violation_*` | Violation de politique détectée |
-| `selector_failed_*` | Échec de validation de sélecteur |
-| `error_timeout` | Timeout Playwright |
-| `error_unexpected` | Erreur inattendue |
-| `99_execution_completed` | Exécution terminée avec succès |
+| Étape                      | Description                      |
+| -------------------------- | -------------------------------- |
+| `01_browser_start`         | Démarrage initial                |
+| `02_after_login`           | Après connexion LinkedIn         |
+| `03_birthdays_page_loaded` | Page anniversaires chargée       |
+| `policy_violation_*`       | Violation de politique détectée  |
+| `selector_failed_*`        | Échec de validation de sélecteur |
+| `error_timeout`            | Timeout Playwright               |
+| `error_unexpected`         | Erreur inattendue                |
+| `99_execution_completed`   | Exécution terminée avec succès   |
 
 ### Rapport de Validation DOM
 
@@ -122,6 +130,7 @@ Le fichier `dom_validation_report.json` contient :
 ```
 
 **Actions selon le statut :**
+
 - ✅ `PASS` : Tout fonctionne normalement
 - ❌ `FAIL` : LinkedIn a changé sa structure → Vérifier les sélecteurs
 
@@ -144,6 +153,7 @@ Le fichier `restriction_alert.json` est créé si une restriction est détectée
 ```
 
 **Sévérités :**
+
 - `CRITICAL` : Arrêt immédiat requis (CAPTCHA, suspension)
 - `WARNING` : À surveiller (rate limit approché)
 
@@ -186,6 +196,7 @@ quick_debug_check(page)
 ```
 
 Affiche immédiatement :
+
 ```
 ==================================================
 🔍 QUICK DEBUG CHECK
@@ -205,15 +216,18 @@ Affiche immédiatement :
 Le système effectue ces vérifications automatiquement :
 
 1. **Au démarrage :**
+
    - Validation de la connexion
    - Validation de la structure DOM
    - Détection de restrictions
 
-2. **Toutes les 5 messages :**
+1. **Toutes les 5 messages :**
+
    - Vérification de restrictions en temps réel
    - Arrêt automatique si problème détecté
 
-3. **À chaque erreur :**
+1. **À chaque erreur :**
+
    - Screenshot automatique
    - Log détaillé
    - Email d'alerte (si activé)
@@ -223,17 +237,20 @@ Le système effectue ces vérifications automatiquement :
 Le système détecte ces indicateurs :
 
 **CAPTCHA :**
+
 - "captcha"
 - "verify you're human"
 - "security check"
 
 **Rate Limit :**
+
 - "you've reached"
 - "slow down"
 - "try again later"
 - "too many"
 
 **Restriction de Compte :**
+
 - "restricted"
 - "suspended"
 - "violation"
@@ -244,10 +261,10 @@ Le système détecte ces indicateurs :
 ### 1. Créer un App Password
 
 1. Va sur https://myaccount.google.com/security
-2. Active la vérification en 2 étapes
-3. Cherche "App passwords"
-4. Crée un mot de passe pour "Mail"
-5. Utilise ce mot de passe (pas ton mot de passe Gmail)
+1. Active la vérification en 2 étapes
+1. Cherche "App passwords"
+1. Crée un mot de passe pour "Mail"
+1. Utilise ce mot de passe (pas ton mot de passe Gmail)
 
 ### 2. Variables d'Environnement
 
@@ -266,8 +283,7 @@ from debug_utils import AlertSystem
 
 alert = AlertSystem()
 success = alert.send_alert(
-    "Test Alert",
-    "Si tu reçois cet email, les alertes fonctionnent !"
+    "Test Alert", "Si tu reçois cet email, les alertes fonctionnent !"
 )
 
 print("✅ Email envoyé !" if success else "❌ Échec d'envoi")
@@ -286,9 +302,10 @@ Assure-toi que `debug_utils.py` est dans le même dossier que `linkedin_birthday
 ### "Email alerts not working"
 
 Vérifications :
+
 1. App password Gmail (pas le mot de passe normal)
-2. Variables d'environnement correctement définies
-3. `ENABLE_EMAIL_ALERTS=true`
+1. Variables d'environnement correctement définies
+1. `ENABLE_EMAIL_ALERTS=true`
 
 ### "Too many screenshots filling disk"
 
@@ -308,7 +325,7 @@ LinkedIn a probablement changé sa structure. Mets à jour les sélecteurs dans 
 
 ```python
 CRITICAL_SELECTORS = {
-    'birthday_card': "NEW_SELECTOR_HERE",
+    "birthday_card": "NEW_SELECTOR_HERE",
     # ...
 }
 ```
@@ -327,14 +344,17 @@ Pour une performance optimale en production, désactive le debug avancé :
 export ENABLE_ADVANCED_DEBUG=false
 ```
 
-Les fonctionnalités de sécurité (délais gaussiens, pauses longues, simulation d'activité) restent actives.
+Les fonctionnalités de sécurité (délais gaussiens, pauses longues, simulation d'activité) restent
+actives.
 
 ## 🔒 Sécurité
 
 **⚠️ Important :**
 
 - Ne committe **JAMAIS** les fichiers de log ou screenshots dans Git
+
 - Ajoute au `.gitignore` :
+
   ```
   debug_screenshots/
   *.log
@@ -343,11 +363,13 @@ Les fonctionnalités de sécurité (délais gaussiens, pauses longues, simulatio
   ```
 
 - Les emails d'alerte peuvent contenir des informations sensibles
+
 - Utilise des App Passwords Gmail (jamais ton mot de passe principal)
 
 ## 📚 Références des Classes
 
 ### `DebugScreenshotManager`
+
 ```python
 manager = DebugScreenshotManager(debug_dir="custom_folder")
 manager.capture(page, "step_name", error=False)
@@ -355,6 +377,7 @@ manager.capture_element(page, "css_selector", "element_name")
 ```
 
 ### `DOMStructureValidator`
+
 ```python
 validator = DOMStructureValidator(page)
 is_valid = validator.validate_all_selectors(screenshot_mgr)
@@ -362,6 +385,7 @@ report = validator.export_validation_report()
 ```
 
 ### `LinkedInPolicyDetector`
+
 ```python
 detector = LinkedInPolicyDetector(page)
 is_ok, issues = detector.check_for_restrictions(screenshot_mgr)
@@ -369,6 +393,7 @@ send_success = detector.check_message_sent_successfully()
 ```
 
 ### `AlertSystem`
+
 ```python
 alerts = AlertSystem()
 alerts.send_alert("Subject", "Body", attach_files=["file.png"])
@@ -378,22 +403,27 @@ alerts.alert_policy_violation(issues, screenshot_path)
 ## 🎓 Bonnes Pratiques
 
 1. **Active le debug avancé pour les 2 premières semaines**
+
    - Détecte rapidement les problèmes
    - Vérifie la stabilité des sélecteurs
 
-2. **Désactive en production stable**
+1. **Désactive en production stable**
+
    - Réduit les logs
    - Économise l'espace disque
 
-3. **Configure les alertes email**
+1. **Configure les alertes email**
+
    - Sois notifié immédiatement des problèmes
    - Même si GitHub Actions échoue silencieusement
 
-4. **Révise les logs mensuellement**
+1. **Révise les logs mensuellement**
+
    - Cherche des patterns d'échec
    - Anticipe les changements LinkedIn
 
-5. **Sauvegarde les screenshots d'erreur**
+1. **Sauvegarde les screenshots d'erreur**
+
    - Utile pour déboguer a posteriori
    - Peut servir de preuve si LinkedIn change sans préavis
 
@@ -402,9 +432,9 @@ alerts.alert_policy_violation(issues, screenshot_path)
 En cas de problème avec le système de debugging :
 
 1. Vérifie que Python >= 3.10
-2. Vérifie que Playwright est bien installé
-3. Consulte les logs détaillés
-4. Ouvre une issue GitHub avec :
+1. Vérifie que Playwright est bien installé
+1. Consulte les logs détaillés
+1. Ouvre une issue GitHub avec :
    - Le message d'erreur complet
    - Un screenshot de l'erreur (si possible)
    - Le contenu de `linkedin_bot_detailed.log`

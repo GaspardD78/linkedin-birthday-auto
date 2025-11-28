@@ -2,22 +2,23 @@
 
 Ce guide vous explique comment déployer le Dashboard v2 sur différentes plateformes.
 
----
+______________________________________________________________________
 
 ## 📋 Table des Matières
 
-1. [Déploiement Docker (Recommandé)](#1-déploiement-docker-recommandé)
-2. [Déploiement sur Raspberry Pi 4](#2-déploiement-sur-raspberry-pi-4)
-3. [Déploiement sur Vercel](#3-déploiement-sur-vercel)
-4. [Déploiement Manuel](#4-déploiement-manuel)
-5. [Configuration des Variables d'Environnement](#5-configuration-des-variables-denvironnement)
-6. [Vérification et Monitoring](#6-vérification-et-monitoring)
+1. [Déploiement Docker (Recommandé)](#1-d%C3%A9ploiement-docker-recommand%C3%A9)
+1. [Déploiement sur Raspberry Pi 4](#2-d%C3%A9ploiement-sur-raspberry-pi-4)
+1. [Déploiement sur Vercel](#3-d%C3%A9ploiement-sur-vercel)
+1. [Déploiement Manuel](#4-d%C3%A9ploiement-manuel)
+1. [Configuration des Variables d'Environnement](#5-configuration-des-variables-denvironnement)
+1. [Vérification et Monitoring](#6-v%C3%A9rification-et-monitoring)
 
----
+______________________________________________________________________
 
 ## 1. Déploiement Docker (Recommandé)
 
 ### Prérequis
+
 - Docker >= 20.10
 - Docker Compose >= 2.0
 - 2GB RAM minimum (4GB recommandé)
@@ -88,11 +89,12 @@ docker-compose up -d --build
 docker-compose down -v
 ```
 
----
+______________________________________________________________________
 
 ## 2. Déploiement sur Raspberry Pi 4
 
 ### Prérequis
+
 - Raspberry Pi 4 avec 4GB RAM
 - Raspberry Pi OS (64-bit recommandé)
 - Docker installé
@@ -131,6 +133,7 @@ docker-compose up -d
 ### Optimisations spécifiques Pi 4
 
 Le `docker-compose.yml` est déjà configuré avec :
+
 - Limite mémoire : 1GB max (600-800MB utilisés)
 - Limite CPU : 1.5 cores max
 - Redis configuré pour cache uniquement (128MB)
@@ -149,7 +152,7 @@ docker logs -f linkedin_dashboard
 docker inspect linkedin_dashboard | grep -A 5 "Health"
 ```
 
----
+______________________________________________________________________
 
 ## 3. Déploiement sur Vercel
 
@@ -171,12 +174,12 @@ git push
 **Option A : Via l'interface web**
 
 1. Allez sur [vercel.com](https://vercel.com)
-2. Connectez votre compte GitHub
-3. Cliquez sur "New Project"
-4. Sélectionnez votre repository `linkedin-birthday-auto`
-5. **Important** : Configurez le `Root Directory` → `dashboard`
-6. Configurez les variables d'environnement (voir section 5)
-7. Cliquez sur "Deploy"
+1. Connectez votre compte GitHub
+1. Cliquez sur "New Project"
+1. Sélectionnez votre repository `linkedin-birthday-auto`
+1. **Important** : Configurez le `Root Directory` → `dashboard`
+1. Configurez les variables d'environnement (voir section 5)
+1. Cliquez sur "Deploy"
 
 **Option B : Via CLI**
 
@@ -219,13 +222,14 @@ Créez un fichier `vercel.json` dans `dashboard/` :
 - **Base de données** : Nécessite une DB externe (MySQL/PostgreSQL)
 - **Redis** : Nécessite un Redis cloud (Upstash recommandé)
 
----
+______________________________________________________________________
 
 ## 4. Déploiement Manuel
 
 Pour un déploiement sur VPS/serveur dédié.
 
 ### Prérequis
+
 - Node.js 20+
 - PM2 (pour le process management)
 - Nginx (pour le reverse proxy)
@@ -327,29 +331,29 @@ sudo certbot --nginx -d dashboard.votredomaine.com
 sudo certbot renew --dry-run
 ```
 
----
+______________________________________________________________________
 
 ## 5. Configuration des Variables d'Environnement
 
 ### Variables requises
 
-| Variable | Description | Exemple | Requis |
-|----------|-------------|---------|--------|
-| `DATABASE_URL` | URL de connexion à la base de données | `mysql://user:pass@host:3306/db` | ✅ |
-| `REDIS_URL` | URL de connexion Redis | `redis://localhost:6379` | ✅ |
-| `BOT_API_URL` | URL de l'API Python du bot | `http://localhost:8000` | ✅ |
-| `BOT_API_KEY` | Clé d'authentification API | `secret_key_here` | ✅ |
-| `NODE_ENV` | Environnement | `production` | ✅ |
-| `PORT` | Port d'écoute | `3000` | ❌ |
-| `NEXT_TELEMETRY_DISABLED` | Désactiver la télémétrie Next.js | `1` | ❌ |
+| Variable                  | Description                           | Exemple                          | Requis |
+| ------------------------- | ------------------------------------- | -------------------------------- | ------ |
+| `DATABASE_URL`            | URL de connexion à la base de données | `mysql://user:pass@host:3306/db` | ✅     |
+| `REDIS_URL`               | URL de connexion Redis                | `redis://localhost:6379`         | ✅     |
+| `BOT_API_URL`             | URL de l'API Python du bot            | `http://localhost:8000`          | ✅     |
+| `BOT_API_KEY`             | Clé d'authentification API            | `secret_key_here`                | ✅     |
+| `NODE_ENV`                | Environnement                         | `production`                     | ✅     |
+| `PORT`                    | Port d'écoute                         | `3000`                           | ❌     |
+| `NEXT_TELEMETRY_DISABLED` | Désactiver la télémétrie Next.js      | `1`                              | ❌     |
 
 ### Variables optionnelles (Puppeteer)
 
-| Variable | Description | Valeur |
-|----------|-------------|--------|
-| `HEADLESS` | Mode headless Puppeteer | `true` |
-| `PUPPETEER_ARGS` | Arguments Puppeteer | `--no-sandbox,--disable-setuid-sandbox` |
-| `PUPPETEER_EXECUTABLE_PATH` | Chemin Chrome | `/usr/bin/google-chrome-stable` |
+| Variable                    | Description             | Valeur                                  |
+| --------------------------- | ----------------------- | --------------------------------------- |
+| `HEADLESS`                  | Mode headless Puppeteer | `true`                                  |
+| `PUPPETEER_ARGS`            | Arguments Puppeteer     | `--no-sandbox,--disable-setuid-sandbox` |
+| `PUPPETEER_EXECUTABLE_PATH` | Chemin Chrome           | `/usr/bin/google-chrome-stable`         |
 
 ### Fichier .env exemple
 
@@ -376,7 +380,7 @@ HEADLESS=true
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ```
 
----
+______________________________________________________________________
 
 ## 6. Vérification et Monitoring
 
@@ -424,11 +428,12 @@ pm2 show linkedin-dashboard
 ### Logs du Dashboard
 
 Les logs sont disponibles :
+
 - **Docker** : `docker logs linkedin_dashboard`
 - **PM2** : `~/.pm2/logs/`
 - **Manuel** : `stdout` du processus Node.js
 
----
+______________________________________________________________________
 
 ## 🔧 Troubleshooting
 
@@ -478,11 +483,12 @@ deploy:
       memory: 800M  # Réduire de 1G à 800M
 ```
 
----
+______________________________________________________________________
 
 ## 🎯 Recommandations par Environnement
 
 ### Développement Local
+
 ```bash
 cd dashboard
 npm install
@@ -491,36 +497,40 @@ npm run dev
 ```
 
 ### Staging / Test
+
 - **Docker** : Déploiement sur VPS avec docker-compose
 - **Variables** : Fichier `.env.staging`
 
 ### Production - Petit projet
+
 - **Vercel** : Déploiement le plus simple
 - **Coût** : Gratuit (avec limitations)
 
 ### Production - Raspberry Pi / Serveur Local
+
 - **Docker** : Avec `docker-compose.yml` optimisé
 - **Backup** : Script de backup MySQL
 
 ### Production - Haute disponibilité
+
 - **VPS** : Déploiement manuel avec Nginx + PM2
 - **Load Balancing** : Nginx upstream
 - **Monitoring** : Prometheus + Grafana
 
----
+______________________________________________________________________
 
 ## 📊 Performance
 
 ### Ressources typiques
 
-| Plateforme | RAM | CPU | Disque |
-|------------|-----|-----|--------|
-| Docker (production) | 600-800MB | 0.5-1 CPU | 500MB |
-| Raspberry Pi 4 | 800MB-1GB | 1-1.5 CPU | 500MB |
-| Vercel | Serverless | Auto | N/A |
-| VPS (PM2) | 400-600MB | 0.3-0.8 CPU | 500MB |
+| Plateforme          | RAM        | CPU         | Disque |
+| ------------------- | ---------- | ----------- | ------ |
+| Docker (production) | 600-800MB  | 0.5-1 CPU   | 500MB  |
+| Raspberry Pi 4      | 800MB-1GB  | 1-1.5 CPU   | 500MB  |
+| Vercel              | Serverless | Auto        | N/A    |
+| VPS (PM2)           | 400-600MB  | 0.3-0.8 CPU | 500MB  |
 
----
+______________________________________________________________________
 
 ## 🔒 Sécurité
 
@@ -545,7 +555,7 @@ openssl rand -base64 32
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
----
+______________________________________________________________________
 
 ## 📝 Mises à jour
 
@@ -562,14 +572,15 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
----
+______________________________________________________________________
 
 ## 🆘 Support
 
-- **Issues GitHub** : [https://github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
+- **Issues GitHub** :
+  [https://github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
 - **Documentation** : `README.md` du projet
 - **Logs** : `docker-compose logs -f`
 
----
+______________________________________________________________________
 
 **Bon déploiement ! 🚀**

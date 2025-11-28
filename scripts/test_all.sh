@@ -64,7 +64,6 @@ echo -e "${BLUE}[2/6] Tests Dépendances${NC}"
 echo "────────────────────────────────────────"
 
 run_test "Module playwright" "python -c 'import playwright'"
-run_test "Module flask" "python -c 'import flask'"
 run_test "Module pytz" "python -c 'import pytz'"
 run_test "Module sqlite3" "python -c 'import sqlite3'"
 

@@ -4,10 +4,11 @@ Tests unitaires pour les bots BirthdayBot et UnlimitedBirthdayBot.
 Ce fichier démontre comment tester les bots avec des mocks.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
 from pathlib import Path
 import sys
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Ajouter le répertoire src au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -15,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.bots.birthday_bot import BirthdayBot
 from src.bots.unlimited_bot import UnlimitedBirthdayBot
 from src.config.config_schema import LinkedInBotConfig
-from src.utils.exceptions import WeeklyLimitReachedError, DailyLimitReachedError
+from src.utils.exceptions import DailyLimitReachedError, WeeklyLimitReachedError
 
 
 class TestBirthdayBot:
@@ -43,7 +44,7 @@ class TestBirthdayBot:
 
     def test_init_sets_correct_mode(self, mock_config):
         """Le bot doit s'initialiser en mode standard."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=mock_config)
             assert bot.config.bot_mode == "standard"
 
@@ -51,9 +52,9 @@ class TestBirthdayBot:
         """_check_limits doit lever WeeklyLimitReachedError si limite atteinte."""
         mock_config.database.enabled = True
 
-        with patch('src.core.base_bot.BrowserManager'), \
-             patch('src.bots.birthday_bot.get_database') as mock_get_db:
-
+        with patch("src.core.base_bot.BrowserManager"), patch(
+            "src.bots.birthday_bot.get_database"
+        ) as mock_get_db:
             # Mock database qui retourne une limite atteinte
             mock_db = Mock()
             mock_db.get_weekly_message_count.return_value = 80
@@ -72,9 +73,9 @@ class TestBirthdayBot:
         mock_config.database.enabled = True
         mock_config.messaging_limits.daily_message_limit = 10
 
-        with patch('src.core.base_bot.BrowserManager'), \
-             patch('src.bots.birthday_bot.get_database') as mock_get_db:
-
+        with patch("src.core.base_bot.BrowserManager"), patch(
+            "src.bots.birthday_bot.get_database"
+        ) as mock_get_db:
             # Mock database
             mock_db = Mock()
             mock_db.get_weekly_message_count.return_value = 50
@@ -93,9 +94,9 @@ class TestBirthdayBot:
         mock_config.database.enabled = True
         mock_config.messaging_limits.weekly_message_limit = 80
 
-        with patch('src.core.base_bot.BrowserManager'), \
-             patch('src.bots.birthday_bot.get_database') as mock_get_db:
-
+        with patch("src.core.base_bot.BrowserManager"), patch(
+            "src.bots.birthday_bot.get_database"
+        ) as mock_get_db:
             # Mock database : 75 messages cette semaine
             mock_db = Mock()
             mock_db.get_weekly_message_count.return_value = 75
@@ -115,9 +116,9 @@ class TestBirthdayBot:
         mock_config.messaging_limits.weekly_message_limit = 80
         mock_config.messaging_limits.daily_message_limit = 10
 
-        with patch('src.core.base_bot.BrowserManager'), \
-             patch('src.bots.birthday_bot.get_database') as mock_get_db:
-
+        with patch("src.core.base_bot.BrowserManager"), patch(
+            "src.bots.birthday_bot.get_database"
+        ) as mock_get_db:
             # Mock database : 8 messages aujourd'hui
             mock_db = Mock()
             mock_db.get_weekly_message_count.return_value = 50
@@ -136,7 +137,7 @@ class TestBirthdayBot:
         mock_config.messaging_limits.max_messages_per_run = 5
         mock_config.database.enabled = False
 
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=mock_config)
 
             # Avec 10 contacts, on ne devrait en traiter que 5 (limite par run)
@@ -145,7 +146,7 @@ class TestBirthdayBot:
 
     def test_build_result_structure(self, mock_config):
         """_build_result doit retourner la bonne structure."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=mock_config)
 
             result = bot._build_result(
@@ -153,32 +154,32 @@ class TestBirthdayBot:
                 contacts_processed=5,
                 birthdays_today=5,
                 birthdays_late_ignored=3,
-                duration_seconds=120.5
+                duration_seconds=120.5,
             )
 
-            assert result['success'] is True
-            assert result['bot_mode'] == 'standard'
-            assert result['messages_sent'] == 5
-            assert result['contacts_processed'] == 5
-            assert result['birthdays_today'] == 5
-            assert result['birthdays_late_ignored'] == 3
-            assert result['duration_seconds'] == 120.5
-            assert result['dry_run'] is True
-            assert 'timestamp' in result
+            assert result["success"] is True
+            assert result["bot_mode"] == "standard"
+            assert result["messages_sent"] == 5
+            assert result["contacts_processed"] == 5
+            assert result["birthdays_today"] == 5
+            assert result["birthdays_late_ignored"] == 3
+            assert result["duration_seconds"] == 120.5
+            assert result["dry_run"] is True
+            assert "timestamp" in result
 
     def test_build_error_result_structure(self, mock_config):
         """_build_error_result doit retourner la bonne structure."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=mock_config)
 
             result = bot._build_error_result("Test error")
 
-            assert result['success'] is False
-            assert result['bot_mode'] == 'standard'
-            assert result['error'] == "Test error"
-            assert result['messages_sent'] == 0
-            assert result['contacts_processed'] == 0
-            assert 'timestamp' in result
+            assert result["success"] is False
+            assert result["bot_mode"] == "standard"
+            assert result["error"] == "Test error"
+            assert result["messages_sent"] == 0
+            assert result["contacts_processed"] == 0
+            assert "timestamp" in result
 
 
 class TestUnlimitedBirthdayBot:
@@ -198,13 +199,13 @@ class TestUnlimitedBirthdayBot:
 
     def test_init_sets_correct_mode(self, mock_config):
         """Le bot doit s'initialiser en mode unlimited."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
             assert bot.config.bot_mode == "unlimited"
 
     def test_estimate_duration_calculation(self, mock_config):
         """_estimate_duration doit calculer correctement la durée."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             # En dry-run, délai moyen = 3s
@@ -218,7 +219,7 @@ class TestUnlimitedBirthdayBot:
 
     def test_format_duration_with_hours(self, mock_config):
         """_format_duration doit formater avec heures/minutes/secondes."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             # 3665 secondes = 1h 1m 5s
@@ -241,7 +242,7 @@ class TestUnlimitedBirthdayBot:
 
     def test_build_result_structure(self, mock_config):
         """_build_result doit retourner la bonne structure."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             result = bot._build_result(
@@ -249,32 +250,32 @@ class TestUnlimitedBirthdayBot:
                 contacts_processed=15,
                 birthdays_today=5,
                 birthdays_late=10,
-                duration_seconds=450.5
+                duration_seconds=450.5,
             )
 
-            assert result['success'] is True
-            assert result['bot_mode'] == 'unlimited'
-            assert result['messages_sent'] == 15
-            assert result['contacts_processed'] == 15
-            assert result['birthdays_today'] == 5
-            assert result['birthdays_late'] == 10
-            assert result['duration_seconds'] == 450.5
-            assert result['dry_run'] is True
-            assert 'timestamp' in result
+            assert result["success"] is True
+            assert result["bot_mode"] == "unlimited"
+            assert result["messages_sent"] == 15
+            assert result["contacts_processed"] == 15
+            assert result["birthdays_today"] == 5
+            assert result["birthdays_late"] == 10
+            assert result["duration_seconds"] == 450.5
+            assert result["dry_run"] is True
+            assert "timestamp" in result
 
     def test_build_error_result_structure(self, mock_config):
         """_build_error_result doit retourner la bonne structure."""
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
             result = bot._build_error_result("Test error")
 
-            assert result['success'] is False
-            assert result['bot_mode'] == 'unlimited'
-            assert result['error'] == "Test error"
-            assert result['messages_sent'] == 0
-            assert result['contacts_processed'] == 0
-            assert 'timestamp' in result
+            assert result["success"] is False
+            assert result["bot_mode"] == "unlimited"
+            assert result["error"] == "Test error"
+            assert result["messages_sent"] == 0
+            assert result["contacts_processed"] == 0
+            assert "timestamp" in result
 
 
 class TestBotComparison:
@@ -287,7 +288,7 @@ class TestBotComparison:
         config.bot_mode = "standard"
         config.birthday_filter.process_late = False
 
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=config)
             assert bot.config.birthday_filter.process_late is False
 
@@ -298,17 +299,19 @@ class TestBotComparison:
         config.bot_mode = "unlimited"
         config.birthday_filter.process_late = True
 
-        with patch('src.core.base_bot.BrowserManager'):
+        with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=config)
             assert bot.config.birthday_filter.process_late is True
 
 
 # Fixtures pytest communes
 
+
 @pytest.fixture
 def clean_singletons():
     """Reset les singletons entre les tests."""
     from src.config.config_manager import ConfigManager
+
     ConfigManager._instance = None
     yield
     ConfigManager._instance = None

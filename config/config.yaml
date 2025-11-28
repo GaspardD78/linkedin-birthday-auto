@@ -4,11 +4,11 @@
 # ═══════════════════════════════════════════════════════════════════
 
 # Métadonnées
-version: "2.0.1"
+version: 2.0.1
 
 # Mode de fonctionnement
 # Options: standard (avec limites), unlimited (sans limites), custom
-bot_mode: "standard"
+bot_mode: standard
 
 # Mode test (ne pas envoyer de vrais messages)
 dry_run: false
@@ -24,30 +24,30 @@ browser:
   slow_mo: [50, 100]
 
   # Locale et fuseau horaire
-  locale: "fr-FR"
-  timezone: "Europe/Paris"
+  locale: fr-FR
+  timezone: Europe/Paris
 
   # Un seul User-Agent (Linux ARM64) pour éviter la rotation
   user_agents:
-    - "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  - Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
 
   # Un seul viewport fixe
   viewport_sizes:
-    - width: 1366
-      height: 768
+  - width: 1366
+    height: 768
 
 # ═══════════════════════════════════════════════════════════════════
 # AUTHENTIFICATION
 # ═══════════════════════════════════════════════════════════════════
 auth:
   # Variable d'environnement contenant l'auth state
-  auth_state_env_var: "LINKEDIN_AUTH_STATE"
+  auth_state_env_var: LINKEDIN_AUTH_STATE
 
   # Chemin du fichier auth state
-  auth_file_path: "auth_state.json"
+  auth_file_path: auth_state.json
 
   # Chemin de secours (optionnel)
-  auth_fallback_path: null
+  auth_fallback_path:
 
 # ═══════════════════════════════════════════════════════════════════
 # LIMITES D'ENVOI DE MESSAGES - Conservateur pour Pi 4
@@ -71,7 +71,7 @@ scheduling:
   daily_end_hour: 19
 
   # Fuseau horaire pour la planification
-  timezone: "Europe/Paris"
+  timezone: Europe/Paris
 
 # ═══════════════════════════════════════════════════════════════════
 # DÉLAIS ENTRE ACTIONS - Réduits pour Pi 4
@@ -90,8 +90,8 @@ delays:
 # ═══════════════════════════════════════════════════════════════════
 messages:
   # Fichiers de messages
-  messages_file: "messages.txt"
-  late_messages_file: "late_messages.txt"
+  messages_file: messages.txt
+  late_messages_file: late_messages.txt
 
   # Années d'historique pour éviter la répétition
   avoid_repetition_years: 2
@@ -120,7 +120,7 @@ proxy:
   rotation_enabled: false
 
   # Fichier de configuration non utilisé
-  config_file: "proxy_config.json"
+  config_file: proxy_config.json
 
 # ═══════════════════════════════════════════════════════════════════
 # DÉBOGAGE - Optimisé pour SD card Pi 4
@@ -136,7 +136,7 @@ debug:
   save_html: false
 
   # Niveau de logging (INFO sur Pi 4 pour éviter spam logs)
-  log_level: "INFO"
+  log_level: INFO
 
 # ═══════════════════════════════════════════════════════════════════
 # BASE DE DONNÉES - Optimisée pour USB externe (meilleure performance)
@@ -147,7 +147,7 @@ database:
 
   # Base de données SQLite dans le volume partagé Docker
   # Compatible avec docker-compose.pi4-standalone.yml (shared-data volume)
-  db_path: "/app/data/linkedin_automation.db"
+  db_path: /app/data/linkedin_automation.db
 
   # Timeout réduit grâce à la clé USB (plus rapide que SD)
   timeout: 30

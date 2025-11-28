@@ -1,18 +1,19 @@
 # 🚀 Guide de déploiement - LinkedIn Birthday Auto Bot v2.0
 
-Ce guide couvre tous les scénarios de déploiement du bot LinkedIn, de la machine locale aux environnements cloud.
+Ce guide couvre tous les scénarios de déploiement du bot LinkedIn, de la machine locale aux
+environnements cloud.
 
 ## 📋 Table des matières
 
-- [Prérequis](#prérequis)
-- [Déploiement local](#déploiement-local)
-- [Déploiement GitHub Actions](#déploiement-github-actions)
-- [Déploiement Docker](#déploiement-docker)
-- [Déploiement cloud](#déploiement-cloud)
+- [Prérequis](#pr%C3%A9requis)
+- [Déploiement local](#d%C3%A9ploiement-local)
+- [Déploiement GitHub Actions](#d%C3%A9ploiement-github-actions)
+- [Déploiement Docker](#d%C3%A9ploiement-docker)
+- [Déploiement cloud](#d%C3%A9ploiement-cloud)
 - [Monitoring et logs](#monitoring-et-logs)
-- [Dépannage](#dépannage)
+- [Dépannage](#d%C3%A9pannage)
 
----
+______________________________________________________________________
 
 ## 🎯 Prérequis
 
@@ -63,7 +64,7 @@ brew install --cask chromium
 - **Recommandé**: Compte avec 2FA activé (plus sécurisé)
 - **Permissions**: Accès au réseau et messages
 
----
+______________________________________________________________________
 
 ## 💻 Déploiement local
 
@@ -81,7 +82,7 @@ source venv/bin/activate  # Linux/macOS
 
 # Installer les dépendances
 pip install --upgrade pip
-pip install -r requirements-new.txt
+pip install -r requirements.txt
 
 # Installer Playwright et les navigateurs
 playwright install chromium
@@ -125,8 +126,8 @@ database:
 **Option A: Fichier JSON (recommandé)**
 
 1. Connectez-vous manuellement à LinkedIn dans votre navigateur
-2. Exportez les cookies (extension "EditThisCookie" ou "Cookie-Editor")
-3. Sauvegardez dans `auth_state.json`:
+1. Exportez les cookies (extension "EditThisCookie" ou "Cookie-Editor")
+1. Sauvegardez dans `auth_state.json`:
 
 ```json
 {
@@ -191,7 +192,7 @@ python main.py bot --debug
 python main.py bot --config ./config/my_config.yaml
 ```
 
----
+______________________________________________________________________
 
 ## ⚙️ Déploiement GitHub Actions
 
@@ -216,11 +217,11 @@ git push origin main
 
 Aller dans `Settings > Secrets and variables > Actions` et ajouter:
 
-| Secret Name | Description | Exemple |
-|-------------|-------------|---------|
-| `LINKEDIN_AUTH_STATE` | Auth LinkedIn en base64 | `eyJjb29raWVzIj...` |
-| `LINKEDIN_BOT_DRY_RUN` | Mode dry-run (optionnel) | `false` |
-| `LINKEDIN_BOT_CONFIG_YAML` | Config complète en base64 (optionnel) | `dmVyc2lvbjog...` |
+| Secret Name                | Description                           | Exemple             |
+| -------------------------- | ------------------------------------- | ------------------- |
+| `LINKEDIN_AUTH_STATE`      | Auth LinkedIn en base64               | `eyJjb29raWVzIj...` |
+| `LINKEDIN_BOT_DRY_RUN`     | Mode dry-run (optionnel)              | `false`             |
+| `LINKEDIN_BOT_CONFIG_YAML` | Config complète en base64 (optionnel) | `dmVyc2lvbjog...`   |
 
 **Générer les secrets**:
 
@@ -261,7 +262,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements-new.txt
+          pip install -r requirements.txt
           playwright install chromium
           playwright install-deps chromium
 
@@ -293,7 +294,7 @@ gh run list
 gh run view --log
 ```
 
----
+______________________________________________________________________
 
 ## 🐳 Déploiement Docker
 
@@ -329,10 +330,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements
-COPY requirements-new.txt .
+COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements-new.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright browsers
 RUN playwright install chromium
@@ -420,7 +421,7 @@ RUN echo "0 9 * * * cd /app && python main.py bot >> /app/logs/cron.log 2>&1" | 
 CMD ["cron", "-f"]
 ```
 
----
+______________________________________________________________________
 
 ## ☁️ Déploiement cloud
 
@@ -494,7 +495,7 @@ crontab -e
 0 9 * * * cd /home/user/linkedin-birthday-auto && /home/user/linkedin-birthday-auto/venv/bin/python main.py bot
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Monitoring et logs
 
@@ -539,13 +540,14 @@ curl -X POST http://localhost:8000/trigger \
 # Ajouter dans src/utils/notifications.py
 import requests
 
+
 def send_slack_alert(message):
     webhook_url = os.getenv("SLACK_WEBHOOK_URL")
     if webhook_url:
         requests.post(webhook_url, json={"text": message})
 ```
 
----
+______________________________________________________________________
 
 ## 🔧 Dépannage
 
@@ -617,10 +619,11 @@ LINKEDIN_BOT_BROWSER_HEADLESS=false python main.py bot --debug
 ### Support
 
 - **Issues**: [GitHub Issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
+- **Discussions**:
+  [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
 - **Documentation**: [ARCHITECTURE.md](ARCHITECTURE.md), [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
 
----
+______________________________________________________________________
 
 ## 📝 Checklist de production
 
@@ -639,31 +642,31 @@ Avant de passer en production:
 - [ ] Cron/scheduler configuré
 - [ ] Documentation à jour
 
----
+______________________________________________________________________
 
 ## 🎯 Recommandations
 
 ### Pour débuter
 
 1. **Local** + **Dry-run** + **Mode standard**
-2. Tester pendant 1 semaine en dry-run
-3. Activer production en mode standard
-4. Optionnel: passer en mode unlimited si besoin
+1. Tester pendant 1 semaine en dry-run
+1. Activer production en mode standard
+1. Optionnel: passer en mode unlimited si besoin
 
 ### Pour production
 
 1. **GitHub Actions** (recommandé pour simplicité)
-2. **Docker** + **VPS** (pour contrôle total)
-3. **Cloud Run** (pour scaling)
+1. **Docker** + **VPS** (pour contrôle total)
+1. **Cloud Run** (pour scaling)
 
 ### Sécurité
 
 1. Ne JAMAIS committer `auth_state.json`
-2. Utiliser GitHub Secrets ou variables d'environnement
-3. Activer 2FA sur LinkedIn
-4. Régulièrement vérifier les logs
-5. Limiter les permissions du bot
+1. Utiliser GitHub Secrets ou variables d'environnement
+1. Activer 2FA sur LinkedIn
+1. Régulièrement vérifier les logs
+1. Limiter les permissions du bot
 
----
+______________________________________________________________________
 
 **Bon déploiement ! 🚀**

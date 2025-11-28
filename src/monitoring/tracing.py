@@ -17,16 +17,19 @@ from typing import Optional
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-def setup_tracing(service_name: str = "linkedin-bot", endpoint: Optional[str] = None) -> Optional[trace.Tracer]:
+
+def setup_tracing(
+    service_name: str = "linkedin-bot", endpoint: Optional[str] = None
+) -> Optional[trace.Tracer]:
     """
     Configure OpenTelemetry pour l'application.
 
@@ -52,10 +55,12 @@ def setup_tracing(service_name: str = "linkedin-bot", endpoint: Optional[str] = 
 
     try:
         # Créer la ressource (identifie le service)
-        resource = Resource.create(attributes={
-            "service.name": service_name,
-            "deployment.environment": os.getenv("ENV", "production")
-        })
+        resource = Resource.create(
+            attributes={
+                "service.name": service_name,
+                "deployment.environment": os.getenv("ENV", "production"),
+            }
+        )
 
         # Configurer le provider
         provider = TracerProvider(resource=resource)
@@ -78,6 +83,7 @@ def setup_tracing(service_name: str = "linkedin-bot", endpoint: Optional[str] = 
         # Configurer un provider par défaut pour éviter les erreurs
         trace.set_tracer_provider(TracerProvider())
         return trace.get_tracer(__name__)
+
 
 def instrument_app(app):
     """Instrumente une application FastAPI."""
@@ -108,7 +114,9 @@ class TemporaryTracing:
             endpoint: Endpoint OTLP (défaut: variable d'env ou http://localhost:4317)
         """
         self.service_name = service_name
-        self.endpoint = endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        self.endpoint = endpoint or os.getenv(
+            "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"
+        )
         self.original_provider = None
         self.temp_provider = None
 
@@ -121,11 +129,13 @@ class TemporaryTracing:
 
         try:
             # Créer un nouveau provider temporaire
-            resource = Resource.create(attributes={
-                "service.name": self.service_name,
-                "deployment.environment": os.getenv("ENV", "production"),
-                "temporary": "true"
-            })
+            resource = Resource.create(
+                attributes={
+                    "service.name": self.service_name,
+                    "deployment.environment": os.getenv("ENV", "production"),
+                    "temporary": "true",
+                }
+            )
 
             self.temp_provider = TracerProvider(resource=resource)
 
@@ -140,7 +150,9 @@ class TemporaryTracing:
             except Exception:
                 # Si un provider existe déjà, on log un warning mais on ne plante pas
                 # On continuera d'utiliser le provider existant ou celui qu'on vient de créer localement
-                logger.warning("Could not set global tracer provider (already set). Using existing one.")
+                logger.warning(
+                    "Could not set global tracer provider (already set). Using existing one."
+                )
 
             logger.info("temporary_tracing_active", endpoint=self.endpoint)
 

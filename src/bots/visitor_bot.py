@@ -5,23 +5,17 @@ Ce bot effectue des recherches de profils LinkedIn par mots-clés et localisatio
 puis visite automatiquement ces profils en simulant un comportement humain.
 """
 
+from datetime import datetime
 import random
 import time
+from typing import Any
 import urllib.parse
-import re
-import math
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ..core.base_bot import BaseLinkedInBot
 from ..core.database import get_database
-from ..utils.exceptions import (
-    LinkedInBotError,
-    PageLoadTimeoutError,
-    SessionExpiredError
-)
+from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -73,14 +67,14 @@ class VisitorBot(BaseLinkedInBot):
         logger.info(
             "VisitorBot initialized",
             keywords=self.config.visitor.keywords,
-            location=self.config.visitor.location
+            location=self.config.visitor.location,
         )
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """Point d'entrée principal avec tracing."""
         return super().run()
 
-    def _run_internal(self) -> Dict[str, Any]:
+    def _run_internal(self) -> dict[str, Any]:
         """
         Exécute le bot pour visiter des profils LinkedIn.
 
@@ -116,7 +110,7 @@ class VisitorBot(BaseLinkedInBot):
             dry_run=self.config.dry_run,
             keywords=self.config.visitor.keywords,
             location=self.config.visitor.location,
-            profiles_per_run=self.config.visitor.limits.profiles_per_run
+            profiles_per_run=self.config.visitor.limits.profiles_per_run,
         )
         logger.info("═" * 70)
 
@@ -218,7 +212,9 @@ class VisitorBot(BaseLinkedInBot):
                     f"({pages_without_new_profiles}/{max_pages_without_new} pages without new)"
                 )
                 if pages_without_new_profiles >= max_pages_without_new:
-                    logger.info(f"Stopping: {max_pages_without_new} consecutive pages with no new profiles.")
+                    logger.info(
+                        f"Stopping: {max_pages_without_new} consecutive pages with no new profiles."
+                    )
                     break
             else:
                 pages_without_new_profiles = 0  # Reset counter
@@ -245,7 +241,7 @@ class VisitorBot(BaseLinkedInBot):
             profiles_attempted=profiles_attempted,
             profiles_failed=profiles_failed,
             pages_scraped=pages_scraped,
-            duration=f"{duration:.1f}s"
+            duration=f"{duration:.1f}s",
         )
         logger.info("═" * 70)
 
@@ -254,14 +250,14 @@ class VisitorBot(BaseLinkedInBot):
             profiles_attempted=profiles_attempted,
             profiles_failed=profiles_failed,
             pages_scraped=pages_scraped,
-            duration_seconds=duration
+            duration_seconds=duration,
         )
 
     # ═══════════════════════════════════════════════════════════════
     # MÉTHODES DE RECHERCHE ET NAVIGATION
     # ═══════════════════════════════════════════════════════════════
 
-    def _search_profiles(self, page_number: int = 1) -> List[str]:
+    def _search_profiles(self, page_number: int = 1) -> list[str]:
         """
         Effectue une recherche LinkedIn et retourne les URLs de profils.
 
@@ -291,7 +287,7 @@ class VisitorBot(BaseLinkedInBot):
 
         # Screenshot pour debug
         if self.config.debug.save_screenshots:
-            self.browser_manager.take_screenshot('search_results_page.png')
+            self.browser_manager.take_screenshot("search_results_page.png")
 
         profile_links = []
         result_container_selector = 'div[data-view-name="people-search-result"]'
@@ -310,12 +306,14 @@ class VisitorBot(BaseLinkedInBot):
             logger.info(f"Found {len(result_containers)} result containers on the page.")
 
             for container in result_containers:
-                link_element = container.query_selector('a[data-view-name="search-result-lockup-title"]')
+                link_element = container.query_selector(
+                    'a[data-view-name="search-result-lockup-title"]'
+                )
                 if link_element:
                     href = link_element.get_attribute("href")
                     if href and "linkedin.com/in/" in href:
                         # Nettoyer l'URL
-                        clean_url = href.split('?')[0]
+                        clean_url = href.split("?")[0]
                         profile_links.append(clean_url)
 
             logger.info(f"Extracted {len(profile_links)} potential profiles from containers.")
@@ -323,7 +321,7 @@ class VisitorBot(BaseLinkedInBot):
         except PlaywrightTimeoutError:
             logger.warning("Could not find profile result containers on the search results page.")
             if self.config.debug.save_screenshots:
-                self.browser_manager.take_screenshot('error_search_no_results.png')
+                self.browser_manager.take_screenshot("error_search_no_results.png")
 
         # Retourner URLs uniques
         return list(dict.fromkeys(profile_links))
@@ -355,8 +353,10 @@ class VisitorBot(BaseLinkedInBot):
                 return True
 
             except PlaywrightTimeoutError as e:
-                wait_time = backoff_factor ** attempt
-                logger.warning(f"Timeout visiting profile (attempt {attempt + 1}/{max_attempts}): {e}")
+                wait_time = backoff_factor**attempt
+                logger.warning(
+                    f"Timeout visiting profile (attempt {attempt + 1}/{max_attempts}): {e}"
+                )
 
                 if attempt < max_attempts - 1:
                     logger.info(f"Retrying in {wait_time} seconds...")
@@ -418,11 +418,8 @@ class VisitorBot(BaseLinkedInBot):
             logger.debug(f"Erreur lors de la simulation d'interactions (non critique): {e}")
 
     def _bezier_curve(
-        self,
-        start: Tuple[int, int],
-        end: Tuple[int, int],
-        control_points: int = 3
-    ) -> List[Tuple[int, int]]:
+        self, start: tuple[int, int], end: tuple[int, int], control_points: int = 3
+    ) -> list[tuple[int, int]]:
         """
         Génère une courbe de Bézier pour mouvement de souris naturel.
 
@@ -450,8 +447,12 @@ class VisitorBot(BaseLinkedInBot):
             while len(temp_points) > 1:
                 new_points = []
                 for i in range(len(temp_points) - 1):
-                    x = (1 - t_normalized) * temp_points[i][0] + t_normalized * temp_points[i + 1][0]
-                    y = (1 - t_normalized) * temp_points[i][1] + t_normalized * temp_points[i + 1][1]
+                    x = (1 - t_normalized) * temp_points[i][0] + t_normalized * temp_points[i + 1][
+                        0
+                    ]
+                    y = (1 - t_normalized) * temp_points[i][1] + t_normalized * temp_points[i + 1][
+                        1
+                    ]
                     new_points.append((int(x), int(y)))
                 temp_points = new_points
             curve_points.append(temp_points[0])
@@ -549,7 +550,9 @@ class VisitorBot(BaseLinkedInBot):
             return
 
         try:
-            source_search = "keyword_search" if not self.config.dry_run else "keyword_search_dry_run"
+            source_search = (
+                "keyword_search" if not self.config.dry_run else "keyword_search_dry_run"
+            )
 
             self.db.add_profile_visit(
                 profile_name=profile_name,
@@ -558,7 +561,7 @@ class VisitorBot(BaseLinkedInBot):
                 keywords=self.config.visitor.keywords,
                 location=self.config.visitor.location,
                 success=success,
-                error_message=None if success else "Failed after retries"
+                error_message=None if success else "Failed after retries",
             )
         except Exception as e:
             logger.error(f"Failed to record profile visit to database: {e}")
@@ -578,24 +581,24 @@ class VisitorBot(BaseLinkedInBot):
             Nom extrait ou 'Unknown'
         """
         try:
-            if '/in/' not in url:
-                return 'Unknown'
+            if "/in/" not in url:
+                return "Unknown"
 
-            parts = url.split('/in/')
+            parts = url.split("/in/")
             if len(parts) < 2:
-                return 'Unknown'
+                return "Unknown"
 
-            identifier = parts[1].split('/')[0].split('?')[0]
-            name = identifier.replace('-', ' ').title()
+            identifier = parts[1].split("/")[0].split("?")[0]
+            name = identifier.replace("-", " ").title()
 
             if not any(c.isalpha() for c in name):
-                return 'Unknown'
+                return "Unknown"
 
             return name
 
         except Exception as e:
             logger.warning(f"Error extracting profile name from URL {url}: {e}")
-            return 'Unknown'
+            return "Unknown"
 
     def _validate_visitor_config(self) -> None:
         """
@@ -608,20 +611,20 @@ class VisitorBot(BaseLinkedInBot):
             raise LinkedInBotError(
                 "visitor.keywords est vide. Configurez au moins un mot-clé dans config.yaml",
                 error_code=None,
-                recoverable=False
+                recoverable=False,
             )
 
         if not self.config.visitor.location or not self.config.visitor.location.strip():
             raise LinkedInBotError(
                 "visitor.location est vide. Configurez une localisation dans config.yaml",
                 error_code=None,
-                recoverable=False
+                recoverable=False,
             )
 
         logger.info(
             "✅ Visitor configuration validated",
             keywords_count=len(self.config.visitor.keywords),
-            location=self.config.visitor.location
+            location=self.config.visitor.location,
         )
 
     def _validate_search_selectors(self) -> None:
@@ -656,7 +659,7 @@ class VisitorBot(BaseLinkedInBot):
         try:
             current_url = self.page.url
 
-            if 'login' in current_url or 'checkpoint' in current_url or 'authwall' in current_url:
+            if "login" in current_url or "checkpoint" in current_url or "authwall" in current_url:
                 logger.warning(f"Session appears invalid - on auth page: {current_url}")
                 return False
 
@@ -664,7 +667,7 @@ class VisitorBot(BaseLinkedInBot):
                 "img.global-nav__me-photo",
                 "div.global-nav__me",
                 "button[aria-label*='View profile']",
-                "a[href*='/in/']"
+                "a[href*='/in/']",
             ]
 
             for selector in user_menu_selectors:
@@ -692,44 +695,43 @@ class VisitorBot(BaseLinkedInBot):
         profiles_attempted: int,
         profiles_failed: int,
         pages_scraped: int,
-        duration_seconds: float
-    ) -> Dict[str, Any]:
+        duration_seconds: float,
+    ) -> dict[str, Any]:
         """Construit le dictionnaire de résultats."""
         success_rate = (
-            (profiles_visited / profiles_attempted * 100)
-            if profiles_attempted > 0 else 0
+            (profiles_visited / profiles_attempted * 100) if profiles_attempted > 0 else 0
         )
 
         return {
-            'success': True,
-            'bot_type': 'visitor',
-            'profiles_visited': profiles_visited,
-            'profiles_attempted': profiles_attempted,
-            'profiles_failed': profiles_failed,
-            'success_rate': round(success_rate, 1),
-            'pages_scraped': pages_scraped,
-            'avg_time_per_profile': (
+            "success": True,
+            "bot_type": "visitor",
+            "profiles_visited": profiles_visited,
+            "profiles_attempted": profiles_attempted,
+            "profiles_failed": profiles_failed,
+            "success_rate": round(success_rate, 1),
+            "pages_scraped": pages_scraped,
+            "avg_time_per_profile": (
                 duration_seconds / profiles_attempted if profiles_attempted > 0 else 0
             ),
-            'duration_seconds': round(duration_seconds, 2),
-            'dry_run': self.config.dry_run,
-            'timestamp': datetime.now().isoformat()
+            "duration_seconds": round(duration_seconds, 2),
+            "dry_run": self.config.dry_run,
+            "timestamp": datetime.now().isoformat(),
         }
 
-    def _build_error_result(self, error_message: str) -> Dict[str, Any]:
+    def _build_error_result(self, error_message: str) -> dict[str, Any]:
         """Construit un résultat d'erreur."""
         return {
-            'success': False,
-            'bot_type': 'visitor',
-            'error': error_message,
-            'profiles_visited': 0,
-            'profiles_attempted': 0,
-            'timestamp': datetime.now().isoformat()
+            "success": False,
+            "bot_type": "visitor",
+            "error": error_message,
+            "profiles_visited": 0,
+            "profiles_attempted": 0,
+            "timestamp": datetime.now().isoformat(),
         }
 
 
 # Helper function pour usage simplifié
-def run_visitor_bot(config=None, dry_run: bool = False) -> Dict[str, Any]:
+def run_visitor_bot(config=None, dry_run: bool = False) -> dict[str, Any]:
     """
     Fonction helper pour exécuter le VisitorBot facilement.
 

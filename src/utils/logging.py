@@ -5,10 +5,11 @@ Ce module utilise structlog pour générer des logs au format JSON,
 facilitant l'intégration avec des systèmes comme Loki.
 """
 
-import sys
 import logging
+import sys
+
 import structlog
-from typing import Any, Dict
+
 
 def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
     """
@@ -27,11 +28,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
     if log_file:
         handlers.append(logging.FileHandler(log_file))
 
-    logging.basicConfig(
-        format="%(message)s",
-        level=level,
-        handlers=handlers
-    )
+    logging.basicConfig(format="%(message)s", level=level, handlers=handlers)
 
     # Processeurs structlog
     processors = [
@@ -59,6 +56,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
 
 def get_logger(name: str = None) -> structlog.stdlib.BoundLogger:
     """

@@ -2,7 +2,7 @@
 
 Ce guide vous permet de déployer le Dashboard v2 en **moins de 5 minutes**.
 
----
+______________________________________________________________________
 
 ## 🚀 Déploiement le Plus Rapide
 
@@ -44,7 +44,7 @@ docker-compose logs -f
 
 **✅ Le dashboard est disponible sur http://localhost:3000**
 
----
+______________________________________________________________________
 
 ## 🎯 Cheat Sheet - Commandes Essentielles
 
@@ -86,7 +86,7 @@ npm run build
 npm start
 ```
 
----
+______________________________________________________________________
 
 ## 🔧 Configuration Minimale
 
@@ -113,7 +113,7 @@ NODE_ENV=production
 openssl rand -base64 32
 ```
 
----
+______________________________________________________________________
 
 ## ⚠️ Problèmes Courants
 
@@ -150,7 +150,7 @@ curl http://localhost:8000/health
 echo $BOT_API_URL
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Vérification Rapide
 
@@ -165,7 +165,7 @@ curl http://localhost:3000/api/stats
 curl http://localhost:3000/api/logs
 ```
 
----
+______________________________________________________________________
 
 ## 🎯 Cas d'Usage Rapides
 
@@ -193,14 +193,15 @@ cd dashboard
 
 Voir le guide complet : [DEPLOYMENT.md](./DEPLOYMENT.md)
 
----
+______________________________________________________________________
 
 ## 📚 Documentation Complète
 
 Pour plus de détails, consultez :
+
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Guide complet de déploiement
 - **[README.md](../README.md)** - Documentation du projet
 
----
+______________________________________________________________________
 
 **🚀 Bon déploiement !**

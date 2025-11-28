@@ -5,13 +5,14 @@ Ce module fournit une interface unifiée pour créer et configurer des
 browsers Playwright avec anti-détection et gestion du proxy.
 """
 
-import random
 import logging
-from typing import Optional, Dict, Any
-from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright, Playwright
+import random
+from typing import Any, Optional
+
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
 from ..config.config_manager import get_config
-from ..config.config_schema import BrowserConfig, ProxyConfig
+from ..config.config_schema import BrowserConfig
 from ..utils.exceptions import BrowserError
 
 logger = logging.getLogger(__name__)
@@ -59,9 +60,7 @@ class BrowserManager:
         )
 
     def create_browser(
-        self,
-        auth_state_path: Optional[str] = None,
-        proxy_config: Optional[Dict[str, str]] = None
+        self, auth_state_path: Optional[str] = None, proxy_config: Optional[dict[str, str]] = None
     ) -> tuple[Browser, BrowserContext, Page]:
         """
         Crée et configure un browser Playwright complet.
@@ -96,17 +95,14 @@ class BrowserManager:
 
             # Lancer le browser
             self.browser = self.playwright.chromium.launch(
-                headless=self.config.headless,
-                slow_mo=self.slow_mo,
-                args=launch_args
+                headless=self.config.headless, slow_mo=self.slow_mo, args=launch_args
             )
 
             logger.info(f"Browser launched (user_agent: {self.user_agent[:50]}...)")
 
             # Créer le contexte
             context_options = self._get_context_options(
-                auth_state_path=auth_state_path,
-                proxy_config=proxy_config
+                auth_state_path=auth_state_path, proxy_config=proxy_config
             )
 
             self.context = self.browser.new_context(**context_options)
@@ -138,32 +134,30 @@ class BrowserManager:
         """
         """Construit les arguments de lancement optimisés pour Pi 4."""
         args = [
-            '--disable-blink-features=AutomationControlled',
-            '--disable-dev-shm-usage',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            f'--window-size={self.viewport["width"]},{self.viewport["height"]}'
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process",
+            f'--window-size={self.viewport["width"]},{self.viewport["height"]}',
         ]
 
         # Optimisations RAM Spécifiques Pi 4 :
         pi4_args = [
-            '--disable-gl-drawing-for-tests',
-            '--mute-audio',
-            '--disable-extensions',
-            '--disable-background-networking',
-            '--disable-component-extensions-with-background-pages',
+            "--disable-gl-drawing-for-tests",
+            "--mute-audio",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-component-extensions-with-background-pages",
         ]
         args.extend(pi4_args)
 
         return args
 
     def _get_context_options(
-        self,
-        auth_state_path: Optional[str] = None,
-        proxy_config: Optional[Dict[str, str]] = None
-    ) -> Dict[str, Any]:
+        self, auth_state_path: Optional[str] = None, proxy_config: Optional[dict[str, str]] = None
+    ) -> dict[str, Any]:
         """
         Construit les options du contexte browser.
 
@@ -174,20 +168,20 @@ class BrowserManager:
         Returns:
             Dict d'options pour browser.new_context()
         """
-        options: Dict[str, Any] = {
-            'user_agent': self.user_agent,
-            'viewport': self.viewport,
-            'locale': self.config.locale,
-            'timezone_id': self.config.timezone,
+        options: dict[str, Any] = {
+            "user_agent": self.user_agent,
+            "viewport": self.viewport,
+            "locale": self.config.locale,
+            "timezone_id": self.config.timezone,
         }
 
         # Ajouter l'auth state si fourni
         if auth_state_path:
-            options['storage_state'] = auth_state_path
+            options["storage_state"] = auth_state_path
 
         # Ajouter le proxy si fourni
         if proxy_config:
-            options['proxy'] = proxy_config
+            options["proxy"] = proxy_config
 
         return options
 
@@ -199,6 +193,7 @@ class BrowserManager:
         """
         try:
             from playwright_stealth import Stealth
+
             stealth = Stealth()
             stealth.apply_stealth_sync(self.context)
             logger.info("✅ Stealth mode applied successfully")
@@ -300,7 +295,7 @@ class BrowserManager:
             raise TimeoutError("Browser cleanup timeout")
 
         # Set 10 second timeout for cleanup
-        if hasattr(signal, 'SIGALRM'):
+        if hasattr(signal, "SIGALRM"):
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(10)
 
@@ -359,7 +354,7 @@ class BrowserManager:
             self.playwright = None
         finally:
             # Cancel alarm
-            if hasattr(signal, 'SIGALRM'):
+            if hasattr(signal, "SIGALRM"):
                 signal.alarm(0)
 
     def __enter__(self):
@@ -379,8 +374,7 @@ class BrowserManager:
 
 
 def create_browser_with_auth(
-    auth_state_path: str,
-    proxy_config: Optional[Dict[str, str]] = None
+    auth_state_path: str, proxy_config: Optional[dict[str, str]] = None
 ) -> tuple[BrowserManager, Browser, BrowserContext, Page]:
     """
     Fonction helper pour créer rapidement un browser avec authentification.
@@ -401,7 +395,6 @@ def create_browser_with_auth(
     """
     manager = BrowserManager()
     browser, context, page = manager.create_browser(
-        auth_state_path=auth_state_path,
-        proxy_config=proxy_config
+        auth_state_path=auth_state_path, proxy_config=proxy_config
     )
     return manager, browser, context, page

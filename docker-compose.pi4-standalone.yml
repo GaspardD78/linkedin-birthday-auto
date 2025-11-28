@@ -22,7 +22,7 @@ services:
     image: redis:7-alpine
     container_name: linkedin-bot-redis
     volumes:
-      - redis-bot-data:/data
+    - redis-bot-data:/data
     # Optimisations Redis pour Pi 4
     # AOF only (no RDB snapshots) to avoid fork-based BGSAVE warnings
     command: >
@@ -49,19 +49,19 @@ services:
           cpus: '0.25'
           memory: 200M
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
+        max-size: 5m
+        max-file: '2'
+        compress: 'true'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD, redis-cli, ping]
       interval: 30s
       timeout: 5s
       retries: 3
     networks:
-      - linkedin-network
+    - linkedin-network
 
   # ========================================
   # REDIS (Cache pour Dashboard)
@@ -79,7 +79,7 @@ services:
       --loglevel warning
     restart: unless-stopped
     volumes:
-      - redis-dashboard-data:/data
+    - redis-dashboard-data:/data
     deploy:
       resources:
         limits:
@@ -89,18 +89,18 @@ services:
           memory: 50M
           cpus: '0.25'
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
+        max-size: 5m
+        max-file: '2'
+        compress: 'true'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD, redis-cli, ping]
       interval: 30s
       timeout: 5s
       retries: 3
     networks:
-      - linkedin-network
+    - linkedin-network
 
   # ========================================
   # API (Pont entre Dashboard et Worker)
@@ -112,22 +112,22 @@ services:
     container_name: linkedin-bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
     environment:
-      - REDIS_HOST=redis-bot
-      - REDIS_PORT=6379
-      - PYTHONPATH=/app
-      - LOG_LEVEL=INFO
-      - DATABASE_URL=sqlite:///app/data/linkedin.db
+    - REDIS_HOST=redis-bot
+    - REDIS_PORT=6379
+    - PYTHONPATH=/app
+    - LOG_LEVEL=INFO
+    - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Clé API pour sécuriser les appels internes
-      - API_KEY=internal_secret_key
+    - API_KEY=internal_secret_key
       # Désactiver la télémétrie OpenTelemetry
-      - ENABLE_TELEMETRY=false
+    - ENABLE_TELEMETRY=false
     volumes:
-      - ./logs:/app/logs
-      - ./config:/app/config
-      - ./auth_state.json:/app/auth_state.json:ro
-      - ./messages.txt:/app/messages.txt
-      - ./late_messages.txt:/app/late_messages.txt
-      - shared-data:/app/data
+    - ./logs:/app/logs
+    - ./config:/app/config
+    - ./auth_state.json:/app/auth_state.json:ro
+    - ./messages.txt:/app/messages.txt
+    - ./late_messages.txt:/app/late_messages.txt
+    - shared-data:/app/data
     deploy:
       resources:
         limits:
@@ -137,7 +137,7 @@ services:
           memory: 150M
     restart: unless-stopped
     networks:
-      - linkedin-network
+    - linkedin-network
 
   # ========================================
   # BOT WORKER (RQ Worker avec Playwright)
@@ -152,21 +152,21 @@ services:
       redis-bot:
         condition: service_healthy
     environment:
-      - REDIS_HOST=redis-bot
-      - REDIS_PORT=6379
-      - PYTHONPATH=/app
-      - LOG_LEVEL=INFO
+    - REDIS_HOST=redis-bot
+    - REDIS_PORT=6379
+    - PYTHONPATH=/app
+    - LOG_LEVEL=INFO
       # Utilisation SQLite partagé avec le dashboard
-      - DATABASE_URL=sqlite:///app/data/linkedin.db
+    - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Désactiver la télémétrie OpenTelemetry
-      - ENABLE_TELEMETRY=false
+    - ENABLE_TELEMETRY=false
     volumes:
-      - ./logs:/app/logs
-      - ./config:/app/config
-      - ./auth_state.json:/app/auth_state.json
-      - ./messages.txt:/app/messages.txt
-      - ./late_messages.txt:/app/late_messages.txt
-      - shared-data:/app/data
+    - ./logs:/app/logs
+    - ./config:/app/config
+    - ./auth_state.json:/app/auth_state.json
+    - ./messages.txt:/app/messages.txt
+    - ./late_messages.txt:/app/late_messages.txt
+    - shared-data:/app/data
     # Optimisé pour Pi 4 avec 4GB RAM
     deploy:
       resources:
@@ -177,20 +177,20 @@ services:
           cpus: '0.5'
           memory: 450M
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
+        max-size: 5m
+        max-file: '2'
+        compress: 'true'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import redis; r = redis.Redis(host='redis-bot', port=6379); r.ping()"]
+      test: [CMD, python, -c, "import redis; r = redis.Redis(host='redis-bot', port=6379); r.ping()"]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 120s
     networks:
-      - linkedin-network
+    - linkedin-network
 
   # ========================================
   # DASHBOARD (Next.js avec SQLite)
@@ -202,7 +202,7 @@ services:
     restart: unless-stopped
     container_name: linkedin-dashboard
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+    - ${DASHBOARD_PORT:-3000}:3000
     deploy:
       resources:
         limits:
@@ -212,46 +212,46 @@ services:
           memory: 200M
           cpus: '0.25'
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "5m"
-        max-file: "2"
-        compress: "true"
+        max-size: 5m
+        max-file: '2'
+        compress: 'true'
     environment:
-      - NODE_ENV=production
-      - NEXT_TELEMETRY_DISABLED=1
+    - NODE_ENV=production
+    - NEXT_TELEMETRY_DISABLED=1
 
       # ✅ SQLite Local
-      - DATABASE_URL=sqlite:///app/data/linkedin.db
+    - DATABASE_URL=sqlite:///app/data/linkedin.db
 
       # Configuration Redis Dashboard
-      - REDIS_URL=redis://redis-dashboard:6379
+    - REDIS_URL=redis://redis-dashboard:6379
 
       # Configuration Bot (pour Proxy API)
-      - BOT_API_URL=http://api:8000
-      - BOT_API_KEY=internal_secret_key
+    - BOT_API_URL=http://api:8000
+    - BOT_API_KEY=internal_secret_key
     volumes:
       # Logs partagés avec le bot
-      - ./logs:/app/logs
+    - ./logs:/app/logs
       # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
-      - ./config:/app/config
-      - ./messages.txt:/app/messages.txt
-      - ./late_messages.txt:/app/late_messages.txt
+    - ./config:/app/config
+    - ./messages.txt:/app/messages.txt
+    - ./late_messages.txt:/app/late_messages.txt
       # Base de données SQLite partagée avec le bot
-      - shared-data:/app/data
+    - shared-data:/app/data
     depends_on:
       redis-dashboard:
         condition: service_healthy
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/system/health"]
+      test: [CMD, curl, -f, http://localhost:3000/api/system/health]
       interval: 60s
       timeout: 10s
       retries: 3
       start_period: 30s
     networks:
-      - linkedin-network
+    - linkedin-network
 
 # ========================================
 # VOLUMES PERSISTANTS

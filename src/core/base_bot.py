@@ -6,34 +6,25 @@ entre les différents types de bots (birthday, unlimited, etc.).
 """
 
 from abc import ABC, abstractmethod
-import random
-import time
-import re
-from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime
-from pathlib import Path
+import random
+import re
+import time
+from typing import Any, Optional
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
+from opentelemetry import trace
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ..config.config_manager import get_config
 from ..config.config_schema import LinkedInBotConfig
-from ..core.browser_manager import BrowserManager
 from ..core.auth_manager import AuthManager
-from ..utils.exceptions import (
-    LinkedInBotError,
-    SessionExpiredError,
-    ElementNotFoundError,
-    PageLoadTimeoutError,
-    MessageSendError
-)
-from ..monitoring.metrics import (
-    MESSAGES_SENT_TOTAL,
-    BIRTHDAYS_PROCESSED,
-    RUN_DURATION_SECONDS
-)
+from ..core.browser_manager import BrowserManager
+from ..monitoring.metrics import BIRTHDAYS_PROCESSED, MESSAGES_SENT_TOTAL
 from ..monitoring.prometheus import PrometheusClient
-from ..monitoring.tracing import setup_tracing
-from opentelemetry import trace
+from ..utils.exceptions import (
+    SessionExpiredError,
+)
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -89,22 +80,22 @@ class BaseLinkedInBot(ABC):
         self.page: Optional[Page] = None
 
         # Messages
-        self.birthday_messages: List[str] = []
-        self.late_birthday_messages: List[str] = []
+        self.birthday_messages: list[str] = []
+        self.late_birthday_messages: list[str] = []
 
         # Stats d'exécution
         self.stats = {
-            'messages_sent': 0,
-            'errors': 0,
-            'contacts_processed': 0,
-            'start_time': None,
-            'end_time': None
+            "messages_sent": 0,
+            "errors": 0,
+            "contacts_processed": 0,
+            "start_time": None,
+            "end_time": None,
         }
 
         logger.info(
             f"{self.__class__.__name__} initialized",
             mode=self.config.bot_mode,
-            dry_run=self.config.dry_run
+            dry_run=self.config.dry_run,
         )
 
     # ═══════════════════════════════════════════════════════════════
@@ -112,7 +103,7 @@ class BaseLinkedInBot(ABC):
     # ═══════════════════════════════════════════════════════════════
 
     @abstractmethod
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         """
         Exécute la logique principale du bot.
 
@@ -129,7 +120,7 @@ class BaseLinkedInBot(ABC):
             return self._run_internal()
 
     @abstractmethod
-    def _run_internal(self) -> Dict[str, Any]:
+    def _run_internal(self) -> dict[str, Any]:
         """Internal abstract run method to be implemented by subclasses."""
         pass
 
@@ -148,7 +139,7 @@ class BaseLinkedInBot(ABC):
             BrowserError: Si le browser ne démarre pas
         """
         logger.info("Setting up bot...")
-        self.stats['start_time'] = datetime.now().isoformat()
+        self.stats["start_time"] = datetime.now().isoformat()
 
         # Charger les messages
         self._load_messages()
@@ -167,8 +158,7 @@ class BaseLinkedInBot(ABC):
 
         # Créer le browser
         browser, context, page = self.browser_manager.create_browser(
-            auth_state_path=auth_path,
-            proxy_config=proxy_config
+            auth_state_path=auth_path, proxy_config=proxy_config
         )
 
         self.page = page
@@ -182,7 +172,7 @@ class BaseLinkedInBot(ABC):
         idéalement dans un try/finally block.
         """
         logger.info("Tearing down bot...")
-        self.stats['end_time'] = datetime.now().isoformat()
+        self.stats["end_time"] = datetime.now().isoformat()
 
         # Fermer le browser
         if self.browser_manager:
@@ -231,7 +221,7 @@ class BaseLinkedInBot(ABC):
     # NAVIGATION ET EXTRACTION DES ANNIVERSAIRES
     # ═══════════════════════════════════════════════════════════════
 
-    def get_birthday_contacts(self) -> Dict[str, List]:
+    def get_birthday_contacts(self) -> dict[str, list]:
         """
         Navigue vers la page anniversaires et extrait tous les contacts.
 
@@ -254,7 +244,7 @@ class BaseLinkedInBot(ABC):
             except PlaywrightTimeoutError:
                 logger.info("No birthday cards found on the page")
                 self.browser_manager.take_screenshot("birthdays_page_no_cards.png")
-                return {'today': [], 'late': []}
+                return {"today": [], "late": []}
 
             # Screenshot pour debug
             self.browser_manager.take_screenshot("birthdays_page_loaded.png")
@@ -265,11 +255,7 @@ class BaseLinkedInBot(ABC):
             # Catégoriser les anniversaires
             return self._categorize_birthdays(all_contacts)
 
-    def _scroll_and_collect_contacts(
-        self,
-        card_selector: str,
-        max_scrolls: int = 20
-    ) -> List:
+    def _scroll_and_collect_contacts(self, card_selector: str, max_scrolls: int = 20) -> list:
         """
         Scrolle la page pour charger toutes les cartes d'anniversaire.
 
@@ -313,7 +299,7 @@ class BaseLinkedInBot(ABC):
 
         return final_contacts
 
-    def _categorize_birthdays(self, contacts: List) -> Dict[str, List]:
+    def _categorize_birthdays(self, contacts: list) -> dict[str, list]:
         """
         Catégorise les contacts en anniversaires du jour et en retard.
 
@@ -323,50 +309,57 @@ class BaseLinkedInBot(ABC):
         Returns:
             Dict {'today': [...], 'late': [(contact, days_late), ...]}
         """
-        birthdays = {'today': [], 'late': []}
+        birthdays = {"today": [], "late": []}
 
         # Statistiques de classification
         stats = {
-            'today': 0,
-            'late_1d': 0, 'late_2d': 0, 'late_3d': 0, 'late_4d': 0,
-            'late_5d': 0, 'late_6d': 0, 'late_7d': 0, 'late_8d': 0,
-            'late_9d': 0, 'late_10d': 0,
-            'ignored': 0,
-            'errors': 0
+            "today": 0,
+            "late_1d": 0,
+            "late_2d": 0,
+            "late_3d": 0,
+            "late_4d": 0,
+            "late_5d": 0,
+            "late_6d": 0,
+            "late_7d": 0,
+            "late_8d": 0,
+            "late_9d": 0,
+            "late_10d": 0,
+            "ignored": 0,
+            "errors": 0,
         }
 
         for i, contact in enumerate(contacts):
             try:
                 birthday_type, days_late = self._get_birthday_type(contact)
 
-                if birthday_type == 'today':
-                    birthdays['today'].append(contact)
-                    stats['today'] += 1
+                if birthday_type == "today":
+                    birthdays["today"].append(contact)
+                    stats["today"] += 1
 
-                elif birthday_type == 'late':
-                    birthdays['late'].append((contact, days_late))
+                elif birthday_type == "late":
+                    birthdays["late"].append((contact, days_late))
                     if 1 <= days_late <= 10:
-                        stats[f'late_{days_late}d'] += 1
+                        stats[f"late_{days_late}d"] += 1
 
                 else:  # 'ignore'
-                    stats['ignored'] += 1
+                    stats["ignored"] += 1
 
             except Exception as e:
                 logger.error(f"Error classifying card {i+1}: {e}")
-                stats['errors'] += 1
+                stats["errors"] += 1
 
         # Afficher les statistiques
         self._log_birthday_stats(stats, len(contacts))
 
         # Update metrics
-        BIRTHDAYS_PROCESSED.labels(type='today').set(stats['today'])
-        total_late = sum(stats[f'late_{i}d'] for i in range(1, 11))
-        BIRTHDAYS_PROCESSED.labels(type='late').set(total_late)
-        BIRTHDAYS_PROCESSED.labels(type='ignored').set(stats['ignored'])
+        BIRTHDAYS_PROCESSED.labels(type="today").set(stats["today"])
+        total_late = sum(stats[f"late_{i}d"] for i in range(1, 11))
+        BIRTHDAYS_PROCESSED.labels(type="late").set(total_late)
+        BIRTHDAYS_PROCESSED.labels(type="ignored").set(stats["ignored"])
 
         return birthdays
 
-    def _log_birthday_stats(self, stats: Dict, total: int) -> None:
+    def _log_birthday_stats(self, stats: dict, total: int) -> None:
         """Affiche les statistiques de classification des anniversaires."""
         logger.info("═" * 50)
         logger.info("📊 BIRTHDAY CLASSIFICATION STATISTICS")
@@ -382,12 +375,12 @@ class BaseLinkedInBot(ABC):
         logger.info(f"⚠️  Errors:             {stats['errors']}")
         logger.info("═" * 50)
 
-        total_late = sum(stats[f'late_{i}d'] for i in range(1, 11))
+        total_late = sum(stats[f"late_{i}d"] for i in range(1, 11))
         logger.info(f"\nTOTAL TO PROCESS: {stats['today'] + total_late}")
         logger.info(f"  - Today:  {stats['today']}")
         logger.info(f"  - Late:   {total_late}\n")
 
-    def _get_birthday_type(self, contact_element) -> Tuple[str, int]:
+    def _get_birthday_type(self, contact_element) -> tuple[str, int]:
         """
         Détermine le type d'anniversaire (today, late, ignore).
 
@@ -407,7 +400,7 @@ class BaseLinkedInBot(ABC):
 
         if button_text_today in card_text:
             logger.debug("✓ Today's birthday detected (standard button)")
-            return 'today', 0
+            return "today", 0
 
         if button_text_late in card_text:
             logger.debug("✓ Late birthday detected (late button)")
@@ -416,24 +409,28 @@ class BaseLinkedInBot(ABC):
                 max_days = self.config.birthday_filter.max_days_late
                 if 1 <= days <= max_days:
                     logger.debug(f"→ {days} day(s) late - classified as 'late'")
-                    return 'late', days
+                    return "late", days
                 else:
                     logger.debug(f"→ {days} day(s) late - too old, classified as 'ignore'")
-                    return 'ignore', days
+                    return "ignore", days
             else:
                 logger.warning("⚠️ Late detected but date unparseable, estimating 2 days")
-                return 'late', 2
+                return "late", 2
 
         # Méthode 2 : Mots-clés "aujourd'hui"
         today_keywords = [
-            "aujourd'hui", "aujourdhui", "c'est aujourd'hui",
-            "today", "is today", "'s birthday is today"
+            "aujourd'hui",
+            "aujourdhui",
+            "c'est aujourd'hui",
+            "today",
+            "is today",
+            "'s birthday is today",
         ]
 
         for keyword in today_keywords:
             if keyword in card_text:
                 logger.debug(f"✓ Today detected (keyword: '{keyword}')")
-                return 'today', 0
+                return "today", 0
 
         # Méthode 3 : Parser la date explicite
         days = self._extract_days_from_date(card_text)
@@ -442,17 +439,17 @@ class BaseLinkedInBot(ABC):
 
             if days == 0:
                 logger.debug("✓ Parsed date = today")
-                return 'today', 0
+                return "today", 0
             elif 1 <= days <= max_days:
                 logger.debug(f"✓ Parsed date = {days} day(s) late")
-                return 'late', days
+                return "late", days
             else:
                 logger.debug(f"→ Parsed date = {days} days - too old")
-                return 'ignore', days
+                return "ignore", days
 
         # Méthode 4 : Regex "il y a X jours"
-        match_fr = re.search(r'il y a (\d+) jours?', card_text)
-        match_en = re.search(r'(\d+) days? ago', card_text)
+        match_fr = re.search(r"il y a (\d+) jours?", card_text)
+        match_en = re.search(r"(\d+) days? ago", card_text)
 
         if match_fr or match_en:
             days_late = int(match_fr.group(1) if match_fr else match_en.group(1))
@@ -460,24 +457,24 @@ class BaseLinkedInBot(ABC):
 
             if 1 <= days_late <= max_days:
                 logger.debug(f"✓ Regex detected: {days_late} day(s) late")
-                return 'late', days_late
+                return "late", days_late
             else:
                 logger.debug(f"→ Regex: {days_late} days - too old")
-                return 'ignore', days_late
+                return "ignore", days_late
 
         # Cas par défaut
         logger.warning("⚠️ No pattern recognized in card")
         logger.debug(f"Card text: {card_text[:200]}")
 
-        time_keywords = ['retard', 'il y a', 'ago', 'récent']
+        time_keywords = ["retard", "il y a", "ago", "récent"]
         has_time_keyword = any(kw in card_text for kw in time_keywords)
 
         if not has_time_keyword:
             logger.debug("→ No delay indicator, classifying as 'today'")
-            return 'today', 0
+            return "today", 0
         else:
             logger.warning("→ Ambiguous time indicators, classifying as 'ignore'")
-            return 'ignore', 0
+            return "ignore", 0
 
     def _extract_days_from_date(self, card_text: str) -> Optional[int]:
         """
@@ -493,7 +490,7 @@ class BaseLinkedInBot(ABC):
             "le 10 nov." avec date actuelle 18 nov → 8 jours
         """
         # Pattern: "le 10 nov." ou "le 10 novembre"
-        pattern = r'le (\d{1,2}) (janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?)'
+        pattern = r"le (\d{1,2}) (janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?)"
 
         match = re.search(pattern, card_text, re.IGNORECASE)
 
@@ -505,21 +502,44 @@ class BaseLinkedInBot(ABC):
 
         # Mapping mois → numéro
         month_mapping = {
-            'janv': 1, 'janvier': 1, 'january': 1,
-            'févr': 2, 'fev': 2, 'février': 2, 'february': 2,
-            'mars': 3, 'march': 3,
-            'avr': 4, 'avril': 4, 'april': 4,
-            'mai': 5, 'may': 5,
-            'juin': 6, 'june': 6,
-            'juil': 7, 'juillet': 7, 'july': 7,
-            'août': 8, 'aout': 8, 'august': 8,
-            'sept': 9, 'septembre': 9, 'september': 9,
-            'oct': 10, 'octobre': 10, 'october': 10,
-            'nov': 11, 'novembre': 11, 'november': 11,
-            'déc': 12, 'dec': 12, 'décembre': 12, 'december': 12
+            "janv": 1,
+            "janvier": 1,
+            "january": 1,
+            "févr": 2,
+            "fev": 2,
+            "février": 2,
+            "february": 2,
+            "mars": 3,
+            "march": 3,
+            "avr": 4,
+            "avril": 4,
+            "april": 4,
+            "mai": 5,
+            "may": 5,
+            "juin": 6,
+            "june": 6,
+            "juil": 7,
+            "juillet": 7,
+            "july": 7,
+            "août": 8,
+            "aout": 8,
+            "august": 8,
+            "sept": 9,
+            "septembre": 9,
+            "september": 9,
+            "oct": 10,
+            "octobre": 10,
+            "october": 10,
+            "nov": 11,
+            "novembre": 11,
+            "november": 11,
+            "déc": 12,
+            "dec": 12,
+            "décembre": 12,
+            "december": 12,
         }
 
-        month_key = month_str.rstrip('.')
+        month_key = month_str.rstrip(".")
         month = None
 
         for key, value in month_mapping.items():
@@ -569,9 +589,14 @@ class BaseLinkedInBot(ABC):
 
         # Mots-clés à exclure
         non_name_keywords = [
-            'Célébrez', 'anniversaire', "Aujourd'hui", 'Il y a',
-            'avec un peu de retard', 'avec du retard', 'Message',
-            'Say happy birthday'
+            "Célébrez",
+            "anniversaire",
+            "Aujourd'hui",
+            "Il y a",
+            "avec un peu de retard",
+            "avec du retard",
+            "Message",
+            "Say happy birthday",
         ]
 
         for p in paragraphs:
@@ -579,8 +604,7 @@ class BaseLinkedInBot(ABC):
             # Un nom est entre 3 et 100 caractères et ne contient pas de keywords
             is_valid_length = text and 2 < len(text) < 100
             has_no_keywords = not any(
-                keyword.lower() in text.lower()
-                for keyword in non_name_keywords
+                keyword.lower() in text.lower() for keyword in non_name_keywords
             )
 
             if is_valid_length and has_no_keywords:
@@ -611,19 +635,19 @@ class BaseLinkedInBot(ABC):
         # Garder seulement lettres, hyphens et espaces
         cleaned_chars = []
         for char in name:
-            if char.isalpha() or char == '-' or char == ' ':
+            if char.isalpha() or char == "-" or char == " ":
                 cleaned_chars.append(char)
 
-        cleaned_name = ''.join(cleaned_chars)
+        cleaned_name = "".join(cleaned_chars)
 
         # Normaliser les espaces
-        while '  ' in cleaned_name:
-            cleaned_name = cleaned_name.replace('  ', ' ')
+        while "  " in cleaned_name:
+            cleaned_name = cleaned_name.replace("  ", " ")
 
         # Normaliser les tirets
-        cleaned_name = cleaned_name.replace(' - ', '-')
-        cleaned_name = cleaned_name.replace('- ', '-')
-        cleaned_name = cleaned_name.replace(' -', '-')
+        cleaned_name = cleaned_name.replace(" - ", "-")
+        cleaned_name = cleaned_name.replace("- ", "-")
+        cleaned_name = cleaned_name.replace(" -", "-")
 
         cleaned_name = cleaned_name.strip()
 
@@ -631,33 +655,28 @@ class BaseLinkedInBot(ABC):
             return ""  # Initial seul, on ignore
 
         # Capitaliser les parties (gérer tirets et espaces)
-        space_parts = cleaned_name.split(' ')
+        space_parts = cleaned_name.split(" ")
         processed_parts = []
 
         for space_part in space_parts:
             if not space_part:
                 continue
 
-            if '-' in space_part:
-                hyphen_parts = space_part.split('-')
-                capitalized_hyphen_parts = [
-                    part.capitalize() for part in hyphen_parts if part
-                ]
-                processed_parts.append('-'.join(capitalized_hyphen_parts))
+            if "-" in space_part:
+                hyphen_parts = space_part.split("-")
+                capitalized_hyphen_parts = [part.capitalize() for part in hyphen_parts if part]
+                processed_parts.append("-".join(capitalized_hyphen_parts))
             else:
                 processed_parts.append(space_part.capitalize())
 
-        return ' '.join(processed_parts)
+        return " ".join(processed_parts)
 
     # ═══════════════════════════════════════════════════════════════
     # ENVOI DE MESSAGES
     # ═══════════════════════════════════════════════════════════════
 
     def send_birthday_message(
-        self,
-        contact_element,
-        is_late: bool = False,
-        days_late: int = 0
+        self, contact_element, is_late: bool = False, days_late: int = 0
     ) -> bool:
         """
         Envoie un message d'anniversaire à un contact.
@@ -677,10 +696,7 @@ class BaseLinkedInBot(ABC):
             return self._send_birthday_message_internal(contact_element, is_late, days_late)
 
     def _send_birthday_message_internal(
-        self,
-        contact_element,
-        is_late: bool,
-        days_late: int
+        self, contact_element, is_late: bool, days_late: int
     ) -> bool:
         """Logique interne d'envoi de message."""
         # Fermer toutes les modales ouvertes
@@ -752,7 +768,9 @@ class BaseLinkedInBot(ABC):
                             if button:
                                 button.click()
                                 self.random_delay(1, 2)
-                                self.page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+                                self.page.wait_for_selector(
+                                    message_box_selector, state="visible", timeout=30000
+                                )
                                 break
                     except Exception:
                         continue
@@ -766,7 +784,11 @@ class BaseLinkedInBot(ABC):
 
         # Sélectionner le message approprié
         if is_late:
-            message_list = self.late_birthday_messages if self.late_birthday_messages else self.birthday_messages
+            message_list = (
+                self.late_birthday_messages
+                if self.late_birthday_messages
+                else self.birthday_messages
+            )
         else:
             message_list = self.birthday_messages
 
@@ -777,23 +799,25 @@ class BaseLinkedInBot(ABC):
         message = random.choice(message_list).format(name=first_name)
 
         # Vérifier l'historique des messages si database disponible
-        if self.config.database.enabled and hasattr(self, 'db') and self.db:
+        if self.config.database.enabled and hasattr(self, "db") and self.db:
             try:
                 previous_messages = self.db.get_messages_sent_to_contact(
-                    full_name,
-                    years=self.config.messages.avoid_repetition_years
+                    full_name, years=self.config.messages.avoid_repetition_years
                 )
 
                 if previous_messages:
-                    used_messages = {msg['message_text'] for msg in previous_messages}
+                    used_messages = {msg["message_text"] for msg in previous_messages}
                     available_messages = [
-                        msg for msg in message_list
+                        msg
+                        for msg in message_list
                         if msg.format(name=first_name) not in used_messages
                     ]
 
                     if available_messages:
                         message = random.choice(available_messages).format(name=first_name)
-                        logger.debug(f"Selected unused message from {len(available_messages)} available")
+                        logger.debug(
+                            f"Selected unused message from {len(available_messages)} available"
+                        )
                     else:
                         logger.warning(f"All messages used for {full_name}, reusing from pool")
             except Exception as e:
@@ -802,7 +826,7 @@ class BaseLinkedInBot(ABC):
         # Mode dry-run
         if self.config.dry_run:
             logger.info(f"[DRY RUN] Would send to {first_name}: '{message}'")
-            if self.config.database.enabled and hasattr(self, 'db') and self.db:
+            if self.config.database.enabled and hasattr(self, "db") and self.db:
                 try:
                     self.db.add_birthday_message(full_name, message, is_late, days_late, "dry_run")
                 except Exception as e:
@@ -834,12 +858,16 @@ class BaseLinkedInBot(ABC):
             if submit_button.is_enabled():
                 submit_button.click()
                 logger.info("✅ Message sent successfully", contact=full_name)
-                MESSAGES_SENT_TOTAL.labels(status='success', type='late' if is_late else 'today').inc()
+                MESSAGES_SENT_TOTAL.labels(
+                    status="success", type="late" if is_late else "today"
+                ).inc()
 
                 # Enregistrer en DB
-                if self.config.database.enabled and hasattr(self, 'db') and self.db:
+                if self.config.database.enabled and hasattr(self, "db") and self.db:
                     try:
-                        self.db.add_birthday_message(full_name, message, is_late, days_late, "production")
+                        self.db.add_birthday_message(
+                            full_name, message, is_late, days_late, "production"
+                        )
                     except Exception as e:
                         logger.warning(f"Could not record to database: {e}")
 
@@ -856,9 +884,11 @@ class BaseLinkedInBot(ABC):
                 submit_button.click(force=True, timeout=10000)
                 logger.info("✅ Message sent (force click)")
 
-                if self.config.database.enabled and hasattr(self, 'db') and self.db:
+                if self.config.database.enabled and hasattr(self, "db") and self.db:
                     try:
-                        self.db.add_birthday_message(full_name, message, is_late, days_late, "production")
+                        self.db.add_birthday_message(
+                            full_name, message, is_late, days_late, "production"
+                        )
                     except Exception as e:
                         logger.warning(f"Could not record to database: {e}")
 
@@ -866,7 +896,9 @@ class BaseLinkedInBot(ABC):
 
             except Exception as e2:
                 logger.error(f"❌ Failed to send message: {e2}")
-                self.browser_manager.take_screenshot(f"error_send_{first_name.replace(' ', '_')}.png")
+                self.browser_manager.take_screenshot(
+                    f"error_send_{first_name.replace(' ', '_')}.png"
+                )
                 return False
 
         finally:
@@ -931,10 +963,7 @@ class BaseLinkedInBot(ABC):
             # Pause de lecture
             lambda: time.sleep(random.uniform(1.5, 4.0)),
             # Mouvement de souris
-            lambda: self.page.mouse.move(
-                random.randint(300, 800),
-                random.randint(200, 600)
-            ),
+            lambda: self.page.mouse.move(random.randint(300, 800), random.randint(200, 600)),
         ]
 
         num_actions = random.randint(1, 3)
@@ -952,17 +981,15 @@ class BaseLinkedInBot(ABC):
 
     def _load_messages(self) -> None:
         """Charge les messages d'anniversaire depuis les fichiers."""
-        self.birthday_messages = self._load_messages_from_file(
-            self.config.messages.messages_file
-        )
+        self.birthday_messages = self._load_messages_from_file(self.config.messages.messages_file)
         self.late_birthday_messages = self._load_messages_from_file(
             self.config.messages.late_messages_file
         )
 
-    def _load_messages_from_file(self, file_path: str) -> List[str]:
+    def _load_messages_from_file(self, file_path: str) -> list[str]:
         """Charge des messages depuis un fichier texte."""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 messages = [line.strip() for line in f if line.strip()]
 
             if not messages:
@@ -976,7 +1003,7 @@ class BaseLinkedInBot(ABC):
             logger.warning(f"Message file not found: '{file_path}'")
             return []
 
-    def _get_proxy_config(self) -> Optional[Dict[str, str]]:
+    def _get_proxy_config(self) -> Optional[dict[str, str]]:
         """Obtient la configuration proxy si activée."""
         if not self.config.proxy.enabled:
             return None
@@ -994,7 +1021,7 @@ class BaseLinkedInBot(ABC):
 
         return None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques d'exécution."""
         return self.stats.copy()
 

@@ -33,18 +33,18 @@ Usage:
     python main.py --help
 """
 
-import sys
-import logging
 import argparse
+import logging
 from pathlib import Path
+import sys
 from typing import Optional
 
 # Ajouter le répertoire src au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config.config_manager import ConfigManager
-from src.utils.exceptions import LinkedInBotError, is_critical_error
 from src.core.database import get_database
+from src.utils.exceptions import LinkedInBotError, is_critical_error
 
 
 def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> None:
@@ -66,8 +66,8 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
 
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=handlers,
     )
 
 
@@ -90,7 +90,9 @@ def print_config_summary(config) -> None:
     logger.info("\n📋 Configuration Summary:")
     logger.info(f"   Browser headless: {config.browser.headless}")
     logger.info(f"   Weekly limit: {config.messaging_limits.weekly_message_limit}")
-    logger.info(f"   Daily window: {config.scheduling.daily_start_hour}h-{config.scheduling.daily_end_hour}h")
+    logger.info(
+        f"   Daily window: {config.scheduling.daily_start_hour}h-{config.scheduling.daily_end_hour}h"
+    )
     logger.info(f"   Process today: {config.birthday_filter.process_today}")
     logger.info(f"   Process late: {config.birthday_filter.process_late}")
 
@@ -101,7 +103,9 @@ def print_config_summary(config) -> None:
     logger.info(f"   Proxy: {config.proxy.enabled}")
 
     if config.delays:
-        logger.info(f"   Delays: {config.delays.min_delay_seconds}-{config.delays.max_delay_seconds}s")
+        logger.info(
+            f"   Delays: {config.delays.min_delay_seconds}-{config.delays.max_delay_seconds}s"
+        )
 
 
 def print_database_stats(config) -> None:
@@ -115,7 +119,7 @@ def print_database_stats(config) -> None:
         db = get_database(config.database.db_path)
         stats = db.get_statistics(days=30)
 
-        logger.info(f"\n📊 Last 30 days stats:")
+        logger.info("\n📊 Last 30 days stats:")
         logger.info(f"   Messages sent: {stats['messages']['total']}")
         logger.info(f"   Unique contacts: {stats['contacts']['unique']}")
         logger.info(f"   Profile visits: {stats['profile_visits']['total']}")
@@ -157,6 +161,7 @@ def validate_command(args) -> int:
 
         # Vérifier l'authentification
         from src.core.auth_manager import validate_auth
+
         if not validate_auth():
             logger.warning("⚠️ No valid authentication found")
             logger.warning("   Set LINKEDIN_AUTH_STATE or create auth_state.json")
@@ -216,6 +221,7 @@ def bot_command(args) -> int:
 
         # Vérifier l'authentification
         from src.core.auth_manager import validate_auth
+
         if not validate_auth():
             logger.error("❌ No valid authentication found")
             logger.error("   Please set LINKEDIN_AUTH_STATE or create auth_state.json")
@@ -233,9 +239,11 @@ def bot_command(args) -> int:
         # Sélectionner le bon bot
         if config.bot_mode == "standard":
             from src.bots.birthday_bot import BirthdayBot
+
             bot_class = BirthdayBot
         elif config.bot_mode == "unlimited":
             from src.bots.unlimited_bot import UnlimitedBirthdayBot
+
             bot_class = UnlimitedBirthdayBot
         else:
             logger.error(f"❌ Unknown bot mode: {config.bot_mode}")
@@ -258,7 +266,7 @@ def bot_command(args) -> int:
         logger.info(f"Dry Run: {results.get('dry_run', False)}")
         logger.info("═" * 70)
 
-        if not results.get('success', False):
+        if not results.get("success", False):
             logger.error(f"❌ Bot execution failed: {results.get('error', 'Unknown error')}")
             return 1
 
@@ -333,6 +341,7 @@ def visit_command(args) -> int:
 
         # Vérifier l'authentification
         from src.core.auth_manager import validate_auth
+
         if not validate_auth():
             logger.error("❌ No valid authentication found")
             logger.error("   Please set LINKEDIN_AUTH_STATE or create auth_state.json")
@@ -346,6 +355,7 @@ def visit_command(args) -> int:
 
         # Exécuter le bot
         from src.bots.visitor_bot import VisitorBot
+
         with VisitorBot(config=config) as bot:
             results = bot.run()
 
@@ -363,7 +373,7 @@ def visit_command(args) -> int:
         logger.info(f"Dry Run: {results.get('dry_run', False)}")
         logger.info("═" * 70)
 
-        if not results.get('success', False):
+        if not results.get("success", False):
             logger.error(f"❌ Bot execution failed: {results.get('error', 'Unknown error')}")
             return 1
 
@@ -417,7 +427,7 @@ def api_command(args) -> int:
             host=args.host,
             port=args.port,
             reload=args.reload,
-            log_level=args.log_level.lower()
+            log_level=args.log_level.lower(),
         )
 
         return 0
@@ -469,167 +479,136 @@ Examples:
   python main.py bot --config ./my_config.yaml
 
 For more information, see: https://github.com/GaspardD78/linkedin-birthday-auto
-        """
+        """,
     )
 
     # Arguments globaux
     parser.add_argument(
-        '--config',
+        "--config", type=str, default=None, help="Path to config file (default: config/config.yaml)"
+    )
+
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Logging level (default: INFO)",
+    )
+
+    parser.add_argument(
+        "--log-file",
         type=str,
         default=None,
-        help='Path to config file (default: config/config.yaml)'
+        help="Path to log file (default: logs/linkedin_bot.log)",
     )
 
     parser.add_argument(
-        '--log-level',
-        type=str,
-        default='INFO',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        help='Logging level (default: INFO)'
-    )
-
-    parser.add_argument(
-        '--log-file',
-        type=str,
-        default=None,
-        help='Path to log file (default: logs/linkedin_bot.log)'
-    )
-
-    parser.add_argument(
-        '--debug',
-        action='store_true',
-        help='Enable debug mode (equivalent to --log-level DEBUG)'
+        "--debug", action="store_true", help="Enable debug mode (equivalent to --log-level DEBUG)"
     )
 
     # Sous-commandes
-    subparsers = parser.add_subparsers(
-        dest='command',
-        help='Command to execute',
-        required=True
-    )
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute", required=True)
 
     # Commande: validate
     validate_parser = subparsers.add_parser(
-        'validate',
-        help='Validate configuration and authentication'
+        "validate", help="Validate configuration and authentication"
     )
 
     # Commande: bot
-    bot_parser = subparsers.add_parser(
-        'bot',
-        help='Run the birthday bot'
-    )
+    bot_parser = subparsers.add_parser("bot", help="Run the birthday bot")
 
     bot_parser.add_argument(
-        '--mode',
+        "--mode",
         type=str,
-        choices=['standard', 'unlimited'],
+        choices=["standard", "unlimited"],
         default=None,
-        help='Bot mode (default: from config file)'
+        help="Bot mode (default: from config file)",
     )
 
     bot_parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Test mode - do not send real messages'
+        "--dry-run", action="store_true", help="Test mode - do not send real messages"
     )
 
     bot_parser.add_argument(
-        '--max-days-late',
+        "--max-days-late",
         type=int,
         default=None,
-        help='Maximum days late for unlimited mode (default: from config)'
+        help="Maximum days late for unlimited mode (default: from config)",
     )
 
     bot_parser.add_argument(
-        '--headless',
-        type=lambda x: x.lower() in ['true', '1', 'yes'],
+        "--headless",
+        type=lambda x: x.lower() in ["true", "1", "yes"],
         default=None,
-        help='Run browser in headless mode (true/false)'
+        help="Run browser in headless mode (true/false)",
     )
 
     # Commande: visit
-    visit_parser = subparsers.add_parser(
-        'visit',
-        help='Run the profile visitor bot'
+    visit_parser = subparsers.add_parser("visit", help="Run the profile visitor bot")
+
+    visit_parser.add_argument(
+        "--dry-run", action="store_true", help="Test mode - do not visit real profiles"
     )
 
     visit_parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Test mode - do not visit real profiles'
-    )
-
-    visit_parser.add_argument(
-        '--keywords',
-        nargs='+',
+        "--keywords",
+        nargs="+",
         type=str,
         default=None,
-        help='Keywords for profile search (e.g., --keywords python developer)'
+        help="Keywords for profile search (e.g., --keywords python developer)",
     )
 
     visit_parser.add_argument(
-        '--location',
+        "--location",
         type=str,
         default=None,
-        help='Location for profile search (e.g., --location "France")'
+        help='Location for profile search (e.g., --location "France")',
     )
 
     visit_parser.add_argument(
-        '--profiles-per-run',
+        "--profiles-per-run",
         type=int,
         default=None,
-        help='Number of profiles to visit per run (default: from config)'
+        help="Number of profiles to visit per run (default: from config)",
     )
 
     visit_parser.add_argument(
-        '--headless',
-        type=lambda x: x.lower() in ['true', '1', 'yes'],
+        "--headless",
+        type=lambda x: x.lower() in ["true", "1", "yes"],
         default=None,
-        help='Run browser in headless mode (true/false)'
+        help="Run browser in headless mode (true/false)",
     )
 
     # Commande: api
-    api_parser = subparsers.add_parser(
-        'api',
-        help='Start the REST API server'
+    api_parser = subparsers.add_parser("api", help="Start the REST API server")
+
+    api_parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="API server host (default: 0.0.0.0)"
     )
 
     api_parser.add_argument(
-        '--host',
-        type=str,
-        default='0.0.0.0',
-        help='API server host (default: 0.0.0.0)'
+        "--port", type=int, default=8000, help="API server port (default: 8000)"
     )
 
     api_parser.add_argument(
-        '--port',
-        type=int,
-        default=8000,
-        help='API server port (default: 8000)'
-    )
-
-    api_parser.add_argument(
-        '--reload',
-        action='store_true',
-        help='Enable auto-reload for development'
+        "--reload", action="store_true", help="Enable auto-reload for development"
     )
 
     # Parse arguments
     args = parser.parse_args()
 
     # Setup logging
-    log_level = 'DEBUG' if args.debug else args.log_level
+    log_level = "DEBUG" if args.debug else args.log_level
     setup_logging(log_level, args.log_file)
 
     # Exécuter la commande appropriée
-    if args.command == 'validate':
+    if args.command == "validate":
         return validate_command(args)
-    elif args.command == 'bot':
+    elif args.command == "bot":
         return bot_command(args)
-    elif args.command == 'visit':
+    elif args.command == "visit":
         return visit_command(args)
-    elif args.command == 'api':
+    elif args.command == "api":
         return api_command(args)
     else:
         parser.print_help()

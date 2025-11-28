@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     container_name: linkedin_dashboard
     ports:
-      - "3000:3000"
+    - 3000:3000
     deploy:
       resources:
         limits:
@@ -21,36 +21,36 @@ services:
           memory: 600M
           cpus: '0.5'
     environment:
-      - NODE_ENV=production
-      - NEXT_TELEMETRY_DISABLED=1
+    - NODE_ENV=production
+    - NEXT_TELEMETRY_DISABLED=1
 
       # Configuration Base de données MySQL (Synology DS213J)
       # Remplacer 192.168.1.X par l'IP réelle de votre Synology
-      - DATABASE_URL=${DATABASE_URL:-mysql://linkedin_user:password@192.168.1.X:3306/linkedin_bot}
+    - DATABASE_URL=${DATABASE_URL:-mysql://linkedin_user:password@192.168.1.X:3306/linkedin_bot}
 
       # OU utiliser SQLite local (décommenter ci-dessous et commenter DATABASE_URL)
       # - DATABASE_URL=sqlite:///app/data/dashboard.db
 
       # Configuration Redis (Container local)
-      - REDIS_URL=redis://redis:6379
+    - REDIS_URL=redis://redis:6379
 
       # Configuration API Bot (requis pour les fonctions d'authentification)
-      - BOT_API_URL=${BOT_API_URL:-http://api:8000}
-      - BOT_API_KEY=${BOT_API_KEY:-internal_secret_key}
+    - BOT_API_URL=${BOT_API_URL:-http://api:8000}
+    - BOT_API_KEY=${BOT_API_KEY:-internal_secret_key}
 
       # Configuration Puppeteer (si utilisé dans le dashboard)
-      - HEADLESS=true
-      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
+    - HEADLESS=true
+    - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
     volumes:
       # Logs
-      - ./logs:/app/logs
+    - ./logs:/app/logs
       # Données persistantes (SQLite si utilisé)
-      - dashboard-data:/app/data
+    - dashboard-data:/app/data
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: [CMD, curl, -f, http://localhost:3000/api/health]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -69,7 +69,7 @@ services:
       --loglevel warning
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+    - redis_data:/data
     deploy:
       resources:
         limits:
@@ -79,7 +79,7 @@ services:
           memory: 100M
           cpus: '0.25'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD, redis-cli, ping]
       interval: 30s
       timeout: 5s
       retries: 3

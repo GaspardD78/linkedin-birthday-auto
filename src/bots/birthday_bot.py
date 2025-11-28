@@ -5,20 +5,16 @@ Ce bot traite UNIQUEMENT les anniversaires du jour et respecte les limites
 hebdomadaires configurées pour éviter la détection LinkedIn.
 """
 
+from datetime import datetime
 import random
 import time
-from typing import Dict, Any, List
-from datetime import datetime
+from typing import Any
 
 from ..core.base_bot import BaseLinkedInBot
 from ..core.database import get_database
-from ..utils.exceptions import (
-    WeeklyLimitReachedError,
-    DailyLimitReachedError,
-    MessageSendError
-)
-from ..utils.logging import get_logger
 from ..monitoring.metrics import RUN_DURATION_SECONDS
+from ..utils.exceptions import DailyLimitReachedError, MessageSendError, WeeklyLimitReachedError
+from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -59,14 +55,12 @@ class BirthdayBot(BaseLinkedInBot):
         super().__init__(*args, **kwargs)
         self.db = None
 
-        logger.info(
-            "BirthdayBot initialized - Processing TODAY's birthdays only"
-        )
+        logger.info("BirthdayBot initialized - Processing TODAY's birthdays only")
 
-    def run(self) -> Dict[str, Any]:
+    def run(self) -> dict[str, Any]:
         return super().run()
 
-    def _run_internal(self) -> Dict[str, Any]:
+    def _run_internal(self) -> dict[str, Any]:
         """
         Exécute le bot pour envoyer des messages d'anniversaire.
 
@@ -99,10 +93,11 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info("═" * 70)
         logger.info("🎂 Starting BirthdayBot (Standard Mode)")
         logger.info("═" * 70)
-        logger.info("configuration",
+        logger.info(
+            "configuration",
             dry_run=self.config.dry_run,
             weekly_limit=self.config.messaging_limits.weekly_message_limit,
-            mode="TODAY's birthdays only"
+            mode="TODAY's birthdays only",
         )
         logger.info("═" * 70)
 
@@ -124,8 +119,8 @@ class BirthdayBot(BaseLinkedInBot):
         # Obtenir tous les contacts d'anniversaire
         birthdays = self.get_birthday_contacts()
 
-        total_today = len(birthdays['today'])
-        total_late = len(birthdays['late'])
+        total_today = len(birthdays["today"])
+        total_late = len(birthdays["late"])
 
         logger.info(f"📊 Found {total_today} birthdays today")
         logger.info(f"⏭️  Ignoring {total_late} late birthdays (standard mode)")
@@ -138,7 +133,7 @@ class BirthdayBot(BaseLinkedInBot):
                 contacts_processed=0,
                 birthdays_today=0,
                 birthdays_late_ignored=total_late,
-                duration_seconds=time.time() - start_time
+                duration_seconds=time.time() - start_time,
             )
 
         # Calculer combien on peut envoyer (respecter les limites)
@@ -151,25 +146,21 @@ class BirthdayBot(BaseLinkedInBot):
                 contacts_processed=0,
                 birthdays_today=total_today,
                 birthdays_late_ignored=total_late,
-                duration_seconds=time.time() - start_time
+                duration_seconds=time.time() - start_time,
             )
 
         logger.info(f"✅ Will process {max_to_send}/{total_today} birthdays (limit)")
 
         # Traiter les anniversaires du jour
-        contacts_to_process = birthdays['today'][:max_to_send]
+        contacts_to_process = birthdays["today"][:max_to_send]
 
         for i, contact in enumerate(contacts_to_process):
             try:
                 # Envoyer le message
-                success = self.send_birthday_message(
-                    contact,
-                    is_late=False,
-                    days_late=0
-                )
+                success = self.send_birthday_message(contact, is_late=False, days_late=0)
 
                 if success:
-                    self.stats['messages_sent'] += 1
+                    self.stats["messages_sent"] += 1
 
                     # Simulation d'activité humaine occasionnelle
                     if random.random() < 0.3:
@@ -179,11 +170,11 @@ class BirthdayBot(BaseLinkedInBot):
                     if i < len(contacts_to_process) - 1:
                         self._wait_between_messages()
 
-                self.stats['contacts_processed'] += 1
+                self.stats["contacts_processed"] += 1
 
             except MessageSendError as e:
                 logger.error(f"Failed to send message: {e}")
-                self.stats['errors'] += 1
+                self.stats["errors"] += 1
                 continue
 
         # Résumé final
@@ -194,20 +185,21 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info("═" * 70)
         logger.info("✅ BirthdayBot execution completed")
         logger.info("═" * 70)
-        logger.info("execution_stats",
+        logger.info(
+            "execution_stats",
             messages_sent=f"{self.stats['messages_sent']}/{max_to_send}",
-            contacts_processed=self.stats['contacts_processed'],
-            errors=self.stats['errors'],
-            duration=f"{duration:.1f}s"
+            contacts_processed=self.stats["contacts_processed"],
+            errors=self.stats["errors"],
+            duration=f"{duration:.1f}s",
         )
         logger.info("═" * 70)
 
         return self._build_result(
-            messages_sent=self.stats['messages_sent'],
-            contacts_processed=self.stats['contacts_processed'],
+            messages_sent=self.stats["messages_sent"],
+            contacts_processed=self.stats["contacts_processed"],
             birthdays_today=total_today,
             birthdays_late_ignored=total_late,
-            duration_seconds=duration
+            duration_seconds=duration,
         )
 
     def _check_limits(self) -> None:
@@ -229,10 +221,7 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info(f"📊 Weekly messages: {weekly_count}/{weekly_limit}")
 
         if weekly_count >= weekly_limit:
-            raise WeeklyLimitReachedError(
-                current=weekly_count,
-                limit=weekly_limit
-            )
+            raise WeeklyLimitReachedError(current=weekly_count, limit=weekly_limit)
 
         # Vérifier limite quotidienne si configurée
         daily_limit = self.config.messaging_limits.daily_message_limit
@@ -241,10 +230,7 @@ class BirthdayBot(BaseLinkedInBot):
             logger.info(f"📊 Daily messages: {daily_count}/{daily_limit}")
 
             if daily_count >= daily_limit:
-                raise DailyLimitReachedError(
-                    current=daily_count,
-                    limit=daily_limit
-                )
+                raise DailyLimitReachedError(current=daily_count, limit=daily_limit)
 
     def _calculate_max_messages_to_send(self, contacts_count: int) -> int:
         """
@@ -266,10 +252,7 @@ class BirthdayBot(BaseLinkedInBot):
 
         # Limite par exécution
         if self.config.messaging_limits.max_messages_per_run:
-            max_to_send = min(
-                max_to_send,
-                self.config.messaging_limits.max_messages_per_run
-            )
+            max_to_send = min(max_to_send, self.config.messaging_limits.max_messages_per_run)
 
         # Limite hebdomadaire
         if self.db:
@@ -297,8 +280,7 @@ class BirthdayBot(BaseLinkedInBot):
         else:
             # Délai normal configuré
             delay = random.randint(
-                self.config.delays.min_delay_seconds,
-                self.config.delays.max_delay_seconds
+                self.config.delays.min_delay_seconds, self.config.delays.max_delay_seconds
             )
             minutes = delay // 60
             seconds = delay % 60
@@ -311,36 +293,36 @@ class BirthdayBot(BaseLinkedInBot):
         contacts_processed: int,
         birthdays_today: int,
         birthdays_late_ignored: int,
-        duration_seconds: float
-    ) -> Dict[str, Any]:
+        duration_seconds: float,
+    ) -> dict[str, Any]:
         """Construit le dictionnaire de résultats."""
         return {
-            'success': True,
-            'bot_mode': 'standard',
-            'messages_sent': messages_sent,
-            'contacts_processed': contacts_processed,
-            'birthdays_today': birthdays_today,
-            'birthdays_late_ignored': birthdays_late_ignored,
-            'errors': self.stats['errors'],
-            'duration_seconds': round(duration_seconds, 2),
-            'dry_run': self.config.dry_run,
-            'timestamp': datetime.now().isoformat()
+            "success": True,
+            "bot_mode": "standard",
+            "messages_sent": messages_sent,
+            "contacts_processed": contacts_processed,
+            "birthdays_today": birthdays_today,
+            "birthdays_late_ignored": birthdays_late_ignored,
+            "errors": self.stats["errors"],
+            "duration_seconds": round(duration_seconds, 2),
+            "dry_run": self.config.dry_run,
+            "timestamp": datetime.now().isoformat(),
         }
 
-    def _build_error_result(self, error_message: str) -> Dict[str, Any]:
+    def _build_error_result(self, error_message: str) -> dict[str, Any]:
         """Construit un résultat d'erreur."""
         return {
-            'success': False,
-            'bot_mode': 'standard',
-            'error': error_message,
-            'messages_sent': 0,
-            'contacts_processed': 0,
-            'timestamp': datetime.now().isoformat()
+            "success": False,
+            "bot_mode": "standard",
+            "error": error_message,
+            "messages_sent": 0,
+            "contacts_processed": 0,
+            "timestamp": datetime.now().isoformat(),
         }
 
 
 # Helper function pour usage simplifié
-def run_birthday_bot(config=None, dry_run: bool = False) -> Dict[str, Any]:
+def run_birthday_bot(config=None, dry_run: bool = False) -> dict[str, Any]:
     """
     Fonction helper pour exécuter le BirthdayBot facilement.
 

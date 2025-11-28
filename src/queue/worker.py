@@ -4,20 +4,23 @@ Worker RQ pour traiter les tâches en arrière-plan.
 
 import os
 import sys
+
 from redis import Redis
-from rq import Worker, Queue, Connection
-from ..utils.logging import setup_logging, get_logger
+from rq import Connection, Queue, Worker
+
 from ..monitoring.tracing import setup_tracing
+from ..utils.logging import get_logger, setup_logging
 
 # Configuration
-REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
-QUEUES = ['linkedin-bot']
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+QUEUES = ["linkedin-bot"]
 
 # Configuration du logging avec fichier pour Docker
-LOG_FILE = os.getenv('LOG_FILE', '/app/logs/linkedin_bot.log')
+LOG_FILE = os.getenv("LOG_FILE", "/app/logs/linkedin_bot.log")
 setup_logging(log_level="INFO", log_file=LOG_FILE)
 logger = get_logger("worker")
+
 
 def start_worker():
     """Démarre le worker RQ."""
@@ -36,5 +39,6 @@ def start_worker():
         logger.error("worker_failed", error=str(e))
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     start_worker()
