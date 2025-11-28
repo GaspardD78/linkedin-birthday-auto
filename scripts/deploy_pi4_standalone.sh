@@ -100,27 +100,85 @@ fi
 # =========================================================================
 print_header "2. Configuration Environnement"
 
-# Gestion .env
+# Gestion .env avec création automatique intelligente
 if [ ! -f "$ENV_FILE" ]; then
     if [ -f "$ENV_TEMPLATE" ]; then
+        print_info "Création automatique du fichier .env..."
         cp "$ENV_TEMPLATE" "$ENV_FILE"
-        print_success "Fichier .env créé depuis le template"
-        # Sécurisation basique d'une clé secrète si elle est vide
-        sed -i "s/SECRET_KEY=.*/SECRET_KEY=$(openssl rand -hex 32)/" "$ENV_FILE"
+
+        # Génération automatique de valeurs
+        SECRET_KEY=$(openssl rand -hex 32)
+        LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+        # Ajout de la SECRET_KEY si le template l'utilise
+        if grep -q "SECRET_KEY" "$ENV_FILE"; then
+            sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET_KEY/" "$ENV_FILE"
+        else
+            echo "SECRET_KEY=$SECRET_KEY" >> "$ENV_FILE"
+        fi
+
+        # Mise à jour de l'IP du Pi4 si présente dans le template
+        if grep -q "# PI4_IP=" "$ENV_FILE"; then
+            sed -i "s/# PI4_IP=.*/PI4_IP=$LOCAL_IP/" "$ENV_FILE"
+        fi
+
+        print_success "Fichier .env créé avec configuration automatique"
+        print_info "IP locale détectée: $LOCAL_IP"
+        print_info "SECRET_KEY générée automatiquement"
+        print_warning "Vérifiez le fichier .env pour personnaliser la configuration si nécessaire"
     else
-        print_error "Template .env.pi4 introuvable !"
+        print_error "Template $ENV_TEMPLATE introuvable !"
         exit 1
+    fi
+else
+    print_success "Fichier .env existant détecté"
+
+    # Vérifier si la SECRET_KEY existe et est définie
+    if ! grep -q "^SECRET_KEY=.\+" "$ENV_FILE"; then
+        print_warning "SECRET_KEY manquante ou vide dans .env"
+        SECRET_KEY=$(openssl rand -hex 32)
+        if grep -q "SECRET_KEY=" "$ENV_FILE"; then
+            sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET_KEY/" "$ENV_FILE"
+        else
+            echo "SECRET_KEY=$SECRET_KEY" >> "$ENV_FILE"
+        fi
+        print_success "SECRET_KEY générée et ajoutée"
     fi
 fi
 
-# Création structure dossiers
-mkdir -p data logs config
+# Création structure dossiers avec permissions appropriées
+print_info "Création/vérification des dossiers requis..."
+for dir in data logs config; do
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir"
+        print_success "Dossier $dir créé"
+    fi
+done
 
 # Gestion des permissions CRITIQUE pour SQLite dans Docker
 print_info "Application des permissions pour SQLite..."
-chmod 777 data logs
-touch data/linkedin.db
-chmod 666 data/linkedin.db 2>/dev/null || true
+
+# Vérifier et corriger les permissions des dossiers
+for dir in data logs; do
+    if [ -d "$dir" ]; then
+        # Essayer de changer les permissions, sinon utiliser sudo
+        if ! chmod 777 "$dir" 2>/dev/null; then
+            print_warning "Permissions insuffisantes pour $dir, utilisation de sudo..."
+            if command -v sudo &> /dev/null; then
+                sudo chmod 777 "$dir" || print_error "Impossible de modifier les permissions de $dir"
+            else
+                print_error "sudo non disponible, les permissions de $dir ne peuvent pas être modifiées"
+                print_info "Essayez manuellement : sudo chmod 777 $dir"
+            fi
+        fi
+    fi
+done
+
+# Créer le fichier de base de données avec les bonnes permissions
+if [ ! -f "data/linkedin.db" ]; then
+    touch data/linkedin.db 2>/dev/null || true
+fi
+chmod 666 data/linkedin.db 2>/dev/null || sudo chmod 666 data/linkedin.db 2>/dev/null || true
 
 # Vérification fichiers requis
 for file in "auth_state.json" "config/config.yaml"; do
