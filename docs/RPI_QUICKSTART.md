@@ -20,12 +20,13 @@ git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
 cd linkedin-birthday-auto
 ```
 
-### 2. Lancer l'Installation Automatisée
+### 2. Préparation de l'Infrastructure Système
 
-Nous avons créé un script qui installe tout pour vous (Docker, Docker Compose, Services Systemd,
-SWAP, etc.).
+Nous avons créé un script qui prépare votre Raspberry Pi (Installation de Docker, SWAP, Services Systemd).
 
-**Exécutez simplement cette commande :**
+> **Note importante :** Ce script ne lance pas encore le bot. Il prépare uniquement le système d'exploitation.
+
+**Exécutez cette commande :**
 
 ```bash
 sudo ./scripts/install_automation_pi4.sh
@@ -33,14 +34,17 @@ sudo ./scripts/install_automation_pi4.sh
 
 > ☕ **Prenez un café !** Le script va :
 >
-> - Installer Docker (si manquant)
-> - Configurer le SWAP pour éviter les crashs de mémoire
-> - Créer les services de démarrage automatique
-> - Configurer le monitoring et les backups
+> - Installer Docker et ses dépendances
+> - Configurer le SWAP (critique pour éviter les crashs)
+> - Installer les services systemd (pour le démarrage auto)
+> - Préparer les permissions et dossiers
+
+⚠️ **IMPORTANT : Ne redémarrez PAS encore !**
+Même si le script vous invite à le faire, attendez d'avoir terminé l'étape 4 (Déploiement) ci-dessous. Redémarrer maintenant forcerait le système à construire les images au démarrage en arrière-plan, ce qui surchargerait votre Raspberry Pi.
 
 ### 3. Configurer l'Authentification
 
-Pendant que l'installation tourne (ou après), préparez votre configuration.
+Une fois la préparation terminée, configurez votre environnement.
 
 Créez le fichier `.env` à la racine :
 
@@ -60,25 +64,30 @@ LINKEDIN_BOT_DRY_RUN=false      # Mettre à true pour tester sans envoyer
 LINKEDIN_BOT_MODE=standard      # 'standard' ou 'unlimited'
 ```
 
-*Pour convertir votre JSON de cookies en Base64 :*
+### 4. Déploiement de l'Application
+
+Maintenant que le système est prêt, nous allons construire et lancer les conteneurs **avant** le redémarrage. Cela garantit que les images Docker sont prêtes et évite une surcharge du CPU au prochain démarrage.
+
+**Lancez le déploiement :**
 
 ```bash
-# Si vous avez le fichier auth_state.json sur votre PC, utilisez un site comme base64encode.org
-# Ou en ligne de commande locale : cat auth_state.json | base64 -w 0
+./scripts/deploy_pi4_standalone.sh
 ```
 
-### 4. Redémarrer
+> *Alternative : Vous pouvez aussi utiliser `./scripts/easy_deploy.sh` pour un assistant interactif.*
 
-Une fois le script terminé et le fichier `.env` créé, redémarrez votre Pi pour appliquer les
-changements (notamment les permissions Docker).
+### 5. Redémarrer (Finalisation)
+
+**Uniquement une fois le déploiement terminé avec succès**, redémarrez votre Pi.
+Cela permet de finaliser les permissions Docker et de laisser les services systemd prendre le relais proprement sur des conteneurs déjà existants.
 
 ```bash
 sudo reboot
 ```
 
-### 5. Vérifier que tout fonctionne
+### 6. Vérifier que tout fonctionne
 
-Après le redémarrage, attendez 2-3 minutes que les conteneurs se lancent, puis vérifiez :
+Après le redémarrage, attendez 2-3 minutes que les services systemd relancent les conteneurs, puis vérifiez :
 
 **Via le Terminal :**
 
