@@ -103,6 +103,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.pi4
 
 # Authentication state
 auth_state.json
