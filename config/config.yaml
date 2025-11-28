@@ -153,6 +153,26 @@ database:
   timeout: 30
 
 # ═══════════════════════════════════════════════════════════════════
+# TIMEOUTS PLAYWRIGHT - Optimisés pour Raspberry Pi 4
+# ═══════════════════════════════════════════════════════════════════
+playwright:
+  # Timeouts en millisecondes (ms)
+  # Valeurs augmentées pour compenser la performance limitée du Pi 4
+
+  # Timeout pour la navigation entre les pages (ex: goto, waitForNavigation)
+  navigation_timeout: 120000    # 2 minutes (au lieu de 30s par défaut)
+
+  # Timeout pour les actions d'authentification (login, 2FA)
+  # Ces actions peuvent prendre plus de temps sur le Pi 4
+  auth_action_timeout: 180000   # 3 minutes
+
+  # Timeout pour les sélecteurs (waitForSelector, click, fill)
+  selector_timeout: 30000       # 30 secondes (défaut Playwright)
+
+  # Timeout pour les actions rapides (mouvements souris, scroll)
+  quick_action_timeout: 10000   # 10 secondes
+
+# ═══════════════════════════════════════════════════════════════════
 # MONITORING
 # ═══════════════════════════════════════════════════════════════════
 monitoring:

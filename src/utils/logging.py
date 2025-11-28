@@ -6,6 +6,7 @@ facilitant l'intégration avec des systèmes comme Loki.
 """
 
 import logging
+import os
 import sys
 
 import structlog
@@ -26,6 +27,13 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
     # Handlers
     handlers = [logging.StreamHandler(sys.stdout)]
     if log_file:
+        # SECURITY FIX: Ajouter le nom du service au fichier de log pour éviter les conflits
+        service_name = os.getenv("SERVICE_NAME", "unknown")
+        if service_name != "unknown":
+            # Ajouter le nom du service avant l'extension
+            base, ext = os.path.splitext(log_file)
+            log_file = f"{base}_{service_name}{ext}"
+
         handlers.append(logging.FileHandler(log_file))
 
     logging.basicConfig(format="%(message)s", level=level, handlers=handlers)

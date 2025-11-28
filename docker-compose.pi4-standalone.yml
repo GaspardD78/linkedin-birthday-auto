@@ -118,9 +118,11 @@ services:
     - LOG_LEVEL=INFO
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Clé API pour sécuriser les appels internes
-    - API_KEY=internal_secret_key
+    - API_KEY=${API_KEY:-internal_secret_key}
       # Désactiver la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
+      # Nom du service pour séparer les logs
+    - SERVICE_NAME=api
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
@@ -160,6 +162,8 @@ services:
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Désactiver la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
+      # Nom du service pour séparer les logs
+    - SERVICE_NAME=worker
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
@@ -229,7 +233,10 @@ services:
 
       # Configuration Bot (pour Proxy API)
     - BOT_API_URL=http://api:8000
-    - BOT_API_KEY=internal_secret_key
+    - BOT_API_KEY=${API_KEY:-internal_secret_key}
+
+      # Nom du service pour séparer les logs
+    - SERVICE_NAME=dashboard
     volumes:
       # Logs partagés avec le bot
     - ./logs:/app/logs
