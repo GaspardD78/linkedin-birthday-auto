@@ -14,6 +14,31 @@ Ce dossier contient tous les scripts nécessaires pour déployer, vérifier, net
 
 ---
 
+## 🛠️ Scripts de Préparation Système
+
+### `install_automation_pi4.sh`
+
+Script d'initialisation de l'infrastructure (à exécuter une seule fois au début).
+
+**Usage:**
+```bash
+sudo ./scripts/install_automation_pi4.sh
+```
+
+**Ce qu'il fait:**
+- ✅ Installe les dépendances système (Docker, Git, jq...)
+- ✅ Configure le SWAP (critique pour le RPi 4)
+- ✅ Installe et active les services Systemd
+- ✅ Prépare les dossiers de logs et permissions
+
+**Ce qu'il NE fait PAS:**
+- ❌ Il ne construit pas les images Docker
+- ❌ Il ne lance pas les conteneurs (rôle de `deploy_pi4_standalone.sh`)
+
+> ⚠️ **IMPORTANT :** Ne redémarrez PAS le Raspberry Pi immédiatement après ce script. Lancez d'abord le déploiement applicatif ci-dessous pour construire les images, sinon le système tentera de les construire au démarrage (surcharge CPU).
+
+---
+
 ## 🚀 Scripts de Déploiement
 
 ### `easy_deploy.sh` ⭐ **RECOMMANDÉ**
