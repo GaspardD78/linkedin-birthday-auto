@@ -58,6 +58,13 @@ via Docker pour éviter les problèmes de compilation.
 
 👉 **[SUIVRE LE GUIDE D'INSTALLATION RPI 4 (CLIQUEZ ICI)](docs/RPI_QUICKSTART.md)**
 
+**Nouveau : Script de déploiement simplifié** ⭐
+```bash
+./scripts/easy_deploy.sh
+```
+Ce script orchestrateur intelligent gère automatiquement la vérification, le nettoyage et le déploiement.
+Voir [scripts/README.md](scripts/README.md) pour plus de détails.
+
 ______________________________________________________________________
 
 ### Installation Standard (PC/Mac/Linux)
