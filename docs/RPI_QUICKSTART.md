@@ -116,9 +116,20 @@ docker compose -f docker-compose.pi4-standalone.yml exec bot-worker python main.
 
 ### Mettre à jour le bot
 
+**Méthode Simple (Recommandée) :**
 ```bash
 cd ~/linkedin-birthday-auto
 git pull
+./scripts/easy_deploy.sh
+```
+
+Le script `easy_deploy.sh` vous guidera automatiquement à travers toutes les étapes nécessaires.
+
+**Méthode Manuelle :**
+```bash
+cd ~/linkedin-birthday-auto
+git pull
+./scripts/full_cleanup_deployment.sh -y
 ./scripts/deploy_pi4_standalone.sh
 ```
 
