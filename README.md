@@ -51,23 +51,40 @@ ______________________________________________________________________
 
 ## 🚀 Quick Start
 
-### 🍓 Raspberry Pi 4 Users
+### ⚡ Installation Simplifiée (Recommandé - Toutes Plateformes)
 
-**⚠️ NE PAS UTILISER `pip install` !** L'installation sur Raspberry Pi est entièrement automatisée
-via Docker pour éviter les problèmes de compilation.
+**Installation interactive en 3 commandes** :
 
-👉 **[SUIVRE LE GUIDE D'INSTALLATION RPI 4 (CLIQUEZ ICI)](docs/RPI_QUICKSTART.md)**
-
-**Nouveau : Script de déploiement simplifié** ⭐
 ```bash
-./scripts/easy_deploy.sh
+git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+cd linkedin-birthday-auto
+./setup.sh
 ```
-Ce script orchestrateur intelligent gère automatiquement la vérification, le nettoyage et le déploiement.
-Voir [scripts/README.md](scripts/README.md) pour plus de détails.
+
+Le script `setup.sh` détecte automatiquement votre plateforme et vous guide à travers :
+- ✅ Installation des prérequis (Docker, Docker Compose)
+- ✅ Configuration de l'authentification LinkedIn
+- ✅ Configuration du fichier `.env`
+- ✅ Déploiement des services Docker
+- ✅ Configuration de l'automatisation (Raspberry Pi uniquement)
+
+**📖 Guide détaillé :** [QUICKSTART.md](QUICKSTART.md)
 
 ______________________________________________________________________
 
-### Installation Standard (PC/Mac/Linux)
+### 🍓 Raspberry Pi 4 - Optimisations
+
+Le projet est **entièrement optimisé** pour Raspberry Pi 4 (4GB RAM) :
+- SWAP automatique (2GB)
+- Limites mémoire par service
+- Auto-start au boot via systemd
+- Monitoring, backups et nettoyage automatiques
+
+**⚠️ Important :** Utilisez `./setup.sh` (pas `pip install`) pour éviter les problèmes de compilation.
+
+______________________________________________________________________
+
+### 💻 Installation Manuelle (PC/Mac/Linux)
 
 ```bash
 # 1. Cloner le projet
@@ -186,16 +203,23 @@ ______________________________________________________________________
 
 ## 📖 Documentation
 
-| Document                                                                         | Description                                                   |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)**                                           | Architecture détaillée, patterns, composants                  |
-| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**                                     | Migration depuis v1.x vers v2.0                               |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)**                                               | Guide déploiement (local, cloud, Docker)                      |
-| **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)**                                 | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
-| **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)**               | Déploiement Pi4 + Synology NAS + Freebox Pop                  |
-| **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)**                             | Installation sur Raspberry Pi (méthode manuelle v1.x)         |
-| **[docs/RASPBERRY_PI_DOCKER_SETUP.md](docs/RASPBERRY_PI_DOCKER_SETUP.md)**       | Installation Docker sur Raspberry Pi (v2.0 recommandé)        |
-| **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage pour Raspberry Pi                          |
+### 📘 Guides principaux
+
+| Document | Description |
+| -------- | ----------- |
+| **[QUICKSTART.md](QUICKSTART.md)** | ⭐ **Guide d'installation rapide** (recommandé pour tous) |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
+| **[AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md)** | Automatisation complète sur Raspberry Pi 4 |
+
+### 📁 Documentation avancée
+
+| Document | Description |
+| -------- | ----------- |
+| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Guide de déploiement complet (Docker, cloud, GitHub Actions) |
+| **[docs/DEPLOYMENT_AUTOMATION.md](docs/DEPLOYMENT_AUTOMATION.md)** | Système de déploiement et maintenance automatisé |
+| **[docs/RPI_QUICKSTART.md](docs/RPI_QUICKSTART.md)** | Guide rapide Raspberry Pi 4 (Docker) |
+| **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage Raspberry Pi |
+| **[deployment/README.md](deployment/README.md)** | Services systemd et automatisation |
 
 ______________________________________________________________________
 
@@ -389,91 +413,71 @@ ______________________________________________________________________
 
 ## 🤖 Automatisation
 
-### Cron (Linux/macOS)
+### 🍓 Raspberry Pi 4 (Recommandé)
+
+Sur Raspberry Pi, le script `./setup.sh` configure **automatiquement** :
+
+- ✅ **Auto-start au boot** via systemd
+- ✅ **Monitoring horaire** des ressources (CPU, RAM, température)
+- ✅ **Backups quotidiens** de la base de données (3h du matin)
+- ✅ **Nettoyage hebdomadaire** automatique (dimanche 2h)
+
+```bash
+# Installation complète avec automatisation
+./setup.sh
+```
+
+**Commandes utiles après installation :**
+
+```bash
+# Gérer le service
+sudo systemctl status linkedin-bot    # Voir le statut
+sudo systemctl restart linkedin-bot   # Redémarrer
+sudo journalctl -u linkedin-bot -f    # Voir les logs
+
+# Voir les timers (monitoring, backup, cleanup)
+sudo systemctl list-timers linkedin-bot*
+```
+
+📖 **Documentation complète** : [AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md)
+
+### 💻 Docker (Toutes Plateformes)
+
+Le déploiement Docker est géré automatiquement par `./setup.sh`, mais vous pouvez aussi le faire manuellement :
+
+```bash
+# Déploiement complet (optimisé Pi4)
+docker compose -f docker-compose.pi4-standalone.yml up -d
+
+# Voir les logs
+docker compose -f docker-compose.pi4-standalone.yml logs -f
+
+# Redémarrer
+docker compose -f docker-compose.pi4-standalone.yml restart
+
+# Arrêter
+docker compose -f docker-compose.pi4-standalone.yml down
+```
+
+**Architecture Docker optimisée pour Pi4 (4GB RAM) :**
+- Bot Worker : 900MB max
+- Dashboard : 400MB max
+- API : 300MB max
+- Redis (x2) : 100MB total
+
+### ⏰ Cron (Alternative pour Linux/macOS)
+
+Si vous n'utilisez pas Docker, configurez manuellement un cron job :
 
 ```bash
 # Éditer crontab
 crontab -e
 
 # Ajouter (exécution quotidienne à 9h)
-0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot
-
-# Avec logs
 0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot >> /var/log/linkedin-bot.log 2>&1
 ```
 
-### Docker
-
-**Option 1: Configuration basique**
-
-```bash
-# Build
-docker build -t linkedin-bot .
-
-# Run
-docker run -e LINKEDIN_AUTH_STATE=$AUTH linkedin-bot
-
-# Docker Compose
-docker-compose up -d
-```
-
-**Option 2: Raspberry Pi 4 + Freebox (Standalone) - Recommandé**
-
-Configuration optimisée pour RPi4 (4GB RAM) en mode autonome.
-
-- **Backend**: FastAPI (Python) + RQ Worker (Redis)
-- **Frontend**: Next.js 14 (Optimisé sans Puppeteer)
-- **Database**: SQLite (local) + Redis (Queue/Cache)
-
-```bash
-# Déploiement automatique (Bot + Dashboard + Redis + SQLite)
-# Ce script gère le nettoyage, le build optimisé et le déploiement
-./scripts/deploy_pi4_standalone.sh
-
-# Ou manuellement
-docker compose -f docker-compose.pi4-standalone.yml up -d
-
-# Accès dashboard: http://192.168.1.X:3000
-```
-
-*Optimisations appliquées :*
-
-- Image Dashboard ultra-légère (Puppeteer retiré)
-- Limites mémoire strictes (API: 300MB, Dashboard: 400MB, Worker: 900MB)
-- Utilisation de `rq.Queue` pour décharger l'API des tâches lourdes
-
-📖 **Documentation complète** : [SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)
-
-**Option 3: Raspberry Pi 4 + Synology + Freebox**
-
-Si vous avez un NAS Synology pour MySQL/stockage :
-
-📖 **Documentation** : [SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)
-
-### Systemd (Linux service)
-
-```ini
-# /etc/systemd/system/linkedin-bot.service
-[Unit]
-Description=LinkedIn Birthday Bot
-After=network.target
-
-[Service]
-Type=oneshot
-User=your-user
-WorkingDirectory=/path/to/linkedin-birthday-auto
-ExecStart=/path/to/venv/bin/python main.py bot
-EnvironmentFile=/path/to/.env
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-# Activer et démarrer
-sudo systemctl enable linkedin-bot.service
-sudo systemctl start linkedin-bot.service
-```
+**Note :** Cette méthode nécessite une installation manuelle via `pip` (voir section "Installation Manuelle").
 
 ______________________________________________________________________
 
@@ -653,7 +657,7 @@ rm data/linkedin_bot.db-wal data/linkedin_bot.db-shm
 python main.py bot --headless false --debug
 ```
 
-Voir **[DEPLOYMENT.md](DEPLOYMENT.md#d%C3%A9pannage)** pour plus de solutions.
+Voir **[QUICKSTART.md](QUICKSTART.md#-dépannage-rapide)** et **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** pour plus de solutions.
 
 ______________________________________________________________________
 
