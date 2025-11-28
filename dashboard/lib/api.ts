@@ -7,6 +7,7 @@ export interface LogEntry {
 export interface BotStats {
   wishes_sent_total: number;
   wishes_sent_today: number;
+  wishes_sent_week: number;
   profiles_visited_total: number;
   profiles_visited_today: number;
 }

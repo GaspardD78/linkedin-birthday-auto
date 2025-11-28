@@ -244,15 +244,54 @@ async def health_check():
     )
 
 
-@app.get("/stats", response_model=MetricsResponse, tags=["Metrics"])
+@app.get("/stats", tags=["Metrics"])
 async def get_stats(
     days: int = 30,
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Récupère les statistiques d'activité (DB).
+    Récupère les statistiques d'activité pour le dashboard.
 
-    Note: /metrics est réservé pour Prometheus.
+    Retourne les stats au format attendu par le dashboard Next.js:
+    - wishes_sent_total: Total des messages envoyés
+    - wishes_sent_today: Messages envoyés aujourd'hui
+    - profiles_visited_total: Total des profils visités
+    - profiles_visited_today: Profils visités aujourd'hui
+
+    Args:
+        days: Non utilisé mais conservé pour compatibilité
+    """
+    config = get_config()
+
+    if not config.database.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not enabled in configuration"
+        )
+
+    try:
+        db = get_database(config.database.db_path)
+        # Utiliser la nouvelle méthode qui retourne le format attendu
+        stats = db.get_today_statistics()
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve stats: {str(e)}"
+        )
+
+
+@app.get("/detailed-stats", response_model=MetricsResponse, tags=["Metrics"])
+async def get_detailed_stats(
+    days: int = 30,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Récupère les statistiques détaillées d'activité (DB).
+
+    Format détaillé avec messages, contacts, visites et erreurs.
 
     Args:
         days: Nombre de jours d'historique (défaut: 30)
@@ -271,10 +310,10 @@ async def get_stats(
         return MetricsResponse(**stats)
 
     except Exception as e:
-        logger.error(f"Failed to get metrics: {e}")
+        logger.error(f"Failed to get detailed stats: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve metrics: {str(e)}"
+            detail=f"Failed to retrieve detailed stats: {str(e)}"
         )
 
 
@@ -425,29 +464,81 @@ async def stop_bot(
     """
     Arrête tous les bots actifs.
 
-    Note: Pour l'instant, cette fonction loggue simplement l'arrêt.
-    Dans une implémentation complète avec Redis Queue, elle viderait la queue
-    et terminerait les workers.
+    Annule les jobs en cours et vide la queue des jobs en attente.
 
     Returns:
         status: Statut de l'arrêt
         message: Message de confirmation
+        cancelled_jobs: Nombre de jobs annulés
+        emptied_queue: Nombre de jobs supprimés de la queue
     """
-    logger.info("🛑 [STOP] Requête d'arrêt reçue")
+    logger.info("🛑 [STOP] Requête d'arrêt d'urgence reçue")
 
-    # TODO: Implémenter l'arrêt réel avec Redis Queue
-    # from redis import Redis
-    # from rq import Queue
-    # redis_conn = Redis()
-    # q = Queue(connection=redis_conn)
-    # q.empty()  # Vider la queue
+    if not job_queue or not redis_conn:
+        logger.error("❌ [STOP] Redis Queue non disponible")
+        raise HTTPException(
+            status_code=503,
+            detail="Redis Queue not available - cannot stop jobs"
+        )
 
-    logger.warning("⚠️  [STOP] Arrêt des bots non implémenté - les jobs en cours continueront")
+    try:
+        cancelled_count = 0
+        emptied_count = 0
 
-    return {
-        "status": "acknowledged",
-        "message": "Commande d'arrêt reçue (arrêt complet non implémenté)"
-    }
+        # 1. Annuler tous les jobs actuellement en cours (started)
+        from rq.job import JobStatus
+        from rq.registry import StartedJobRegistry
+
+        started_registry = StartedJobRegistry('linkedin-bot', connection=redis_conn)
+        started_job_ids = started_registry.get_job_ids()
+
+        logger.info(f"📋 [STOP] Jobs en cours trouvés: {len(started_job_ids)}")
+
+        for job_id in started_job_ids:
+            try:
+                from rq.job import Job
+                job = Job.fetch(job_id, connection=redis_conn)
+                # Marquer le job comme annulé
+                job.cancel()
+                cancelled_count += 1
+                logger.info(f"   ✅ Job {job_id} annulé")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Impossible d'annuler le job {job_id}: {e}")
+
+        # 2. Vider la queue des jobs en attente (queued)
+        queued_job_ids = job_queue.job_ids
+        logger.info(f"📋 [STOP] Jobs en attente trouvés: {len(queued_job_ids)}")
+
+        for job_id in queued_job_ids:
+            try:
+                from rq.job import Job
+                job = Job.fetch(job_id, connection=redis_conn)
+                job.delete()
+                emptied_count += 1
+                logger.info(f"   🗑️  Job {job_id} supprimé de la queue")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Impossible de supprimer le job {job_id}: {e}")
+
+        # 3. Vider complètement la queue
+        job_queue.empty()
+
+        total_stopped = cancelled_count + emptied_count
+        logger.info(f"✅ [STOP] Arrêt d'urgence terminé: {cancelled_count} jobs annulés, {emptied_count} jobs supprimés")
+
+        return {
+            "status": "success",
+            "message": f"Arrêt d'urgence effectué avec succès ({total_stopped} jobs arrêtés)",
+            "cancelled_jobs": cancelled_count,
+            "emptied_queue": emptied_count,
+            "total_stopped": total_stopped
+        }
+
+    except Exception as e:
+        logger.error(f"❌ [STOP] Erreur lors de l'arrêt: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de l'arrêt d'urgence: {str(e)}"
+        )
 
 
 @app.get("/jobs/{job_id}", tags=["Bot"])

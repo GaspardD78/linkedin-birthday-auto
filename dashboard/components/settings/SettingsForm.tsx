@@ -39,6 +39,28 @@ interface ConfigData {
     late_messages_file: string
     avoid_repetition_years: number
   }
+  visitor: {
+    enabled: boolean
+    keywords: string[]
+    location: string
+    limits: {
+      profiles_per_run: number
+      max_pages_to_scrape: number
+      max_pages_without_new: number
+    }
+    delays: {
+      min_seconds: number
+      max_seconds: number
+      profile_visit_min: number
+      profile_visit_max: number
+      page_navigation_min: number
+      page_navigation_max: number
+    }
+    retry: {
+      max_attempts: number
+      backoff_factor: number
+    }
+  }
   debug: {
     log_level: string
     save_screenshots: boolean
@@ -75,6 +97,28 @@ export function SettingsForm() {
         delays: parsed.delays || {},
         birthday_filter: parsed.birthday_filter || {},
         messages: parsed.messages || {},
+        visitor: parsed.visitor || {
+          enabled: true,
+          keywords: [],
+          location: 'France',
+          limits: {
+            profiles_per_run: 15,
+            max_pages_to_scrape: 100,
+            max_pages_without_new: 3
+          },
+          delays: {
+            min_seconds: 8,
+            max_seconds: 20,
+            profile_visit_min: 15,
+            profile_visit_max: 35,
+            page_navigation_min: 3,
+            page_navigation_max: 6
+          },
+          retry: {
+            max_attempts: 3,
+            backoff_factor: 2
+          }
+        },
         debug: parsed.debug || {}
       })
     } catch (err) {
@@ -109,6 +153,7 @@ export function SettingsForm() {
         delays: config.delays,
         birthday_filter: config.birthday_filter,
         messages: config.messages,
+        visitor: config.visitor,
         debug: config.debug
       }
 
@@ -390,6 +435,221 @@ export function SettingsForm() {
               />
               <p className="text-xs text-slate-400">Les anniversaires de plus de {config.birthday_filter.max_days_late} jours ne seront pas traités</p>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Configuration Visite de Profils */}
+      <Card className="bg-slate-900 border-slate-800 border-blue-600/50">
+        <CardHeader>
+          <CardTitle className="text-slate-200 flex items-center gap-2">
+            🔍 Configuration Visite de Profils
+            <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded">Visitor Bot</span>
+          </CardTitle>
+          <CardDescription>Paramètres pour la visite automatique de profils LinkedIn</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Activation */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Activer la visite de profils</Label>
+              <p className="text-xs text-slate-400">Active ou désactive le bot de visite de profils</p>
+            </div>
+            <Switch
+              checked={config.visitor.enabled}
+              onCheckedChange={(val) => updateConfig(['visitor', 'enabled'], val)}
+            />
+          </div>
+
+          {config.visitor.enabled && (
+            <>
+              {/* Keywords et Location */}
+              <div className="space-y-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <div className="space-y-2">
+                  <Label htmlFor="visitor_keywords">Mots-clés de recherche</Label>
+                  <Input
+                    id="visitor_keywords"
+                    type="text"
+                    value={config.visitor.keywords.join(', ')}
+                    onChange={(e) => updateConfig(['visitor', 'keywords'], e.target.value.split(',').map(k => k.trim()).filter(k => k))}
+                    placeholder="python, developer, engineer"
+                    className="bg-slate-900 border-slate-700"
+                  />
+                  <p className="text-xs text-slate-400">Séparez les mots-clés par des virgules</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="visitor_location">Localisation</Label>
+                  <Input
+                    id="visitor_location"
+                    type="text"
+                    value={config.visitor.location}
+                    onChange={(e) => updateConfig(['visitor', 'location'], e.target.value)}
+                    placeholder="France"
+                    className="bg-slate-900 border-slate-700"
+                  />
+                  <p className="text-xs text-slate-400">Pays ou région pour la recherche</p>
+                </div>
+              </div>
+
+              {/* Limites */}
+              <div className="space-y-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="font-semibold text-slate-300 text-sm">Limites de visite</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="profiles_per_run">Profils par exécution</Label>
+                    <Input
+                      id="profiles_per_run"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={config.visitor.limits.profiles_per_run}
+                      onChange={(e) => updateConfig(['visitor', 'limits', 'profiles_per_run'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="max_pages_scrape">Pages max à scraper</Label>
+                    <Input
+                      id="max_pages_scrape"
+                      type="number"
+                      min="1"
+                      max="500"
+                      value={config.visitor.limits.max_pages_to_scrape}
+                      onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_to_scrape'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="max_pages_without_new">Pages sans nouveaux profils</Label>
+                    <Input
+                      id="max_pages_without_new"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={config.visitor.limits.max_pages_without_new}
+                      onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_without_new'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                    <p className="text-xs text-slate-400">Arrêt après N pages sans nouveaux profils</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Délais */}
+              <div className="space-y-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="font-semibold text-slate-300 text-sm">Délais entre actions</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="visit_min_delay">Délai min général (s)</Label>
+                    <Input
+                      id="visit_min_delay"
+                      type="number"
+                      min="1"
+                      value={config.visitor.delays.min_seconds}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'min_seconds'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="visit_max_delay">Délai max général (s)</Label>
+                    <Input
+                      id="visit_max_delay"
+                      type="number"
+                      min="5"
+                      value={config.visitor.delays.max_seconds}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'max_seconds'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="profile_visit_min">Temps visite profil min (s)</Label>
+                    <Input
+                      id="profile_visit_min"
+                      type="number"
+                      min="5"
+                      value={config.visitor.delays.profile_visit_min}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'profile_visit_min'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="profile_visit_max">Temps visite profil max (s)</Label>
+                    <Input
+                      id="profile_visit_max"
+                      type="number"
+                      min="10"
+                      value={config.visitor.delays.profile_visit_max}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'profile_visit_max'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="page_nav_min">Navigation page min (s)</Label>
+                    <Input
+                      id="page_nav_min"
+                      type="number"
+                      min="1"
+                      value={config.visitor.delays.page_navigation_min}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'page_navigation_min'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="page_nav_max">Navigation page max (s)</Label>
+                    <Input
+                      id="page_nav_max"
+                      type="number"
+                      min="2"
+                      value={config.visitor.delays.page_navigation_max}
+                      onChange={(e) => updateConfig(['visitor', 'delays', 'page_navigation_max'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Retry */}
+              <div className="space-y-4 p-4 bg-slate-950 rounded-lg border border-slate-800">
+                <h4 className="font-semibold text-slate-300 text-sm">Paramètres de retry</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="retry_max_attempts">Tentatives maximum</Label>
+                    <Input
+                      id="retry_max_attempts"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={config.visitor.retry.max_attempts}
+                      onChange={(e) => updateConfig(['visitor', 'retry', 'max_attempts'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                    <p className="text-xs text-slate-400">Nombre de tentatives par profil</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="retry_backoff">Facteur d'augmentation</Label>
+                    <Input
+                      id="retry_backoff"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={config.visitor.retry.backoff_factor}
+                      onChange={(e) => updateConfig(['visitor', 'retry', 'backoff_factor'], parseInt(e.target.value))}
+                      className="bg-slate-900 border-slate-700"
+                    />
+                    <p className="text-xs text-slate-400">Multiplicateur de délai entre tentatives</p>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
