@@ -145,9 +145,9 @@ database:
   # Activer la base de données
   enabled: true
 
-  # OPTIMISÉ: Chemin sur clé USB pour meilleures performances
-  # Si USB non montée, fallback sur data/linkedin_automation.db
-  db_path: "/mnt/linkedin-data/database/linkedin_automation.db"
+  # Base de données SQLite dans le volume partagé Docker
+  # Compatible avec docker-compose.pi4-standalone.yml (shared-data volume)
+  db_path: "/app/data/linkedin_automation.db"
 
   # Timeout réduit grâce à la clé USB (plus rapide que SD)
   timeout: 30
