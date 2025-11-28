@@ -9,7 +9,7 @@ from datetime import datetime
 import random
 import re
 import time
-from typing import Any
+from typing import Any, Optional
 import urllib.parse
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
