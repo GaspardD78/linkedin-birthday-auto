@@ -46,32 +46,44 @@ echo "Utilisateur: $USER"
 echo ""
 
 # =========================================================================
-# 1. Vérification des prérequis
+# 1. Vérification et Installation des Prérequis
 # =========================================================================
 print_header "1. Vérification des Prérequis"
 
 # Docker
 if ! command -v docker &> /dev/null; then
-    print_error "Docker n'est pas installé"
-    print_info "Installez Docker: curl -fsSL https://get.docker.com | sh"
-    exit 1
+    print_warning "Docker n'est pas installé. Installation en cours..."
+    curl -fsSL https://get.docker.com | sh
+    print_success "Docker installé avec succès"
+else
+    print_success "Docker déjà installé"
 fi
-print_success "Docker installé"
 
 # Docker Compose V2
 if ! docker compose version &> /dev/null; then
-    print_error "Docker Compose V2 n'est pas installé"
-    print_info "Installez avec: sudo apt install docker-compose-plugin"
-    exit 1
+    print_warning "Docker Compose V2 n'est pas installé. Installation..."
+    # L'installation via le script get.docker.com installe généralement le plugin,
+    # mais on s'assure qu'il est là.
+    apt-get update && apt-get install -y docker-compose-plugin
+
+    if ! docker compose version &> /dev/null; then
+        print_error "Échec de l'installation de Docker Compose V2"
+        exit 1
+    fi
+    print_success "Docker Compose V2 installé"
+else
+    print_success "Docker Compose V2 déjà installé"
 fi
-print_success "Docker Compose V2 installé"
 
 # Permissions Docker
 if ! groups "$USER" | grep -q docker; then
     print_warning "L'utilisateur $USER n'est pas dans le groupe docker"
     print_info "Ajout au groupe docker..."
     usermod -aG docker "$USER"
-    print_success "Utilisateur ajouté au groupe docker (redémarrage nécessaire)"
+    print_success "Utilisateur ajouté au groupe docker"
+    print_warning "⚠️  Vous devrez vous déconnecter et reconnecter pour que les changements de groupe prennent effet."
+else
+    print_success "L'utilisateur $USER est déjà dans le groupe docker"
 fi
 
 # =========================================================================
@@ -330,7 +342,7 @@ cat << EOF
   • Voir timers:    sudo systemctl list-timers linkedin-bot*
 
 🔄 Prochaines étapes:
-  1. Redémarrez le Pi pour appliquer tous les changements:
+  1. Redémarrez le Pi pour appliquer tous les changements (groupe docker, swap, etc.):
      sudo reboot
 
   2. Après redémarrage, vérifiez que tout fonctionne:

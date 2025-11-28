@@ -1,5 +1,6 @@
 # 🎂 LinkedIn Birthday Auto Bot v2.0
 
+[![Raspberry Pi 4](https://img.shields.io/badge/Raspberry%20Pi-Optimized-red.svg)](docs/RPI_QUICKSTART.md)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -47,7 +48,15 @@ Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts Linked
 
 ## 🚀 Quick Start
 
-### Installation (5 minutes)
+### 🍓 Raspberry Pi 4 Users
+
+**⚠️ NE PAS UTILISER `pip install` !** L'installation sur Raspberry Pi est entièrement automatisée via Docker pour éviter les problèmes de compilation.
+
+👉 **[SUIVRE LE GUIDE D'INSTALLATION RPI 4 (CLIQUEZ ICI)](docs/RPI_QUICKSTART.md)**
+
+---
+
+### Installation Standard (PC/Mac/Linux)
 
 ```bash
 # 1. Cloner le projet
