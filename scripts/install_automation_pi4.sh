@@ -135,9 +135,61 @@ sysctl -p /etc/sysctl.d/99-docker-linkedin.conf > /dev/null 2>&1
 print_success "Sysctl configuré"
 
 # =========================================================================
-# 3. Installation des Services Systemd
+# 3. Génération Clé API Sécurisée
 # =========================================================================
-print_header "3. Installation Services Systemd"
+print_header "3. Génération Clé API"
+
+ENV_FILE="$PROJECT_DIR/.env"
+
+if [ -f "$ENV_FILE" ] && grep -q "^API_KEY=" "$ENV_FILE" 2>/dev/null; then
+    print_info "Clé API existante détectée dans .env"
+    EXISTING_KEY=$(grep "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2)
+    if [ "$EXISTING_KEY" == "internal_secret_key" ] || [ "$EXISTING_KEY" == "CHANGE_ME" ]; then
+        print_warning "Clé API par défaut détectée ! Génération d'une nouvelle clé..."
+        API_KEY=$(openssl rand -hex 32)
+        sed -i "s|^API_KEY=.*|API_KEY=$API_KEY|g" "$ENV_FILE"
+        sed -i "s|^BOT_API_KEY=.*|BOT_API_KEY=$API_KEY|g" "$ENV_FILE"
+        print_success "Nouvelle clé API générée et sauvegardée"
+    else
+        print_success "Clé API personnalisée existante conservée"
+        API_KEY="$EXISTING_KEY"
+    fi
+else
+    print_info "Génération d'une nouvelle clé API sécurisée..."
+    API_KEY=$(openssl rand -hex 32)
+
+    # Créer le fichier .env à partir de l'exemple ou créer un nouveau
+    if [ -f "$PROJECT_DIR/.env.pi4.example" ]; then
+        cp "$PROJECT_DIR/.env.pi4.example" "$ENV_FILE"
+        print_info "Fichier .env créé depuis .env.pi4.example"
+    fi
+
+    # Ajouter ou remplacer les clés API
+    if grep -q "^API_KEY=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^API_KEY=.*|API_KEY=$API_KEY|g" "$ENV_FILE"
+    else
+        echo "API_KEY=$API_KEY" >> "$ENV_FILE"
+    fi
+
+    if grep -q "^BOT_API_KEY=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^BOT_API_KEY=.*|BOT_API_KEY=$API_KEY|g" "$ENV_FILE"
+    else
+        echo "BOT_API_KEY=$API_KEY" >> "$ENV_FILE"
+    fi
+
+    chown "$USER:$USER" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"  # Lecture/écriture uniquement pour le propriétaire
+
+    print_success "Clé API générée et sauvegardée dans .env"
+fi
+
+print_info "Clé API: ${API_KEY:0:10}... (tronquée pour sécurité)"
+print_warning "⚠️  Conservez cette clé en sécurité ! Ne la partagez jamais."
+
+# =========================================================================
+# 4. Installation des Services Systemd
+# =========================================================================
+print_header "4. Installation Services Systemd"
 
 # Création du répertoire de déploiement
 mkdir -p deployment/systemd
@@ -180,9 +232,9 @@ systemctl daemon-reload
 print_success "Systemd rechargé"
 
 # =========================================================================
-# 4. Création des Scripts de Monitoring et Backup
+# 5. Création des Scripts de Monitoring et Backup
 # =========================================================================
-print_header "4. Création Scripts Auxiliaires"
+print_header "5. Création Scripts Auxiliaires"
 
 # Script de monitoring (Utilise celui déjà présent ou le recrée si absent)
 if [ ! -f "scripts/monitor_pi4_health.sh" ]; then
@@ -273,9 +325,9 @@ sed -i "s|/home/pi/linkedin-birthday-auto|$PROJECT_DIR|g" scripts/monitor_pi4_he
 sed -i "s|/home/pi/linkedin-birthday-auto|$PROJECT_DIR|g" scripts/backup_database.sh
 
 # =========================================================================
-# 5. Activation des Services
+# 6. Activation des Services
 # =========================================================================
-print_header "5. Activation des Services"
+print_header "6. Activation des Services"
 
 print_info "Activation démarrage automatique..."
 systemctl enable linkedin-bot.service
@@ -297,9 +349,9 @@ systemctl start linkedin-bot-cleanup.timer
 print_success "linkedin-bot-cleanup.timer activé"
 
 # =========================================================================
-# 6. Test du Monitoring
+# 7. Test du Monitoring
 # =========================================================================
-print_header "6. Test du Monitoring"
+print_header "7. Test du Monitoring"
 
 print_info "Exécution du premier monitoring..."
 sudo -u "$USER" bash scripts/monitor_pi4_health.sh
@@ -312,7 +364,7 @@ else
 fi
 
 # =========================================================================
-# 7. Résumé Final
+# 8. Résumé Final
 # =========================================================================
 print_header "✅ Installation Terminée"
 
