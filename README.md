@@ -57,7 +57,7 @@ source venv/bin/activate  # Linux/macOS
 # venv\Scripts\activate   # Windows
 
 # 3. Installer dépendances
-pip install -r requirements-new.txt
+pip install -r requirements.txt
 playwright install chromium
 playwright install-deps chromium
 
