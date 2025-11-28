@@ -11,7 +11,9 @@ deployment/
     ├── linkedin-bot-monitor.service  # Service de monitoring
     ├── linkedin-bot-monitor.timer    # Timer monitoring (horaire)
     ├── linkedin-bot-backup.service   # Service de backup
-    └── linkedin-bot-backup.timer     # Timer backup (quotidien)
+    ├── linkedin-bot-backup.timer     # Timer backup (quotidien)
+    ├── linkedin-bot-cleanup.service  # Service de nettoyage
+    └── linkedin-bot-cleanup.timer    # Timer nettoyage (hebdomadaire)
 ```
 
 ## 🎯 Utilisation
@@ -43,11 +45,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable linkedin-bot.service
 sudo systemctl enable linkedin-bot-monitor.timer
 sudo systemctl enable linkedin-bot-backup.timer
+sudo systemctl enable linkedin-bot-cleanup.timer
 
 # 5. Démarrer
 sudo systemctl start linkedin-bot
 sudo systemctl start linkedin-bot-monitor.timer
 sudo systemctl start linkedin-bot-backup.timer
+sudo systemctl start linkedin-bot-cleanup.timer
 ```
 
 ## 📋 Services Détaillés
@@ -104,6 +108,28 @@ sudo systemctl start linkedin-bot-backup.timer
 - Statut: `sudo systemctl status linkedin-bot-backup.timer`
 - Backup manuel: `sudo systemctl start linkedin-bot-backup.service`
 - Voir backups: `ls -lh ~/linkedin-birthday-auto/backups/`
+
+### linkedin-bot-cleanup.timer
+
+**Rôle:** Nettoyage automatique hebdomadaire (dimanche 2h du matin)
+
+**Fichiers:**
+- `systemd/linkedin-bot-cleanup.service`
+- `systemd/linkedin-bot-cleanup.timer`
+
+**Éléments nettoyés:**
+- Images Docker non utilisées (> 7 jours)
+- Logs applicatifs anciens (> 30 jours)
+- Screenshots de debug (> 7 jours)
+- Cache Python (__pycache__, *.pyc)
+- Cache APT et journaux système
+
+**Script:** `scripts/cleanup_pi4.sh`
+
+**Commandes:**
+- Statut: `sudo systemctl status linkedin-bot-cleanup.timer`
+- Nettoyage manuel: `sudo systemctl start linkedin-bot-cleanup.service`
+- Logs: `sudo journalctl -u linkedin-bot-cleanup.service`
 
 ## 🔧 Configuration
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=LinkedIn Bot - System Cleanup Timer (Weekly on Sunday at 2 AM)
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+Requires=linkedin-bot-cleanup.service
+
+[Timer]
+# Exécuter tous les dimanches à 2h du matin
+OnCalendar=Sun *-*-* 02:00:00
+
+# Précision de 15 minutes (économie ressources)
+AccuracySec=15min
+
+# Persistent si le Pi était éteint à 2h du matin
+Persistent=true
+
+[Install]
+WantedBy=timers.target

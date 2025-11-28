@@ -145,6 +145,15 @@ print_info "Installation linkedin-bot-backup.timer..."
 cp deployment/systemd/linkedin-bot-backup.timer "${SYSTEMD_DIR}/"
 print_success "linkedin-bot-backup.timer installé"
 
+print_info "Installation linkedin-bot-cleanup.service..."
+sed "s|/home/pi/linkedin-birthday-auto|$PROJECT_DIR|g" \
+    deployment/systemd/linkedin-bot-cleanup.service > "${SYSTEMD_DIR}/linkedin-bot-cleanup.service"
+print_success "linkedin-bot-cleanup.service installé"
+
+print_info "Installation linkedin-bot-cleanup.timer..."
+cp deployment/systemd/linkedin-bot-cleanup.timer "${SYSTEMD_DIR}/"
+print_success "linkedin-bot-cleanup.timer installé"
+
 # Rechargement systemd
 systemctl daemon-reload
 print_success "Systemd rechargé"
@@ -268,6 +277,11 @@ systemctl enable linkedin-bot-backup.timer
 systemctl start linkedin-bot-backup.timer
 print_success "linkedin-bot-backup.timer activé"
 
+print_info "Activation nettoyage hebdomadaire..."
+systemctl enable linkedin-bot-cleanup.timer
+systemctl start linkedin-bot-cleanup.timer
+print_success "linkedin-bot-cleanup.timer activé"
+
 # =========================================================================
 # 6. Test du Monitoring
 # =========================================================================
@@ -294,22 +308,26 @@ cat << EOF
   • linkedin-bot.service         - Démarrage automatique au boot
   • linkedin-bot-monitor.timer   - Monitoring toutes les heures
   • linkedin-bot-backup.timer    - Backup quotidien à 3h du matin
+  • linkedin-bot-cleanup.timer   - Nettoyage hebdomadaire (dimanche 2h)
 
 📁 Fichiers créés:
   • /etc/systemd/system/linkedin-bot.service
   • /etc/systemd/system/linkedin-bot-monitor.{service,timer}
   • /etc/systemd/system/linkedin-bot-backup.{service,timer}
+  • /etc/systemd/system/linkedin-bot-cleanup.{service,timer}
   • $PROJECT_DIR/scripts/monitor_pi4_health.sh
   • $PROJECT_DIR/scripts/backup_database.sh
 
 📊 Commandes utiles:
-  • Démarrer:     sudo systemctl start linkedin-bot
-  • Arrêter:      sudo systemctl stop linkedin-bot
-  • Redémarrer:   sudo systemctl restart linkedin-bot
-  • Statut:       sudo systemctl status linkedin-bot
-  • Logs service: sudo journalctl -u linkedin-bot -f
-  • Logs health:  tail -f /var/log/linkedin-bot-health.log
-  • Logs backup:  tail -f /var/log/linkedin-bot-backup.log
+  • Démarrer:       sudo systemctl start linkedin-bot
+  • Arrêter:        sudo systemctl stop linkedin-bot
+  • Redémarrer:     sudo systemctl restart linkedin-bot
+  • Statut:         sudo systemctl status linkedin-bot
+  • Logs service:   sudo journalctl -u linkedin-bot -f
+  • Logs health:    tail -f /var/log/linkedin-bot-health.log
+  • Logs backup:    tail -f /var/log/linkedin-bot-backup.log
+  • Cleanup manuel: sudo $PROJECT_DIR/scripts/cleanup_pi4.sh
+  • Voir timers:    sudo systemctl list-timers linkedin-bot*
 
 🔄 Prochaines étapes:
   1. Redémarrez le Pi pour appliquer tous les changements:

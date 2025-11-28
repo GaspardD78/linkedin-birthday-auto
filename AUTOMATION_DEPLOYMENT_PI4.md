@@ -12,6 +12,7 @@
 - [Services Systemd](#services-systemd)
 - [Monitoring](#monitoring)
 - [Backups Automatiques](#backups-automatiques)
+- [Nettoyage Automatique](#nettoyage-automatique)
 - [Gestion et Maintenance](#gestion-et-maintenance)
 - [Troubleshooting](#troubleshooting)
 - [Désinstallation](#désinstallation)
@@ -27,6 +28,7 @@ Cette solution d'automatisation transforme votre Raspberry Pi 4 en un serveur au
 - **✅ Démarrage automatique** au boot du Raspberry Pi
 - **✅ Monitoring horaire** des ressources (CPU, RAM, température, disque)
 - **✅ Backups quotidiens** de la base de données (3h du matin)
+- **✅ Nettoyage hebdomadaire** automatique (dimanche 2h du matin)
 - **✅ Dashboard temps réel** pour surveiller l'état du système
 - **✅ Logging centralisé** avec rotation automatique
 - **✅ Alertes automatiques** en cas de problème
@@ -468,6 +470,148 @@ nano scripts/backup_database.sh
 
 # Ou utiliser rclone pour cloud
 0 4 * * * pi rclone sync ~/linkedin-birthday-auto/backups/ gdrive:linkedin-bot-backups/
+```
+
+---
+
+## 🧹 Nettoyage Automatique
+
+### Configuration
+
+**Timer systemd:** Nettoyage hebdomadaire tous les dimanches à 2h du matin
+
+**Éléments nettoyés:**
+- Images Docker non utilisées (> 7 jours)
+- Logs applicatifs anciens (> 30 jours)
+- Screenshots de debug (> 7 jours)
+- Cache Python (__pycache__, *.pyc)
+- Cache APT (si root)
+- Journaux système (> 7 jours)
+
+**Script:** `scripts/cleanup_pi4.sh`
+
+### Gestion Manuelle
+
+**Lancer le nettoyage maintenant:**
+```bash
+sudo systemctl start linkedin-bot-cleanup.service
+
+# Ou directement le script
+sudo ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
+```
+
+**Vérifier le statut du timer:**
+```bash
+# Voir quand aura lieu le prochain nettoyage
+sudo systemctl status linkedin-bot-cleanup.timer
+
+# Voir l'historique des nettoyages
+sudo journalctl -u linkedin-bot-cleanup.service
+```
+
+**Exemple de sortie du nettoyage:**
+```
+📊 Espace Disque AVANT Nettoyage
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        30G   18G   11G  62% /
+
+🧹 Nettoyage Raspberry Pi 4
+✅ Images Docker > 7 jours supprimées
+✅ Logs supprimés: 12 fichiers
+✅ Screenshots supprimés: 5 fichiers
+✅ Cache Python nettoyé
+✅ Cache APT nettoyé
+✅ Journaux système nettoyés
+
+📊 Espace Disque APRÈS Nettoyage
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        30G   16G   13G  56% /
+
+✅ Nettoyage Terminé
+✅ Espace libéré: ~2048MB
+```
+
+### Modifier la Fréquence
+
+**Par défaut:** Tous les dimanches à 2h du matin
+
+**Changer la fréquence:**
+```bash
+# Éditer le timer
+sudo nano /etc/systemd/system/linkedin-bot-cleanup.timer
+
+# Exemples de fréquences:
+# - Tous les jours:     OnCalendar=daily
+# - Tous les lundis:    OnCalendar=Mon *-*-* 02:00:00
+# - Deux fois/semaine:  OnCalendar=Mon,Thu *-*-* 02:00:00
+# - Premier du mois:    OnCalendar=*-*-01 02:00:00
+
+# Recharger systemd
+sudo systemctl daemon-reload
+sudo systemctl restart linkedin-bot-cleanup.timer
+```
+
+### Personnaliser le Nettoyage
+
+**Éditer le script:**
+```bash
+nano ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
+```
+
+**Options configurables:**
+
+| Élément | Ligne | Valeur par défaut | Description |
+|---------|-------|-------------------|-------------|
+| Images Docker | 30 | 168h (7 jours) | `--filter "until=168h"` |
+| Logs applicatifs | 39 | 30 jours | `-mtime +30` |
+| Screenshots | 52 | 7 jours | `-mtime +7` |
+| Journaux système | 80 | 7 jours | `--vacuum-time=7d` |
+
+**Exemple - Garder les logs plus longtemps:**
+```bash
+# Modifier la ligne 39
+find logs/ -name "*.log" -mtime +90 -delete  # Garder 90 jours au lieu de 30
+```
+
+### Monitoring du Nettoyage
+
+**Voir les logs de nettoyage:**
+```bash
+# Logs systemd
+sudo journalctl -u linkedin-bot-cleanup.service -n 50
+
+# Dernière exécution
+sudo journalctl -u linkedin-bot-cleanup.service --since today
+```
+
+**Vérifier l'espace disque:**
+```bash
+# Espace global
+df -h /
+
+# Détail par répertoire du projet
+du -sh ~/linkedin-birthday-auto/*
+
+# Top 10 gros dossiers
+du -h ~/linkedin-birthday-auto | sort -rh | head -10
+```
+
+### Désactiver le Nettoyage Automatique
+
+Si vous préférez nettoyer manuellement:
+
+```bash
+# Désactiver le timer
+sudo systemctl disable linkedin-bot-cleanup.timer
+sudo systemctl stop linkedin-bot-cleanup.timer
+
+# Vérifier
+sudo systemctl is-enabled linkedin-bot-cleanup.timer  # Should show "disabled"
+```
+
+Vous pourrez toujours lancer le nettoyage manuellement:
+```bash
+sudo ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
 ```
 
 ---
