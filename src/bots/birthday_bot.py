@@ -171,15 +171,15 @@ class BirthdayBot(BaseLinkedInBot):
                 if success:
                     self.stats['messages_sent'] += 1
 
+                    # Simulation d'activité humaine occasionnelle
+                    if random.random() < 0.3:
+                        self.simulate_human_activity()
+
+                    # Pause entre messages (sauf le dernier)
+                    if i < len(contacts_to_process) - 1:
+                        self._wait_between_messages()
+
                 self.stats['contacts_processed'] += 1
-
-                # Simulation d'activité humaine occasionnelle
-                if random.random() < 0.3:
-                    self.simulate_human_activity()
-
-                # Pause entre messages (sauf le dernier)
-                if i < len(contacts_to_process) - 1:
-                    self._wait_between_messages()
 
             except MessageSendError as e:
                 logger.error(f"Failed to send message: {e}")
