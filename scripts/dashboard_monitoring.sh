@@ -218,11 +218,11 @@ display_dashboard() {
     echo -e "${YELLOW}│${NC}"
     echo -e "${YELLOW}│${NC} Containers:  ${WHITE}$(get_docker_stats)${NC}"
     echo -e "${YELLOW}│${NC}"
-    echo -e "${YELLOW}│${NC} Bot Worker:  $(get_service_status 'bot-worker' 'linkedin-bot-worker')"
-    echo -e "${YELLOW}│${NC} Dashboard:   $(get_service_status 'dashboard' 'linkedin-dashboard')"
-    echo -e "${YELLOW}│${NC} API:         $(get_service_status 'api' 'linkedin-bot-api')"
-    echo -e "${YELLOW}│${NC} Redis Bot:   $(get_service_status 'redis-bot' 'linkedin-bot-redis')"
-    echo -e "${YELLOW}│${NC} Redis Dash:  $(get_service_status 'redis-dashboard' 'linkedin-dashboard-redis')"
+    echo -e "${YELLOW}│${NC} Bot Worker:  $(get_service_status 'bot-worker' 'bot-worker')"
+    echo -e "${YELLOW}│${NC} Dashboard:   $(get_service_status 'dashboard' 'dashboard')"
+    echo -e "${YELLOW}│${NC} API:         $(get_service_status 'api' 'bot-api')"
+    echo -e "${YELLOW}│${NC} Redis Bot:   $(get_service_status 'redis-bot' 'redis-bot')"
+    echo -e "${YELLOW}│${NC} Redis Dash:  $(get_service_status 'redis-dashboard' 'redis-dashboard')"
     echo -e "${YELLOW}└${NC}"
     echo ""
 
@@ -236,8 +236,8 @@ display_dashboard() {
     # Logs récents
     echo -e "${BOLD}${WHITE}┌─ LOGS RÉCENTS (Bot Worker)${NC}"
     echo -e "${WHITE}│${NC}"
-    if docker ps --format '{{.Names}}' | grep -q "linkedin-bot-worker"; then
-        get_recent_logs "linkedin-bot-worker" 5 | while IFS= read -r line; do
+    if docker ps --format '{{.Names}}' | grep -q "bot-worker"; then
+        get_recent_logs "bot-worker" 5 | while IFS= read -r line; do
             echo -e "${WHITE}│${NC} $line"
         done
     else
