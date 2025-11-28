@@ -19,9 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copie et installation des requirements Python
-COPY requirements-new.txt .
+COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements-new.txt
+    pip install -r requirements.txt
 
 # Installation des navigateurs Playwright (Chromium uniquement pour économiser espace)
 RUN playwright install chromium && \

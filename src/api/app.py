@@ -8,47 +8,43 @@ Cette API permet de :
 - Consulter les logs (/logs)
 """
 
-import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
+from datetime import datetime
+import os
+from pathlib import Path
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header, Security
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 from redis import Redis
 from rq import Queue
-import os
+import yaml
 
 from ..config.config_manager import get_config
 from ..core.database import get_database
-from ..bots.birthday_bot import BirthdayBot
-import yaml
-from pathlib import Path
-
-from ..bots.unlimited_bot import UnlimitedBirthdayBot
+from ..monitoring.tracing import instrument_app, setup_tracing
+from ..queue.tasks import run_bot_task, run_profile_visit_task
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
+from . import auth_routes  # Import the new auth router
+from .routes import deployment  # Import the deployment router
 from .security import verify_api_key
-from ..queue.tasks import run_bot_task, run_profile_visit_task
-from ..monitoring.tracing import instrument_app, setup_tracing
-from prometheus_client import make_asgi_app
-from . import auth_routes # Import the new auth router
-from .routes import deployment # Import the deployment router
 
 logger = get_logger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════
 # CONFIGURATION REDIS (RQ)
 # ═══════════════════════════════════════════════════════════════════
-REDIS_HOST = os.getenv('REDIS_HOST', 'redis-bot')
-REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+REDIS_HOST = os.getenv("REDIS_HOST", "redis-bot")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 # Connexion Redis pour enqueuing
 try:
     redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
     # Queue 'linkedin-bot' (doit matcher src/queue/worker.py)
-    job_queue = Queue('linkedin-bot', connection=redis_conn)
+    job_queue = Queue("linkedin-bot", connection=redis_conn)
 except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     job_queue = None
@@ -57,8 +53,10 @@ except Exception as e:
 # MODELS PYDANTIC POUR L'API
 # ═══════════════════════════════════════════════════════════════════
 
+
 class HealthResponse(BaseModel):
     """Modèle de réponse pour /health."""
+
     status: str = Field(description="Statut du service (healthy, degraded, unhealthy)")
     version: str = Field(description="Version de l'application")
     timestamp: str = Field(description="Timestamp ISO 8601")
@@ -69,11 +67,12 @@ class HealthResponse(BaseModel):
 
 class MetricsResponse(BaseModel):
     """Modèle de réponse pour /metrics."""
+
     period_days: int
-    messages: Dict[str, int]
-    contacts: Dict[str, int]
-    profile_visits: Dict[str, int]
-    errors: Dict[str, int]
+    messages: dict[str, int]
+    contacts: dict[str, int]
+    profile_visits: dict[str, int]
+    errors: dict[str, int]
 
 
 class TriggerRequest(BaseModel):
@@ -82,19 +81,27 @@ class TriggerRequest(BaseModel):
     dry_run: bool = True
     max_days_late: Optional[int] = 10
 
+
 class BirthdayConfig(BaseModel):
     """Configuration pour le bot d'anniversaire."""
+
     dry_run: bool = Field(default=True, description="Mode test sans envoi réel")
     process_late: bool = Field(default=False, description="Traiter les anniversaires en retard")
-    max_days_late: Optional[int] = Field(default=10, description="Nombre de jours maximum de retard")
+    max_days_late: Optional[int] = Field(
+        default=10, description="Nombre de jours maximum de retard"
+    )
+
 
 class VisitorConfig(BaseModel):
     """Configuration pour le bot de visite de profils."""
+
     dry_run: bool = Field(default=True, description="Mode test sans visite réelle")
     limit: int = Field(default=10, description="Nombre de profils à visiter")
 
+
 class ConfigUpdate(BaseModel):
     content: str
+
 
 # --- Config ---
 CONFIG_PATH = Path("config/config.yaml")
@@ -104,6 +111,7 @@ LATE_MESSAGES_PATH = Path("late_messages.txt")
 
 class TriggerResponse(BaseModel):
     """Modèle de réponse pour /trigger."""
+
     job_id: str
     status: str
     message: str
@@ -111,6 +119,7 @@ class TriggerResponse(BaseModel):
 
 class BotExecutionResult(BaseModel):
     """Modèle pour les résultats d'exécution du bot."""
+
     success: bool
     bot_mode: str
     messages_sent: int
@@ -125,12 +134,13 @@ class BotExecutionResult(BaseModel):
 # ═══════════════════════════════════════════════════════════════════
 
 # Stockage simple en mémoire (dans une vraie app, utiliser Redis/DB)
-active_jobs: Dict[str, Dict[str, Any]] = {}
+active_jobs: dict[str, dict[str, Any]] = {}
 
 
 # ═══════════════════════════════════════════════════════════════════
 # LIFECYCLE DE L'API
 # ═══════════════════════════════════════════════════════════════════
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -159,7 +169,7 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # Instrument the app with OpenTelemetry BEFORE adding routes/middleware
@@ -184,6 +194,7 @@ app.include_router(deployment.router)
 # ROUTES
 # ═══════════════════════════════════════════════════════════════════
 
+
 @app.get("/", tags=["Root"])
 async def root():
     """Route racine avec informations de base."""
@@ -191,7 +202,7 @@ async def root():
         "name": "LinkedIn Birthday Bot API",
         "version": "2.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }
 
 
@@ -210,12 +221,13 @@ async def health_check():
     issues = []
 
     # Vérifier config
-    config_valid = config.validate() if hasattr(config, 'validate') else True
+    config_valid = config.validate() if hasattr(config, "validate") else True
 
     # Vérifier auth
     auth_available = False
     try:
         from ..core.auth_manager import validate_auth
+
         auth_available = validate_auth()
     except Exception as e:
         logger.warning(f"Auth check failed: {e}")
@@ -244,15 +256,12 @@ async def health_check():
         timestamp=datetime.now().isoformat(),
         config_valid=config_valid,
         auth_available=auth_available,
-        database_connected=database_connected
+        database_connected=database_connected,
     )
 
 
 @app.get("/stats", tags=["Metrics"])
-async def get_stats(
-    days: int = 30,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def get_stats(days: int = 30, authenticated: bool = Depends(verify_api_key)):
     """
     Récupère les statistiques d'activité pour le dashboard.
 
@@ -268,10 +277,7 @@ async def get_stats(
     config = get_config()
 
     if not config.database.enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Database not enabled in configuration"
-        )
+        raise HTTPException(status_code=503, detail="Database not enabled in configuration")
 
     try:
         db = get_database(config.database.db_path)
@@ -281,17 +287,11 @@ async def get_stats(
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve stats: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve stats: {e!s}")
 
 
 @app.get("/detailed-stats", response_model=MetricsResponse, tags=["Metrics"])
-async def get_detailed_stats(
-    days: int = 30,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def get_detailed_stats(days: int = 30, authenticated: bool = Depends(verify_api_key)):
     """
     Récupère les statistiques détaillées d'activité (DB).
 
@@ -303,10 +303,7 @@ async def get_detailed_stats(
     config = get_config()
 
     if not config.database.enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Database not enabled in configuration"
-        )
+        raise HTTPException(status_code=503, detail="Database not enabled in configuration")
 
     try:
         db = get_database(config.database.db_path)
@@ -315,17 +312,11 @@ async def get_detailed_stats(
 
     except Exception as e:
         logger.error(f"Failed to get detailed stats: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve detailed stats: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve detailed stats: {e!s}")
 
 
 @app.get("/activity", tags=["Metrics"])
-async def get_activity(
-    days: int = 30,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def get_activity(days: int = 30, authenticated: bool = Depends(verify_api_key)):
     """
     Récupère l'activité quotidienne détaillée (messages, visites, etc.).
 
@@ -343,10 +334,7 @@ async def get_activity(
     config = get_config()
 
     if not config.database.enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Database not enabled in configuration"
-        )
+        raise HTTPException(status_code=503, detail="Database not enabled in configuration")
 
     try:
         db = get_database(config.database.db_path)
@@ -355,17 +343,11 @@ async def get_activity(
 
     except Exception as e:
         logger.error(f"Failed to get activity: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve activity: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve activity: {e!s}")
 
 
 @app.post("/trigger")
-async def trigger_job(
-    request: TriggerRequest,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(verify_api_key)):
     """Déclenche une tâche (Anniversaire ou Visite) via Redis Queue"""
     if not job_queue:
         raise HTTPException(status_code=503, detail="Redis Queue not available")
@@ -377,13 +359,11 @@ async def trigger_job(
                 bot_mode=request.bot_mode,
                 dry_run=request.dry_run,
                 max_days_late=request.max_days_late,
-                job_timeout='30m' # Timeout généreux pour le bot
+                job_timeout="30m",  # Timeout généreux pour le bot
             )
         elif request.job_type == "visit":
             job = job_queue.enqueue(
-                run_profile_visit_task,
-                dry_run=request.dry_run,
-                job_timeout='45m'
+                run_profile_visit_task, dry_run=request.dry_run, job_timeout="45m"
             )
         else:
             raise HTTPException(status_code=400, detail="Unknown job type")
@@ -392,14 +372,11 @@ async def trigger_job(
         return {"job_id": job.id, "status": "queued", "type": request.job_type}
     except Exception as e:
         logger.error(f"Failed to enqueue job: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {e!s}")
 
 
 @app.post("/start-birthday-bot", tags=["Bot"])
-async def start_birthday_bot(
-    config: BirthdayConfig,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depends(verify_api_key)):
     """
     Démarre le bot d'anniversaire avec la configuration fournie (via RQ).
     """
@@ -415,7 +392,7 @@ async def start_birthday_bot(
             bot_mode="standard",
             dry_run=config.dry_run,
             max_days_late=max_days,
-            job_timeout='30m'
+            job_timeout="30m",
         )
 
         logger.info(f"✅ [BIRTHDAY BOT] Job {job.id} queued successfully")
@@ -423,18 +400,15 @@ async def start_birthday_bot(
         return {
             "job_id": job.id,
             "status": "queued",
-            "message": f"Bot d'anniversaire mis en file d'attente (id={job.id})"
+            "message": f"Bot d'anniversaire mis en file d'attente (id={job.id})",
         }
     except Exception as e:
         logger.error(f"Failed to enqueue birthday bot: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start bot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
 
 
 @app.post("/start-visitor-bot", tags=["Bot"])
-async def start_visitor_bot(
-    config: VisitorConfig,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends(verify_api_key)):
     """
     Démarre le bot de visite de profils avec la configuration fournie (via RQ).
     """
@@ -443,10 +417,7 @@ async def start_visitor_bot(
 
     try:
         job = job_queue.enqueue(
-            run_profile_visit_task,
-            dry_run=config.dry_run,
-            limit=config.limit,
-            job_timeout='45m'
+            run_profile_visit_task, dry_run=config.dry_run, limit=config.limit, job_timeout="45m"
         )
 
         logger.info(f"✅ [VISITOR BOT] Job {job.id} queued successfully")
@@ -454,17 +425,15 @@ async def start_visitor_bot(
         return {
             "job_id": job.id,
             "status": "queued",
-            "message": f"Bot de visite mis en file d'attente (id={job.id})"
+            "message": f"Bot de visite mis en file d'attente (id={job.id})",
         }
     except Exception as e:
         logger.error(f"Failed to enqueue visitor bot: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start bot: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
 
 
 @app.post("/stop", tags=["Bot"])
-async def stop_bot(
-    authenticated: bool = Depends(verify_api_key)
-):
+async def stop_bot(authenticated: bool = Depends(verify_api_key)):
     """
     Arrête tous les bots actifs.
 
@@ -480,20 +449,16 @@ async def stop_bot(
 
     if not job_queue or not redis_conn:
         logger.error("❌ [STOP] Redis Queue non disponible")
-        raise HTTPException(
-            status_code=503,
-            detail="Redis Queue not available - cannot stop jobs"
-        )
+        raise HTTPException(status_code=503, detail="Redis Queue not available - cannot stop jobs")
 
     try:
         cancelled_count = 0
         emptied_count = 0
 
         # 1. Annuler tous les jobs actuellement en cours (started)
-        from rq.job import JobStatus
         from rq.registry import StartedJobRegistry
 
-        started_registry = StartedJobRegistry('linkedin-bot', connection=redis_conn)
+        started_registry = StartedJobRegistry("linkedin-bot", connection=redis_conn)
         started_job_ids = started_registry.get_job_ids()
 
         logger.info(f"📋 [STOP] Jobs en cours trouvés: {len(started_job_ids)}")
@@ -501,6 +466,7 @@ async def stop_bot(
         for job_id in started_job_ids:
             try:
                 from rq.job import Job
+
                 job = Job.fetch(job_id, connection=redis_conn)
                 # Marquer le job comme annulé
                 job.cancel()
@@ -516,6 +482,7 @@ async def stop_bot(
         for job_id in queued_job_ids:
             try:
                 from rq.job import Job
+
                 job = Job.fetch(job_id, connection=redis_conn)
                 job.delete()
                 emptied_count += 1
@@ -527,29 +494,25 @@ async def stop_bot(
         job_queue.empty()
 
         total_stopped = cancelled_count + emptied_count
-        logger.info(f"✅ [STOP] Arrêt d'urgence terminé: {cancelled_count} jobs annulés, {emptied_count} jobs supprimés")
+        logger.info(
+            f"✅ [STOP] Arrêt d'urgence terminé: {cancelled_count} jobs annulés, {emptied_count} jobs supprimés"
+        )
 
         return {
             "status": "success",
             "message": f"Arrêt d'urgence effectué avec succès ({total_stopped} jobs arrêtés)",
             "cancelled_jobs": cancelled_count,
             "emptied_queue": emptied_count,
-            "total_stopped": total_stopped
+            "total_stopped": total_stopped,
         }
 
     except Exception as e:
         logger.error(f"❌ [STOP] Erreur lors de l'arrêt: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur lors de l'arrêt d'urgence: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'arrêt d'urgence: {e!s}")
 
 
 @app.get("/jobs/{job_id}", tags=["Bot"])
-async def get_job_status(
-    job_id: str,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def get_job_status(job_id: str, authenticated: bool = Depends(verify_api_key)):
     """
     Récupère le statut d'un job.
 
@@ -557,19 +520,13 @@ async def get_job_status(
         job_id: ID du job à consulter
     """
     if job_id not in active_jobs:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Job not found: {job_id}"
-        )
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
 
     return active_jobs[job_id]
 
 
 @app.get("/logs", tags=["Logs"])
-async def get_recent_logs(
-    limit: int = 100,
-    authenticated: bool = Depends(verify_api_key)
-):
+async def get_recent_logs(limit: int = 100, authenticated: bool = Depends(verify_api_key)):
     """
     Récupère les logs récents.
 
@@ -577,17 +534,17 @@ async def get_recent_logs(
         limit: Nombre de lignes à retourner
     """
     try:
-        from pathlib import Path
         import os
+        from pathlib import Path
 
         # Chemin absolu Docker (cohérent avec le volume monté)
-        log_file = Path(os.getenv('LOG_FILE', '/app/logs/linkedin_bot.log'))
+        log_file = Path(os.getenv("LOG_FILE", "/app/logs/linkedin_bot.log"))
 
         if not log_file.exists():
             return {"logs": [], "message": "Log file not found"}
 
         # Lire les dernières lignes
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, encoding="utf-8") as f:
             lines = f.readlines()
 
         recent_lines = lines[-limit:] if len(lines) > limit else lines
@@ -595,15 +552,12 @@ async def get_recent_logs(
         return {
             "logs": [line.strip() for line in recent_lines],
             "count": len(recent_lines),
-            "total_lines": len(lines)
+            "total_lines": len(lines),
         }
 
     except Exception as e:
         logger.error(f"Failed to read logs: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read logs: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to read logs: {e!s}")
 
 
 @app.get("/config/yaml")
@@ -612,6 +566,7 @@ async def get_yaml_config(authenticated: bool = Depends(verify_api_key)):
     if not CONFIG_PATH.exists():
         raise HTTPException(404, "Config file not found")
     return {"content": CONFIG_PATH.read_text(encoding="utf-8")}
+
 
 @app.post("/config/yaml")
 async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
@@ -622,7 +577,8 @@ async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends
         CONFIG_PATH.write_text(config.content, encoding="utf-8")
         return {"status": "updated"}
     except Exception as e:
-        raise HTTPException(400, f"Invalid YAML: {str(e)}")
+        raise HTTPException(400, f"Invalid YAML: {e!s}")
+
 
 @app.get("/config/messages")
 async def get_messages(authenticated: bool = Depends(verify_api_key)):
@@ -631,11 +587,13 @@ async def get_messages(authenticated: bool = Depends(verify_api_key)):
         return {"content": ""}
     return {"content": MESSAGES_PATH.read_text(encoding="utf-8")}
 
+
 @app.post("/config/messages")
 async def update_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
     """Met à jour messages.txt"""
     MESSAGES_PATH.write_text(config.content, encoding="utf-8")
     return {"status": "updated"}
+
 
 @app.get("/config/late-messages")
 async def get_late_messages(authenticated: bool = Depends(verify_api_key)):
@@ -644,11 +602,14 @@ async def get_late_messages(authenticated: bool = Depends(verify_api_key)):
         return {"content": ""}
     return {"content": LATE_MESSAGES_PATH.read_text(encoding="utf-8")}
 
+
 @app.post("/config/late-messages")
 async def update_late_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
     """Met à jour late_messages.txt"""
     LATE_MESSAGES_PATH.write_text(config.content, encoding="utf-8")
     return {"status": "updated"}
+
+
 # ═══════════════════════════════════════════════════════════════════
 # BACKGROUND TASKS
 # ═══════════════════════════════════════════════════════════════════
@@ -657,6 +618,7 @@ async def update_late_messages(config: ConfigUpdate, authenticated: bool = Depen
 # ═══════════════════════════════════════════════════════════════════
 # EXCEPTION HANDLERS
 # ═══════════════════════════════════════════════════════════════════
+
 
 @app.exception_handler(LinkedInBotError)
 async def linkedin_bot_error_handler(request, exc: LinkedInBotError):
@@ -668,8 +630,8 @@ async def linkedin_bot_error_handler(request, exc: LinkedInBotError):
             "message": exc.message,
             "code": exc.error_code.name,
             "recoverable": exc.recoverable,
-            "details": exc.details
-        }
+            "details": exc.details,
+        },
     )
 
 
@@ -677,10 +639,4 @@ async def linkedin_bot_error_handler(request, exc: LinkedInBotError):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "src.api.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    uvicorn.run("src.api.app:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

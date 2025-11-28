@@ -1,4 +1,5 @@
-from typing import Optional, Dict, Any
+from typing import Any
+
 from ..bots.birthday_bot import run_birthday_bot
 from ..bots.unlimited_bot import run_unlimited_bot
 from ..bots.visitor_bot import VisitorBot
@@ -7,19 +8,23 @@ from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-def run_bot_task(bot_mode: str = 'standard', dry_run: bool = False, max_days_late: int = 10) -> Dict[str, Any]:
+
+def run_bot_task(
+    bot_mode: str = "standard", dry_run: bool = False, max_days_late: int = 10
+) -> dict[str, Any]:
     """Tâche pour le bot anniversaire"""
     logger.info("task_start", type="birthday", mode=bot_mode, dry_run=dry_run)
     try:
-        if bot_mode == 'standard':
+        if bot_mode == "standard":
             return run_birthday_bot(dry_run=dry_run)
-        elif bot_mode == 'unlimited':
+        elif bot_mode == "unlimited":
             return run_unlimited_bot(dry_run=dry_run, max_days_late=max_days_late)
     except Exception as e:
         logger.error("task_failed", error=str(e))
         raise e
 
-def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> Dict[str, Any]:
+
+def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, Any]:
     """
     Tâche pour la visite de profils (V2 Native).
 
@@ -46,7 +51,9 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> Dict[str, 
         # TODO: Implémenter la limite de profils dans VisitorBot
         # Pour l'instant, le paramètre limit est accepté mais pas utilisé
         if limit != 10:
-            logger.warning(f"limit parameter ({limit}) is accepted but not yet implemented in VisitorBot")
+            logger.warning(
+                f"limit parameter ({limit}) is accepted but not yet implemented in VisitorBot"
+            )
 
         # Le context manager gère automatiquement setup/teardown du navigateur
         with VisitorBot(config=config) as bot:
@@ -54,8 +61,4 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> Dict[str, 
 
     except Exception as e:
         logger.error("task_failed", error=str(e))
-        return {
-            "success": False,
-            "error": str(e),
-            "bot_type": "visitor"
-        }
+        return {"success": False, "error": str(e), "bot_type": "visitor"}

@@ -15,19 +15,20 @@ Pour exécuter:
     pytest tests/e2e/test_full_workflow.py::TestFullBotWorkflow -v
 """
 
-import pytest
-import tempfile
 import json
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 import sys
+import tempfile
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Ajouter le répertoire src au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.config_manager import ConfigManager
 from src.bots.birthday_bot import BirthdayBot
 from src.bots.unlimited_bot import UnlimitedBirthdayBot
+from src.config.config_manager import ConfigManager
 
 
 @pytest.mark.e2e
@@ -62,7 +63,7 @@ delays:
   min_delay_seconds: 2
   max_delay_seconds: 5
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(config_content)
             temp_path = f.name
 
@@ -84,13 +85,13 @@ delays:
                     "expires": 9999999999,
                     "httpOnly": True,
                     "secure": True,
-                    "sameSite": "None"
+                    "sameSite": "None",
                 }
             ],
-            "origins": []
+            "origins": [],
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(auth_data, f)
             temp_path = f.name
 
@@ -138,15 +139,15 @@ delays:
 
         return mock_browser_manager
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_standard_bot_complete_workflow_no_birthdays(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         temp_config_file,
         temp_auth_file,
-        mock_playwright_environment
+        mock_playwright_environment,
     ):
         """
         Test E2E complet : BirthdayBot sans anniversaires.
@@ -169,33 +170,30 @@ delays:
         # Exécution
         with BirthdayBot(config=config) as bot:
             # Mock get_birthday_contacts
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [],
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(return_value={"today": [], "late": []})
 
             result = bot.run()
 
         # Assertions
-        assert result['success'] is True
-        assert result['bot_mode'] == 'standard'
-        assert result['messages_sent'] == 0
-        assert result['contacts_processed'] == 0
-        assert result['dry_run'] is True
-        assert 'timestamp' in result
+        assert result["success"] is True
+        assert result["bot_mode"] == "standard"
+        assert result["messages_sent"] == 0
+        assert result["contacts_processed"] == 0
+        assert result["dry_run"] is True
+        assert "timestamp" in result
 
         # Vérifier que cleanup a été appelé
         mock_playwright_environment.cleanup.assert_called_once()
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_standard_bot_complete_workflow_with_birthdays(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         temp_config_file,
         temp_auth_file,
-        mock_playwright_environment
+        mock_playwright_environment,
     ):
         """
         Test E2E complet : BirthdayBot avec 5 anniversaires.
@@ -224,35 +222,32 @@ delays:
 
         # Exécution
         with BirthdayBot(config=config) as bot:
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': mock_contacts,
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(return_value={"today": mock_contacts, "late": []})
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Assertions
-        assert result['success'] is True
-        assert result['messages_sent'] == 5
-        assert result['contacts_processed'] == 5
-        assert result['birthdays_today'] == 5
-        assert result['birthdays_late_ignored'] == 0
+        assert result["success"] is True
+        assert result["messages_sent"] == 5
+        assert result["contacts_processed"] == 5
+        assert result["birthdays_today"] == 5
+        assert result["birthdays_late_ignored"] == 0
 
         # Vérifier appels
         assert bot.send_birthday_message.call_count == 5
         mock_playwright_environment.cleanup.assert_called_once()
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_unlimited_bot_complete_workflow(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         temp_config_file,
         temp_auth_file,
-        mock_playwright_environment
+        mock_playwright_environment,
     ):
         """
         Test E2E complet : UnlimitedBot avec anniversaires du jour et en retard.
@@ -284,43 +279,45 @@ delays:
 
         # Exécution
         with UnlimitedBirthdayBot(config=config) as bot:
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [mock_contact_today, mock_contact_today],
-                'late': [(mock_contact_late, 3), (mock_contact_late, 7)]
-            })
+            bot.get_birthday_contacts = Mock(
+                return_value={
+                    "today": [mock_contact_today, mock_contact_today],
+                    "late": [(mock_contact_late, 3), (mock_contact_late, 7)],
+                }
+            )
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Assertions
-        assert result['success'] is True
-        assert result['bot_mode'] == 'unlimited'
-        assert result['messages_sent'] == 4  # 2 today + 2 late
-        assert result['contacts_processed'] == 4
-        assert result['birthdays_today'] == 2
-        assert result['birthdays_late'] == 2
+        assert result["success"] is True
+        assert result["bot_mode"] == "unlimited"
+        assert result["messages_sent"] == 4  # 2 today + 2 late
+        assert result["contacts_processed"] == 4
+        assert result["birthdays_today"] == 2
+        assert result["birthdays_late"] == 2
 
         # Vérifier que les messages en retard ont bien été appelés avec is_late=True
         calls = bot.send_birthday_message.call_args_list
-        assert calls[0][1]['is_late'] is False  # Premier aujourd'hui
-        assert calls[1][1]['is_late'] is False  # Deuxième aujourd'hui
-        assert calls[2][1]['is_late'] is True   # Premier en retard
-        assert calls[2][1]['days_late'] == 3
-        assert calls[3][1]['is_late'] is True   # Deuxième en retard
-        assert calls[3][1]['days_late'] == 7
+        assert calls[0][1]["is_late"] is False  # Premier aujourd'hui
+        assert calls[1][1]["is_late"] is False  # Deuxième aujourd'hui
+        assert calls[2][1]["is_late"] is True  # Premier en retard
+        assert calls[2][1]["days_late"] == 3
+        assert calls[3][1]["is_late"] is True  # Deuxième en retard
+        assert calls[3][1]["days_late"] == 7
 
         mock_playwright_environment.cleanup.assert_called_once()
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_bot_workflow_with_errors(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         temp_config_file,
         temp_auth_file,
-        mock_playwright_environment
+        mock_playwright_environment,
     ):
         """
         Test E2E : Gestion des erreurs lors de l'envoi.
@@ -345,10 +342,7 @@ delays:
 
         # Exécution
         with BirthdayBot(config=config) as bot:
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': mock_contacts,
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(return_value={"today": mock_contacts, "late": []})
 
             # Mock send_birthday_message : succès, échec, succès
             bot.send_birthday_message = Mock(side_effect=[True, False, True])
@@ -356,19 +350,19 @@ delays:
             result = bot.run()
 
         # Assertions
-        assert result['success'] is True
-        assert result['messages_sent'] == 2  # 2 succès sur 3
-        assert result['contacts_processed'] == 3
-        assert result['errors'] == 1
+        assert result["success"] is True
+        assert result["messages_sent"] == 2  # 2 succès sur 3
+        assert result["contacts_processed"] == 3
+        assert result["errors"] == 1
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=False)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=False)
     def test_bot_workflow_authentication_failure(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         temp_config_file,
-        mock_playwright_environment
+        mock_playwright_environment,
     ):
         """
         Test E2E : Échec d'authentification.
@@ -392,8 +386,8 @@ delays:
             result = bot.run()
 
         # Assertions
-        assert result['success'] is False
-        assert 'error' in result or result['messages_sent'] == 0
+        assert result["success"] is False
+        assert "error" in result or result["messages_sent"] == 0
 
 
 @pytest.mark.e2e
@@ -404,16 +398,18 @@ class TestAPIWorkflow:
     def api_client(self):
         """Client de test pour l'API FastAPI."""
         from fastapi.testclient import TestClient
+
         from src.api.app import app
 
         return TestClient(app)
 
-    @patch('src.api.app.get_config')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.api.app.get_config")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_health_endpoint(self, mock_validate_auth, mock_get_config, api_client):
         """Test E2E de l'endpoint /health."""
         # Mock config
         from src.config.config_schema import LinkedInBotConfig
+
         mock_config = LinkedInBotConfig()
         mock_get_config.return_value = mock_config
 
@@ -423,10 +419,10 @@ class TestAPIWorkflow:
         # Assertions
         assert response.status_code == 200
         data = response.json()
-        assert 'status' in data
-        assert 'version' in data
-        assert data['version'] == "2.0.0"
-        assert 'timestamp' in data
+        assert "status" in data
+        assert "version" in data
+        assert data["version"] == "2.0.0"
+        assert "timestamp" in data
 
     def test_root_endpoint(self, api_client):
         """Test E2E de l'endpoint racine /."""
@@ -434,12 +430,13 @@ class TestAPIWorkflow:
 
         assert response.status_code == 200
         data = response.json()
-        assert data['name'] == "LinkedIn Birthday Bot API"
-        assert data['version'] == "2.0.0"
-        assert data['docs'] == "/docs"
+        assert data["name"] == "LinkedIn Birthday Bot API"
+        assert data["version"] == "2.0.0"
+        assert data["docs"] == "/docs"
 
 
 # Fixtures pytest communes
+
 
 @pytest.fixture(autouse=True)
 def reset_singletons():

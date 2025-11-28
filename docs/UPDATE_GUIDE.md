@@ -2,15 +2,14 @@
 
 Ce guide explique comment appliquer les optimisations de l'audit **sans tout reconstruire**.
 
----
+______________________________________________________________________
 
 ## 🎯 Stratégies de mise à jour
 
 ### Option 1️⃣ : Mise à jour automatique (RECOMMANDÉE)
 
-**✅ Avantages** : Simple, rapide, préserve les données
-**⏱️ Durée** : ~2 minutes
-**📉 Downtime** : ~30 secondes
+**✅ Avantages** : Simple, rapide, préserve les données **⏱️ Durée** : ~2 minutes **📉 Downtime** :
+~30 secondes
 
 ```bash
 # 1. Récupérer les dernières modifications
@@ -21,19 +20,19 @@ git pull origin claude/audit-phase2-raspberry-pi-01BCXqhDv2FvawTpHFXxJHPi
 ```
 
 **Ce que fait le script** :
+
 - ✅ Sauvegarde automatique de la base de données
 - ✅ Recrée les conteneurs avec nouvelles limites RAM/CPU
 - ✅ Préserve les volumes (données, logs)
 - ✅ Vérifie la santé des services
 - ✅ Nettoie les images inutiles
 
----
+______________________________________________________________________
 
 ### Option 2️⃣ : Mise à jour manuelle service par service
 
-**✅ Avantages** : Contrôle total, downtime minimal
-**⏱️ Durée** : ~5 minutes
-**📉 Downtime** : ~10 secondes par service
+**✅ Avantages** : Contrôle total, downtime minimal **⏱️ Durée** : ~5 minutes **📉 Downtime** : ~10
+secondes par service
 
 ```bash
 # 1. Mettre à jour un service à la fois
@@ -48,12 +47,11 @@ docker compose -f docker-compose.pi4-standalone.yml up -d --force-recreate --no-
 docker compose -f docker-compose.pi4-standalone.yml up -d --force-recreate --no-build redis-dashboard
 ```
 
----
+______________________________________________________________________
 
 ### Option 3️⃣ : Mise à jour avec reconstruction d'images
 
-**⚠️ À utiliser si** : Modifications du code source Python/TypeScript
-**⏱️ Durée** : ~15-20 minutes
+**⚠️ À utiliser si** : Modifications du code source Python/TypeScript **⏱️ Durée** : ~15-20 minutes
 **📉 Downtime** : ~5 minutes
 
 ```bash
@@ -67,7 +65,7 @@ docker compose -f docker-compose.pi4-standalone.yml build
 docker compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
----
+______________________________________________________________________
 
 ## 📋 Checklist pré-mise à jour
 
@@ -87,7 +85,7 @@ docker compose -f docker-compose.pi4-standalone.yml ps
 cp data/linkedin_automation.db data/linkedin_automation.db.backup
 ```
 
----
+______________________________________________________________________
 
 ## 🔍 Vérification post-mise à jour
 
@@ -106,6 +104,7 @@ docker stats --no-stream
 ```
 
 Résultat attendu :
+
 ```
 NAME                      MEM USAGE / LIMIT
 linkedin-bot-worker       ~600M / 900M     ✅
@@ -144,6 +143,7 @@ docker inspect linkedin-bot-worker | grep -A5 "LogConfig"
 ```
 
 Résultat attendu :
+
 ```json
 "LogConfig": {
     "Type": "json-file",
@@ -155,7 +155,7 @@ Résultat attendu :
 }
 ```
 
----
+______________________________________________________________________
 
 ## 🚨 Résolution de problèmes
 
@@ -164,6 +164,7 @@ Résultat attendu :
 **Symptômes** : Container en état `Restarting` ou `Exited`
 
 **Solution** :
+
 ```bash
 # Voir les logs d'erreur
 docker compose -f docker-compose.pi4-standalone.yml logs --tail=100 <service_name>
@@ -173,17 +174,19 @@ docker compose -f docker-compose.pi4-standalone.yml up <service_name>
 ```
 
 **Causes courantes** :
+
 - Limite RAM trop basse → Augmenter temporairement dans docker-compose
 - Port déjà utilisé → Vérifier avec `netstat -tulpn`
 - Volume manquant → Vérifier `docker volume ls`
 
----
+______________________________________________________________________
 
 ### Problème 2 : Base de données non trouvée
 
 **Symptômes** : `sqlite3.OperationalError: unable to open database file`
 
 **Solution** :
+
 ```bash
 # Vérifier l'emplacement de la DB
 ls -lh data/linkedin_automation.db
@@ -197,13 +200,14 @@ chmod 666 data/linkedin_automation.db
 chmod 777 data
 ```
 
----
+______________________________________________________________________
 
 ### Problème 3 : Out of Memory (OOM)
 
 **Symptômes** : Container tué brutalement, logs `Killed`
 
 **Solution immédiate** :
+
 ```bash
 # Augmenter temporairement la limite RAM
 # Éditer docker-compose.pi4-standalone.yml
@@ -216,17 +220,19 @@ docker compose -f docker-compose.pi4-standalone.yml up -d --force-recreate
 
 **Solution long terme** : Activer ZRAM (voir ci-dessous)
 
----
+______________________________________________________________________
 
 ### Problème 4 : Dashboard très lent après mise à jour
 
 **Symptômes** : Next.js prend >2 minutes à répondre
 
 **Causes** :
+
 - Limite RAM trop basse (700M peut être juste au 1er démarrage)
 - Swap utilisé massivement
 
 **Solution** :
+
 ```bash
 # Vérifier utilisation SWAP
 free -h
@@ -238,7 +244,7 @@ memory: 700M → memory: 900M
 # Puis activer ZRAM (voir section suivante)
 ```
 
----
+______________________________________________________________________
 
 ## 🗜️ Activer ZRAM (Recommandé)
 
@@ -274,11 +280,12 @@ NAME       ALGORITHM DISKSIZE DATA COMPR TOTAL STREAMS MOUNTPOINT
 ```
 
 **Impact** :
+
 - ✅ -50% utilisation SWAP (SD card)
 - ✅ +2GB mémoire disponible (compressée)
 - ✅ Meilleures performances globales
 
----
+______________________________________________________________________
 
 ## 📊 Monitoring continu
 
@@ -311,7 +318,7 @@ chmod +x /usr/local/bin/check_pi_temp.sh
 (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/check_pi_temp.sh") | crontab -
 ```
 
----
+______________________________________________________________________
 
 ## 🔄 Rollback (retour en arrière)
 
@@ -346,7 +353,7 @@ cp backups/YYYYMMDD_HHMMSS/config.yaml config/
 docker compose -f docker-compose.pi4-standalone.yml restart
 ```
 
----
+______________________________________________________________________
 
 ## ✅ Résumé des commandes rapides
 
@@ -373,22 +380,23 @@ docker compose -f docker-compose.pi4-standalone.yml restart bot-worker
 ./scripts/cleanup_pi4.sh
 ```
 
----
+______________________________________________________________________
 
 ## 📞 Support
 
 En cas de problème :
 
 1. **Vérifier les logs** : `docker compose logs -f <service>`
-2. **Vérifier les ressources** : `./scripts/monitor_pi4_resources.sh`
-3. **Consulter** : `AUDIT_PHASE2_RASPBERRY_PI4.md`
-4. **Rollback** si nécessaire (voir section ci-dessus)
+1. **Vérifier les ressources** : `./scripts/monitor_pi4_resources.sh`
+1. **Consulter** : `AUDIT_PHASE2_RASPBERRY_PI4.md`
+1. **Rollback** si nécessaire (voir section ci-dessus)
 
----
+______________________________________________________________________
 
 **Mise à jour réussie ? 🎉**
 
 N'oubliez pas :
+
 - ✅ Activer ZRAM pour meilleures performances
 - ✅ Planifier le nettoyage hebdomadaire (cron)
 - ✅ Surveiller la température (dissipateur recommandé)

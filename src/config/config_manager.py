@@ -5,14 +5,16 @@ Ce module gère le chargement, la validation et l'accès à la configuration
 depuis différentes sources (YAML, variables d'environnement, valeurs par défaut).
 """
 
-import os
-import yaml
 import logging
-from typing import Optional, Any, Dict
+import os
 from pathlib import Path
 import threading
-from .config_schema import LinkedInBotConfig, DEFAULT_CONFIG
+from typing import Any, Optional
+
 from pydantic import ValidationError
+import yaml
+
+from .config_schema import DEFAULT_CONFIG, LinkedInBotConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +37,10 @@ class ConfigManager:
         >>> config.set("dry_run", True)
     """
 
-    _instance: Optional['ConfigManager'] = None
+    _instance: Optional["ConfigManager"] = None
     _lock: threading.Lock = threading.Lock()
 
-    def __init__(
-        self,
-        config_path: Optional[str] = None,
-        auto_reload: bool = False
-    ):
+    def __init__(self, config_path: Optional[str] = None, auto_reload: bool = False):
         """
         Initialise le gestionnaire de configuration.
 
@@ -68,10 +66,8 @@ class ConfigManager:
 
     @classmethod
     def get_instance(
-        cls,
-        config_path: Optional[str] = None,
-        force_reload: bool = False
-    ) -> 'ConfigManager':
+        cls, config_path: Optional[str] = None, force_reload: bool = False
+    ) -> "ConfigManager":
         """
         Retourne l'instance singleton du gestionnaire (thread-safe).
 
@@ -109,7 +105,7 @@ class ConfigManager:
             Chemin vers config.yaml ou None
         """
         # 1. Variable d'environnement
-        env_path = os.getenv('LINKEDIN_BOT_CONFIG_PATH')
+        env_path = os.getenv("LINKEDIN_BOT_CONFIG_PATH")
         if env_path and Path(env_path).exists():
             logger.info(f"Using config from env var: {env_path}")
             return env_path
@@ -155,7 +151,7 @@ class ConfigManager:
         self._config_path = path
         self._file_mtime = path.stat().st_mtime
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding="utf-8") as f:
             try:
                 yaml_data = yaml.safe_load(f)
 
@@ -192,7 +188,7 @@ class ConfigManager:
                 continue
 
             # Extraire la clé de config (ex: DRY_RUN, BROWSER_HEADLESS)
-            config_key = key[len(env_prefix):].lower()
+            config_key = key[len(env_prefix) :].lower()
 
             # Parser la valeur
             parsed_value = self._parse_env_value(value)
@@ -203,9 +199,7 @@ class ConfigManager:
                 overrides_count += 1
                 logger.debug(f"Applied env override: {config_key} = {parsed_value}")
             except Exception as e:
-                logger.warning(
-                    f"Failed to apply env override {key}: {e}"
-                )
+                logger.warning(f"Failed to apply env override {key}: {e}")
 
         if overrides_count > 0:
             logger.info(f"Applied {overrides_count} environment overrides")
@@ -221,23 +215,24 @@ class ConfigManager:
         - Reste -> str
         """
         # Booléens
-        if value.lower() in ('true', 'yes', '1', 'on'):
+        if value.lower() in ("true", "yes", "1", "on"):
             return True
-        if value.lower() in ('false', 'no', '0', 'off'):
+        if value.lower() in ("false", "no", "0", "off"):
             return False
 
         # Nombres
         try:
-            if '.' in value:
+            if "." in value:
                 return float(value)
             return int(value)
         except ValueError:
             pass
 
         # JSON
-        if value.startswith('{') or value.startswith('['):
+        if value.startswith("{") or value.startswith("["):
             try:
                 import json
+
                 return json.loads(value)
             except json.JSONDecodeError:
                 pass
@@ -256,13 +251,13 @@ class ConfigManager:
             "debug_log_level" -> config.debug.log_level
         """
         # Séparer la clé en parties
-        parts = key.split('_')
+        parts = key.split("_")
 
         # Essayer différentes combinaisons pour trouver le bon chemin
         # Ex: browser_headless peut être browser.headless
         for i in range(len(parts), 0, -1):
-            section = '_'.join(parts[:i])
-            field = '_'.join(parts[i:]) if i < len(parts) else None
+            section = "_".join(parts[:i])
+            field = "_".join(parts[i:]) if i < len(parts) else None
 
             # Vérifier si c'est un champ direct de _config
             if hasattr(self._config, section) and field is None:
@@ -302,7 +297,7 @@ class ConfigManager:
             >>> config.get("messaging_limits.weekly_message_limit")
             80
         """
-        parts = key.split('.')
+        parts = key.split(".")
         value = self._config
 
         for part in parts:
@@ -325,7 +320,7 @@ class ConfigManager:
             >>> config.set("dry_run", True)
             >>> config.set("browser.headless", False)
         """
-        parts = key.split('.')
+        parts = key.split(".")
 
         if len(parts) == 1:
             # Clé directe
@@ -379,26 +374,20 @@ class ConfigManager:
         Args:
             output_path: Chemin du fichier de sortie
         """
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             # Convertir Pydantic model en dict
-            config_dict = self._config.model_dump(mode='json')
-            yaml.dump(
-                config_dict,
-                f,
-                default_flow_style=False,
-                allow_unicode=True,
-                sort_keys=False
-            )
+            config_dict = self._config.model_dump(mode="json")
+            yaml.dump(config_dict, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         logger.info(f"Configuration exported to {output_path}")
 
-    def export_to_dict(self) -> Dict[str, Any]:
+    def export_to_dict(self) -> dict[str, Any]:
         """
         Exporte la configuration en dictionnaire.
 
         Returns:
             Dict avec toute la configuration
         """
-        return self._config.model_dump(mode='json')
+        return self._config.model_dump(mode="json")
 
     def validate(self) -> bool:
         """

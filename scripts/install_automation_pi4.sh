@@ -50,6 +50,15 @@ echo ""
 # =========================================================================
 print_header "1. Vérification des Prérequis"
 
+# Outils système
+if ! command -v jq &> /dev/null || ! command -v bc &> /dev/null; then
+    print_warning "Installation des outils système (jq, bc)..."
+    apt-get update && apt-get install -y jq bc
+    print_success "Outils système installés"
+else
+    print_success "Outils système (jq, bc) déjà installés"
+fi
+
 # Docker
 if ! command -v docker &> /dev/null; then
     print_warning "Docker n'est pas installé. Installation en cours..."
@@ -180,7 +189,7 @@ print_info "Création script de monitoring..."
 cat > scripts/monitor_pi4_health.sh << 'MONITOR_EOF'
 #!/bin/bash
 # Script de monitoring des ressources Pi4
-LOG_FILE="/var/log/linkedin-bot-health.log"
+LOG_FILE="${PROJECT_DIR}/logs/health.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
 # Température CPU

@@ -5,12 +5,13 @@ Ces tests vérifient le flow complet d'exécution avec des mocks
 pour les composants externes (Playwright, LinkedIn).
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch, call
+import json
 from pathlib import Path
 import sys
 import tempfile
-import json
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Ajouter le répertoire src au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -63,12 +64,10 @@ class TestBirthdayBotIntegration:
     @pytest.fixture
     def mock_auth_state(self):
         """Fichier d'auth mocké."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             auth_data = {
-                "cookies": [
-                    {"name": "li_at", "value": "fake_token", "domain": ".linkedin.com"}
-                ],
-                "origins": []
+                "cookies": [{"name": "li_at", "value": "fake_token", "domain": ".linkedin.com"}],
+                "origins": [],
             }
             json.dump(auth_data, f)
             temp_path = f.name
@@ -78,14 +77,14 @@ class TestBirthdayBotIntegration:
         # Cleanup
         Path(temp_path).unlink(missing_ok=True)
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_bot_run_with_no_birthdays(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         integration_config,
-        mock_playwright_page
+        mock_playwright_page,
     ):
         """Test run() quand il n'y a aucun anniversaire."""
         # Setup browser manager mock
@@ -100,27 +99,24 @@ class TestBirthdayBotIntegration:
 
         with BirthdayBot(config=integration_config) as bot:
             # Override get_birthday_contacts pour retourner zéro anniversaire
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [],
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(return_value={"today": [], "late": []})
 
             result = bot.run()
 
         # Vérifications
-        assert result['success'] is True
-        assert result['messages_sent'] == 0
-        assert result['contacts_processed'] == 0
-        assert result['birthdays_today'] == 0
+        assert result["success"] is True
+        assert result["messages_sent"] == 0
+        assert result["contacts_processed"] == 0
+        assert result["birthdays_today"] == 0
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_bot_run_with_birthdays_dry_run(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         integration_config,
-        mock_playwright_page
+        mock_playwright_page,
     ):
         """Test run() avec des anniversaires en mode dry-run."""
         # Setup browser manager mock
@@ -139,35 +135,34 @@ class TestBirthdayBotIntegration:
 
         with BirthdayBot(config=integration_config) as bot:
             # Override methods
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [mock_contact, mock_contact, mock_contact],
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(
+                return_value={"today": [mock_contact, mock_contact, mock_contact], "late": []}
+            )
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Vérifications
-        assert result['success'] is True
-        assert result['messages_sent'] == 3
-        assert result['contacts_processed'] == 3
-        assert result['birthdays_today'] == 3
-        assert result['dry_run'] is True
+        assert result["success"] is True
+        assert result["messages_sent"] == 3
+        assert result["contacts_processed"] == 3
+        assert result["birthdays_today"] == 3
+        assert result["dry_run"] is True
 
         # Vérifier que send_birthday_message a été appelé 3 fois
         assert bot.send_birthday_message.call_count == 3
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
-    @patch('src.bots.birthday_bot.get_database')
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
+    @patch("src.bots.birthday_bot.get_database")
     def test_bot_respects_weekly_limit(
         self,
         mock_get_db,
         mock_validate_auth,
         mock_browser_manager_class,
         integration_config,
-        mock_playwright_page
+        mock_playwright_page,
     ):
         """Test que le bot respecte la limite hebdomadaire."""
         # Enable database
@@ -199,19 +194,16 @@ class TestBirthdayBotIntegration:
             bot.db = mock_db
 
             # Override methods
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': contacts,
-                'late': []
-            })
+            bot.get_birthday_contacts = Mock(return_value={"today": contacts, "late": []})
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Vérifications : avec 78/80, on ne peut envoyer que 2 messages
-        assert result['success'] is True
-        assert result['messages_sent'] == 2
-        assert result['contacts_processed'] == 2
+        assert result["success"] is True
+        assert result["messages_sent"] == 2
+        assert result["contacts_processed"] == 2
         assert bot.send_birthday_message.call_count == 2
 
 
@@ -250,14 +242,14 @@ class TestUnlimitedBotIntegration:
 
         return page
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_unlimited_bot_processes_late_birthdays(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         integration_config,
-        mock_playwright_page
+        mock_playwright_page,
     ):
         """Test que UnlimitedBot traite les anniversaires en retard."""
         # Setup browser manager mock
@@ -276,21 +268,23 @@ class TestUnlimitedBotIntegration:
 
         with UnlimitedBirthdayBot(config=integration_config) as bot:
             # Override methods
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [mock_contact_today, mock_contact_today],
-                'late': [(mock_contact_late, 5), (mock_contact_late, 7)]
-            })
+            bot.get_birthday_contacts = Mock(
+                return_value={
+                    "today": [mock_contact_today, mock_contact_today],
+                    "late": [(mock_contact_late, 5), (mock_contact_late, 7)],
+                }
+            )
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Vérifications : doit traiter les 2 du jour + 2 en retard = 4 total
-        assert result['success'] is True
-        assert result['messages_sent'] == 4
-        assert result['contacts_processed'] == 4
-        assert result['birthdays_today'] == 2
-        assert result['birthdays_late'] == 2
+        assert result["success"] is True
+        assert result["messages_sent"] == 4
+        assert result["contacts_processed"] == 4
+        assert result["birthdays_today"] == 2
+        assert result["birthdays_late"] == 2
 
         # Vérifier les appels à send_birthday_message
         assert bot.send_birthday_message.call_count == 4
@@ -299,23 +293,23 @@ class TestUnlimitedBotIntegration:
         calls = bot.send_birthday_message.call_args_list
 
         # Les 2 premiers devraient être is_late=False
-        assert calls[0][1]['is_late'] is False
-        assert calls[1][1]['is_late'] is False
+        assert calls[0][1]["is_late"] is False
+        assert calls[1][1]["is_late"] is False
 
         # Les 2 suivants devraient être is_late=True
-        assert calls[2][1]['is_late'] is True
-        assert calls[2][1]['days_late'] == 5
-        assert calls[3][1]['is_late'] is True
-        assert calls[3][1]['days_late'] == 7
+        assert calls[2][1]["is_late"] is True
+        assert calls[2][1]["days_late"] == 5
+        assert calls[3][1]["is_late"] is True
+        assert calls[3][1]["days_late"] == 7
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_unlimited_bot_respects_max_days_late(
         self,
         mock_validate_auth,
         mock_browser_manager_class,
         integration_config,
-        mock_playwright_page
+        mock_playwright_page,
     ):
         """Test que UnlimitedBot respecte max_days_late."""
         # Limiter à 5 jours
@@ -335,37 +329,35 @@ class TestUnlimitedBotIntegration:
         with UnlimitedBirthdayBot(config=integration_config) as bot:
             # Contacts en retard : 3j, 5j, 7j, 10j
             # Seulement 3j et 5j devraient être traités
-            bot.get_birthday_contacts = Mock(return_value={
-                'today': [],
-                'late': [
-                    (mock_contact, 3),
-                    (mock_contact, 5),
-                    (mock_contact, 7),  # Ignoré (> 5)
-                    (mock_contact, 10)  # Ignoré (> 5)
-                ]
-            })
+            bot.get_birthday_contacts = Mock(
+                return_value={
+                    "today": [],
+                    "late": [
+                        (mock_contact, 3),
+                        (mock_contact, 5),
+                        (mock_contact, 7),  # Ignoré (> 5)
+                        (mock_contact, 10),  # Ignoré (> 5)
+                    ],
+                }
+            )
 
             bot.send_birthday_message = Mock(return_value=True)
 
             result = bot.run()
 
         # Vérifications : seulement 2 contacts (3j et 5j)
-        assert result['success'] is True
-        assert result['messages_sent'] == 2
-        assert result['contacts_processed'] == 2
+        assert result["success"] is True
+        assert result["messages_sent"] == 2
+        assert result["contacts_processed"] == 2
         assert bot.send_birthday_message.call_count == 2
 
 
 class TestBotContextManager:
     """Tests du protocol context manager."""
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
-    def test_bot_context_manager_cleanup(
-        self,
-        mock_validate_auth,
-        mock_browser_manager_class
-    ):
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
+    def test_bot_context_manager_cleanup(self, mock_validate_auth, mock_browser_manager_class):
         """Test que le context manager nettoie correctement les ressources."""
         config = LinkedInBotConfig()
         config.dry_run = True
@@ -384,12 +376,10 @@ class TestBotContextManager:
         # Vérifier que cleanup a été appelé
         mock_browser_manager.cleanup.assert_called_once()
 
-    @patch('src.core.base_bot.BrowserManager')
-    @patch('src.core.auth_manager.validate_auth', return_value=True)
+    @patch("src.core.base_bot.BrowserManager")
+    @patch("src.core.auth_manager.validate_auth", return_value=True)
     def test_bot_context_manager_cleanup_on_exception(
-        self,
-        mock_validate_auth,
-        mock_browser_manager_class
+        self, mock_validate_auth, mock_browser_manager_class
     ):
         """Test que le cleanup est appelé même en cas d'exception."""
         config = LinkedInBotConfig()
@@ -415,10 +405,12 @@ class TestBotContextManager:
 
 # Fixtures pytest communes
 
+
 @pytest.fixture
 def clean_singletons():
     """Reset les singletons entre les tests."""
     from src.config.config_manager import ConfigManager
+
     ConfigManager._instance = None
     yield
     ConfigManager._instance = None

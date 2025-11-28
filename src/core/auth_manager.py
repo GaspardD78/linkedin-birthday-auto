@@ -5,19 +5,16 @@ Ce module gère le chargement, la validation et la persistance de l'état
 d'authentification LinkedIn depuis différentes sources.
 """
 
-import os
-import json
 import base64
+import json
 import logging
-from typing import Optional
+import os
 from pathlib import Path
+from typing import Optional
 
 from ..config.config_manager import get_config
 from ..config.config_schema import AuthConfig
-from ..utils.exceptions import (
-    AuthenticationError,
-    InvalidAuthStateError
-)
+from ..utils.exceptions import AuthenticationError, InvalidAuthStateError
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +132,7 @@ class AuthManager:
         # Essayer JSON brut d'abord
         try:
             auth_data = json.loads(auth_state_str)
-            logger.info(f"Loaded auth state from env var (JSON format)")
+            logger.info("Loaded auth state from env var (JSON format)")
             return auth_data
         except json.JSONDecodeError:
             pass
@@ -143,15 +140,15 @@ class AuthManager:
         # Essayer Base64
         try:
             # Ajouter le padding manquant si nécessaire
-            padding = '=' * (-len(auth_state_str) % 4)
+            padding = "=" * (-len(auth_state_str) % 4)
             auth_state_padded = auth_state_str + padding
 
             # Décoder
             auth_state_bytes = base64.b64decode(auth_state_padded)
 
             # Parser JSON
-            auth_data = json.loads(auth_state_bytes.decode('utf-8'))
-            logger.info(f"Loaded auth state from env var (Base64 format)")
+            auth_data = json.loads(auth_state_bytes.decode("utf-8"))
+            logger.info("Loaded auth state from env var (Base64 format)")
             return auth_data
 
         except (base64.binascii.Error, TypeError, json.JSONDecodeError) as e:
@@ -175,7 +172,7 @@ class AuthManager:
             auth_file = Path(self.config.auth_file_path)
 
             # Écrire le fichier
-            with open(auth_file, 'w', encoding='utf-8') as f:
+            with open(auth_file, "w", encoding="utf-8") as f:
                 json.dump(auth_data, f, indent=2)
 
             self._temp_auth_file = auth_file
@@ -202,7 +199,7 @@ class AuthManager:
         - Des cookies non expirés (ou sans date d'expiration)
         """
         try:
-            with open(auth_file, 'r', encoding='utf-8') as f:
+            with open(auth_file, encoding="utf-8") as f:
                 auth_data = json.load(f)
 
             # Vérifier la structure minimale
@@ -210,22 +207,21 @@ class AuthManager:
                 logger.warning(f"Auth state is not a dict: {type(auth_data)}")
                 return False
 
-            if 'cookies' not in auth_data:
+            if "cookies" not in auth_data:
                 logger.warning("Auth state missing 'cookies' field")
                 return False
 
-            if not isinstance(auth_data['cookies'], list):
+            if not isinstance(auth_data["cookies"], list):
                 logger.warning("Auth state 'cookies' is not a list")
                 return False
 
-            if len(auth_data['cookies']) == 0:
+            if len(auth_data["cookies"]) == 0:
                 logger.warning("Auth state has no cookies")
                 return False
 
             # Vérifier qu'il y a au moins un cookie LinkedIn
             linkedin_cookies = [
-                c for c in auth_data['cookies']
-                if 'linkedin.com' in c.get('domain', '')
+                c for c in auth_data["cookies"] if "linkedin.com" in c.get("domain", "")
             ]
 
             if not linkedin_cookies:
@@ -234,12 +230,13 @@ class AuthManager:
 
             # BUGFIX: Vérifier l'expiration des cookies
             import time
+
             current_time = time.time()
             expired_count = 0
             valid_count = 0
 
             for cookie in linkedin_cookies:
-                expires = cookie.get('expires')
+                expires = cookie.get("expires")
                 if expires is not None and expires != -1:
                     # Cookie a une date d'expiration
                     if expires < current_time:
@@ -256,9 +253,13 @@ class AuthManager:
                 return False
 
             if expired_count > 0:
-                logger.warning(f"Some cookies expired ({expired_count}/{len(linkedin_cookies)}), but {valid_count} still valid")
+                logger.warning(
+                    f"Some cookies expired ({expired_count}/{len(linkedin_cookies)}), but {valid_count} still valid"
+                )
 
-            logger.debug(f"Auth state validated: {valid_count} valid LinkedIn cookies (={expired_count} expired)")
+            logger.debug(
+                f"Auth state validated: {valid_count} valid LinkedIn cookies (={expired_count} expired)"
+            )
             return True
 
         except json.JSONDecodeError as e:
@@ -283,7 +284,7 @@ class AuthManager:
             output_path = self.config.auth_file_path
 
         try:
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(auth_data, f, indent=2)
 
             logger.info(f"New auth state saved to: {output_path}")
@@ -393,9 +394,7 @@ class AuthManager:
         """Représentation string du manager."""
         source = self.get_auth_source()
         available = self.is_auth_available()
-        return (
-            f"<AuthManager(source={source}, available={available})>"
-        )
+        return f"<AuthManager(source={source}, available={available})>"
 
     def save_cookies(self, cookies: list, output_path: Optional[str] = None):
         """
@@ -429,6 +428,7 @@ class AuthManager:
 
 
 # Fonctions helper pour accès rapide
+
 
 def get_auth_path() -> str:
     """

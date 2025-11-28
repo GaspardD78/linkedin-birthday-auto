@@ -5,18 +5,19 @@ Ce document décrit l'architecture complète du bot après le refactoring majeur
 ## Table des matières
 
 1. [Vue d'ensemble](#vue-densemble)
-2. [Structure des dossiers](#structure-des-dossiers)
-3. [Composants principaux](#composants-principaux)
-4. [Flux d'exécution](#flux-dexécution)
-5. [Patterns utilisés](#patterns-utilisés)
-6. [Sécurité](#sécurité)
-7. [Performance](#performance)
+1. [Structure des dossiers](#structure-des-dossiers)
+1. [Composants principaux](#composants-principaux)
+1. [Flux d'exécution](#flux-dex%C3%A9cution)
+1. [Patterns utilisés](#patterns-utilis%C3%A9s)
+1. [Sécurité](#s%C3%A9curit%C3%A9)
+1. [Performance](#performance)
 
----
+______________________________________________________________________
 
 ## Vue d'ensemble
 
-LinkedIn Birthday Bot v2.0 est une refonte complète avec une architecture modulaire, maintenable et scalable.
+LinkedIn Birthday Bot v2.0 est une refonte complète avec une architecture modulaire, maintenable et
+scalable.
 
 ### Principes de conception
 
@@ -27,7 +28,7 @@ LinkedIn Birthday Bot v2.0 est une refonte complète avec une architecture modul
 - **Type Safety** : Type hints complets avec validation Pydantic
 - **Robustesse** : Gestion d'erreurs exhaustive avec recovery strategies
 
----
+______________________________________________________________________
 
 ## Structure des dossiers
 
@@ -82,7 +83,7 @@ linkedin-birthday-auto/
 └── ARCHITECTURE.md              # Ce fichier
 ```
 
----
+______________________________________________________________________
 
 ## Composants principaux
 
@@ -117,6 +118,7 @@ Singleton thread-safe pour gérer la configuration :
 - Export vers YAML ou dict
 
 **Exemple** :
+
 ```python
 from src.config import get_config
 
@@ -126,6 +128,7 @@ if config.dry_run:
 ```
 
 **Variables d'environnement** :
+
 ```bash
 # Override n'importe quelle config
 LINKEDIN_BOT_DRY_RUN=true
@@ -133,7 +136,7 @@ LINKEDIN_BOT_BROWSER_HEADLESS=false
 LINKEDIN_BOT_DEBUG_LOG_LEVEL=DEBUG
 ```
 
----
+______________________________________________________________________
 
 ### 2. Exceptions (src/utils/exceptions.py)
 
@@ -160,19 +163,21 @@ LinkedInBotError (base)
 ```
 
 **Features** :
+
 - Codes d'erreur standardisés (`ErrorCode` enum)
 - Flag `recoverable` pour stratégies de retry
 - `retry_after` pour backoff automatique
 - Conversion en dict pour logging/API
 - Helper `is_critical_error()` pour triage
 
----
+______________________________________________________________________
 
 ### 3. Browser Manager (src/core/browser_manager.py)
 
 Factory pattern pour créer des browsers Playwright optimisés :
 
 **Features** :
+
 - ✅ Anti-détection (User-Agent rotation, viewport randomization)
 - ✅ Support proxy intégré
 - ✅ Mode stealth (playwright-stealth)
@@ -180,41 +185,46 @@ Factory pattern pour créer des browsers Playwright optimisés :
 - ✅ Context manager support
 
 **Exemple** :
+
 ```python
 from src.core.browser_manager import BrowserManager
 
 with BrowserManager() as manager:
-    browser, context, page = manager.create_browser(
-        auth_state_path="auth_state.json"
-    )
+    browser, context, page = manager.create_browser(auth_state_path="auth_state.json")
     # ... utiliser le browser
 ```
 
----
+______________________________________________________________________
 
 ### 4. Auth Manager (src/core/auth_manager.py)
 
 Gestion centralisée de l'authentification LinkedIn :
 
 **Sources d'auth (ordre de priorité)** :
+
 1. Variable d'environnement `LINKEDIN_AUTH_STATE`
-2. Fichier `auth_state.json`
-3. Fichier fallback (configuré)
+1. Fichier `auth_state.json`
+1. Fichier fallback (configuré)
 
 **Formats supportés** :
+
 - JSON brut
 - Base64 encodé
 
 **Validation** :
+
 - Vérification structure (cookies, origins)
 - Au moins un cookie LinkedIn valide
 - Validation automatique au chargement
 
 **Note sur le 2FA** :
 
-L'auth_state.json contient déjà les cookies de session incluant les tokens 2FA si vous vous êtes connecté avec 2FA lors de la génération initiale. Le 2FA est géré par LinkedIn côté serveur, pas par le bot.
+L'auth_state.json contient déjà les cookies de session incluant les tokens 2FA si vous vous êtes
+connecté avec 2FA lors de la génération initiale. Le 2FA est géré par LinkedIn côté serveur, pas par
+le bot.
 
 Pour générer un auth_state avec 2FA :
+
 ```bash
 # Utiliser generate_auth_simple.py en mode interactif
 python generate_auth_simple.py
@@ -223,13 +233,14 @@ python generate_auth_simple.py
 # L'auth_state généré inclura les cookies 2FA valides
 ```
 
----
+______________________________________________________________________
 
 ### 5. Base Bot (src/core/base_bot.py)
 
 Classe abstraite encapsulant **toute la logique commune** :
 
 **Responsabilités** :
+
 - Setup/teardown du browser et auth
 - Navigation LinkedIn
 - Extraction des contacts d'anniversaire
@@ -241,6 +252,7 @@ Classe abstraite encapsulant **toute la logique commune** :
 - Statistiques d'exécution
 
 **Méthodes abstraites** :
+
 ```python
 class MyBot(BaseLinkedInBot):
     def run(self) -> Dict[str, Any]:
@@ -249,18 +261,20 @@ class MyBot(BaseLinkedInBot):
 ```
 
 **Usage avec context manager** :
+
 ```python
 with MyBot() as bot:
     results = bot.run()
 ```
 
----
+______________________________________________________________________
 
 ### 6. Database (src/core/database.py)
 
 Gestionnaire SQLite thread-safe avec WAL mode :
 
 **Tables** :
+
 - `contacts` : Contacts LinkedIn
 - `birthday_messages` : Messages envoyés
 - `profile_visits` : Visites de profils
@@ -269,6 +283,7 @@ Gestionnaire SQLite thread-safe avec WAL mode :
 - `schema_version` : Versioning du schéma
 
 **Features** :
+
 - ✅ Thread-safe singleton
 - ✅ Mode WAL pour concurrence
 - ✅ Retry automatique sur locks (exponential backoff)
@@ -277,6 +292,7 @@ Gestionnaire SQLite thread-safe avec WAL mode :
 - ✅ Export JSON
 
 **Exemple** :
+
 ```python
 from src.core.database import get_database
 
@@ -285,7 +301,7 @@ stats = db.get_statistics(days=30)
 print(f"Messages sent: {stats['messages']['total']}")
 ```
 
----
+______________________________________________________________________
 
 ## Flux d'exécution
 
@@ -341,7 +357,7 @@ Pour chaque contact:
 12. Simulation activité aléatoire (30% chance)
 ```
 
----
+______________________________________________________________________
 
 ## Patterns utilisés
 
@@ -352,6 +368,7 @@ Pour chaque contact:
 ```python
 _instance = None
 _lock = threading.Lock()
+
 
 @classmethod
 def get_instance(cls):
@@ -374,6 +391,7 @@ browser, context, page = manager.create_browser()
 ### 3. Strategy Pattern
 
 **BaseLinkedInBot** permet différentes stratégies :
+
 - `BirthdayBot` : Standard avec limites
 - `UnlimitedBot` : Sans limites
 - Custom bots : Autres stratégies
@@ -392,7 +410,7 @@ with BrowserManager() as manager:
 # Cleanup automatique
 ```
 
----
+______________________________________________________________________
 
 ## Sécurité
 
@@ -425,7 +443,7 @@ with BrowserManager() as manager:
 - ✅ Fenêtres horaires (ex: 7h-19h)
 - ✅ Détection limits LinkedIn
 
----
+______________________________________________________________________
 
 ## Performance
 
@@ -448,7 +466,7 @@ with BrowserManager() as manager:
 - ✅ Validation au démarrage
 - ✅ Pas de re-parsing constant
 
----
+______________________________________________________________________
 
 ## Diagramme de composants
 
@@ -492,29 +510,30 @@ with BrowserManager() as manager:
 └────────────────┘  └─────────────────┘  └──────────────────┘
 ```
 
----
+______________________________________________________________________
 
 ## Évolutions futures
 
 ### Phase 2 (en cours)
+
 - [ ] Implémentations concrètes (BirthdayBot, UnlimitedBot)
 - [ ] API REST complète
 - [ ] Tests unitaires et d'intégration
 
 ### Phase 3 (prévu)
+
 - [ ] Queue system avec Redis
 - [ ] Circuit breaker pattern
 - [ ] Health checks avancés
 - [ ] Multi-comptes
 
 ### Phase 4 (prévu)
+
 - [ ] WebSocket pour logs temps réel
 - [ ] Dashboard React
 - [ ] Métriques Prometheus
 - [ ] Alerting Sentry
 
----
+______________________________________________________________________
 
-**Version** : 2.0.0
-**Dernière mise à jour** : 2025-11-22
-**Auteur** : Claude Code (Assistant IA)
+**Version** : 2.0.0 **Dernière mise à jour** : 2025-11-22 **Auteur** : Claude Code (Assistant IA)

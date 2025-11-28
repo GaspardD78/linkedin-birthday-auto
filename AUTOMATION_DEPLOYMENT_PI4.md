@@ -1,13 +1,14 @@
 # 🤖 Déploiement Automatisé LinkedIn Bot sur Raspberry Pi 4
 
-**Guide complet pour installer et configurer l'automatisation complète du LinkedIn Birthday Bot sur Raspberry Pi 4**
+**Guide complet pour installer et configurer l'automatisation complète du LinkedIn Birthday Bot sur
+Raspberry Pi 4**
 
----
+______________________________________________________________________
 
 ## 📋 Table des Matières
 
 - [Vue d'ensemble](#vue-densemble)
-- [Prérequis](#prérequis)
+- [Prérequis](#pr%C3%A9requis)
 - [Installation Rapide](#installation-rapide)
 - [Services Systemd](#services-systemd)
 - [Monitoring](#monitoring)
@@ -15,13 +16,14 @@
 - [Nettoyage Automatique](#nettoyage-automatique)
 - [Gestion et Maintenance](#gestion-et-maintenance)
 - [Troubleshooting](#troubleshooting)
-- [Désinstallation](#désinstallation)
+- [Désinstallation](#d%C3%A9sinstallation)
 
----
+______________________________________________________________________
 
 ## 🎯 Vue d'ensemble
 
-Cette solution d'automatisation transforme votre Raspberry Pi 4 en un serveur autonome pour le LinkedIn Birthday Bot avec:
+Cette solution d'automatisation transforme votre Raspberry Pi 4 en un serveur autonome pour le
+LinkedIn Birthday Bot avec:
 
 ### ✨ Fonctionnalités
 
@@ -78,7 +80,7 @@ Cette solution d'automatisation transforme votre Raspberry Pi 4 en un serveur au
 └─────────────────────────────────────────────────────────────┘
 ```
 
----
+______________________________________________________________________
 
 ## 📋 Prérequis
 
@@ -100,7 +102,7 @@ Cette solution d'automatisation transforme votre Raspberry Pi 4 en un serveur au
 - Accès SSH configuré (recommandé)
 - Port 3000 accessible pour le dashboard (optionnel)
 
----
+______________________________________________________________________
 
 ## ⚡ Installation Rapide
 
@@ -127,6 +129,7 @@ nano config/my_config.yaml
 ```
 
 **Minimum requis dans `.env`:**
+
 ```bash
 LINKEDIN_AUTH_STATE=eyJjb29raWVzIjpbeyJuYW1lIjoibGlfYXQiLC4uLg==
 LINKEDIN_BOT_DRY_RUN=false
@@ -141,12 +144,13 @@ sudo ./scripts/install_automation_pi4.sh
 ```
 
 **Ce script va:**
+
 1. ✅ Vérifier les prérequis (Docker, SWAP, espace disque)
-2. ✅ Configurer le système (sysctl, SWAP si nécessaire)
-3. ✅ Installer les services systemd
-4. ✅ Créer les scripts de monitoring et backup
-5. ✅ Activer le démarrage automatique
-6. ✅ Lancer le premier monitoring test
+1. ✅ Configurer le système (sysctl, SWAP si nécessaire)
+1. ✅ Installer les services systemd
+1. ✅ Créer les scripts de monitoring et backup
+1. ✅ Activer le démarrage automatique
+1. ✅ Lancer le premier monitoring test
 
 **Durée estimée:** 2-3 minutes
 
@@ -172,7 +176,7 @@ sudo reboot
 
 **Après redémarrage, le bot démarrera automatiquement!**
 
----
+______________________________________________________________________
 
 ## 🔧 Services Systemd
 
@@ -185,6 +189,7 @@ sudo reboot
 **Fichier:** `/etc/systemd/system/linkedin-bot.service`
 
 **Commandes:**
+
 ```bash
 # Démarrer
 sudo systemctl start linkedin-bot
@@ -213,10 +218,12 @@ sudo journalctl -u linkedin-bot -f
 **Rôle:** Monitoring automatique toutes les heures
 
 **Fichiers:**
+
 - `/etc/systemd/system/linkedin-bot-monitor.service`
 - `/etc/systemd/system/linkedin-bot-monitor.timer`
 
 **Métriques surveillées:**
+
 - Utilisation CPU (%)
 - Température CPU (°C)
 - Utilisation RAM (%)
@@ -225,6 +232,7 @@ sudo journalctl -u linkedin-bot -f
 - État des containers Docker
 
 **Commandes:**
+
 ```bash
 # Voir le statut du timer
 sudo systemctl status linkedin-bot-monitor.timer
@@ -240,6 +248,7 @@ tail -f /var/log/linkedin-bot-health.log
 ```
 
 **Alertes automatiques:**
+
 - ⚠️ CPU > 75°C
 - ⚠️ RAM > 90%
 - ⚠️ Disque > 85%
@@ -249,15 +258,18 @@ tail -f /var/log/linkedin-bot-health.log
 **Rôle:** Backup quotidien de la base de données à 3h du matin
 
 **Fichiers:**
+
 - `/etc/systemd/system/linkedin-bot-backup.service`
 - `/etc/systemd/system/linkedin-bot-backup.timer`
 
 **Fonctionnalités:**
+
 - Backup compressé (gzip)
 - Rotation automatique (30 derniers backups conservés)
 - Logs détaillés
 
 **Commandes:**
+
 ```bash
 # Statut du timer
 sudo systemctl status linkedin-bot-backup.timer
@@ -273,6 +285,7 @@ tail -f /var/log/linkedin-bot-backup.log
 ```
 
 **Format des backups:**
+
 ```
 backups/
 ├── linkedin_db_20241128_030001.db.gz  (Latest)
@@ -282,6 +295,7 @@ backups/
 ```
 
 **Restaurer un backup:**
+
 ```bash
 # Arrêter le bot
 sudo systemctl stop linkedin-bot
@@ -293,18 +307,20 @@ gunzip -c backups/linkedin_db_YYYYMMDD_HHMMSS.db.gz > data/linkedin.db
 sudo systemctl start linkedin-bot
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Monitoring
 
 ### Dashboard Temps Réel
 
 **Lancer le dashboard interactif:**
+
 ```bash
 ./scripts/dashboard_monitoring.sh
 ```
 
 **Affichage:**
+
 ```
 ╔════════════════════════════════════════════════════════════════════════╗
 ║       LinkedIn Birthday Bot - Raspberry Pi 4 Monitoring Dashboard     ║
@@ -359,6 +375,7 @@ Press Ctrl+C to exit | Refresh: 2s
 ### Logs Centralisés
 
 **Logs système:**
+
 ```bash
 # Logs du service principal
 sudo journalctl -u linkedin-bot -f
@@ -371,6 +388,7 @@ tail -f /var/log/linkedin-bot-backup.log
 ```
 
 **Logs Docker:**
+
 ```bash
 # Tous les services
 docker compose -f docker-compose.pi4-standalone.yml logs -f
@@ -384,6 +402,7 @@ docker logs linkedin-bot-api -f
 ### Métriques Prometheus
 
 **Accès aux métriques:**
+
 ```bash
 # Via l'API
 curl http://localhost:8000/metrics
@@ -395,7 +414,7 @@ curl http://localhost:8000/metrics
 # - linkedin_bot_errors_total
 ```
 
----
+______________________________________________________________________
 
 ## 💾 Backups Automatiques
 
@@ -410,16 +429,19 @@ curl http://localhost:8000/metrics
 ### Gestion Manuelle
 
 **Créer un backup maintenant:**
+
 ```bash
 sudo systemctl start linkedin-bot-backup.service
 ```
 
 **Lister les backups:**
+
 ```bash
 ls -lht ~/linkedin-birthday-auto/backups/
 ```
 
 **Restaurer un backup:**
+
 ```bash
 # 1. Arrêter le bot
 sudo systemctl stop linkedin-bot
@@ -435,6 +457,7 @@ sudo systemctl start linkedin-bot
 ```
 
 **Modifier la fréquence de backup:**
+
 ```bash
 # Éditer le timer
 sudo nano /etc/systemd/system/linkedin-bot-backup.timer
@@ -450,6 +473,7 @@ sudo systemctl restart linkedin-bot-backup.timer
 ```
 
 **Modifier la rétention:**
+
 ```bash
 # Éditer le script
 nano scripts/backup_database.sh
@@ -464,6 +488,7 @@ nano scripts/backup_database.sh
 ### Backup Externe (Recommandé)
 
 **Synchronisation vers NAS:**
+
 ```bash
 # Ajouter dans /etc/crontab
 0 4 * * * pi rsync -av ~/linkedin-birthday-auto/backups/ user@nas:/backups/linkedin-bot/
@@ -472,7 +497,7 @@ nano scripts/backup_database.sh
 0 4 * * * pi rclone sync ~/linkedin-birthday-auto/backups/ gdrive:linkedin-bot-backups/
 ```
 
----
+______________________________________________________________________
 
 ## 🧹 Nettoyage Automatique
 
@@ -481,10 +506,11 @@ nano scripts/backup_database.sh
 **Timer systemd:** Nettoyage hebdomadaire tous les dimanches à 2h du matin
 
 **Éléments nettoyés:**
+
 - Images Docker non utilisées (> 7 jours)
 - Logs applicatifs anciens (> 30 jours)
 - Screenshots de debug (> 7 jours)
-- Cache Python (__pycache__, *.pyc)
+- Cache Python (__pycache__, \*.pyc)
 - Cache APT (si root)
 - Journaux système (> 7 jours)
 
@@ -493,6 +519,7 @@ nano scripts/backup_database.sh
 ### Gestion Manuelle
 
 **Lancer le nettoyage maintenant:**
+
 ```bash
 sudo systemctl start linkedin-bot-cleanup.service
 
@@ -501,6 +528,7 @@ sudo ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
 ```
 
 **Vérifier le statut du timer:**
+
 ```bash
 # Voir quand aura lieu le prochain nettoyage
 sudo systemctl status linkedin-bot-cleanup.timer
@@ -510,6 +538,7 @@ sudo journalctl -u linkedin-bot-cleanup.service
 ```
 
 **Exemple de sortie du nettoyage:**
+
 ```
 📊 Espace Disque AVANT Nettoyage
 Filesystem      Size  Used Avail Use% Mounted on
@@ -536,6 +565,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 **Par défaut:** Tous les dimanches à 2h du matin
 
 **Changer la fréquence:**
+
 ```bash
 # Éditer le timer
 sudo nano /etc/systemd/system/linkedin-bot-cleanup.timer
@@ -554,20 +584,22 @@ sudo systemctl restart linkedin-bot-cleanup.timer
 ### Personnaliser le Nettoyage
 
 **Éditer le script:**
+
 ```bash
 nano ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
 ```
 
 **Options configurables:**
 
-| Élément | Ligne | Valeur par défaut | Description |
-|---------|-------|-------------------|-------------|
-| Images Docker | 30 | 168h (7 jours) | `--filter "until=168h"` |
-| Logs applicatifs | 39 | 30 jours | `-mtime +30` |
-| Screenshots | 52 | 7 jours | `-mtime +7` |
-| Journaux système | 80 | 7 jours | `--vacuum-time=7d` |
+| Élément          | Ligne | Valeur par défaut | Description             |
+| ---------------- | ----- | ----------------- | ----------------------- |
+| Images Docker    | 30    | 168h (7 jours)    | `--filter "until=168h"` |
+| Logs applicatifs | 39    | 30 jours          | `-mtime +30`            |
+| Screenshots      | 52    | 7 jours           | `-mtime +7`             |
+| Journaux système | 80    | 7 jours           | `--vacuum-time=7d`      |
 
 **Exemple - Garder les logs plus longtemps:**
+
 ```bash
 # Modifier la ligne 39
 find logs/ -name "*.log" -mtime +90 -delete  # Garder 90 jours au lieu de 30
@@ -576,6 +608,7 @@ find logs/ -name "*.log" -mtime +90 -delete  # Garder 90 jours au lieu de 30
 ### Monitoring du Nettoyage
 
 **Voir les logs de nettoyage:**
+
 ```bash
 # Logs systemd
 sudo journalctl -u linkedin-bot-cleanup.service -n 50
@@ -585,6 +618,7 @@ sudo journalctl -u linkedin-bot-cleanup.service --since today
 ```
 
 **Vérifier l'espace disque:**
+
 ```bash
 # Espace global
 df -h /
@@ -610,28 +644,32 @@ sudo systemctl is-enabled linkedin-bot-cleanup.timer  # Should show "disabled"
 ```
 
 Vous pourrez toujours lancer le nettoyage manuellement:
+
 ```bash
 sudo ~/linkedin-birthday-auto/scripts/cleanup_pi4.sh
 ```
 
----
+______________________________________________________________________
 
 ## 🛠️ Gestion et Maintenance
 
 ### Commandes Quotidiennes
 
 **Vérifier l'état:**
+
 ```bash
 sudo systemctl status linkedin-bot
 docker compose -f docker-compose.pi4-standalone.yml ps
 ```
 
 **Voir les logs:**
+
 ```bash
 docker compose -f docker-compose.pi4-standalone.yml logs -f bot-worker
 ```
 
 **Redémarrer si nécessaire:**
+
 ```bash
 sudo systemctl restart linkedin-bot
 ```
@@ -659,6 +697,7 @@ sudo systemctl start linkedin-bot
 ### Nettoyage Régulier
 
 **Nettoyer les images Docker:**
+
 ```bash
 # Supprimer les images non utilisées
 docker image prune -a
@@ -668,6 +707,7 @@ docker system prune -a --volumes
 ```
 
 **Nettoyer les logs:**
+
 ```bash
 # Logs Docker (limiter à 100MB)
 docker compose -f docker-compose.pi4-standalone.yml down
@@ -682,6 +722,7 @@ sudo journalctl --vacuum-time=7d
 ### Optimisation Performances
 
 **Monitoring continu:**
+
 ```bash
 # Surveiller en temps réel
 htop
@@ -692,6 +733,7 @@ docker stats
 ```
 
 **Optimisations Pi4:**
+
 ```bash
 # Augmenter le SWAP si nécessaire (actuel: 2GB)
 sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=4096/' /etc/dphys-swapfile
@@ -703,24 +745,27 @@ over_voltage=2
 arm_freq=1750
 ```
 
----
+______________________________________________________________________
 
 ## 🔍 Troubleshooting
 
 ### Le bot ne démarre pas au boot
 
 **Vérifier le service:**
+
 ```bash
 sudo systemctl status linkedin-bot
 sudo journalctl -u linkedin-bot -n 50
 ```
 
 **Causes communes:**
+
 1. Docker non démarré: `sudo systemctl start docker`
-2. Fichier .env manquant: Vérifier `.env` existe
-3. Auth state invalide: Vérifier `LINKEDIN_AUTH_STATE`
+1. Fichier .env manquant: Vérifier `.env` existe
+1. Auth state invalide: Vérifier `LINKEDIN_AUTH_STATE`
 
 **Solution:**
+
 ```bash
 # Tester manuellement
 cd ~/linkedin-birthday-auto
@@ -734,12 +779,14 @@ sudo systemctl start linkedin-bot
 ### Monitoring ne fonctionne pas
 
 **Vérifier le timer:**
+
 ```bash
 sudo systemctl status linkedin-bot-monitor.timer
 sudo systemctl list-timers
 ```
 
 **Forcer une exécution:**
+
 ```bash
 sudo systemctl start linkedin-bot-monitor.service
 cat /var/log/linkedin-bot-health.log
@@ -748,15 +795,17 @@ cat /var/log/linkedin-bot-health.log
 ### Température CPU élevée
 
 **Vérifier:**
+
 ```bash
 vcgencmd measure_temp
 ```
 
 **Solutions:**
+
 1. Ajouter un dissipateur thermique
-2. Améliorer la ventilation
-3. Réduire l'overclocking
-4. Limiter les ressources Docker:
+1. Améliorer la ventilation
+1. Réduire l'overclocking
+1. Limiter les ressources Docker:
    ```bash
    # Dans docker-compose.pi4-standalone.yml
    deploy:
@@ -768,20 +817,25 @@ vcgencmd measure_temp
 ### Manque de RAM
 
 **Vérifier:**
+
 ```bash
 free -h
 docker stats
 ```
 
 **Solutions:**
+
 1. Augmenter SWAP:
+
    ```bash
    sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=4096/' /etc/dphys-swapfile
    sudo dphys-swapfile swapoff && sudo dphys-swapfile setup && sudo dphys-swapfile swapon
    ```
 
-2. Réduire limites mémoire containers
-3. Activer zram:
+1. Réduire limites mémoire containers
+
+1. Activer zram:
+
    ```bash
    sudo apt install zram-tools
    sudo nano /etc/default/zramswap  # PERCENTAGE=50
@@ -791,12 +845,14 @@ docker stats
 ### Disque plein
 
 **Identifier l'usage:**
+
 ```bash
 du -sh ~/linkedin-birthday-auto/* | sort -h
 docker system df
 ```
 
 **Nettoyer:**
+
 ```bash
 # Logs Docker
 docker system prune -a --volumes
@@ -809,7 +865,7 @@ ls -t linkedin_db_*.db.gz | tail -n +8 | xargs rm
 sudo journalctl --vacuum-size=100M
 ```
 
----
+______________________________________________________________________
 
 ## ❌ Désinstallation
 
@@ -869,7 +925,7 @@ cp -r ~/linkedin-birthday-auto/backups ~/backups-linkedin
 rm -rf ~/linkedin-birthday-auto
 ```
 
----
+______________________________________________________________________
 
 ## 📚 Ressources Complémentaires
 
@@ -894,7 +950,7 @@ rm -rf ~/linkedin-birthday-auto
 - [Systemd Timers](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
 - [Raspberry Pi Documentation](https://www.raspberrypi.com/documentation/)
 
----
+______________________________________________________________________
 
 ## 🎉 Conclusion
 
@@ -912,14 +968,13 @@ Votre LinkedIn Birthday Bot est maintenant **complètement automatisé** sur vot
 ### 🎯 Profitez simplement:
 
 **Le bot s'occupe de tout automatiquement!** Vous n'avez qu'à:
+
 1. Laisser le Pi allumé et connecté
-2. Vérifier occasionnellement les logs
-3. Profiter des messages automatiques envoyés
+1. Vérifier occasionnellement les logs
+1. Profiter des messages automatiques envoyés
 
 **C'est tout! 🎂**
 
----
+______________________________________________________________________
 
-**Documentation générée le:** 2024-11-28
-**Version:** 2.0.0
-**Auteur:** Claude Code
+**Documentation générée le:** 2024-11-28 **Version:** 2.0.0 **Auteur:** Claude Code

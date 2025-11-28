@@ -2,21 +2,21 @@
 
 Complete troubleshooting guide for running the LinkedIn Birthday Bot on Raspberry Pi with Docker.
 
----
+______________________________________________________________________
 
 ## 📋 Table of Contents
 
 1. [Quick Diagnostics](#quick-diagnostics)
-2. [Docker Issues](#docker-issues)
-3. [Container Issues](#container-issues)
-4. [Memory Issues](#memory-issues)
-5. [Network Issues](#network-issues)
-6. [Authentication Issues](#authentication-issues)
-7. [Performance Issues](#performance-issues)
-8. [System Issues](#system-issues)
-9. [Expected Warnings](#expected-warnings)
+1. [Docker Issues](#docker-issues)
+1. [Container Issues](#container-issues)
+1. [Memory Issues](#memory-issues)
+1. [Network Issues](#network-issues)
+1. [Authentication Issues](#authentication-issues)
+1. [Performance Issues](#performance-issues)
+1. [System Issues](#system-issues)
+1. [Expected Warnings](#expected-warnings)
 
----
+______________________________________________________________________
 
 ## 🔍 Quick Diagnostics
 
@@ -54,13 +54,14 @@ vcgencmd measure_temp
 
 Save this output when reporting issues.
 
----
+______________________________________________________________________
 
 ## 🐳 Docker Issues
 
 ### Issue: Docker command not found
 
 **Error:**
+
 ```
 bash: docker: command not found
 ```
@@ -85,6 +86,7 @@ docker --version
 ### Issue: Permission denied while trying to connect to Docker daemon
 
 **Error:**
+
 ```
 Got permission denied while trying to connect to the Docker daemon socket
 ```
@@ -105,6 +107,7 @@ docker run hello-world
 ### Issue: Docker daemon not running
 
 **Error:**
+
 ```
 Cannot connect to the Docker daemon. Is the docker daemon running?
 ```
@@ -125,6 +128,7 @@ sudo systemctl status docker
 ### Issue: Docker Compose not found
 
 **Error:**
+
 ```
 docker-compose: command not found
 ```
@@ -143,13 +147,14 @@ sudo apt install docker-compose-plugin
 docker compose version
 ```
 
----
+______________________________________________________________________
 
 ## 📦 Container Issues
 
 ### Issue: Containers fail to start
 
 **Error:**
+
 ```
 Error response from daemon: failed to create shim task
 ```
@@ -216,9 +221,9 @@ docker inspect linkedin-bot-worker | grep -A 20 "Health"
 Look for these patterns in logs:
 
 1. **Memory errors:** See [Memory Issues](#memory-issues)
-2. **Network errors:** See [Network Issues](#network-issues)
-3. **Authentication errors:** See [Authentication Issues](#authentication-issues)
-4. **Dependency errors:**
+1. **Network errors:** See [Network Issues](#network-issues)
+1. **Authentication errors:** See [Authentication Issues](#authentication-issues)
+1. **Dependency errors:**
 
 ```bash
 # Rebuild with latest dependencies
@@ -255,13 +260,14 @@ docker-compose -f docker-compose.queue.yml up -d --force-recreate redis
 docker-compose -f docker-compose.queue.yml up -d --force-recreate rq-worker
 ```
 
----
+______________________________________________________________________
 
 ## 💾 Memory Issues
 
 ### Issue: Worker container crashes with OOM (Out of Memory)
 
 **Error in logs:**
+
 ```
 Killed
 ```
@@ -354,6 +360,7 @@ docker-compose -f docker-compose.queue.yml restart rq-worker
 #### Warning 1: Kernel memory soft limit
 
 **Warning:**
+
 ```
 WARNING: kernel does not support memory soft limit capabilities
 ```
@@ -363,12 +370,14 @@ WARNING: kernel does not support memory soft limit capabilities
 #### Warning 2: Memory overcommit
 
 **Warning:**
+
 ```
 WARNING Memory overcommit must be enabled! Without it, a background save or
 replication may fail under low memory condition.
 ```
 
 **This warning has been addressed in the Docker Compose configuration** by:
+
 - Using AOF (Append-Only File) instead of RDB snapshots for bot Redis
 - Disabling persistence for dashboard Redis (cache only)
 - Configuring `--no-appendfsync-on-rewrite yes` to avoid fork during AOF rewrite
@@ -394,6 +403,7 @@ docker-compose -f docker-compose.pi4-standalone.yml restart redis-bot redis-dash
 ```
 
 **Benefits of host-level configuration:**
+
 - Allows Redis to use RDB snapshots (faster startup recovery)
 - Slightly better performance during heavy write loads
 - Eliminates the warning completely
@@ -403,6 +413,7 @@ docker-compose -f docker-compose.pi4-standalone.yml restart redis-bot redis-dash
 ### Issue: System running out of memory
 
 **Symptoms:**
+
 - System becomes unresponsive
 - SSH disconnects
 - Random process kills
@@ -439,13 +450,14 @@ ps aux | grep -E "chromium|firefox|electron" | grep -v grep
 docker-compose -f docker-compose.queue.yml restart
 ```
 
----
+______________________________________________________________________
 
 ## 🌐 Network Issues
 
 ### Issue: Worker cannot connect to Redis
 
 **Error in worker logs:**
+
 ```
 redis.exceptions.ConnectionError: Error connecting to Redis
 Connection refused
@@ -487,6 +499,7 @@ docker-compose -f docker-compose.queue.yml up -d
 ### Issue: Cannot access internet from containers
 
 **Error:**
+
 ```
 Could not resolve host
 Network unreachable
@@ -529,6 +542,7 @@ docker-compose -f docker-compose.queue.yml restart
 ### Issue: LinkedIn connection timeout
 
 **Error:**
+
 ```
 TimeoutError: Navigation timeout
 ```
@@ -563,13 +577,14 @@ LINKEDIN_BOT_BROWSER_TIMEOUT=60000  # 60 seconds
 docker-compose -f docker-compose.queue.yml restart rq-worker
 ```
 
----
+______________________________________________________________________
 
 ## 🔐 Authentication Issues
 
 ### Issue: LinkedIn authentication fails
 
 **Error:**
+
 ```
 AuthenticationError: Failed to authenticate with LinkedIn
 ```
@@ -615,9 +630,9 @@ docker-compose -f docker-compose.queue.yml restart rq-worker
 **Solution 2: Use Cookie-Editor extension**
 
 1. Install [Cookie-Editor](https://cookie-editor.cgagnier.ca/)
-2. Log in to LinkedIn (complete 2FA if required)
-3. Click Cookie-Editor → Export → Copy as JSON
-4. Create auth_state.json on Raspberry Pi:
+1. Log in to LinkedIn (complete 2FA if required)
+1. Click Cookie-Editor → Export → Copy as JSON
+1. Create auth_state.json on Raspberry Pi:
 
 ```bash
 nano auth_state.json
@@ -654,6 +669,7 @@ docker-compose -f docker-compose.queue.yml up -d
 ### Issue: Session expired
 
 **Error:**
+
 ```
 LinkedIn session has expired
 ```
@@ -672,7 +688,7 @@ rm auth_state.json
 docker-compose -f docker-compose.queue.yml restart rq-worker
 ```
 
----
+______________________________________________________________________
 
 ## ⚡ Performance Issues
 
@@ -812,13 +828,14 @@ sudo systemctl restart docker
 # 3. Consider using USB SSD boot (if possible)
 ```
 
----
+______________________________________________________________________
 
 ## 🖥️ System Issues
 
 ### Issue: Raspberry Pi becomes unresponsive
 
 **Symptoms:**
+
 - Cannot SSH
 - No response from system
 - Need to hard reboot
@@ -858,6 +875,7 @@ crontab -e
 ### Issue: SD card corruption
 
 **Symptoms:**
+
 - Read-only filesystem errors
 - Docker fails to start
 - System won't boot
@@ -909,7 +927,7 @@ timedatectl status
 sudo timedatectl set-ntp true
 ```
 
----
+______________________________________________________________________
 
 ## ⚠️ Expected Warnings
 
@@ -921,9 +939,11 @@ sudo timedatectl set-ntp true
 WARNING: kernel does not support memory soft limit capabilities or the cgroup is not mounted
 ```
 
-**Explanation:** Raspberry Pi kernel doesn't support all cgroup memory features. This doesn't affect functionality.
+**Explanation:** Raspberry Pi kernel doesn't support all cgroup memory features. This doesn't affect
+functionality.
 
 **To silence (optional):**
+
 ```bash
 sudo sysctl vm.overcommit_memory=1
 echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
@@ -947,7 +967,7 @@ health check failed: <reason>
 
 Wait 30-60 seconds for containers to fully initialize.
 
----
+______________________________________________________________________
 
 ## 🆘 Getting Help
 
@@ -990,7 +1010,7 @@ Search existing issues: https://github.com/GaspardD78/linkedin-birthday-auto/iss
 If your problem isn't documented:
 
 1. Go to: https://github.com/GaspardD78/linkedin-birthday-auto/issues/new
-2. Include:
+1. Include:
    - Raspberry Pi model and RAM
    - OS version
    - Docker and Docker Compose versions
@@ -998,7 +1018,7 @@ If your problem isn't documented:
    - Steps to reproduce
    - What you've already tried
 
----
+______________________________________________________________________
 
 ## 📚 Additional Resources
 
@@ -1007,7 +1027,7 @@ If your problem isn't documented:
 - [Architecture Documentation](../ARCHITECTURE.md)
 - [Deployment Guide](../DEPLOYMENT.md)
 
----
+______________________________________________________________________
 
 ## ✅ Quick Recovery Commands
 
@@ -1040,6 +1060,7 @@ df -h
 vcgencmd measure_temp
 ```
 
----
+______________________________________________________________________
 
-**Remember:** Most issues can be resolved with a clean restart or rebuild. When in doubt, start fresh!
+**Remember:** Most issues can be resolved with a clean restart or rebuild. When in doubt, start
+fresh!

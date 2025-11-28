@@ -1,15 +1,19 @@
-import asyncio
 import json
-from typing import Dict, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from playwright.async_api import (
+    TimeoutError as PlaywrightTimeoutError,
+)
+from playwright.async_api import (
+    async_playwright,
+)
 from pydantic import BaseModel
-from playwright.async_api import async_playwright, Browser, Page, BrowserContext, TimeoutError as PlaywrightTimeoutError
 
 from ..core.auth_manager import AuthManager
+from ..monitoring.tracing import TemporaryTracing
 from ..utils.logging import get_logger
 from .security import verify_api_key
-from ..monitoring.tracing import TemporaryTracing
 
 logger = get_logger(__name__)
 
@@ -27,35 +31,35 @@ SESSION_TIMEOUT_SECONDS = 300  # 5 minutes session timeout
 # A simple in-memory dictionary to hold the browser session.
 # This is suitable for a single-admin dashboard but would need a more robust
 # solution (like Redis-based session management) for a multi-user system.
-auth_session: Dict[str, Any] = {
+auth_session: dict[str, Any] = {
     "browser": None,
     "page": None,
     "context": None,
     "playwright": None,  # BUGFIX: Store Playwright instance to close properly
-    "retry_count": 0,    # BUGFIX: Track 2FA retry attempts
+    "retry_count": 0,  # BUGFIX: Track 2FA retry attempts
     "created_at": None,  # BUGFIX: Track session creation time
 }
 
-router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"],
-    dependencies=[Depends(verify_api_key)]
-)
+router = APIRouter(prefix="/auth", tags=["Authentication"], dependencies=[Depends(verify_api_key)])
 
 # ═══════════════════════════════════════════════════════════════════
 # PYDANTIC MODELS
 # ═══════════════════════════════════════════════════════════════════
 
+
 class StartAuthRequest(BaseModel):
     email: str
     password: str
 
+
 class Verify2FARequest(BaseModel):
     code: str
+
 
 # ═══════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════
+
 
 async def close_browser_session():
     """Safely closes any active Playwright browser session."""
@@ -77,18 +81,22 @@ async def close_browser_session():
             logger.error(f"Error stopping Playwright: {e}", exc_info=True)
 
     # Reset session state
-    auth_session.update({
-        "browser": None,
-        "page": None,
-        "context": None,
-        "playwright": None,
-        "retry_count": 0,
-        "created_at": None
-    })
+    auth_session.update(
+        {
+            "browser": None,
+            "page": None,
+            "context": None,
+            "playwright": None,
+            "retry_count": 0,
+            "created_at": None,
+        }
+    )
+
 
 # ═══════════════════════════════════════════════════════════════════
 # API ROUTES
 # ═══════════════════════════════════════════════════════════════════
+
 
 @router.post("/start")
 async def start_authentication(request: StartAuthRequest):
@@ -114,16 +122,16 @@ async def start_authentication(request: StartAuthRequest):
                 browser = await p.chromium.launch(
                     headless=True,
                     args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--disable-software-rasterizer',
-                        '--disable-extensions',
-                        '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding'
-                    ]
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                        "--disable-software-rasterizer",
+                        "--disable-extensions",
+                        "--disable-background-timer-throttling",
+                        "--disable-backgrounding-occluded-windows",
+                        "--disable-renderer-backgrounding",
+                    ],
                 )
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
@@ -132,14 +140,17 @@ async def start_authentication(request: StartAuthRequest):
 
                 # BUGFIX: Store Playwright instance and session metadata
                 import time as time_module
-                auth_session.update({
-                    "browser": browser,
-                    "page": page,
-                    "context": context,
-                    "playwright": p,
-                    "retry_count": 0,
-                    "created_at": time_module.time()
-                })
+
+                auth_session.update(
+                    {
+                        "browser": browser,
+                        "page": page,
+                        "context": context,
+                        "playwright": p,
+                        "retry_count": 0,
+                        "created_at": time_module.time(),
+                    }
+                )
 
                 # Increased timeouts for Raspberry Pi 4
                 logger.info("Navigating to LinkedIn login page...")
@@ -156,7 +167,9 @@ async def start_authentication(request: StartAuthRequest):
                 await page.click("button[type='submit']")
 
                 # Wait for one of the possible outcomes after login attempt
-                pin_input_selector = "#input__phone_verification_pin, input[name='pin'], #id_verification_pin"
+                pin_input_selector = (
+                    "#input__phone_verification_pin, input[name='pin'], #id_verification_pin"
+                )
                 feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
                 error_selector = ".login__form_action_container .error, .alert-content"
                 captcha_selector = "#captcha-internal, iframe[src*='captcha']"
@@ -168,13 +181,15 @@ async def start_authentication(request: StartAuthRequest):
                 try:
                     await page.wait_for_selector(
                         f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}",
-                        timeout=180000
+                        timeout=180000,
                     )
                 except PlaywrightTimeoutError:
                     # Capture current page state for debugging
                     current_url = page.url
                     page_title = await page.title()
-                    logger.error(f"Timeout waiting for login response. Current URL: {current_url}, Title: {page_title}")
+                    logger.error(
+                        f"Timeout waiting for login response. Current URL: {current_url}, Title: {page_title}"
+                    )
 
                     # Take screenshot for debugging
                     try:
@@ -190,7 +205,9 @@ async def start_authentication(request: StartAuthRequest):
                     logger.warning("Captcha detected! Automated login blocked.")
                     span.set_attribute("result", "captcha")
                     await close_browser_session()
-                    raise HTTPException(status_code=403, detail="Captcha detected. Please use manual cookie export.")
+                    raise HTTPException(
+                        status_code=403, detail="Captcha detected. Please use manual cookie export."
+                    )
 
                 if await page.is_visible(pin_input_selector):
                     logger.info("2FA required.")
@@ -203,7 +220,9 @@ async def start_authentication(request: StartAuthRequest):
                     span.set_attribute("result", "error")
                     span.set_attribute("error_message", error_message or "Unknown")
                     await close_browser_session()
-                    raise HTTPException(status_code=401, detail=error_message or "Invalid credentials.")
+                    raise HTTPException(
+                        status_code=401, detail=error_message or "Invalid credentials."
+                    )
 
                 if await page.is_visible(feed_selector):
                     logger.info("Login successful, saving session.")
@@ -211,7 +230,9 @@ async def start_authentication(request: StartAuthRequest):
                     auth_manager = AuthManager()
                     # Save to writable /app/data directory instead of read-only mounted file
                     writable_auth_path = "/app/data/auth_state.json"
-                    await auth_manager.save_cookies_from_context(context, output_path=writable_auth_path)
+                    await auth_manager.save_cookies_from_context(
+                        context, output_path=writable_auth_path
+                    )
                     await close_browser_session()
                     return {"status": "success"}
 
@@ -223,12 +244,15 @@ async def start_authentication(request: StartAuthRequest):
                 logger.error("Timeout during login process.")
                 span.set_attribute("error", "timeout")
                 await close_browser_session()
-                raise HTTPException(status_code=408, detail="Timeout: LinkedIn took too long to respond.")
+                raise HTTPException(
+                    status_code=408, detail="Timeout: LinkedIn took too long to respond."
+                )
             except Exception as e:
                 logger.error(f"An unexpected error occurred during login: {e}", exc_info=True)
                 span.set_attribute("error", str(e))
                 await close_browser_session()
-                raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e!s}")
+
 
 @router.post("/verify-2fa")
 async def verify_2fa_code(request: Verify2FARequest):
@@ -246,16 +270,21 @@ async def verify_2fa_code(request: Verify2FARequest):
 
     # BUGFIX: Check session timeout
     import time as time_module
+
     if created_at and (time_module.time() - created_at) > SESSION_TIMEOUT_SECONDS:
         logger.warning("Session timeout exceeded")
         await close_browser_session()
-        raise HTTPException(status_code=408, detail="Session timeout. Please restart authentication.")
+        raise HTTPException(
+            status_code=408, detail="Session timeout. Please restart authentication."
+        )
 
     # BUGFIX: Check retry limit
     if retry_count >= MAX_2FA_RETRIES:
         logger.warning(f"Max 2FA retries exceeded ({MAX_2FA_RETRIES})")
         await close_browser_session()
-        raise HTTPException(status_code=429, detail=f"Too many attempts. Maximum {MAX_2FA_RETRIES} retries allowed.")
+        raise HTTPException(
+            status_code=429, detail=f"Too many attempts. Maximum {MAX_2FA_RETRIES} retries allowed."
+        )
 
     logger.info(f"Submitting 2FA code (attempt {retry_count + 1}/{MAX_2FA_RETRIES})")
 
@@ -297,24 +326,30 @@ async def verify_2fa_code(request: Verify2FARequest):
                     auth_manager = AuthManager()
                     # Save to writable /app/data directory instead of read-only mounted file
                     writable_auth_path = "/app/data/auth_state.json"
-                    await auth_manager.save_cookies_from_context(context, output_path=writable_auth_path)
+                    await auth_manager.save_cookies_from_context(
+                        context, output_path=writable_auth_path
+                    )
                     await close_browser_session()
                     return {"status": "success"}
 
                 await close_browser_session()
                 span.set_attribute("result", "unknown_state")
-                raise HTTPException(status_code=500, detail="Unknown page state after 2FA submission.")
+                raise HTTPException(
+                    status_code=500, detail="Unknown page state after 2FA submission."
+                )
 
             except PlaywrightTimeoutError:
                 logger.error("Timeout during 2FA verification.")
                 span.set_attribute("error", "timeout")
                 await close_browser_session()
-                raise HTTPException(status_code=408, detail="Timeout: Verification failed or took too long.")
+                raise HTTPException(
+                    status_code=408, detail="Timeout: Verification failed or took too long."
+                )
             except Exception as e:
                 logger.error(f"An unexpected error occurred during 2FA: {e}", exc_info=True)
                 span.set_attribute("error", str(e))
                 await close_browser_session()
-                raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e!s}")
 
 
 @router.post("/upload")
@@ -322,8 +357,10 @@ async def upload_auth_file(file: UploadFile = File(...)):
     """
     Allows uploading an auth_state.json file directly as a fallback.
     """
-    if not file.filename.endswith('.json'):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .json file.")
+    if not file.filename.endswith(".json"):
+        raise HTTPException(
+            status_code=400, detail="Invalid file type. Please upload a .json file."
+        )
 
     logger.info(f"Receiving uploaded auth file: {file.filename}")
     try:
@@ -333,7 +370,9 @@ async def upload_auth_file(file: UploadFile = File(...)):
         cookies = parsed_json.get("cookies", parsed_json)
 
         if not isinstance(cookies, list):
-            raise ValueError("JSON content must be a list of cookies or an object with a 'cookies' key.")
+            raise ValueError(
+                "JSON content must be a list of cookies or an object with a 'cookies' key."
+            )
 
         auth_manager = AuthManager()
         # Save to writable /app/data directory instead of read-only mounted file
@@ -346,4 +385,4 @@ async def upload_auth_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid JSON format.")
     except Exception as e:
         logger.error(f"Failed to process uploaded auth file: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")

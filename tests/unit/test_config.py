@@ -4,23 +4,26 @@ Tests unitaires pour le module de configuration.
 Ce fichier démontre comment tester la nouvelle architecture.
 """
 
-import pytest
-import tempfile
 import os
 from pathlib import Path
 
 # Import des modules à tester
 import sys
+import tempfile
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.config.config_schema import (
-    LinkedInBotConfig,
-    BrowserConfig,
-    MessagingLimitsConfig,
-    SchedulingConfig
-)
-from src.config.config_manager import ConfigManager
 from pydantic import ValidationError
+
+from src.config.config_manager import ConfigManager
+from src.config.config_schema import (
+    BrowserConfig,
+    LinkedInBotConfig,
+    MessagingLimitsConfig,
+    SchedulingConfig,
+)
 
 
 class TestConfigSchema:
@@ -119,8 +122,9 @@ class TestConfigManager:
     def test_load_from_yaml(self):
         """Chargement depuis un fichier YAML doit fonctionner."""
         # Créer un fichier YAML temporaire
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
 version: "2.0.0"
 dry_run: true
 bot_mode: "unlimited"
@@ -131,7 +135,8 @@ browser:
 
 messaging_limits:
   weekly_message_limit: 50
-""")
+"""
+            )
             temp_path = f.name
 
         try:
@@ -149,7 +154,7 @@ messaging_limits:
 
     def test_load_invalid_yaml_raises_error(self):
         """Chargement d'un YAML invalide doit lever une erreur."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("invalid: yaml: content: [")
             temp_path = f.name
 
@@ -242,15 +247,18 @@ class TestEnvironmentOverrides:
 
 # Fixtures pytest
 
+
 @pytest.fixture
 def temp_config_file():
     """Crée un fichier de configuration temporaire."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write("""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(
+            """
 version: "2.0.0"
 dry_run: false
 bot_mode: "standard"
-""")
+"""
+        )
         temp_path = f.name
 
     yield temp_path

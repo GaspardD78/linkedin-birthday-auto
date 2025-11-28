@@ -7,26 +7,29 @@ Ce guide vous aide à migrer de l'ancienne architecture vers la nouvelle version
 **Les anciens scripts continuent de fonctionner !**
 
 La nouvelle architecture coexiste avec l'ancienne. Vous pouvez migrer progressivement :
+
 - `linkedin_birthday_wisher.py` → continue de fonctionner
 - `linkedin_birthday_wisher_unlimited.py` → continue de fonctionner
 - Nouvelle API → disponible en parallèle
 
----
+______________________________________________________________________
 
 ## Changements principaux
 
 ### 1. Configuration centralisée
 
 **Avant (v1.x)** :
+
 ```python
 # Configuration dispersée dans le code
 HEADLESS_BROWSER = True
-DRY_RUN = os.getenv('DRY_RUN', 'false')
+DRY_RUN = os.getenv("DRY_RUN", "false")
 WEEKLY_MESSAGE_LIMIT = 80
 # ... etc.
 ```
 
 **Après (v2.0)** :
+
 ```yaml
 # config/config.yaml - Configuration centralisée
 bot_mode: "standard"
@@ -42,12 +45,14 @@ messaging_limits:
 ### 2. Variables d'environnement standardisées
 
 **Avant** :
+
 ```bash
 export DRY_RUN=true
 export ENABLE_ADVANCED_DEBUG=true
 ```
 
 **Après** :
+
 ```bash
 export LINKEDIN_BOT_DRY_RUN=true
 export LINKEDIN_BOT_DEBUG_ADVANCED_DEBUG=true
@@ -58,12 +63,14 @@ Toutes les variables commencent par `LINKEDIN_BOT_` pour éviter les conflits.
 ### 3. Point d'entrée unifié
 
 **Avant** :
+
 ```bash
 python linkedin_birthday_wisher.py
 python linkedin_birthday_wisher_unlimited.py
 ```
 
 **Après** :
+
 ```bash
 # Mode standard
 python main_example.py
@@ -72,7 +79,7 @@ python main_example.py
 LINKEDIN_BOT_CONFIG_PATH=./config/my_config.yaml python main_example.py
 ```
 
----
+______________________________________________________________________
 
 ## Migration étape par étape
 
@@ -80,7 +87,7 @@ LINKEDIN_BOT_CONFIG_PATH=./config/my_config.yaml python main_example.py
 
 ```bash
 # Installer les nouvelles dépendances
-pip install -r requirements-new.txt
+pip install -r requirements.txt
 
 # Installer Playwright browsers
 playwright install chromium
@@ -123,12 +130,14 @@ tail -f logs/linkedin_bot.log
 ### Étape 5 : Migration progressive
 
 **Option A : Utiliser les anciens scripts (recommandé pour la transition)**
+
 ```bash
 # Continue de fonctionner comme avant
 python linkedin_birthday_wisher.py
 ```
 
 **Option B : Migrer vers la nouvelle API (quand prête)**
+
 ```python
 # Quand BirthdayBot sera implémenté
 from src.bots.birthday_bot import BirthdayBot
@@ -137,21 +146,21 @@ with BirthdayBot() as bot:
     results = bot.run()
 ```
 
----
+______________________________________________________________________
 
 ## Correspondance des configurations
 
-| Ancienne variable | Nouvelle config YAML | Variable env override |
-|-------------------|---------------------|----------------------|
-| `HEADLESS_BROWSER` | `browser.headless` | `LINKEDIN_BOT_BROWSER_HEADLESS` |
-| `DRY_RUN` | `dry_run` | `LINKEDIN_BOT_DRY_RUN` |
+| Ancienne variable      | Nouvelle config YAML                    | Variable env override                                |
+| ---------------------- | --------------------------------------- | ---------------------------------------------------- |
+| `HEADLESS_BROWSER`     | `browser.headless`                      | `LINKEDIN_BOT_BROWSER_HEADLESS`                      |
+| `DRY_RUN`              | `dry_run`                               | `LINKEDIN_BOT_DRY_RUN`                               |
 | `WEEKLY_MESSAGE_LIMIT` | `messaging_limits.weekly_message_limit` | `LINKEDIN_BOT_MESSAGING_LIMITS_WEEKLY_MESSAGE_LIMIT` |
-| `DAILY_START_HOUR` | `scheduling.daily_start_hour` | `LINKEDIN_BOT_SCHEDULING_DAILY_START_HOUR` |
-| `DAILY_END_HOUR` | `scheduling.daily_end_hour` | `LINKEDIN_BOT_SCHEDULING_DAILY_END_HOUR` |
-| `MIN_DELAY_SECONDS` | `delays.min_delay_seconds` | `LINKEDIN_BOT_DELAYS_MIN_DELAY_SECONDS` |
-| `MAX_DELAY_SECONDS` | `delays.max_delay_seconds` | `LINKEDIN_BOT_DELAYS_MAX_DELAY_SECONDS` |
+| `DAILY_START_HOUR`     | `scheduling.daily_start_hour`           | `LINKEDIN_BOT_SCHEDULING_DAILY_START_HOUR`           |
+| `DAILY_END_HOUR`       | `scheduling.daily_end_hour`             | `LINKEDIN_BOT_SCHEDULING_DAILY_END_HOUR`             |
+| `MIN_DELAY_SECONDS`    | `delays.min_delay_seconds`              | `LINKEDIN_BOT_DELAYS_MIN_DELAY_SECONDS`              |
+| `MAX_DELAY_SECONDS`    | `delays.max_delay_seconds`              | `LINKEDIN_BOT_DELAYS_MAX_DELAY_SECONDS`              |
 
----
+______________________________________________________________________
 
 ## Nouveautés de la v2.0
 
@@ -209,13 +218,14 @@ print(f"Taux de succès : {stats['messages']['on_time']}")
 print(f"Contacts uniques : {stats['contacts']['unique']}")
 ```
 
----
+______________________________________________________________________
 
 ## FAQ Migration
 
 ### Q: Mes scripts actuels vont-ils continuer de fonctionner ?
 
-**R:** Oui ! Les anciens scripts restent totalement fonctionnels. La nouvelle architecture est ajoutée en parallèle.
+**R:** Oui ! Les anciens scripts restent totalement fonctionnels. La nouvelle architecture est
+ajoutée en parallèle.
 
 ### Q: Dois-je migrer immédiatement ?
 
@@ -228,6 +238,7 @@ print(f"Contacts uniques : {stats['contacts']['unique']}")
 ### Q: Mes messages.txt et late_messages.txt ?
 
 **R:** Ils restent utilisés. Vous pouvez les configurer dans `config.yaml` :
+
 ```yaml
 messages:
   messages_file: "messages.txt"
@@ -237,6 +248,7 @@ messages:
 ### Q: Mon fichier proxy_config.json ?
 
 **R:** Il reste compatible. Configurez le chemin dans `config.yaml` :
+
 ```yaml
 proxy:
   enabled: true
@@ -270,11 +282,11 @@ debug:
 LINKEDIN_BOT_DRY_RUN=true python main_example.py
 ```
 
----
+______________________________________________________________________
 
 ## Checklist de migration
 
-- [ ] Installer nouvelles dépendances (`pip install -r requirements-new.txt`)
+- [ ] Installer nouvelles dépendances (`pip install -r requirements.txt`)
 - [ ] Créer `config/my_config.yaml` avec vos paramètres
 - [ ] Tester avec `LINKEDIN_BOT_DRY_RUN=true`
 - [ ] Vérifier les logs dans `logs/linkedin_bot.log`
@@ -283,7 +295,7 @@ LINKEDIN_BOT_DRY_RUN=true python main_example.py
 - [ ] Monitorer les premiers runs
 - [ ] Migrer vos cron jobs / GitHub Actions (optionnel)
 
----
+______________________________________________________________________
 
 ## Support
 
@@ -296,6 +308,7 @@ LINKEDIN_BOT_DRY_RUN=true python main_example.py
 ### Problèmes courants
 
 #### Erreur : "No valid authentication found"
+
 ```bash
 # Solution : Vérifier que auth_state.json existe ou que LINKEDIN_AUTH_STATE est défini
 ls -la auth_state.json
@@ -303,18 +316,20 @@ echo $LINKEDIN_AUTH_STATE
 ```
 
 #### Erreur : "Configuration validation failed"
+
 ```bash
 # Solution : Vérifier la syntaxe YAML
 python -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
 ```
 
 #### Erreur : "Module not found"
+
 ```bash
 # Solution : Installer les dépendances
-pip install -r requirements-new.txt
+pip install -r requirements.txt
 ```
 
----
+______________________________________________________________________
 
 ## Retour en arrière
 
@@ -330,8 +345,6 @@ git checkout <ancien_commit>
 
 **Note** : Aucune donnée n'est perdue lors de la migration. La base de données reste compatible.
 
----
+______________________________________________________________________
 
-**Version du guide** : 1.0
-**Date** : 2025-11-22
-**Compatible avec** : LinkedIn Birthday Bot v2.0+
+**Version du guide** : 1.0 **Date** : 2025-11-22 **Compatible avec** : LinkedIn Birthday Bot v2.0+

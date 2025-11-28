@@ -7,20 +7,20 @@ le blocage du compte LinkedIn en cas d'activité excessive.
 Version 1.0.0 - Audit Phase 2
 """
 
-import time
-import threading
-from typing import Optional, Callable, Any
-from datetime import datetime, timedelta
 from enum import Enum
 import logging
+import threading
+import time
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class CircuitState(Enum):
     """États du circuit breaker."""
-    CLOSED = "closed"      # Circuit fermé - fonctionnement normal
-    OPEN = "open"          # Circuit ouvert - toutes les requêtes échouent
+
+    CLOSED = "closed"  # Circuit fermé - fonctionnement normal
+    OPEN = "open"  # Circuit ouvert - toutes les requêtes échouent
     HALF_OPEN = "half_open"  # Circuit semi-ouvert - tentative de récupération
 
 
@@ -115,7 +115,7 @@ class RateLimiter:
                 "max_calls": self.max_calls,
                 "time_window": self.time_window,
                 "available_slots": self.max_calls - len(self.calls),
-                "wait_time": self.wait_time()
+                "wait_time": self.wait_time(),
             }
 
     def reset(self) -> None:
@@ -139,12 +139,7 @@ class CircuitBreaker:
         ...     call_linkedin_api()
     """
 
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        timeout: int = 60,
-        half_open_max_calls: int = 1
-    ):
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60, half_open_max_calls: int = 1):
         """
         Initialise le circuit breaker.
 
@@ -191,14 +186,16 @@ class CircuitBreaker:
 
             if current_state == CircuitState.HALF_OPEN:
                 if self.success_count >= self.half_open_max_calls:
-                    raise CircuitOpenError("Circuit breaker is in HALF_OPEN state with max calls reached")
+                    raise CircuitOpenError(
+                        "Circuit breaker is in HALF_OPEN state with max calls reached"
+                    )
 
         # Exécuter la fonction
         try:
             result = func(*args, **kwargs)
             self._on_success()
             return result
-        except Exception as e:
+        except Exception:
             self._on_failure()
             raise
 
@@ -282,7 +279,9 @@ class CircuitBreaker:
                 "failure_count": self.failure_count,
                 "success_count": self.success_count,
                 "failure_threshold": self.failure_threshold,
-                "time_until_reset": self._time_until_half_open() if self.state == CircuitState.OPEN else 0
+                "time_until_reset": self._time_until_half_open()
+                if self.state == CircuitState.OPEN
+                else 0,
             }
 
     def reset(self) -> None:
@@ -312,6 +311,7 @@ class CircuitBreaker:
 
 class CircuitOpenError(Exception):
     """Exception levée quand le circuit breaker est ouvert."""
+
     pass
 
 
@@ -332,7 +332,7 @@ class LinkedInRateLimiter:
         messages_per_hour: int = 10,
         messages_per_day: int = 50,
         circuit_breaker_failures: int = 5,
-        circuit_breaker_timeout: int = 300
+        circuit_breaker_timeout: int = 300,
     ):
         """
         Initialise le rate limiter LinkedIn.
@@ -346,8 +346,7 @@ class LinkedInRateLimiter:
         self.hourly_limiter = RateLimiter(messages_per_hour, 3600)
         self.daily_limiter = RateLimiter(messages_per_day, 86400)
         self.circuit_breaker = CircuitBreaker(
-            failure_threshold=circuit_breaker_failures,
-            timeout=circuit_breaker_timeout
+            failure_threshold=circuit_breaker_failures, timeout=circuit_breaker_timeout
         )
 
         logger.info(
@@ -388,7 +387,7 @@ class LinkedInRateLimiter:
         return {
             "hourly": self.hourly_limiter.get_stats(),
             "daily": self.daily_limiter.get_stats(),
-            "circuit_breaker": self.circuit_breaker.get_stats()
+            "circuit_breaker": self.circuit_breaker.get_stats(),
         }
 
     def reset(self) -> None:

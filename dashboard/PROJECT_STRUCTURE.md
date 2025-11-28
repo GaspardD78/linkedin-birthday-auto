@@ -1,6 +1,7 @@
 # Architecture du Dashboard (Proposition)
 
-Ce document décrit la structure du projet pour le nouveau Dashboard LinkedIn Bot, optimisé pour Raspberry Pi 4 et Synology.
+Ce document décrit la structure du projet pour le nouveau Dashboard LinkedIn Bot, optimisé pour
+Raspberry Pi 4 et Synology.
 
 ## Structure des répertoires
 
@@ -56,7 +57,9 @@ dashboard/
 
 ## Points Clés Architecture
 
-1.  **Next.js Standalone**: Réduit la taille de l'image Docker et la consommation mémoire.
-2.  **Puppeteer Singleton**: Un seul navigateur lancé à la fois, contrôlé par `puppet-master.ts` via une queue Redis pour éviter la saturation RAM.
-3.  **Base de données Externe**: Connexion directe à MariaDB sur le NAS Synology.
-4.  **Monitoring Hardware**: API locale pour lire `/sys/class/thermal/thermal_zone0/temp` et `os.freemem()` sur le Pi.
+1. **Next.js Standalone**: Réduit la taille de l'image Docker et la consommation mémoire.
+1. **Puppeteer Singleton**: Un seul navigateur lancé à la fois, contrôlé par `puppet-master.ts` via
+   une queue Redis pour éviter la saturation RAM.
+1. **Base de données Externe**: Connexion directe à MariaDB sur le NAS Synology.
+1. **Monitoring Hardware**: API locale pour lire `/sys/class/thermal/thermal_zone0/temp` et
+   `os.freemem()` sur le Pi.
