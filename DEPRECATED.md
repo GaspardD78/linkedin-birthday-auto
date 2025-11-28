@@ -1,232 +1,218 @@
-# 🚫 Fichiers Dépréciés
+# 🚫 Fichiers Dépréciés et Nettoyage - État Actuel
 
-Ce document liste les fichiers **dépréciés** dans le repository qui seront **supprimés dans la version 3.0**.
+Ce document liste l'état des fichiers **dépréciés** dans le repository après le nettoyage du 28 novembre 2025.
 
-> **Date de dépréciation :** 22 novembre 2025
-> **Suppression prévue :** Version 3.0 (Q1 2026)
+> **Date de nettoyage complet :** 28 novembre 2025
+> **Version actuelle :** 2.0.0
 
 ---
 
-## ⚠️ Fichiers Python Legacy (Root Level)
+## ✅ Nettoyage Effectué
 
-Les fichiers suivants sont **dépréciés** et remplacés par l'architecture moderne dans `src/`.
+### Dossiers supprimés
 
-| Fichier | Statut | Remplacement | Action |
-|---------|--------|--------------|--------|
-| `linkedin_birthday_wisher.py` | ⛔ DEPRECATED | `src/bots/birthday_bot.py` + `main.py` | ❌ NE PLUS UTILISER |
-| `linkedin_birthday_wisher_unlimited.py` | ⛔ DEPRECATED | `src/bots/unlimited_bot.py` + `main.py --mode unlimited` | ❌ NE PLUS UTILISER |
-| `database.py` | ⛔ DEPRECATED | `src/core/database.py` | ❌ NE PLUS UTILISER |
-| `dashboard_app.py` | ⛔ DEPRECATED | `dashboard/` (Next.js) ou FastAPI (`src/api/app.py`) | ❌ NE PLUS UTILISER |
-| `debug_utils.py` | ⚠️ LEGACY | `src/utils/logging.py` | Utiliser avec précaution |
-| `proxy_manager.py` | ⚠️ LEGACY | `src/config/config_manager.py` (proxy config) | Utiliser avec précaution |
-| `selector_validator.py` | ⚠️ LEGACY | Validation manuelle | Outil de debug |
-| `visit_profiles.py` | ⚠️ SEPARATE FEATURE | Fonctionnalité indépendante | À migrer vers `src/bots/` |
+| Dossier | Statut | Date suppression |
+|---------|--------|------------------|
+| `legacy/` | ✅ SUPPRIMÉ | 28 nov 2025 |
+| `.github/workflows/` | ✅ SUPPRIMÉ | 28 nov 2025 |
 
-### Migration vers src/
+**Raison** : Ces dossiers contenaient des scripts et configurations obsolètes de la v1.x qui ne sont plus utilisés dans l'architecture v2.0.
 
-**Ancienne méthode (DEPRECATED) :**
+---
+
+## 📦 Architecture Actuelle (v2.0)
+
+Le projet utilise maintenant uniquement :
+
+### Structure Moderne
+
+```
+linkedin-birthday-auto/
+├── main.py                    # ✅ Point d'entrée CLI unifié
+├── src/                       # ✅ Code source moderne
+│   ├── api/                  # API REST FastAPI
+│   ├── bots/                 # Bots (birthday, unlimited)
+│   ├── config/               # Configuration Pydantic
+│   └── core/                 # Composants core
+├── dashboard/                 # ✅ Dashboard Next.js v2
+├── scripts/                   # ✅ Scripts de déploiement Pi4
+├── config/                    # ✅ Configurations YAML
+├── tests/                     # ✅ Tests (unit, integration, e2e)
+└── docker-compose.pi4-standalone.yml  # ✅ Docker Compose Pi4
+```
+
+### Scripts de Déploiement Actuels
+
+| Script | Description | Statut |
+|--------|-------------|--------|
+| `scripts/deploy_pi4_standalone.sh` | Déploiement complet Pi4 | ✅ ACTIF |
+| `scripts/update_deployment_pi4.sh` | Mise à jour incrémentale | ✅ ACTIF |
+| `scripts/cleanup_pi4.sh` | Nettoyage périodique | ✅ ACTIF |
+| `scripts/full_cleanup_deployment.sh` | Nettoyage complet | ✅ ACTIF |
+| `scripts/verify_rpi_docker.sh` | Vérification déploiement | ✅ ACTIF |
+| `scripts/monitor_pi4_resources.sh` | Monitoring ressources | ✅ ACTIF |
+
+---
+
+## 🔄 Migration Complétée
+
+### Ancienne Architecture → Nouvelle Architecture
+
+| Ancien | Nouveau | Statut |
+|--------|---------|--------|
+| `linkedin_birthday_wisher.py` | `src/bots/birthday_bot.py` + `main.py` | ✅ MIGRÉ |
+| `linkedin_birthday_wisher_unlimited.py` | `src/bots/unlimited_bot.py` + `main.py --mode unlimited` | ✅ MIGRÉ |
+| `database.py` | `src/core/database.py` | ✅ MIGRÉ |
+| `dashboard_app.py` (Flask) | `dashboard/` (Next.js) | ✅ MIGRÉ |
+| GitHub Actions workflows | Déploiement local uniquement | ✅ SUPPRIMÉ |
+| `legacy/` scripts | Scripts modernes dans `scripts/` | ✅ SUPPRIMÉ |
+
+---
+
+## 📝 Utilisation Actuelle
+
+### Exécution du Bot
+
+**Ancienne méthode (SUPPRIMÉE) :**
 ```bash
 python linkedin_birthday_wisher.py
 ```
 
-**Nouvelle méthode (RECOMMANDÉE) :**
+**Nouvelle méthode (ACTIVE) :**
 ```bash
-python main.py
+python main.py bot
 # ou
-python main.py --mode unlimited
+python main.py bot --mode unlimited
 # ou avec config YAML
-python main.py --config config/config.yaml
+python main.py bot --config config/config.yaml
 ```
 
----
+### Déploiement
 
-## 🧪 Fichiers de Tests Obsolètes
-
-Ces fichiers de tests ne sont **plus maintenus** et doivent être migrés vers `tests/`.
-
-| Fichier | Statut | Action |
-|---------|--------|--------|
-| `test_phase1.py` | ⛔ OBSOLETE | Supprimer ou migrer vers `tests/integration/` |
-| `test_birthday_detection.py` | ⛔ OBSOLETE | Supprimer ou migrer vers `tests/unit/` |
-| `test_birthday_detection_real.py` | ⛔ OBSOLETE | Supprimer ou migrer vers `tests/e2e/` |
-
-**Action recommandée :** Migrer les tests pertinents vers `tests/unit/` ou `tests/integration/`.
-
----
-
-## 📄 Fichiers de Debug à Supprimer
-
-Ces fichiers de debug ne devraient **pas** être dans le repository :
-
-| Fichier | Taille | Statut | Action |
-|---------|--------|--------|--------|
-| `birthdays_page.html` | 939 KB | ⛔ DEBUG ARTIFACT | ❌ Supprimer |
-| `birthdays_page.png` | 130 KB | ⛔ DEBUG ARTIFACT | ❌ Supprimer |
-| `error_unexpected.png` | 4.5 KB | ⛔ DEBUG ARTIFACT | ❌ Supprimer |
-| `content.js` | 19 KB | ⛔ OBSOLETE | ❌ Supprimer |
-| `visited_profiles.txt` | - | ⛔ DATA FILE | ❌ Supprimer |
-
-**Action :** Ces fichiers ont été ajoutés au `.gitignore` et seront supprimés lors du prochain nettoyage.
-
----
-
-## 📦 Fichiers de Configuration Dupliqués
-
-| Fichier | Statut | Remplacement | Action |
-|---------|--------|--------------|--------|
-| `requirements.txt` | ⚠️ OLD | `requirements-new.txt` | ✅ Utiliser `requirements-new.txt` |
-| `config.json` | ⚠️ LEGACY FORMAT | `config/config.yaml` | ✅ Migrer vers YAML |
-
-### Migration des Requirements
-
-**Ancienne méthode :**
+**Ancienne méthode (SUPPRIMÉE) :**
 ```bash
-pip install -r requirements.txt
+# GitHub Actions workflows
+gh workflow run main.yml
 ```
 
-**Nouvelle méthode (RECOMMANDÉE) :**
+**Nouvelle méthode (ACTIVE) :**
 ```bash
-pip install -r requirements-new.txt
+# Déploiement Pi4 local
+./scripts/deploy_pi4_standalone.sh
+
+# Mise à jour
+./scripts/update_deployment_pi4.sh
+
+# Nettoyage
+./scripts/cleanup_pi4.sh
 ```
 
 ---
 
-## 🔧 Utilitaires à Migrer
+## 📊 Statistiques de Nettoyage
 
-Ces utilitaires sont fonctionnels mais doivent être intégrés dans `src/utils/` :
-
-| Fichier | Statut | Action Recommandée |
-|---------|--------|-------------------|
-| `generate_auth_state.py` | ⚠️ STANDALONE | Migrer vers `src/cli/` ou `src/utils/` |
-| `generate_auth_simple.py` | ⚠️ DUPLICATE | Fusionner avec `generate_auth_state.py` |
-| `cleanup_old_logs.py` | ⚠️ STANDALONE | Migrer vers `src/utils/maintenance.py` |
-| `manage_proxy_trials.py` | ⚠️ LEGACY | Supprimer (proxies non utilisés sur Pi 4) |
+| Catégorie | Avant | Après | Économie |
+|-----------|-------|-------|----------|
+| Dossiers legacy | 1 | 0 | ~206KB |
+| GitHub Actions workflows | 1 | 0 | ~11KB |
+| Scripts Python root (obsolètes) | 0 | 0 | - |
+| Architecture | v1.x + v2.0 | v2.0 uniquement | Simplifié |
 
 ---
 
-## 📱 Dashboards Dupliqués
+## 🎯 Recommandations
 
-### ⛔ Flask Dashboard (DEPRECATED)
+### Pour les utilisateurs existants
 
-**Fichier :** `dashboard_app.py` (898 lignes)
-**Statut :** ⛔ DEPRECATED
+Si vous utilisiez l'ancienne architecture :
 
-**Raisons de la dépréciation :**
-- Architecture monolithique (tout dans un fichier)
-- Dépendance Flask vs FastAPI (utilisé ailleurs)
-- Dashboard Next.js moderne plus performant
-- Consomme plus de RAM sur Pi 4
+1. **Migration obligatoire vers v2.0**
+   ```bash
+   # Cloner la dernière version
+   git pull origin main
 
-**Remplacement :**
-```bash
-# Ancien (Flask)
-python dashboard_app.py
+   # Utiliser le nouveau point d'entrée
+   python main.py bot
+   ```
 
-# Nouveau (Next.js)
-cd dashboard
-npm run build
-npm start
+2. **Déploiement Pi4**
+   ```bash
+   # Nettoyage complet de l'ancien déploiement
+   ./scripts/full_cleanup_deployment.sh -y
 
-# OU FastAPI (pour API REST)
-uvicorn src.api.app:app --host 0.0.0.0 --port 8000
-```
+   # Déploiement nouveau
+   ./scripts/deploy_pi4_standalone.sh
+   ```
 
----
-
-## ⏱️ Calendrier de Suppression
-
-| Version | Date Prévue | Actions |
-|---------|-------------|---------|
-| **v2.0.1** | ✅ Nov 2025 | Marquage deprecated, avertissements |
-| **v2.1.0** | ⚠️ Dec 2025 | Migration obligatoire vers `src/` |
-| **v2.2.0** | 📅 Jan 2026 | Suppression des warnings |
-| **v3.0.0** | 🗑️ Q1 2026 | **SUPPRESSION DÉFINITIVE** |
+3. **Configuration**
+   ```bash
+   # Migrer vers config YAML
+   cp config/config.yaml config/my_config.yaml
+   # Éditer config/my_config.yaml
+   ```
 
 ---
 
-## 📚 Guide de Migration
+## 📚 Documentation Mise à Jour
 
-### Étape 1 : Vérifier que vous utilisez la nouvelle architecture
+Les documents suivants ont été mis à jour pour refléter l'architecture v2.0 uniquement :
+
+| Document | Statut | Description |
+|----------|--------|-------------|
+| **[README.md](README.md)** | ✅ À JOUR | Vue d'ensemble v2.0 |
+| **[SCRIPTS_USAGE.md](SCRIPTS_USAGE.md)** | ✅ MIS À JOUR | Scripts v2.0 uniquement |
+| **[DEPRECATED.md](DEPRECATED.md)** | ✅ MIS À JOUR | Ce document |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | ✅ À JOUR | Architecture v2.0 |
+| **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | ✅ À JOUR | Migration v1→v2 |
+
+---
+
+## ⚠️ Avertissement
+
+**Les fichiers et dossiers suivants ont été définitivement supprimés** :
+
+- ❌ Dossier `legacy/` complet
+- ❌ GitHub Actions workflows (`.github/workflows/`)
+- ❌ Scripts Python obsolètes à la racine (déjà supprimés dans versions précédentes)
+
+**Il n'est plus possible de revenir à la v1.x**. Si vous avez besoin de l'ancienne version, consultez l'historique Git :
 
 ```bash
-# Vérifier que main.py fonctionne
-python main.py --help
+# Voir l'historique avant le nettoyage
+git log --before="2025-11-28"
 
-# Tester en mode dry-run
-python main.py --dry-run
-```
-
-### Étape 2 : Migrer votre configuration
-
-```bash
-# Copier votre ancien .env
-cp .env .env.backup
-
-# Créer config.yaml basé sur config/config.yaml
-cp config/config.yaml config/my_config.yaml
-# Éditer config/my_config.yaml avec vos paramètres
-```
-
-### Étape 3 : Tester la nouvelle version
-
-```bash
-# Lancer avec la nouvelle config
-python main.py --config config/my_config.yaml --dry-run
-
-# Vérifier les logs
-tail -f logs/linkedin_bot.log
-```
-
-### Étape 4 : Supprimer les anciens fichiers (optionnel)
-
-```bash
-# Créer un backup avant suppression
-mkdir -p backup_legacy
-mv linkedin_birthday_wisher*.py backup_legacy/
-mv database.py backup_legacy/
-mv dashboard_app.py backup_legacy/
+# Checkout d'une ancienne version (read-only)
+git checkout <commit-hash-avant-nettoyage>
 ```
 
 ---
 
-## ❓ Questions Fréquentes
+## 🔍 Support
 
-### Q: Puis-je encore utiliser les anciens scripts ?
+En cas de problème après le nettoyage :
 
-**R:** Oui, ils fonctionnent encore en v2.0.1, mais :
-- ⚠️ Pas de corrections de bugs
-- ⚠️ Pas de nouvelles fonctionnalités
-- ⛔ Suppression en v3.0.0
-
-### Q: Comment migrer mes données ?
-
-**R:** La base de données est compatible entre anciennes et nouvelles versions :
-```bash
-# Ancienne DB: linkedin_birthday.db
-# Nouvelle DB: linkedin_automation.db
-
-# Migration automatique lors du premier lancement
-python main.py
-```
-
-### Q: Et si j'ai des modifications personnalisées ?
-
-**R:**
-1. Créer une issue GitHub avec vos modifications
-2. Nous intégrerons les fonctionnalités utiles dans `src/`
-3. Ou créer un bot personnalisé en héritant de `BaseLinkedInBot`
+1. **Documentation** : Consultez [ARCHITECTURE.md](ARCHITECTURE.md) et [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
+2. **Scripts** : Voir [SCRIPTS_USAGE.md](SCRIPTS_USAGE.md) pour les nouveaux scripts
+3. **Issues GitHub** : [github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
 
 ---
 
-## 📞 Support
+## ✅ Résumé
 
-En cas de problème avec la migration :
+**État après nettoyage :**
+- ✅ Projet 100% v2.0
+- ✅ Aucun code legacy restant
+- ✅ Documentation à jour
+- ✅ Scripts de déploiement optimisés pour Pi4
+- ✅ Architecture moderne et modulaire
 
-1. **Documentation :** Consultez [ARCHITECTURE.md](ARCHITECTURE.md) et [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
-2. **Issues GitHub :** [github.com/GaspardD78/linkedin-birthday-auto/issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
-3. **Exemples :** Voir `main_example.py` pour des exemples d'utilisation
+**Prochaines étapes recommandées :**
+1. Tester le déploiement avec `./scripts/deploy_pi4_standalone.sh`
+2. Vérifier la configuration dans `config/config.yaml`
+3. Utiliser `python main.py bot` pour lancer le bot
 
 ---
 
-**Date de mise à jour :** 22 novembre 2025
-**Version du document :** 1.0
+**Dernière mise à jour** : 28 novembre 2025
+**Version** : 2.0.0
+**Nettoyage complet** : ✅ Terminé

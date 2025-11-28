@@ -1,194 +1,406 @@
-# Guide d'utilisation des scripts d'anniversaire LinkedIn
+# 📜 Guide d'utilisation des scripts - LinkedIn Birthday Auto Bot v2.0
 
-Ce projet contient deux scripts distincts pour gérer les souhaits d'anniversaire sur LinkedIn, chacun avec un objectif différent.
+Ce guide décrit les scripts disponibles pour le déploiement, la mise à jour et la maintenance du bot LinkedIn Birthday Auto en version 2.0.
+
+---
 
 ## 📋 Vue d'ensemble
 
-### 1. Script Routine (`linkedin_birthday_wisher.py`)
-**Usage:** Utilisation quotidienne automatique
-**Workflow:** `.github/workflows/main.yml`
+Le projet utilise maintenant une architecture moderne avec :
+- **Point d'entrée unifié** : `main.py` (CLI riche)
+- **Scripts de déploiement optimisés** : Pour Raspberry Pi 4
+- **Dashboard moderne** : Next.js dans `dashboard/`
+- **Architecture modulaire** : Code dans `src/`
 
-#### Caractéristiques :
-- ✅ **Tous les anniversaires du jour sont fêtés** (priorité absolue)
-- 📅 **Planification intelligente** : Les messages sont répartis automatiquement entre **7h et 19h**
-- ⏱️ **Délais calculés dynamiquement** : Le délai entre chaque message est ajusté en fonction du nombre total de messages à envoyer
-- 🔄 **Limite hebdomadaire** : 80 messages par semaine maximum (pour les anniversaires en retard)
-- 📊 **Tracking** : Compteur hebdomadaire sauvegardé dans `weekly_messages.json`
+---
 
-#### Fonctionnement de la planification :
-Le script calcule automatiquement le délai optimal entre les messages :
-- Si vous avez **10 anniversaires** à fêter et qu'il est **10h du matin**, le script les répartira sur **9 heures** (jusqu'à 19h)
-- Délai moyen : `9 heures / 10 messages = 54 minutes` (avec variation de ±20%)
-- Les messages seront donc envoyés toutes les **43 à 65 minutes** environ
+## 🚀 Scripts de Déploiement
 
-#### Exemple de planification :
-```
-Heure de début: 10h00
-Nombre de messages: 10
-Temps disponible: 9h (jusqu'à 19h)
-Délai moyen: 54 minutes
-➡️ Messages envoyés vers: 10h00, 10h54, 11h48, 12h42, 13h36, 14h30, 15h24, 16h18, 17h12, 18h06
-```
+### 1. Déploiement Raspberry Pi 4 Standalone
 
-#### Déclenchement :
+**Script** : `scripts/deploy_pi4_standalone.sh`
+
+**Description** : Script de déploiement complet optimisé pour Raspberry Pi 4 (4GB RAM).
+Déploie l'architecture standalone : Bot Worker + Dashboard + Redis + SQLite.
+
+**Fonctionnalités** :
+- ✅ Vérifications système approfondies (RAM, SWAP, disque, Docker)
+- ✅ Configuration automatique de l'environnement
+- ✅ Patching automatique des dépendances Dashboard
+- ✅ Build optimisé avec gestion de la mémoire
+- ✅ Vérifications post-déploiement
+
+**Prérequis** :
+- Raspberry Pi 4 avec 4GB RAM
+- Docker Compose V2 installé
+- SWAP configuré (≥ 2GB pour build Dashboard)
+- Espace disque ≥ 5GB
+
+**Usage** :
 ```bash
-# Automatique : Tous les jours à 8h UTC (via cron)
-# Manuel : Via GitHub Actions
-gh workflow run main.yml --field dry-run=false
+# Déploiement complet (première installation)
+./scripts/deploy_pi4_standalone.sh
+
+# Le script va :
+# 1. Vérifier le système (Docker, RAM, SWAP, disque)
+# 2. Créer et configurer l'environnement (.env, dossiers)
+# 3. Patcher les fichiers Dashboard si nécessaire
+# 4. Arrêter les conteneurs existants
+# 5. Builder les images Docker (Bot Worker + Dashboard)
+# 6. Démarrer les services
+# 7. Vérifier l'état des conteneurs
+
+# Accès dashboard : http://<IP_PI>:3000
 ```
+
+**Temps estimé** : ~15-20 minutes (build Dashboard)
 
 ---
 
-### 2. Script Unlimited (`linkedin_birthday_wisher_unlimited.py`)
-**Usage:** Utilisation unique pour rattraper tous les retards
-**Workflow:** `.github/workflows/birthday_unlimited.yml`
+### 2. Mise à jour du déploiement
 
-#### Caractéristiques :
-- 🚀 **AUCUNE LIMITE** : Traite TOUS les anniversaires (aujourd'hui + retards) en une seule fois
-- ⚠️ **Utilisation unique recommandée** : Pour rattraper un grand retard
-- 🔒 **Confirmation requise** : Nécessite de taper "CONFIRM" pour éviter les erreurs
-- 📊 **Pas de tracking** : N'impacte pas le compteur hebdomadaire du script routine
-- 💾 **Fichier séparé** : Utilise `weekly_messages_unlimited.json` (séparé du routine)
+**Script** : `scripts/update_deployment_pi4.sh`
 
-#### ⚠️ Attention :
-Ce script est conçu pour une **utilisation ponctuelle uniquement**. Il enverra TOUS les messages sans limite, ce qui peut être détecté par LinkedIn comme un comportement suspect si utilisé trop souvent.
+**Description** : Script de mise à jour incrémentale sans reconstruction complète.
+Applique les nouvelles configurations et redémarre les conteneurs.
 
-#### Déclenchement :
+**Fonctionnalités** :
+- ✅ Sauvegarde automatique des données (DB + config)
+- ✅ Recréation des conteneurs avec nouvelles limites
+- ✅ Pas de rebuild des images (gain de temps)
+- ✅ Vérification santé des services
+- ✅ Migration DB si nécessaire
+
+**Usage** :
 ```bash
-# Manuel uniquement : Via GitHub Actions
-gh workflow run birthday_unlimited.yml --field dry-run=false --field confirm=CONFIRM
+# Après avoir fait un git pull
+git pull origin main
+./scripts/update_deployment_pi4.sh
+
+# Le script va :
+# 1. Sauvegarder la base de données
+# 2. Recréer les conteneurs avec nouvelles config
+# 3. Vérifier la santé des services
+# 4. Afficher les statistiques ressources
+```
+
+**Temps estimé** : ~2-3 minutes
+
+---
+
+## 🧹 Scripts de Nettoyage
+
+### 3. Nettoyage périodique
+
+**Script** : `scripts/cleanup_pi4.sh`
+
+**Description** : Nettoyage périodique pour économiser l'espace disque sur carte SD.
+
+**Actions** :
+- 🗑️ Supprime images Docker > 7 jours
+- 🗑️ Supprime logs applicatifs > 30 jours
+- 🗑️ Supprime screenshots > 7 jours
+- 🗑️ Nettoie cache Python (__pycache__, *.pyc)
+- 🗑️ Nettoie cache APT (si sudo)
+- 🗑️ Nettoie journaux système > 7 jours (si sudo)
+
+**Usage** :
+```bash
+# Sans sudo (nettoyage partiel)
+./scripts/cleanup_pi4.sh
+
+# Avec sudo (nettoyage complet)
+sudo ./scripts/cleanup_pi4.sh
+```
+
+**Fréquence recommandée** : Hebdomadaire
+
+**Automatisation avec cron** :
+```bash
+# Ajouter au crontab
+crontab -e
+
+# Exécution tous les dimanches à 3h du matin
+0 3 * * 0 cd /path/to/linkedin-birthday-auto && sudo ./scripts/cleanup_pi4.sh
 ```
 
 ---
 
-## 🔧 Configuration
+### 4. Nettoyage complet (réinstallation)
 
-### Variables d'environnement communes :
-- `LINKEDIN_AUTH_STATE` : État d'authentification LinkedIn (secret GitHub)
-- `DRY_RUN` : Mode test (true/false)
-- `ENABLE_ADVANCED_DEBUG` : Débogage avancé (true/false)
-- `ENABLE_EMAIL_ALERTS` : Alertes email (true/false)
+**Script** : `scripts/full_cleanup_deployment.sh`
 
-### Paramètres modifiables :
+**Description** : Nettoyage COMPLET des déploiements précédents.
+Supprime TOUS les conteneurs, réseaux et images liés au projet.
 
-#### Dans `linkedin_birthday_wisher.py` (Routine) :
-```python
-WEEKLY_MESSAGE_LIMIT = 80        # Limite hebdomadaire
-DAILY_START_HOUR = 7             # Début d'envoi (7h)
-DAILY_END_HOUR = 19              # Fin d'envoi (19h)
+⚠️ **ATTENTION** : Ce script remet le système "à propre" avant une réinstallation.
+Les données persistantes (dossier `data/`, `config/`) sont conservées.
+
+**Actions** :
+- 🗑️ Arrêt et suppression de TOUS les conteneurs du projet
+- 🗑️ Suppression de TOUTES les images Docker du projet
+- 🗑️ Suppression des volumes Docker
+- 🗑️ Nettoyage des processus zombies Python
+- 🗑️ Suppression des fichiers temporaires (__pycache__, .next)
+
+**Usage** :
+```bash
+# Mode interactif (demande confirmation)
+./scripts/full_cleanup_deployment.sh
+
+# Mode force (pas de confirmation)
+./scripts/full_cleanup_deployment.sh -y
 ```
 
-#### Dans `linkedin_birthday_wisher_unlimited.py` (Unlimited) :
-```python
-MAX_MESSAGES_PER_RUN = None      # Pas de limite
-WEEKLY_MESSAGE_LIMIT = None      # Pas de limite
+**Quand l'utiliser** :
+- Avant une réinstallation complète
+- En cas de problèmes de conteneurs corrompus
+- Pour libérer beaucoup d'espace disque
+
+---
+
+## 🔧 Scripts de Maintenance
+
+### 5. Vérification du déploiement
+
+**Script** : `scripts/verify_rpi_docker.sh`
+
+**Description** : Vérifie que le déploiement Docker fonctionne correctement.
+
+**Vérifications** :
+- ✅ Docker installé et fonctionnel
+- ✅ Conteneurs en cours d'exécution
+- ✅ Health checks des services
+- ✅ Connectivité réseau
+
+**Usage** :
+```bash
+./scripts/verify_rpi_docker.sh
 ```
 
 ---
 
-## 📊 Stratégie recommandée
+### 6. Monitoring des ressources
 
-### Utilisation optimale :
+**Script** : `scripts/monitor_pi4_resources.sh`
 
-1. **Au démarrage du projet** (rattrapage) :
-   - Utiliser le **script unlimited** UNE FOIS pour rattraper tous les retards
-   - Attendre 2-3 jours avant d'utiliser le script routine
+**Description** : Affiche l'utilisation des ressources en temps réel.
 
-2. **Utilisation quotidienne** :
-   - Laisser le **script routine** s'exécuter automatiquement
-   - Tous les anniversaires du jour seront fêtés automatiquement
-   - Les messages seront répartis intelligemment dans la journée
+**Affiche** :
+- 📊 Utilisation CPU/RAM des conteneurs
+- 📊 Mémoire système (RAM + SWAP)
+- 📊 Température CPU
+- 📊 Espace disque
 
-3. **En cas d'absence prolongée** :
-   - Si vous avez raté plusieurs jours, vous pouvez utiliser le **script unlimited** à nouveau
-   - Mais attendez au moins une semaine entre deux utilisations
+**Usage** :
+```bash
+# Affichage unique
+./scripts/monitor_pi4_resources.sh
 
----
-
-## 🔍 Monitoring et logs
-
-### Vérifier l'exécution :
-Les workflows GitHub Actions génèrent des artifacts avec :
-- Screenshots de débogage (`debug_screenshots/`)
-- Logs détaillés (`linkedin_bot_detailed.log`)
-- Rapports JSON (`*_report.json`)
-
-### Fichiers de suivi :
-- `weekly_messages.json` : Compteur hebdomadaire du script routine
-- `weekly_messages_unlimited.json` : Compteur du script unlimited (séparé)
-- `visited_profiles.txt` : Profils déjà visités
-
----
-
-## ⚠️ Bonnes pratiques
-
-### À FAIRE ✅
-- Utiliser le script routine pour l'automatisation quotidienne
-- Vérifier les logs après chaque exécution
-- Ajuster DAILY_START_HOUR et DAILY_END_HOUR selon votre fuseau horaire
-- Tester avec DRY_RUN=true avant la première utilisation
-
-### À ÉVITER ❌
-- N'utilisez PAS le script unlimited plus d'une fois par semaine
-- Ne modifiez PAS les fichiers de tracking manuellement
-- N'exécutez PAS les deux scripts en même temps
-- Ne désactivez PAS la limite hebdomadaire du script routine (sauf si nécessaire)
-
----
-
-## 🐛 Dépannage
-
-### "Quota hebdomadaire atteint"
-➡️ Normal, attendez la réinitialisation hebdomadaire (7 jours après le dernier reset)
-
-### "Heure actuelle dépasse l'heure de fin"
-➡️ Le script a démarré après 19h, les messages seront envoyés avec un délai minimal
-
-### "Pas assez de quota pour tous les anniversaires du jour"
-➡️ Le script enverra quand même tous les anniversaires du jour (priorité absolue)
-
----
-
-## 📝 Exemples d'utilisation
-
-### Cas d'usage 1 : Premier jour (10 anniversaires)
-```
-Heure de début: 8h30 (après le délai de démarrage aléatoire)
-Anniversaires du jour: 10
-Temps disponible: 10h30 (jusqu'à 19h)
-Délai moyen: 63 minutes
-Résultat: Tous les anniversaires fêtés avant 19h ✅
-```
-
-### Cas d'usage 2 : Retour de vacances (50 anniversaires en retard)
-```
-Solution: Utiliser le script unlimited UNE FOIS
-Durée estimée: ~3-7 heures
-Résultat: Tous les retards rattrapés en une seule exécution ✅
-```
-
-### Cas d'usage 3 : Journée chargée (30 anniversaires)
-```
-Heure de début: 7h00
-Anniversaires du jour: 30
-Temps disponible: 12h
-Délai moyen: 24 minutes
-Résultat: Tous les anniversaires fêtés régulièrement dans la journée ✅
+# Monitoring continu (toutes les 5 secondes)
+watch -n 5 ./scripts/monitor_pi4_resources.sh
 ```
 
 ---
 
-## 🎯 Résumé
+### 7. Redémarrage de tous les services
 
-| Critère | Script Routine | Script Unlimited |
-|---------|---------------|------------------|
-| **Fréquence** | Quotidien | Ponctuel |
-| **Limite** | Aucune pour aujourd'hui | Aucune |
-| **Planification** | 7h-19h | Immédiat |
-| **Tracking** | Oui | Non |
-| **Usage** | Automatique | Manuel uniquement |
-| **Déclenchement** | Cron + Manuel | Manuel avec CONFIRM |
+**Script** : `scripts/restart-all-pi4.sh`
+
+**Description** : Redémarre tous les services Docker du projet.
+
+**Usage** :
+```bash
+./scripts/restart-all-pi4.sh
+```
 
 ---
 
-**Dernière mise à jour :** 2025-11-18
+### 8. Rebuild du Dashboard
+
+**Script** : `scripts/rebuild-dashboard-pi4.sh`
+
+**Description** : Rebuild uniquement le Dashboard (sans toucher au Bot Worker).
+
+**Usage** :
+```bash
+./scripts/rebuild-dashboard-pi4.sh
+
+# Utile après modifications du code Dashboard
+```
+
+---
+
+## 🎯 Workflows Recommandés
+
+### Installation initiale
+
+```bash
+# 1. Cloner le projet
+git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+cd linkedin-birthday-auto
+
+# 2. Déployer
+./scripts/deploy_pi4_standalone.sh
+
+# 3. Vérifier
+./scripts/verify_rpi_docker.sh
+
+# 4. Accéder au dashboard
+# http://<IP_PI>:3000
+```
+
+---
+
+### Mise à jour régulière
+
+```bash
+# 1. Récupérer les dernières modifications
+git pull origin main
+
+# 2. Mettre à jour le déploiement
+./scripts/update_deployment_pi4.sh
+
+# 3. Vérifier
+docker compose -f docker-compose.pi4-standalone.yml logs -f
+```
+
+---
+
+### Maintenance hebdomadaire
+
+```bash
+# 1. Nettoyage périodique
+sudo ./scripts/cleanup_pi4.sh
+
+# 2. Vérifier les ressources
+./scripts/monitor_pi4_resources.sh
+
+# 3. Vérifier les logs
+docker compose -f docker-compose.pi4-standalone.yml logs --tail=100
+```
+
+---
+
+### En cas de problème
+
+```bash
+# 1. Vérifier l'état des services
+./scripts/verify_rpi_docker.sh
+
+# 2. Consulter les logs
+docker compose -f docker-compose.pi4-standalone.yml logs -f
+
+# 3. Redémarrer les services
+./scripts/restart-all-pi4.sh
+
+# 4. Si problème persiste : nettoyage complet + redéploiement
+./scripts/full_cleanup_deployment.sh -y
+./scripts/deploy_pi4_standalone.sh
+```
+
+---
+
+## 📝 Commandes Docker Compose Utiles
+
+```bash
+# Démarrer les services
+docker compose -f docker-compose.pi4-standalone.yml up -d
+
+# Arrêter les services
+docker compose -f docker-compose.pi4-standalone.yml down
+
+# Voir les logs en temps réel
+docker compose -f docker-compose.pi4-standalone.yml logs -f
+
+# Voir les logs d'un service spécifique
+docker compose -f docker-compose.pi4-standalone.yml logs -f bot-worker
+docker compose -f docker-compose.pi4-standalone.yml logs -f dashboard
+
+# Redémarrer un service
+docker compose -f docker-compose.pi4-standalone.yml restart bot-worker
+
+# Voir l'état des services
+docker compose -f docker-compose.pi4-standalone.yml ps
+
+# Voir les stats ressources
+docker stats
+
+# Rebuild un service spécifique
+docker compose -f docker-compose.pi4-standalone.yml build bot-worker
+docker compose -f docker-compose.pi4-standalone.yml up -d bot-worker
+```
+
+---
+
+## 🔍 Monitoring et Logs
+
+### Logs applicatifs
+
+```bash
+# Logs du bot
+docker compose -f docker-compose.pi4-standalone.yml logs -f bot-worker
+
+# Logs du dashboard
+docker compose -f docker-compose.pi4-standalone.yml logs -f dashboard
+
+# Logs Redis
+docker compose -f docker-compose.pi4-standalone.yml logs -f redis-bot
+```
+
+### Base de données SQLite
+
+```bash
+# Accéder à la base de données
+sqlite3 data/linkedin.db
+
+# Statistiques
+sqlite3 data/linkedin.db "SELECT COUNT(*) FROM birthday_messages WHERE DATE(timestamp) = DATE('now');"
+```
+
+---
+
+## 📚 Documentation Complémentaire
+
+- **[README.md](README.md)** - Vue d'ensemble du projet
+- **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)** - Guide de déploiement Pi4 complet
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Architecture détaillée
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Guide de déploiement général
+- **[docs/RASPBERRY_PI_DOCKER_SETUP.md](docs/RASPBERRY_PI_DOCKER_SETUP.md)** - Installation Docker sur Pi
+- **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** - Dépannage Pi
+
+---
+
+## ⚠️ Notes Importantes
+
+### Ressources Raspberry Pi 4
+
+Les limites suivantes sont configurées dans `docker-compose.pi4-standalone.yml` :
+
+| Service | RAM Limite | CPU Limite |
+|---------|-----------|------------|
+| Bot Worker | 900M | 1.5 cores |
+| Dashboard | 700M | 1.0 cores |
+| Redis Bot | 300M | 0.5 cores |
+| Redis Dashboard | 300M | 0.5 cores |
+
+### SWAP
+
+Le Dashboard Next.js nécessite au moins **2GB de SWAP** pour le build.
+
+Configuration SWAP :
+```bash
+# Vérifier le SWAP actuel
+free -h
+
+# Configurer 2GB de SWAP
+sudo dphys-swapfile swapoff
+sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
+---
+
+**Dernière mise à jour** : 28 novembre 2025
+**Version** : 2.0.0
