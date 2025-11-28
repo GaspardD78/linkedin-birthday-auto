@@ -676,6 +676,64 @@ class Database:
             }
 
     @retry_on_lock(max_retries=3)
+    def get_today_statistics(self) -> Dict[str, int]:
+        """
+        Récupère les statistiques d'aujourd'hui uniquement
+
+        Returns:
+            Dictionnaire avec les statistiques du jour:
+            - wishes_sent_total: Total des messages envoyés (all time)
+            - wishes_sent_today: Messages envoyés aujourd'hui
+            - wishes_sent_week: Messages envoyés cette semaine
+            - profiles_visited_total: Total des profils visités (all time)
+            - profiles_visited_today: Profils visités aujourd'hui
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+
+            # Messages envoyés aujourd'hui
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM birthday_messages
+                WHERE sent_at >= ?
+            """, (today_start,))
+            wishes_sent_today = cursor.fetchone()['count']
+
+            # Messages envoyés cette semaine
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM birthday_messages
+                WHERE sent_at >= ?
+            """, (week_ago,))
+            wishes_sent_week = cursor.fetchone()['count']
+
+            # Total des messages envoyés (all time)
+            cursor.execute("SELECT COUNT(*) as count FROM birthday_messages")
+            wishes_sent_total = cursor.fetchone()['count']
+
+            # Profils visités aujourd'hui
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM profile_visits
+                WHERE visited_at >= ?
+            """, (today_start,))
+            profiles_visited_today = cursor.fetchone()['count']
+
+            # Total des profils visités (all time)
+            cursor.execute("SELECT COUNT(*) as count FROM profile_visits")
+            profiles_visited_total = cursor.fetchone()['count']
+
+            return {
+                "wishes_sent_total": wishes_sent_total,
+                "wishes_sent_today": wishes_sent_today,
+                "wishes_sent_week": wishes_sent_week,
+                "profiles_visited_total": profiles_visited_total,
+                "profiles_visited_today": profiles_visited_today
+            }
+
+    @retry_on_lock(max_retries=3)
     def get_daily_activity(self, days: int = 30) -> List[Dict]:
         """
         Récupère l'activité quotidienne

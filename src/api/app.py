@@ -244,15 +244,54 @@ async def health_check():
     )
 
 
-@app.get("/stats", response_model=MetricsResponse, tags=["Metrics"])
+@app.get("/stats", tags=["Metrics"])
 async def get_stats(
     days: int = 30,
     authenticated: bool = Depends(verify_api_key)
 ):
     """
-    Récupère les statistiques d'activité (DB).
+    Récupère les statistiques d'activité pour le dashboard.
 
-    Note: /metrics est réservé pour Prometheus.
+    Retourne les stats au format attendu par le dashboard Next.js:
+    - wishes_sent_total: Total des messages envoyés
+    - wishes_sent_today: Messages envoyés aujourd'hui
+    - profiles_visited_total: Total des profils visités
+    - profiles_visited_today: Profils visités aujourd'hui
+
+    Args:
+        days: Non utilisé mais conservé pour compatibilité
+    """
+    config = get_config()
+
+    if not config.database.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not enabled in configuration"
+        )
+
+    try:
+        db = get_database(config.database.db_path)
+        # Utiliser la nouvelle méthode qui retourne le format attendu
+        stats = db.get_today_statistics()
+        return stats
+
+    except Exception as e:
+        logger.error(f"Failed to get stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve stats: {str(e)}"
+        )
+
+
+@app.get("/detailed-stats", response_model=MetricsResponse, tags=["Metrics"])
+async def get_detailed_stats(
+    days: int = 30,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Récupère les statistiques détaillées d'activité (DB).
+
+    Format détaillé avec messages, contacts, visites et erreurs.
 
     Args:
         days: Nombre de jours d'historique (défaut: 30)
@@ -271,10 +310,10 @@ async def get_stats(
         return MetricsResponse(**stats)
 
     except Exception as e:
-        logger.error(f"Failed to get metrics: {e}")
+        logger.error(f"Failed to get detailed stats: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to retrieve metrics: {str(e)}"
+            detail=f"Failed to retrieve detailed stats: {str(e)}"
         )
 
 

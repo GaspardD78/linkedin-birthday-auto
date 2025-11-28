@@ -18,9 +18,8 @@ export function WeeklyLimitWidget() {
         const res = await fetch('/api/stats', { cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
-          // For now, use wishes_sent_today as approximation
-          // In real implementation, you'd query last 7 days from database
-          setWeeklyCount(data.wishes_sent_today || 0)
+          // Use wishes_sent_week which returns messages from last 7 days
+          setWeeklyCount(data.wishes_sent_week || 0)
         }
       } catch (e) {
         console.error("Failed to fetch weekly stats", e)
