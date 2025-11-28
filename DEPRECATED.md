@@ -1,6 +1,6 @@
 # 🚫 Fichiers Dépréciés et Nettoyage - État Actuel
 
-Ce document liste l'état des fichiers **dépréciés** dans le repository après le nettoyage du 28 novembre 2025.
+Ce document liste l'état des fichiers **dépréciés** dans le repository après le nettoyage approfondi du 28 novembre 2025.
 
 > **Date de nettoyage complet :** 28 novembre 2025
 > **Version actuelle :** 2.0.0
@@ -13,10 +13,28 @@ Ce document liste l'état des fichiers **dépréciés** dans le repository aprè
 
 | Dossier | Statut | Date suppression |
 |---------|--------|------------------|
-| `legacy/` | ✅ SUPPRIMÉ | 28 nov 2025 |
-| `.github/workflows/` | ✅ SUPPRIMÉ | 28 nov 2025 |
+| `legacy/` | ✅ SUPPRIMÉ | 28 nov 2025 (matin) |
+| `.github/workflows/` | ✅ SUPPRIMÉ | 28 nov 2025 (matin) |
+| `docs/archive/` | ✅ SUPPRIMÉ | 28 nov 2025 (après-midi) |
+| `scripts/archive/` | ✅ SUPPRIMÉ | 28 nov 2025 (après-midi) |
 
 **Raison** : Ces dossiers contenaient des scripts et configurations obsolètes de la v1.x qui ne sont plus utilisés dans l'architecture v2.0.
+
+### Fichiers supprimés
+
+| Fichier | Statut | Date suppression | Raison |
+|---------|--------|------------------|--------|
+| `config/proxy_config.example.json` | ✅ SUPPRIMÉ | 28 nov 2025 | Proxy désactivé sur Pi4 (IP Freebox résidentielle suffit) |
+| `scripts/archive/migrate_mysql_to_sqlite.sh` | ✅ SUPPRIMÉ | 28 nov 2025 | Script de migration v1→v2 obsolète |
+| `docs/archive/AUDIT_*.md` | ✅ SUPPRIMÉ | 28 nov 2025 | Rapports d'audit historiques (4 fichiers) |
+
+### Documentation marquée comme deprecated
+
+| Document | Statut | Raison |
+|----------|--------|--------|
+| `docs/RASPBERRY_PI4_GUIDE.md` | ⚠️ DEPRECATED | Méthode manuelle v1.x - Conservé pour troubleshooting |
+
+**Nouveau en-tête ajouté** avec redirection vers les méthodes v2.0 recommandées.
 
 ---
 

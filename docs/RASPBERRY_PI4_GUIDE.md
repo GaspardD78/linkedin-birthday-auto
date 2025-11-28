@@ -1,5 +1,15 @@
 # 🍓 Guide Complet d'Installation sur Raspberry Pi 4
 
+> **⚠️ DEPRECATED - Méthode Manuelle v1.x**
+>
+> Ce guide décrit la **méthode d'installation manuelle legacy**. Pour v2.0, nous recommandons :
+> - **📦 Méthode recommandée** : [RASPBERRY_PI_DOCKER_SETUP.md](RASPBERRY_PI_DOCKER_SETUP.md) - Installation Docker automatisée
+> - **🤖 Automatisation complète** : [../AUTOMATION_DEPLOYMENT_PI4.md](../AUTOMATION_DEPLOYMENT_PI4.md) - Déploiement systemd
+>
+> Ce document est conservé pour **troubleshooting** et **référence historique**.
+
+---
+
 Guide pas-à-pas ultra-détaillé pour installer le bot LinkedIn Birthday sur un Raspberry Pi 4. Ce guide part de zéro et vous accompagne jusqu'à l'automatisation complète.
 
 ---
