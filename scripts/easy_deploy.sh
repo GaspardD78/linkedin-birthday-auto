@@ -42,6 +42,37 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERIFY_SCRIPT="$SCRIPT_DIR/verify_rpi_docker.sh"
 CLEANUP_SCRIPT="$SCRIPT_DIR/full_cleanup_deployment.sh"
 DEPLOY_SCRIPT="$SCRIPT_DIR/deploy_pi4_standalone.sh"
+REPAIR_SCRIPT="$SCRIPT_DIR/repair_deployment.sh"
+
+# --- Mode d'opération ---
+MODE="auto"  # auto, repair, repair-rebuild, repair-quick
+
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --repair)
+            MODE="repair"
+            ;;
+        --repair-rebuild)
+            MODE="repair-rebuild"
+            ;;
+        --repair-quick)
+            MODE="repair-quick"
+            ;;
+        --help|-h)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  (aucun)           Mode automatique complet (vérification + nettoyage + déploiement)"
+            echo "  --repair          Mode réparation (corrige permissions + redémarre)"
+            echo "  --repair-rebuild  Mode réparation avec reconstruction complète des images"
+            echo "  --repair-quick    Mode réparation rapide (sans rebuild)"
+            echo "  --help, -h        Affiche cette aide"
+            echo ""
+            exit 0
+            ;;
+    esac
+done
 
 # --- Fonctions ---
 
@@ -104,7 +135,51 @@ cd "$PROJECT_ROOT"
 print_banner
 
 print_info "Répertoire de travail: $PROJECT_ROOT"
+
+# Afficher le mode d'opération si ce n'est pas le mode auto
+if [ "$MODE" != "auto" ]; then
+    case "$MODE" in
+        repair)
+            print_info "Mode : RÉPARATION (standard)"
+            ;;
+        repair-rebuild)
+            print_info "Mode : RÉPARATION avec reconstruction complète"
+            ;;
+        repair-quick)
+            print_info "Mode : RÉPARATION rapide"
+            ;;
+    esac
+fi
+
 echo ""
+
+# =========================================================================
+# MODE RÉPARATION : Exécution directe du script de réparation
+# =========================================================================
+
+if [[ "$MODE" == "repair"* ]]; then
+    ensure_executable "$REPAIR_SCRIPT"
+
+    print_header "MODE RÉPARATION ACTIVÉ"
+    echo ""
+
+    case "$MODE" in
+        repair-rebuild)
+            print_info "Lancement de la réparation avec reconstruction complète..."
+            "$REPAIR_SCRIPT" --rebuild
+            ;;
+        repair-quick)
+            print_info "Lancement de la réparation rapide..."
+            "$REPAIR_SCRIPT" --quick
+            ;;
+        *)
+            print_info "Lancement de la réparation standard..."
+            "$REPAIR_SCRIPT"
+            ;;
+    esac
+
+    exit $?
+fi
 
 # =========================================================================
 # ÉTAPE 1 : Vérification initiale de l'état du système
