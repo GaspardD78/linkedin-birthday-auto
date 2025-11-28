@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Save, RefreshCw } from "lucide-react"
+import { SettingsForm } from "@/components/settings/SettingsForm"
+import { PageNavigation } from "@/components/layout/PageNavigation"
 
 export default function SettingsPage() {
   const [configYaml, setConfigYaml] = useState("")
@@ -62,23 +64,34 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-white">Paramètres</h1>
+    <div className="space-y-6">
+      <PageNavigation
+        title="Paramètres"
+        description="Configuration du bot et des messages"
+        showBackButton={false}
+      />
+
+      <div className="flex justify-end">
         <Button variant="outline" onClick={fetchConfig} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Actualiser
         </Button>
       </div>
 
-      <Tabs defaultValue="general" className="w-full">
+      <Tabs defaultValue="form" className="w-full">
         <TabsList className="bg-slate-900 border border-slate-800">
-          <TabsTrigger value="general">Configuration (YAML)</TabsTrigger>
-          <TabsTrigger value="messages">Messages (TXT)</TabsTrigger>
+          <TabsTrigger value="form">Configuration</TabsTrigger>
+          <TabsTrigger value="messages">Messages</TabsTrigger>
+          <TabsTrigger value="advanced">Avancé (YAML)</TabsTrigger>
         </TabsList>
 
+        {/* Formulaire de configuration */}
+        <TabsContent value="form">
+          <SettingsForm />
+        </TabsContent>
+
         {/* Éditeur YAML */}
-        <TabsContent value="general">
+        <TabsContent value="advanced">
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
               <CardTitle className="text-slate-200">Configuration du Bot</CardTitle>

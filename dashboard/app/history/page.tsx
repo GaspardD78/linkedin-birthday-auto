@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Calendar, TrendingUp } from "lucide-react"
+import { PageNavigation } from "@/components/layout/PageNavigation"
 
 interface DailyActivity {
   date: string
@@ -72,15 +73,13 @@ export default function HistoryPage() {
   const stats = getTotalStats()
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Calendar className="h-8 w-8 text-blue-400" />
-        <div>
-          <h1 className="text-3xl font-bold text-white">Historique & Statistiques</h1>
-          <p className="text-slate-400">Suivi détaillé de l'activité quotidienne sur 30 jours</p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* Navigation */}
+      <PageNavigation
+        title="Historique & Statistiques"
+        description="Suivi détaillé de l'activité quotidienne sur 30 jours"
+        showBackButton={false}
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

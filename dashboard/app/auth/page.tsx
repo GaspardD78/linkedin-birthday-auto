@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
+import { PageNavigation } from '@/components/layout/PageNavigation';
 
 type AuthState = 'idle' | 'pending-2fa' | 'loading' | 'success' | 'error';
 
@@ -115,8 +116,13 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">LinkedIn Authentication</h1>
+    <div className="space-y-6">
+      <PageNavigation
+        title="Authentification LinkedIn"
+        description="Gérez l'authentification LinkedIn pour le bot"
+        showBackButton={false}
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <Card>
           <CardHeader>
