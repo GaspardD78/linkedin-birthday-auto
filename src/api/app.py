@@ -25,7 +25,6 @@ import yaml
 from ..config.config_manager import get_config
 from ..core.database import get_database
 from ..monitoring.tracing import instrument_app, setup_tracing
-from ..queue.tasks import run_bot_task, run_profile_visit_task
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 from . import auth_routes  # Import the new auth router
@@ -368,7 +367,7 @@ async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(ver
     try:
         if request.job_type == "birthday":
             job = job_queue.enqueue(
-                run_bot_task,
+                "src.queue.tasks.run_bot_task",
                 bot_mode=request.bot_mode,
                 dry_run=request.dry_run,
                 max_days_late=request.max_days_late,
@@ -376,7 +375,7 @@ async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(ver
             )
         elif request.job_type == "visit":
             job = job_queue.enqueue(
-                run_profile_visit_task, dry_run=request.dry_run, job_timeout="45m"
+                "src.queue.tasks.run_profile_visit_task", dry_run=request.dry_run, job_timeout="45m"
             )
         else:
             raise HTTPException(status_code=400, detail="Unknown job type")
@@ -401,7 +400,7 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
 
     try:
         job = job_queue.enqueue(
-            run_bot_task,
+            "src.queue.tasks.run_bot_task",
             bot_mode="standard",
             dry_run=config.dry_run,
             max_days_late=max_days,
@@ -430,7 +429,10 @@ async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends
 
     try:
         job = job_queue.enqueue(
-            run_profile_visit_task, dry_run=config.dry_run, limit=config.limit, job_timeout="45m"
+            "src.queue.tasks.run_profile_visit_task",
+            dry_run=config.dry_run,
+            limit=config.limit,
+            job_timeout="45m",
         )
 
         logger.info(f"✅ [VISITOR BOT] Job {job.id} queued successfully")
