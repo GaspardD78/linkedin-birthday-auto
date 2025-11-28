@@ -142,10 +142,10 @@ echo ""
 echo -e "${BLUE}[3/7] Docker Compose Configuration${NC}"
 echo "─────────────────────────────────────────────────────────"
 
-if [ -f "docker-compose.queue.yml" ]; then
-    print_status "ok" "docker-compose.queue.yml found"
+if [ -f "docker-compose.pi4-standalone.yml" ]; then
+    print_status "ok" "docker-compose.pi4-standalone.yml found"
 else
-    print_status "error" "docker-compose.queue.yml not found"
+    print_status "error" "docker-compose.pi4-standalone.yml not found"
     exit 1
 fi
 
@@ -171,7 +171,7 @@ echo -e "${BLUE}[4/7] Container Status${NC}"
 echo "─────────────────────────────────────────────────────────"
 
 # Check if compose project is running
-if docker-compose -f docker-compose.queue.yml ps &> /dev/null || docker compose -f docker-compose.queue.yml ps &> /dev/null; then
+if docker-compose -f docker-compose.pi4-standalone.yml ps &> /dev/null || docker compose -f docker-compose.pi4-standalone.yml ps &> /dev/null; then
     # Use docker compose if available, fallback to docker-compose
     if docker compose version &> /dev/null 2>&1; then
         COMPOSE_CMD="docker compose"
@@ -180,8 +180,8 @@ if docker-compose -f docker-compose.queue.yml ps &> /dev/null || docker compose 
     fi
 
     # Get container status
-    REDIS_STATUS=$($COMPOSE_CMD -f docker-compose.queue.yml ps -q redis 2>/dev/null | xargs -r docker inspect -f '{{.State.Status}}' 2>/dev/null || echo "not running")
-    WORKER_STATUS=$($COMPOSE_CMD -f docker-compose.queue.yml ps -q rq-worker 2>/dev/null | xargs -r docker inspect -f '{{.State.Status}}' 2>/dev/null || echo "not running")
+    REDIS_STATUS=$($COMPOSE_CMD -f docker-compose.pi4-standalone.yml ps -q redis-bot 2>/dev/null | xargs -r docker inspect -f '{{.State.Status}}' 2>/dev/null || echo "not running")
+    WORKER_STATUS=$($COMPOSE_CMD -f docker-compose.pi4-standalone.yml ps -q bot-worker 2>/dev/null | xargs -r docker inspect -f '{{.State.Status}}' 2>/dev/null || echo "not running")
 
     # Redis container
     if [ "$REDIS_STATUS" = "running" ]; then
@@ -200,7 +200,7 @@ else
     print_status "error" "Docker Compose project not running"
     echo ""
     echo -e "${YELLOW}Start the containers with:${NC}"
-    echo "  docker-compose -f docker-compose.queue.yml up -d"
+    echo "  docker compose -f docker-compose.pi4-standalone.yml up -d"
     ERRORS=$((ERRORS + 2))
 fi
 
@@ -213,19 +213,20 @@ echo -e "${BLUE}[5/7] Redis Health Check${NC}"
 echo "─────────────────────────────────────────────────────────"
 
 if [ "$REDIS_STATUS" = "running" ]; then
-    # Check Redis connectivity
-    if docker exec linkedin-bot-redis redis-cli ping &> /dev/null; then
+    # Check Redis connectivity (using the correct container name for pi4-standalone)
+    REDIS_CONTAINER=$(docker ps --filter "name=redis-bot" --format "{{.Names}}" | head -n 1)
+    if [ -n "$REDIS_CONTAINER" ] && docker exec "$REDIS_CONTAINER" redis-cli ping &> /dev/null; then
         print_status "ok" "Redis responding to PING"
 
         # Get Redis info
-        REDIS_VERSION=$(docker exec linkedin-bot-redis redis-cli INFO SERVER | grep redis_version | cut -d: -f2 | tr -d '\r')
+        REDIS_VERSION=$(docker exec "$REDIS_CONTAINER" redis-cli INFO SERVER | grep redis_version | cut -d: -f2 | tr -d '\r')
         print_status "info" "Redis version: ${REDIS_VERSION}"
 
-        REDIS_MEM=$(docker exec linkedin-bot-redis redis-cli INFO MEMORY | grep used_memory_human | cut -d: -f2 | tr -d '\r')
+        REDIS_MEM=$(docker exec "$REDIS_CONTAINER" redis-cli INFO MEMORY | grep used_memory_human | cut -d: -f2 | tr -d '\r')
         print_status "info" "Redis memory usage: ${REDIS_MEM}"
 
         # Check for keys
-        KEY_COUNT=$(docker exec linkedin-bot-redis redis-cli DBSIZE | awk '{print $2}')
+        KEY_COUNT=$(docker exec "$REDIS_CONTAINER" redis-cli DBSIZE | awk '{print $2}')
         print_status "info" "Redis keys: ${KEY_COUNT}"
     else
         print_status "error" "Redis not responding to PING"
@@ -243,14 +244,15 @@ echo -e "${BLUE}[6/7] Worker Health Check${NC}"
 echo "─────────────────────────────────────────────────────────"
 
 if [ "$WORKER_STATUS" = "running" ]; then
-    # Check worker logs for errors
-    WORKER_LOGS=$(docker logs linkedin-bot-worker --tail 20 2>&1)
+    # Check worker logs for errors (using the correct container name for pi4-standalone)
+    WORKER_CONTAINER=$(docker ps --filter "name=bot-worker" --format "{{.Names}}" | head -n 1)
+    WORKER_LOGS=$(docker logs "$WORKER_CONTAINER" --tail 20 2>&1)
 
     if echo "$WORKER_LOGS" | grep -qi "error\|exception\|failed\|traceback"; then
         print_status "warn" "Worker logs contain errors (check logs for details)"
         echo ""
         echo -e "${YELLOW}Recent worker logs:${NC}"
-        docker logs linkedin-bot-worker --tail 10 2>&1 | sed 's/^/  /'
+        docker logs "$WORKER_CONTAINER" --tail 10 2>&1 | sed 's/^/  /'
     else
         print_status "ok" "Worker logs look healthy"
     fi
@@ -276,7 +278,8 @@ echo "────────────────────────�
 print_status "info" "Checking for known expected warnings..."
 
 # Check for Redis memory warning
-REDIS_LOGS=$(docker logs linkedin-bot-redis --tail 50 2>&1 || echo "")
+REDIS_CONTAINER=$(docker ps --filter "name=redis-bot" --format "{{.Names}}" | head -n 1)
+REDIS_LOGS=$(docker logs "$REDIS_CONTAINER" --tail 50 2>&1 || echo "")
 if echo "$REDIS_LOGS" | grep -qi "memory soft limit\|overcommit_memory"; then
     print_status "warn" "Redis memory warning detected (EXPECTED on Raspberry Pi)"
     echo -e "  ${YELLOW}This is documented and expected. To fix (optional):${NC}"
@@ -309,25 +312,27 @@ else
     echo -e "${YELLOW}Troubleshooting steps:${NC}"
     echo ""
     echo "1. View container logs:"
-    echo "   docker logs linkedin-bot-redis"
-    echo "   docker logs linkedin-bot-worker"
+    echo "   docker logs <container-name> -f"
+    echo "   (Use 'docker ps' to see running containers)"
     echo ""
     echo "2. Restart containers:"
-    echo "   docker-compose -f docker-compose.queue.yml restart"
+    echo "   docker compose -f docker-compose.pi4-standalone.yml restart"
     echo ""
     echo "3. Rebuild containers:"
-    echo "   docker-compose -f docker-compose.queue.yml down"
-    echo "   docker-compose -f docker-compose.queue.yml build --no-cache"
-    echo "   docker-compose -f docker-compose.queue.yml up -d"
+    echo "   docker compose -f docker-compose.pi4-standalone.yml down"
+    echo "   docker compose -f docker-compose.pi4-standalone.yml build --no-cache"
+    echo "   docker compose -f docker-compose.pi4-standalone.yml up -d"
     echo ""
 fi
 
 echo -e "${BLUE}Quick Commands:${NC}"
-echo "  View Redis logs:    docker logs linkedin-bot-redis -f"
-echo "  View Worker logs:   docker logs linkedin-bot-worker -f"
-echo "  Container status:   docker-compose -f docker-compose.queue.yml ps"
-echo "  Restart services:   docker-compose -f docker-compose.queue.yml restart"
-echo "  Stop services:      docker-compose -f docker-compose.queue.yml down"
+REDIS_CONT=$(docker ps --filter "name=redis-bot" --format "{{.Names}}" | head -n 1)
+WORKER_CONT=$(docker ps --filter "name=bot-worker" --format "{{.Names}}" | head -n 1)
+echo "  View Redis logs:    docker logs ${REDIS_CONT:-redis-bot} -f"
+echo "  View Worker logs:   docker logs ${WORKER_CONT:-bot-worker} -f"
+echo "  Container status:   docker compose -f docker-compose.pi4-standalone.yml ps"
+echo "  Restart services:   docker compose -f docker-compose.pi4-standalone.yml restart"
+echo "  Stop services:      docker compose -f docker-compose.pi4-standalone.yml down"
 echo ""
 
 exit $ERRORS
