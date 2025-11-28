@@ -539,33 +539,85 @@ async def get_job_status(job_id: str, authenticated: bool = Depends(verify_api_k
 
 
 @app.get("/logs", tags=["Logs"])
-async def get_recent_logs(limit: int = 100, authenticated: bool = Depends(verify_api_key)):
+async def get_recent_logs(
+    limit: int = 100,
+    service: str = "worker",
+    authenticated: bool = Depends(verify_api_key)
+):
     """
-    Récupère les logs récents.
+    Récupère les logs récents d'un service spécifique.
 
     Args:
         limit: Nombre de lignes à retourner
+        service: Service cible ('worker', 'api', 'dashboard' ou 'all')
     """
     try:
         import os
+        import glob
+        from collections import deque
         from pathlib import Path
 
-        # Chemin absolu Docker (cohérent avec le volume monté)
-        log_file = Path(os.getenv("LOG_FILE", "/app/logs/linkedin_bot.log"))
+        # Validation de l'entrée
+        allowed_services = ["worker", "api", "dashboard", "all"]
+        if service not in allowed_services:
+            raise HTTPException(status_code=400, detail=f"Invalid service. Must be one of {allowed_services}")
 
-        if not log_file.exists():
-            return {"logs": [], "message": "Log file not found"}
+        log_dir = Path("/app/logs")
 
-        # Lire les dernières lignes
-        with open(log_file, encoding="utf-8") as f:
-            lines = f.readlines()
+        # Déterminer les fichiers à lire
+        files_to_read = []
+        if service == "all":
+            files_to_read = glob.glob(str(log_dir / "*.log"))
+            # Trier par date de modification (plus récent en dernier)
+            files_to_read.sort(key=os.path.getmtime)
+        else:
+            # Gestion du suffixe ajouté par logging.py (ex: linkedin_bot_worker.log)
+            base_name = os.getenv("LOG_FILE", "linkedin_bot.log")
+            base_root, ext = os.path.splitext(base_name)
 
-        recent_lines = lines[-limit:] if len(lines) > limit else lines
+            # Essayer le fichier exact, puis avec suffixe
+            target_files = [
+                log_dir / f"{base_root}_{service}{ext}", # linkedin_bot_worker.log
+                log_dir / f"{service}.log",               # worker.log (fallback)
+                log_dir / base_name                       # linkedin_bot.log (fallback générique)
+            ]
+
+            for f in target_files:
+                if f.exists():
+                    files_to_read.append(f)
+                    break # On prend le premier qui matche
+
+        if not files_to_read:
+            return {"logs": [], "message": f"No log files found for service '{service}'"}
+
+        all_lines = []
+        total_lines_estimate = 0
+
+        for file_path in files_to_read:
+            try:
+                # Utiliser deque pour lire efficacement les dernières lignes sans tout charger en mémoire
+                # On lit un peu plus que la limite pour avoir de la marge lors du merge
+                with open(file_path, encoding="utf-8") as f:
+                    last_lines = deque(f, maxlen=limit)
+
+                    prefix = f"[{Path(file_path).stem}] " if len(files_to_read) > 1 else ""
+                    all_lines.extend([f"{prefix}{line.strip()}" for line in last_lines])
+
+                    # Estimation approximative
+                    total_lines_estimate += 100 # On ne sait pas vraiment sans tout lire
+            except Exception as e:
+                logger.warning(f"Error reading {file_path}: {e}")
+
+        # Si on a lu plusieurs fichiers, on prend globalement les dernières lignes
+        # Note: ce n'est pas un tri parfait par timestamp inter-fichiers,
+        # mais ça respecte l'ordre chronologique approximatif (fichiers triés par mtime)
+        recent_lines = all_lines[-limit:] if len(all_lines) > limit else all_lines
 
         return {
-            "logs": [line.strip() for line in recent_lines],
+            "logs": recent_lines,
             "count": len(recent_lines),
-            "total_lines": len(lines),
+            "total_lines": "unknown (optimized reading)",
+            "files_read": [str(f) for f in files_to_read]
         }
 
     except Exception as e:

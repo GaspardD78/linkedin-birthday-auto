@@ -37,11 +37,29 @@ export async function getLogs(): Promise<LogEntry[]> {
     if (data.logs && Array.isArray(data.logs)) {
         return data.logs.map((line: string | any) => {
             if (typeof line === 'object') return line;
-            // Parsing basique si c'est une string brute
+
+            // Tentative de parsing plus intelligent
+            // Format attendu: "2023-01-01 12:00:00 [INFO] Message"
+            let timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            let level = 'INFO';
+            let message = line;
+
+            try {
+              // Regex pour détecter timestamp et level standards
+              const match = line.match(/^(\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})?\s*\[?([A-Z]+)\]?\s*(.*)/);
+              if (match) {
+                 if (match[1]) timestamp = match[1];
+                 if (match[2]) level = match[2];
+                 if (match[3]) message = match[3];
+              }
+            } catch (e) {
+              // Fallback au parsing basique en cas d'échec
+            }
+
             return {
-                timestamp: new Date().toISOString().split('T')[1].split('.')[0],
-                level: 'INFO',
-                message: line
+                timestamp,
+                level,
+                message
             };
         });
     }

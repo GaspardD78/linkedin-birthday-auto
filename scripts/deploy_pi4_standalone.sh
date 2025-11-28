@@ -117,6 +117,14 @@ if [ ! -f "$ENV_FILE" ]; then
             echo "SECRET_KEY=$SECRET_KEY" >> "$ENV_FILE"
         fi
 
+        # Génération API_KEY pour sécuriser la com API <-> Dashboard
+        API_KEY=$(openssl rand -hex 32)
+        if grep -q "API_KEY" "$ENV_FILE"; then
+             sed -i "s/API_KEY=.*/API_KEY=$API_KEY/" "$ENV_FILE"
+        else
+             echo "API_KEY=$API_KEY" >> "$ENV_FILE"
+        fi
+
         # Mise à jour de l'IP du Pi4 si présente dans le template
         if grep -q "# PI4_IP=" "$ENV_FILE"; then
             sed -i "s/# PI4_IP=.*/PI4_IP=$LOCAL_IP/" "$ENV_FILE"
@@ -199,7 +207,7 @@ print_header "3. Vérification Code Source"
 
 # Vérifier que les fichiers requis existent (sans les recréer)
 missing_files=()
-for file in "dashboard/lib/utils.ts" "dashboard/lib/puppet-master.ts" "dashboard/lib/api.ts"; do
+for file in "dashboard/lib/utils.ts" "dashboard/lib/api.ts"; do
     if [ ! -f "$file" ]; then
         missing_files+=("$file")
     fi
