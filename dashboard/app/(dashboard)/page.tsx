@@ -6,10 +6,11 @@ import { WeeklyLimitWidget } from "@/components/dashboard/WeeklyLimitWidget"
 import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
 import { ActivityChartWidget } from "@/components/dashboard/ActivityChartWidget"
 import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
+import { BotStatusWidget } from "@/components/dashboard/BotStatus"
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-5 bg-slate-950 min-h-screen">
+    <div className="space-y-5 bg-slate-950 min-h-screen w-full max-w-[1920px] mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center mb-1">
         <div>
@@ -53,6 +54,9 @@ export default function DashboardPage() {
 
           {/* Bot Controls */}
           <BotControlsWidget />
+
+          {/* Bot Status */}
+          <BotStatusWidget />
 
           {/* System Health */}
           <SystemHealthWidget />

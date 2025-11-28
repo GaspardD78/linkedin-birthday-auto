@@ -25,10 +25,10 @@ export default function RootLayout({
 
   return (
     <html lang="fr">
-      <body className={`${inter.className} bg-slate-950 text-slate-100 overflow-hidden`}>
+      <body className={`${inter.className} bg-slate-950 text-slate-100`}>
         {/* Provider pour le thème dark par défaut */}
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          <div className="flex h-screen w-full">
+          <div className="flex h-screen w-full overflow-hidden">
             {/* Bouton hamburger mobile */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
