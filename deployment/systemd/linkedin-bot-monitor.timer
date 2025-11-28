@@ -1,0 +1,18 @@
+[Unit]
+Description=LinkedIn Bot - Resource Monitor Timer (Every Hour)
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+Requires=linkedin-bot-monitor.service
+
+[Timer]
+# Exécuter toutes les heures
+OnBootSec=5min
+OnUnitActiveSec=1h
+
+# Précision de 5 minutes (économie ressources)
+AccuracySec=5min
+
+# Persistent si le Pi était éteint au moment de l'exécution
+Persistent=true
+
+[Install]
+WantedBy=timers.target
