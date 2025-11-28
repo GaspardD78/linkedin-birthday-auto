@@ -98,6 +98,7 @@ class ConfigUpdate(BaseModel):
 # --- Config ---
 CONFIG_PATH = Path("config/config.yaml")
 MESSAGES_PATH = Path("messages.txt")
+LATE_MESSAGES_PATH = Path("late_messages.txt")
 
 
 class TriggerResponse(BaseModel):
@@ -539,6 +540,19 @@ async def get_messages(authenticated: bool = Depends(verify_api_key)):
 async def update_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
     """Met à jour messages.txt"""
     MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    return {"status": "updated"}
+
+@app.get("/config/late-messages")
+async def get_late_messages(authenticated: bool = Depends(verify_api_key)):
+    """Lit le fichier late_messages.txt"""
+    if not LATE_MESSAGES_PATH.exists():
+        return {"content": ""}
+    return {"content": LATE_MESSAGES_PATH.read_text(encoding="utf-8")}
+
+@app.post("/config/late-messages")
+async def update_late_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
+    """Met à jour late_messages.txt"""
+    LATE_MESSAGES_PATH.write_text(config.content, encoding="utf-8")
     return {"status": "updated"}
 # ═══════════════════════════════════════════════════════════════════
 # BACKGROUND TASKS
