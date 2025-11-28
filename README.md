@@ -7,7 +7,7 @@
 
 **Automatisez vos messages d'anniversaire LinkedIn** avec intelligence, flexibilité et sécurité.
 
-Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière naturelle et personnalisée. Optimisé pour fonctionner en local, sur serveur, ou via GitHub Actions.
+Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière naturelle et personnalisée. Optimisé pour fonctionner en local ou sur serveur (Raspberry Pi, VPS).
 
 ---
 
@@ -167,7 +167,7 @@ python main.py bot --mode unlimited --max-days-late 10
 |----------|-------------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
 | **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** | Migration depuis v1.x vers v2.0 |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker, GitHub Actions) |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)** | Guide déploiement (local, cloud, Docker) |
 | **[SETUP_PI4_FREEBOX.md](SETUP_PI4_FREEBOX.md)** | 🆕 **Déploiement Pi4 Standalone** (sans NAS) - **Recommandé** |
 | **[SETUP_PI4_SYNOLOGY_FREEBOX.md](SETUP_PI4_SYNOLOGY_FREEBOX.md)** | Déploiement Pi4 + Synology NAS + Freebox Pop |
 | **[RASPBERRY_PI4_GUIDE.md](RASPBERRY_PI4_GUIDE.md)** | Installation sur Raspberry Pi (méthode manuelle v1.x) |
@@ -379,35 +379,6 @@ crontab -e
 0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot >> /var/log/linkedin-bot.log 2>&1
 ```
 
-### GitHub Actions
-
-Voir **[DEPLOYMENT.md](DEPLOYMENT.md#déploiement-github-actions)** pour configuration complète.
-
-```yaml
-# .github/workflows/daily-bot.yml
-name: Daily Birthday Bot
-
-on:
-  schedule:
-    - cron: '0 9 * * *'  # 9h UTC
-  workflow_dispatch:
-
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-      - run: |
-          pip install -r requirements-new.txt
-          playwright install chromium
-          python main.py bot
-        env:
-          LINKEDIN_AUTH_STATE: ${{ secrets.LINKEDIN_AUTH_STATE }}
-```
-
 ### Docker
 
 **Option 1: Configuration basique**
@@ -575,7 +546,7 @@ curl http://localhost:8000/metrics
 
 - ✅ **Jamais committer** `auth_state.json` ou `.env` (dans `.gitignore`)
 - ✅ **Permissions strictes** : `chmod 600 .env auth_state.json`
-- ✅ **Secrets chiffrés** : Utiliser GitHub Secrets ou variables d'environnement
+- ✅ **Secrets chiffrés** : Utiliser variables d'environnement sécurisées
 - ✅ **2FA activé** sur LinkedIn (recommandé)
 - ✅ **Rotation User-Agent** et anti-détection activés
 - ✅ **Pas de données transmises** à des tiers
@@ -687,9 +658,6 @@ linkedin-birthday-auto/
 │   ├── unit/                # Tests unitaires
 │   ├── integration/         # Tests intégration
 │   └── e2e/                 # Tests E2E
-├── .github/
-│   └── workflows/
-│       └── ci.yml           # CI/CD
 ├── pyproject.toml           # Config moderne (black, ruff, mypy, pytest)
 ├── .pre-commit-config.yaml  # Pre-commit hooks
 ├── ARCHITECTURE.md          # Architecture détaillée
@@ -710,7 +678,6 @@ linkedin-birthday-auto/
 - ✅ **Mode unlimited** pour rattraper les retards
 - ✅ **Type hints** complets + mypy validation
 - ✅ **Pre-commit hooks** (black, ruff, mypy, bandit)
-- ✅ **CI/CD GitHub Actions** avec multi-Python
 - ✅ **Documentation complète** (ARCHITECTURE, MIGRATION, DEPLOYMENT)
 
 ### 🐛 Bugs corrigés
