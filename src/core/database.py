@@ -212,6 +212,24 @@ class Database:
             """
             )
 
+            # Table scraped_profiles
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scraped_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_url TEXT UNIQUE NOT NULL,
+                    first_name TEXT,
+                    last_name TEXT,
+                    full_name TEXT,
+                    relationship_level TEXT,
+                    current_company TEXT,
+                    education TEXT,
+                    years_experience INTEGER,
+                    scraped_at TEXT NOT NULL
+                )
+            """
+            )
+
             # Index pour améliorer les performances
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)"
@@ -229,6 +247,12 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_errors_occurred_at ON errors(occurred_at)"
             )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_url ON scraped_profiles(profile_url)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_scraped_at ON scraped_profiles(scraped_at)"
+            )
 
             # Initialiser les sélecteurs par défaut
             self._init_default_selectors(cursor)
@@ -698,6 +722,216 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM linkedin_selectors ORDER BY page_type, selector_name")
             return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== SCRAPED PROFILES ====================
+
+    @retry_on_lock(max_retries=3)
+    def save_scraped_profile(
+        self,
+        profile_url: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        full_name: Optional[str] = None,
+        relationship_level: Optional[str] = None,
+        current_company: Optional[str] = None,
+        education: Optional[str] = None,
+        years_experience: Optional[int] = None,
+    ) -> int:
+        """
+        Enregistre ou met à jour (UPSERT) les données scrapées d'un profil.
+
+        Args:
+            profile_url: URL du profil (clé unique)
+            first_name: Prénom
+            last_name: Nom de famille
+            full_name: Nom complet
+            relationship_level: Niveau de relation (1er, 2e, 3e)
+            current_company: Entreprise actuelle
+            education: Formation/Diplôme
+            years_experience: Années d'expérience
+
+        Returns:
+            ID du profil enregistré
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            scraped_at = datetime.now().isoformat()
+
+            # UPSERT: INSERT OR REPLACE
+            cursor.execute(
+                """
+                INSERT INTO scraped_profiles
+                (profile_url, first_name, last_name, full_name, relationship_level,
+                 current_company, education, years_experience, scraped_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(profile_url) DO UPDATE SET
+                    first_name = excluded.first_name,
+                    last_name = excluded.last_name,
+                    full_name = excluded.full_name,
+                    relationship_level = excluded.relationship_level,
+                    current_company = excluded.current_company,
+                    education = excluded.education,
+                    years_experience = excluded.years_experience,
+                    scraped_at = excluded.scraped_at
+            """,
+                (
+                    profile_url,
+                    first_name,
+                    last_name,
+                    full_name,
+                    relationship_level,
+                    current_company,
+                    education,
+                    years_experience,
+                    scraped_at,
+                ),
+            )
+
+            return cursor.lastrowid
+
+    @retry_on_lock(max_retries=3)
+    def get_scraped_profile(self, profile_url: str) -> Optional[dict]:
+        """
+        Récupère les données scrapées d'un profil par son URL.
+
+        Args:
+            profile_url: URL du profil
+
+        Returns:
+            Dictionnaire avec les données du profil ou None si non trouvé
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM scraped_profiles WHERE profile_url = ?
+            """,
+                (profile_url,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    @retry_on_lock(max_retries=3)
+    def get_all_scraped_profiles(self, limit: Optional[int] = None) -> list[dict]:
+        """
+        Récupère tous les profils scrapés.
+
+        Args:
+            limit: Nombre maximal de profils à retourner (None = tous)
+
+        Returns:
+            Liste de dictionnaires avec les données des profils
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            if limit:
+                cursor.execute(
+                    """
+                    SELECT * FROM scraped_profiles
+                    ORDER BY scraped_at DESC
+                    LIMIT ?
+                """,
+                    (limit,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT * FROM scraped_profiles
+                    ORDER BY scraped_at DESC
+                """
+                )
+
+            return [dict(row) for row in cursor.fetchall()]
+
+    @retry_on_lock(max_retries=3)
+    def export_scraped_data_to_csv(self, output_path: str) -> str:
+        """
+        Exporte les données scrapées vers un fichier CSV.
+
+        Args:
+            output_path: Chemin du fichier CSV de sortie
+
+        Returns:
+            Chemin du fichier créé
+
+        Raises:
+            Exception: Si l'export échoue
+        """
+        import csv
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT profile_url, first_name, last_name, full_name,
+                       relationship_level, current_company, education,
+                       years_experience, scraped_at
+                FROM scraped_profiles
+                ORDER BY scraped_at DESC
+            """
+            )
+
+            rows = cursor.fetchall()
+
+            if not rows:
+                logger.warning("No scraped profiles found to export")
+                # Créer un fichier vide avec headers
+                with open(output_path, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.writer(f, delimiter=",")
+                    writer.writerow(
+                        [
+                            "profile_url",
+                            "first_name",
+                            "last_name",
+                            "full_name",
+                            "relationship_level",
+                            "current_company",
+                            "education",
+                            "years_experience",
+                            "scraped_at",
+                        ]
+                    )
+                return output_path
+
+            # Écrire le CSV
+            with open(output_path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f, delimiter=",")
+
+                # Header
+                writer.writerow(
+                    [
+                        "profile_url",
+                        "first_name",
+                        "last_name",
+                        "full_name",
+                        "relationship_level",
+                        "current_company",
+                        "education",
+                        "years_experience",
+                        "scraped_at",
+                    ]
+                )
+
+                # Data rows
+                for row in rows:
+                    writer.writerow(
+                        [
+                            row["profile_url"],
+                            row["first_name"] or "",
+                            row["last_name"] or "",
+                            row["full_name"] or "",
+                            row["relationship_level"] or "",
+                            row["current_company"] or "",
+                            row["education"] or "",
+                            row["years_experience"] if row["years_experience"] is not None else "",
+                            row["scraped_at"],
+                        ]
+                    )
+
+            logger.info(f"Exported {len(rows)} scraped profiles to {output_path}")
+            return output_path
 
     # ==================== STATISTICS ====================
 
