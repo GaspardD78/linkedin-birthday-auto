@@ -41,11 +41,11 @@ sudo systemctl status docker
 
 # 4. Check containers
 echo "=== Container Status ==="
-docker-compose -f docker-compose.queue.yml ps
+docker-compose -f docker-compose.pi4-standalone.yml ps
 
 # 5. Check recent logs
 echo "=== Recent Logs ==="
-docker-compose -f docker-compose.queue.yml logs --tail 50
+docker-compose -f docker-compose.pi4-standalone.yml logs --tail 50
 
 # 6. Check temperatures
 echo "=== System Temperature ==="
@@ -177,27 +177,27 @@ docker logs linkedin-bot-worker
 
 ```bash
 # Stop and remove containers
-docker-compose -f docker-compose.queue.yml down
+docker-compose -f docker-compose.pi4-standalone.yml down
 
 # Remove any orphaned volumes
 docker volume prune -f
 
 # Start fresh
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 **Solution 2: Rebuild containers**
 
 ```bash
 # Stop containers
-docker-compose -f docker-compose.queue.yml down
+docker-compose -f docker-compose.pi4-standalone.yml down
 
 # Remove images
 docker rmi $(docker images 'linkedin*' -q) 2>/dev/null || true
 
 # Rebuild from scratch
-docker-compose -f docker-compose.queue.yml build --no-cache
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml build --no-cache
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 ### Issue: Container keeps restarting
@@ -227,9 +227,9 @@ Look for these patterns in logs:
 
 ```bash
 # Rebuild with latest dependencies
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml build --no-cache
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml build --no-cache
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 ### Issue: Container health check failing
@@ -252,12 +252,12 @@ docker exec linkedin-bot-worker python -c "import sys; sys.exit(0)"
 
 ```bash
 # Restart unhealthy container
-docker-compose -f docker-compose.queue.yml restart redis
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart redis
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 
 # If still failing, rebuild
-docker-compose -f docker-compose.queue.yml up -d --force-recreate redis
-docker-compose -f docker-compose.queue.yml up -d --force-recreate rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml up -d --force-recreate redis
+docker-compose -f docker-compose.pi4-standalone.yml up -d --force-recreate rq-worker
 ```
 
 ______________________________________________________________________
@@ -310,8 +310,8 @@ free -h
 **Solution 2: Reduce container memory limits**
 
 ```bash
-# Edit docker-compose.queue.yml
-nano docker-compose.queue.yml
+# Edit docker-compose.pi4-standalone.yml
+nano docker-compose.pi4-standalone.yml
 
 # For 2GB Raspberry Pi, reduce limits:
 # rq-worker:
@@ -323,8 +323,8 @@ nano docker-compose.queue.yml
 #         memory: 600M  # Instead of 800M
 
 # Restart with new limits
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 **Solution 3: Enable headless mode**
@@ -339,7 +339,7 @@ nano .env
 LINKEDIN_BOT_BROWSER_HEADLESS=true
 
 # Restart worker
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 **Solution 4: Add Chromium memory flags**
@@ -352,7 +352,7 @@ nano .env
 CHROMIUM_ARGS=--disable-dev-shm-usage --disable-gpu --no-sandbox
 
 # Restart
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 ### Issue: Redis memory warnings
@@ -447,7 +447,7 @@ sudo systemctl disable bluetooth
 ps aux | grep -E "chromium|firefox|electron" | grep -v grep
 
 # 5. Restart containers with lower limits
-docker-compose -f docker-compose.queue.yml restart
+docker-compose -f docker-compose.pi4-standalone.yml restart
 ```
 
 ______________________________________________________________________
@@ -486,14 +486,14 @@ docker exec linkedin-bot-worker ping redis
 docker network inspect linkedin-birthday-auto_default
 
 # Ensure containers are on the same network
-docker-compose -f docker-compose.queue.yml ps
+docker-compose -f docker-compose.pi4-standalone.yml ps
 
 # Restart containers
-docker-compose -f docker-compose.queue.yml restart
+docker-compose -f docker-compose.pi4-standalone.yml restart
 
 # If still failing, recreate network
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 ### Issue: Cannot access internet from containers
@@ -536,7 +536,7 @@ sudo nano /etc/docker/daemon.json
 sudo systemctl restart docker
 
 # Restart containers
-docker-compose -f docker-compose.queue.yml restart
+docker-compose -f docker-compose.pi4-standalone.yml restart
 ```
 
 ### Issue: LinkedIn connection timeout
@@ -574,7 +574,7 @@ nano .env
 LINKEDIN_BOT_BROWSER_TIMEOUT=60000  # 60 seconds
 
 # Restart worker
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 ______________________________________________________________________
@@ -624,7 +624,7 @@ python main.py bot --dry-run
 scp auth_state.json pi@raspberrypi.local:~/linkedin-birthday-auto/
 
 # Restart worker
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 **Solution 2: Use Cookie-Editor extension**
@@ -640,7 +640,7 @@ nano auth_state.json
 # Save: Ctrl+O, Enter, Ctrl+X
 
 # Restart worker
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 ### Issue: 2FA code requested every time
@@ -655,15 +655,15 @@ Ensure you're saving the session correctly:
 # Verify auth_state.json is mounted in container
 docker exec linkedin-bot-worker ls -la /app/auth_state.json
 
-# If missing, check docker-compose.queue.yml
-nano docker-compose.queue.yml
+# If missing, check docker-compose.pi4-standalone.yml
+nano docker-compose.pi4-standalone.yml
 
 # Verify this line exists under rq-worker volumes:
 #   - ./auth_state.json:/app/auth_state.json:ro
 
 # Restart if you made changes
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 ### Issue: Session expired
@@ -685,7 +685,7 @@ rm auth_state.json
 # Generate new session (see Solution 1 or 2 above)
 
 # Restart worker
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 ______________________________________________________________________
@@ -745,7 +745,7 @@ sudo reboot
 
 ```bash
 # Limit container CPU usage
-nano docker-compose.queue.yml
+nano docker-compose.pi4-standalone.yml
 
 # Adjust CPU limits:
 # rq-worker:
@@ -757,8 +757,8 @@ nano docker-compose.queue.yml
 #         cpus: '1.0'
 
 # Restart
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 ```
 
 ### Issue: Chromium crashes or is very slow
@@ -786,7 +786,7 @@ CHROMIUM_ARGS=--disable-dev-shm-usage --disable-gpu --no-sandbox --disable-accel
 LINKEDIN_BOT_BROWSER_HEADLESS=true
 
 # Restart
-docker-compose -f docker-compose.queue.yml restart rq-worker
+docker-compose -f docker-compose.pi4-standalone.yml restart rq-worker
 ```
 
 ### Issue: Disk I/O very slow
@@ -859,7 +859,7 @@ MEM_AVAILABLE=$(free -m | awk 'NR==2 {print $7}')
 if [ "$MEM_AVAILABLE" -lt 100 ]; then
     echo "Low memory detected: ${MEM_AVAILABLE}MB"
     # Restart containers to free memory
-    docker-compose -f ~/linkedin-birthday-auto/docker-compose.queue.yml restart
+    docker-compose -f ~/linkedin-birthday-auto/docker-compose.pi4-standalone.yml restart
 fi
 ```
 
@@ -1036,22 +1036,22 @@ Keep these handy for quick fixes:
 ```bash
 # Full restart
 cd ~/linkedin-birthday-auto
-docker-compose -f docker-compose.queue.yml restart
+docker-compose -f docker-compose.pi4-standalone.yml restart
 
 # Clean restart
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 
 # Full rebuild
-docker-compose -f docker-compose.queue.yml down
-docker-compose -f docker-compose.queue.yml build --no-cache
-docker-compose -f docker-compose.queue.yml up -d
+docker-compose -f docker-compose.pi4-standalone.yml down
+docker-compose -f docker-compose.pi4-standalone.yml build --no-cache
+docker-compose -f docker-compose.pi4-standalone.yml up -d
 
 # Check status
 ./scripts/verify_rpi_docker.sh
 
 # View logs
-docker-compose -f docker-compose.queue.yml logs -f
+docker-compose -f docker-compose.pi4-standalone.yml logs -f
 
 # Check resources
 docker stats
