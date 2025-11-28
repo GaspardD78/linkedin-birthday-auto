@@ -34,6 +34,7 @@ from ..queue.tasks import run_bot_task, run_profile_visit_task
 from ..monitoring.tracing import instrument_app, setup_tracing
 from prometheus_client import make_asgi_app
 from . import auth_routes # Import the new auth router
+from .routes import deployment # Import the deployment router
 
 logger = get_logger(__name__)
 
@@ -171,6 +172,9 @@ app.mount("/metrics", metrics_app)
 
 # Include the authentication router
 app.include_router(auth_routes.router)
+
+# Include the deployment router
+app.include_router(deployment.router)
 
 
 # Authentification importée de security.py

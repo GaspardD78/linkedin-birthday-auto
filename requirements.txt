@@ -18,6 +18,7 @@ rq==1.16.0
 # ── UTILS ──
 python-dotenv==1.0.0
 requests==2.31.0
+httpx==0.25.2
 structlog==23.2.0
 
 # ...

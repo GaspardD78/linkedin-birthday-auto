@@ -7,25 +7,15 @@ import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
 import { ActivityChartWidget } from "@/components/dashboard/ActivityChartWidget"
 import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 import { BotStatusWidget } from "@/components/dashboard/BotStatus"
+import { DeploymentWidget } from "@/components/dashboard/DeploymentWidget"
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader"
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-5 bg-slate-950 min-h-screen w-full max-w-[1920px] mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-1">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            Dashboard - LinkedIn Birthday Auto
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Console de pilotage et monitoring en temps réel
-          </p>
-        </div>
-        <div className="text-sm text-slate-500 flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 pulse-glow" />
-          <span className="font-mono">v2.0.0</span>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 lg:p-6">
+      <div className="max-w-[1920px] mx-auto space-y-6">
+        {/* Enhanced Header */}
+        <DashboardHeader />
 
       {/* Statistics Cards - 4 columns like V1 */}
       <EnhancedStatsWidget />
@@ -61,6 +51,9 @@ export default function DashboardPage() {
           {/* System Health */}
           <SystemHealthWidget />
 
+          {/* Deployment & Maintenance */}
+          <DeploymentWidget />
+
           {/* Top 5 Contacts */}
           <TopContactsWidget />
 
@@ -71,9 +64,15 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Footer Info */}
-      <div className="text-center text-xs text-slate-700 pt-4 border-t border-slate-800">
-        <p>LinkedIn Bot Dashboard v2 - Powered by Next.js & Python 🚀</p>
+        {/* Footer Info */}
+        <div className="text-center text-xs text-slate-700 pt-6 border-t border-slate-800/50">
+          <p className="flex items-center justify-center gap-2">
+            <span>LinkedIn Bot Dashboard v2</span>
+            <span className="text-slate-800">•</span>
+            <span>Powered by Next.js & Python</span>
+            <span className="text-emerald-500">🚀</span>
+          </p>
+        </div>
       </div>
     </div>
   )
