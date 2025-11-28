@@ -7,6 +7,7 @@ puis visite automatiquement ces profils en simulant un comportement humain.
 
 from datetime import datetime
 import random
+import re
 import time
 from typing import Any
 import urllib.parse
@@ -178,11 +179,15 @@ class VisitorBot(BaseLinkedInBot):
                 profile_name = self._extract_profile_name_from_url(url)
 
                 if not self.config.dry_run:
-                    # Visiter le profil avec retry
-                    success = self._visit_profile_with_retry(url)
+                    # Visiter le profil avec retry et scraping
+                    success, scraped_data = self._visit_profile_with_retry(url)
 
                     # Enregistrer la visite
                     self._record_profile_visit(url, profile_name, success)
+
+                    # Sauvegarder les données scrapées
+                    if success and scraped_data:
+                        self._save_scraped_profile_data(scraped_data)
 
                     profiles_attempted += 1
                     if success:
@@ -326,7 +331,7 @@ class VisitorBot(BaseLinkedInBot):
         # Retourner URLs uniques
         return list(dict.fromkeys(profile_links))
 
-    def _visit_profile_with_retry(self, url: str) -> bool:
+    def _visit_profile_with_retry(self, url: str) -> tuple[bool, Optional[dict[str, Any]]]:
         """
         Visite un profil avec retry logic et exponential backoff.
 
@@ -334,7 +339,9 @@ class VisitorBot(BaseLinkedInBot):
             url: URL du profil à visiter
 
         Returns:
-            True si succès, False sinon
+            Tuple (success, scraped_data) :
+            - success: True si la visite a réussi, False sinon
+            - scraped_data: Dictionnaire avec les données scrapées (ou None en cas d'échec)
         """
         max_attempts = self.config.visitor.retry.max_attempts
         backoff_factor = self.config.visitor.retry.backoff_factor
@@ -347,10 +354,13 @@ class VisitorBot(BaseLinkedInBot):
                 # Simuler des interactions humaines
                 self._simulate_human_interactions()
 
+                # Scraper les données du profil
+                scraped_data = self._scrape_profile_data()
+
                 # Délai de visite
                 self._random_delay_profile_visit()
 
-                return True
+                return True, scraped_data
 
             except PlaywrightTimeoutError as e:
                 wait_time = backoff_factor**attempt
@@ -363,13 +373,13 @@ class VisitorBot(BaseLinkedInBot):
                     time.sleep(wait_time)
                 else:
                     logger.error(f"Failed to visit profile after {max_attempts} attempts")
-                    return False
+                    return False, None
 
             except Exception as e:
                 logger.error(f"Unexpected error visiting profile: {e}")
-                return False
+                return False, None
 
-        return False
+        return False, None
 
     # ═══════════════════════════════════════════════════════════════
     # SIMULATION DE COMPORTEMENT HUMAIN
@@ -458,6 +468,229 @@ class VisitorBot(BaseLinkedInBot):
             curve_points.append(temp_points[0])
 
         return curve_points
+
+    # ═══════════════════════════════════════════════════════════════
+    # SCRAPING DE DONNÉES DE PROFILS
+    # ═══════════════════════════════════════════════════════════════
+
+    def _scrape_profile_data(self) -> dict[str, Any]:
+        """
+        Scrape les données détaillées d'un profil LinkedIn.
+
+        Cette méthode extrait les informations suivantes du DOM :
+        - Nom complet, prénom, nom de famille
+        - Niveau de relation (1er, 2e, 3e)
+        - Entreprise actuelle
+        - Formation/Diplôme
+        - Années d'expérience (estimées)
+
+        Returns:
+            Dictionnaire contenant les données scrapées :
+            {
+                'full_name': str,
+                'first_name': str,
+                'last_name': str,
+                'relationship_level': str,
+                'current_company': str,
+                'education': str,
+                'years_experience': int,
+                'profile_url': str
+            }
+
+        Note:
+            Gère les cas où les éléments sont introuvables (valeurs par défaut).
+            Ne fait pas planter le bot en cas d'erreur de scraping.
+        """
+        scraped_data = {
+            "full_name": "Unknown",
+            "first_name": "Unknown",
+            "last_name": "Unknown",
+            "relationship_level": "Unknown",
+            "current_company": "Unknown",
+            "education": "Unknown",
+            "years_experience": None,
+            "profile_url": self.page.url.split("?")[0],  # URL nettoyée
+        }
+
+        try:
+            # ─────────────────────────────────────────────────────────
+            # 1. NOM COMPLET
+            # ─────────────────────────────────────────────────────────
+            try:
+                # Sélecteur principal pour le nom
+                name_selectors = [
+                    "h1.text-heading-xlarge",
+                    "h1.inline",
+                    "div.ph5 h1",
+                    "h1[class*='heading']",
+                ]
+
+                for selector in name_selectors:
+                    name_element = self.page.locator(selector).first
+                    if name_element.count() > 0:
+                        full_name = name_element.inner_text(timeout=5000).strip()
+                        if full_name and len(full_name) > 0:
+                            scraped_data["full_name"] = full_name
+
+                            # Séparer prénom et nom
+                            name_parts = full_name.split()
+                            if len(name_parts) >= 2:
+                                scraped_data["first_name"] = name_parts[0]
+                                scraped_data["last_name"] = " ".join(name_parts[1:])
+                            elif len(name_parts) == 1:
+                                scraped_data["first_name"] = name_parts[0]
+                                scraped_data["last_name"] = ""
+                            break
+
+            except Exception as e:
+                logger.debug(f"Could not extract full name: {e}")
+
+            # ─────────────────────────────────────────────────────────
+            # 2. NIVEAU DE RELATION
+            # ─────────────────────────────────────────────────────────
+            try:
+                relationship_selectors = [
+                    "span.dist-value",
+                    "div.pv-top-card--list-bullet li",
+                    "span[class*='distance']",
+                ]
+
+                for selector in relationship_selectors:
+                    rel_element = self.page.locator(selector).first
+                    if rel_element.count() > 0:
+                        rel_text = rel_element.inner_text(timeout=5000).strip()
+                        # Chercher "1er", "2e", "3e" ou "1st", "2nd", "3rd"
+                        if any(
+                            level in rel_text.lower()
+                            for level in ["1er", "2e", "3e", "1st", "2nd", "3rd"]
+                        ):
+                            scraped_data["relationship_level"] = rel_text
+                            break
+
+            except Exception as e:
+                logger.debug(f"Could not extract relationship level: {e}")
+
+            # ─────────────────────────────────────────────────────────
+            # 3. ENTREPRISE ACTUELLE
+            # ─────────────────────────────────────────────────────────
+            try:
+                # Chercher dans le sous-titre sous le nom
+                company_selectors = [
+                    "div.text-body-medium",
+                    "div.pv-text-details__right-panel span[aria-hidden='true']",
+                    "div[class*='inline-show-more-text']",
+                ]
+
+                for selector in company_selectors:
+                    company_element = self.page.locator(selector).first
+                    if company_element.count() > 0:
+                        company_text = company_element.inner_text(timeout=5000).strip()
+                        if company_text and len(company_text) > 0:
+                            # Extraire l'entreprise (souvent après "chez" ou "at")
+                            if " chez " in company_text.lower():
+                                scraped_data["current_company"] = company_text.split(" chez ")[
+                                    -1
+                                ].strip()
+                            elif " at " in company_text.lower():
+                                scraped_data["current_company"] = company_text.split(" at ")[-1].strip()
+                            else:
+                                scraped_data["current_company"] = company_text
+                            break
+
+                # Fallback: chercher dans la section Expérience
+                if scraped_data["current_company"] == "Unknown":
+                    experience_section = self.page.locator('section:has-text("Expérience")').first
+                    if experience_section.count() > 0:
+                        first_experience = experience_section.locator(
+                            'div[class*="pvs-entity"]'
+                        ).first
+                        if first_experience.count() > 0:
+                            company_in_exp = (
+                                first_experience.locator('span[aria-hidden="true"]')
+                                .nth(1)
+                                .inner_text(timeout=5000)
+                                .strip()
+                            )
+                            if company_in_exp:
+                                scraped_data["current_company"] = company_in_exp
+
+            except Exception as e:
+                logger.debug(f"Could not extract current company: {e}")
+
+            # ─────────────────────────────────────────────────────────
+            # 4. FORMATION
+            # ─────────────────────────────────────────────────────────
+            try:
+                education_selectors = [
+                    'section:has-text("Formation")',
+                    'section:has-text("Education")',
+                    'section[id*="education"]',
+                ]
+
+                for selector in education_selectors:
+                    education_section = self.page.locator(selector).first
+                    if education_section.count() > 0:
+                        # Premier établissement
+                        first_education = education_section.locator(
+                            'div[class*="pvs-entity"]'
+                        ).first
+                        if first_education.count() > 0:
+                            education_text = (
+                                first_education.locator('span[aria-hidden="true"]')
+                                .first.inner_text(timeout=5000)
+                                .strip()
+                            )
+                            if education_text:
+                                scraped_data["education"] = education_text
+                                break
+
+            except Exception as e:
+                logger.debug(f"Could not extract education: {e}")
+
+            # ─────────────────────────────────────────────────────────
+            # 5. ANNÉES D'EXPÉRIENCE
+            # ─────────────────────────────────────────────────────────
+            try:
+                # Chercher dans la section Expérience
+                experience_section = self.page.locator(
+                    'section:has-text("Expérience"), section:has-text("Experience")'
+                ).first
+
+                if experience_section.count() > 0:
+                    # Récupérer toutes les expériences
+                    all_experiences = experience_section.locator('div[class*="pvs-entity"]')
+                    experience_count = all_experiences.count()
+
+                    if experience_count > 0:
+                        # Chercher la plus ancienne expérience (dernière dans la liste)
+                        last_experience = all_experiences.nth(experience_count - 1)
+
+                        # Chercher les dates (format varié : "2018 - 2020", "Jan 2018", etc.)
+                        date_spans = last_experience.locator('span[class*="date"]')
+
+                        if date_spans.count() > 0:
+                            date_text = date_spans.first.inner_text(timeout=5000).strip()
+
+                            # Parser la date de début (simple heuristique)
+                            # Chercher une année à 4 chiffres
+                            years = re.findall(r"\b(19|20)\d{2}\b", date_text)
+                            if years:
+                                start_year = int(years[0])
+                                current_year = datetime.now().year
+                                scraped_data["years_experience"] = max(0, current_year - start_year)
+
+            except Exception as e:
+                logger.debug(f"Could not extract years of experience: {e}")
+
+            logger.info(
+                f"Données récupérées pour {scraped_data['full_name']} "
+                f"({scraped_data['current_company']})"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during profile scraping: {e}")
+
+        return scraped_data
 
     # ═══════════════════════════════════════════════════════════════
     # GESTION DES DÉLAIS
@@ -565,6 +798,32 @@ class VisitorBot(BaseLinkedInBot):
             )
         except Exception as e:
             logger.error(f"Failed to record profile visit to database: {e}")
+
+    def _save_scraped_profile_data(self, scraped_data: dict[str, Any]) -> None:
+        """
+        Sauvegarde les données scrapées dans la base de données.
+
+        Args:
+            scraped_data: Dictionnaire contenant les données du profil scrapé
+        """
+        if not self.db:
+            logger.warning("Database not available, cannot save scraped data")
+            return
+
+        try:
+            self.db.save_scraped_profile(
+                profile_url=scraped_data.get("profile_url"),
+                first_name=scraped_data.get("first_name"),
+                last_name=scraped_data.get("last_name"),
+                full_name=scraped_data.get("full_name"),
+                relationship_level=scraped_data.get("relationship_level"),
+                current_company=scraped_data.get("current_company"),
+                education=scraped_data.get("education"),
+                years_experience=scraped_data.get("years_experience"),
+            )
+            logger.info(f"✅ Scraped data saved for {scraped_data.get('full_name')}")
+        except Exception as e:
+            logger.error(f"Failed to save scraped profile data to database: {e}")
 
     # ═══════════════════════════════════════════════════════════════
     # UTILITAIRES
