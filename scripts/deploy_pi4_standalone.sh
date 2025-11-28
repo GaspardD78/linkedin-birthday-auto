@@ -10,7 +10,7 @@ set -e  # Arrêt immédiat en cas d'erreur
 # --- Configuration ---
 COMPOSE_FILE="docker-compose.pi4-standalone.yml"
 ENV_FILE=".env"
-ENV_TEMPLATE=".env.pi4"
+ENV_TEMPLATE=".env.pi4.example"
 MIN_RAM_MB=3500
 MIN_SWAP_MB=2000
 MIN_DISK_GB=5
@@ -126,7 +126,11 @@ chmod 666 data/linkedin.db 2>/dev/null || true
 for file in "auth_state.json" "config/config.yaml"; do
     if [ ! -f "$file" ]; then
         print_warning "Manquant: $file (Le bot en aura besoin au démarrage)"
-        touch "$file" # Crée un fichier vide pour éviter que Docker ne crée un dossier
+        if [ "$file" == "auth_state.json" ]; then
+            echo "{}" > "$file" # Crée un JSON valide vide
+        else
+            touch "$file" # Crée un fichier vide pour éviter que Docker ne crée un dossier
+        fi
     fi
 done
 

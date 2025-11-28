@@ -184,56 +184,49 @@ print_success "Systemd rechargé"
 # =========================================================================
 print_header "4. Création Scripts Auxiliaires"
 
-# Script de monitoring
-print_info "Création script de monitoring..."
-cat > scripts/monitor_pi4_health.sh << 'MONITOR_EOF'
+# Script de monitoring (Utilise celui déjà présent ou le recrée si absent)
+if [ ! -f "scripts/monitor_pi4_health.sh" ]; then
+    print_info "Création script de monitoring..."
+    cat > scripts/monitor_pi4_health.sh << 'MONITOR_EOF'
 #!/bin/bash
 # Script de monitoring des ressources Pi4
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="${PROJECT_DIR}/logs/health.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
+mkdir -p "${PROJECT_DIR}/logs"
+
 # Température CPU
-CPU_TEMP=$(vcgencmd measure_temp | grep -oP '\d+\.\d+')
+CPU_TEMP=$(vcgencmd measure_temp | grep -oP '\d+\.\d+' || echo "0")
 
 # Utilisation RAM
 RAM_USED=$(free -m | awk '/Mem:/ {printf "%.1f", $3/$2*100}')
 RAM_MB=$(free -m | awk '/Mem:/ {printf "%d/%dMB", $3, $2}')
 
 # Utilisation CPU
-CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 || echo "0")
 
 # Espace disque
 DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
 DISK_INFO=$(df -h / | awk 'NR==2 {print $3"/"$2}')
 
 # État Docker
-DOCKER_STATUS=$(docker compose -f /home/pi/linkedin-birthday-auto/docker-compose.pi4-standalone.yml ps --format json 2>/dev/null | jq -r '.[].State' | grep -c "running" || echo "0")
+DOCKER_STATUS=$(docker compose -f "${PROJECT_DIR}/docker-compose.pi4-standalone.yml" ps --format json 2>/dev/null | grep -c "running" || echo "0")
 
 # Log
-echo "[$DATE] CPU: ${CPU_USAGE}% | Temp: ${CPU_TEMP}°C | RAM: ${RAM_USED}% (${RAM_MB}) | Disk: ${DISK_USAGE}% (${DISK_INFO}) | Containers: ${DOCKER_STATUS}/4" >> "$LOG_FILE"
-
-# Alertes
-if (( $(echo "$CPU_TEMP > 75" | bc -l) )); then
-    echo "[$DATE] ⚠️ ALERT: Temperature critique (${CPU_TEMP}°C)" >> "$LOG_FILE"
-fi
-
-if (( $(echo "$RAM_USED > 90" | bc -l) )); then
-    echo "[$DATE] ⚠️ ALERT: RAM critique (${RAM_USED}%)" >> "$LOG_FILE"
-fi
-
-if [ "$DISK_USAGE" -gt 85 ]; then
-    echo "[$DATE] ⚠️ ALERT: Disque critique (${DISK_USAGE}%)" >> "$LOG_FILE"
-fi
+echo "[$DATE] CPU: ${CPU_USAGE}% | Temp: ${CPU_TEMP}°C | RAM: ${RAM_USED}% (${RAM_MB}) | Disk: ${DISK_USAGE}% (${DISK_INFO}) | Containers: ${DOCKER_STATUS}" >> "$LOG_FILE"
 
 # Rotation des logs (garder 1000 dernières lignes)
 tail -n 1000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
 
 exit 0
 MONITOR_EOF
-
-chmod +x scripts/monitor_pi4_health.sh
-chown "$USER:$USER" scripts/monitor_pi4_health.sh
-print_success "Script de monitoring créé"
+    chmod +x scripts/monitor_pi4_health.sh
+    chown "$USER:$USER" scripts/monitor_pi4_health.sh
+    print_success "Script de monitoring créé"
+else
+    print_success "Script de monitoring déjà présent"
+fi
 
 # Script de backup
 print_info "Création script de backup..."
@@ -241,12 +234,12 @@ cat > scripts/backup_database.sh << 'BACKUP_EOF'
 #!/bin/bash
 # Script de backup automatique de la base de données
 
-PROJECT_DIR="/home/pi/linkedin-birthday-auto"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="$PROJECT_DIR/backups"
 DB_FILE="$PROJECT_DIR/data/linkedin.db"
 DATE=$(date '+%Y%m%d_%H%M%S')
 BACKUP_FILE="$BACKUP_DIR/linkedin_db_${DATE}.db"
-LOG_FILE="/var/log/linkedin-bot-backup.log"
+LOG_FILE="${PROJECT_DIR}/logs/backup.log"
 
 # Création du répertoire de backup
 mkdir -p "$BACKUP_DIR"
