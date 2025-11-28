@@ -1,0 +1,18 @@
+[Unit]
+Description=LinkedIn Bot - Database Backup Timer (Daily at 3 AM)
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+Requires=linkedin-bot-backup.service
+
+[Timer]
+# Exécuter tous les jours à 3h du matin
+OnCalendar=daily
+OnCalendar=*-*-* 03:00:00
+
+# Précision de 15 minutes
+AccuracySec=15min
+
+# Persistent si le Pi était éteint à 3h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

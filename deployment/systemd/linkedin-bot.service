@@ -1,0 +1,48 @@
+[Unit]
+Description=LinkedIn Birthday Auto Bot - Docker Compose Stack
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Chemin du projet (à adapter selon votre installation)
+WorkingDirectory=/home/pi/linkedin-birthday-auto
+
+# Variables d'environnement
+Environment="COMPOSE_FILE=docker-compose.pi4-standalone.yml"
+Environment="DOCKER_BUILDKIT=1"
+
+# Commandes de démarrage
+ExecStartPre=-/usr/bin/docker compose -f ${COMPOSE_FILE} down
+ExecStart=/usr/bin/docker compose -f ${COMPOSE_FILE} up -d
+ExecStartPost=/bin/sleep 10
+ExecStartPost=/usr/bin/docker compose -f ${COMPOSE_FILE} ps
+
+# Commandes d'arrêt
+ExecStop=/usr/bin/docker compose -f ${COMPOSE_FILE} down
+
+# Commandes de rechargement
+ExecReload=/usr/bin/docker compose -f ${COMPOSE_FILE} restart
+
+# Redémarrage automatique en cas d'échec
+Restart=on-failure
+RestartSec=30s
+
+# Timeout
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+# Limites de ressources (optionnel)
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=linkedin-bot
+
+[Install]
+WantedBy=multi-user.target

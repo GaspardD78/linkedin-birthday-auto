@@ -1,0 +1,21 @@
+[Unit]
+Description=LinkedIn Bot - Resource Monitor (Hourly)
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+After=linkedin-bot.service
+
+[Service]
+Type=oneshot
+
+# Chemin du projet
+WorkingDirectory=/home/pi/linkedin-birthday-auto
+
+# Script de monitoring
+ExecStart=/home/pi/linkedin-birthday-auto/scripts/monitor_pi4_health.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=linkedin-bot-monitor
+
+[Install]
+WantedBy=multi-user.target

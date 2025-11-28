@@ -1,0 +1,21 @@
+[Unit]
+Description=LinkedIn Bot - System Cleanup (Weekly)
+Documentation=https://github.com/GaspardD78/linkedin-birthday-auto
+After=linkedin-bot.service
+
+[Service]
+Type=oneshot
+
+# Chemin du projet
+WorkingDirectory=/home/pi/linkedin-birthday-auto
+
+# Script de nettoyage (avec sudo pour nettoyage complet)
+ExecStart=/home/pi/linkedin-birthday-auto/scripts/cleanup_pi4.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=linkedin-bot-cleanup
+
+[Install]
+WantedBy=multi-user.target
