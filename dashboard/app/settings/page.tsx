@@ -12,6 +12,7 @@ import { PageNavigation } from "@/components/layout/PageNavigation"
 export default function SettingsPage() {
   const [configYaml, setConfigYaml] = useState("")
   const [messages, setMessages] = useState("")
+  const [lateMessages, setLateMessages] = useState("")
   const [loading, setLoading] = useState(false)
 
   // Charger les configurations au montage
@@ -22,9 +23,10 @@ export default function SettingsPage() {
   const fetchConfig = async () => {
     setLoading(true)
     try {
-      const [yamlRes, msgRes] = await Promise.all([
+      const [yamlRes, msgRes, lateMsgRes] = await Promise.all([
         fetch('/api/settings/yaml'),
-        fetch('/api/settings/messages')
+        fetch('/api/settings/messages'),
+        fetch('/api/settings/late-messages')
       ])
 
       if (yamlRes.ok) {
@@ -35,6 +37,10 @@ export default function SettingsPage() {
         const data = await msgRes.json()
         setMessages(data.content)
       }
+      if (lateMsgRes.ok) {
+        const data = await lateMsgRes.json()
+        setLateMessages(data.content)
+      }
     } catch (error) {
       console.error("Erreur chargement config:", error)
     } finally {
@@ -42,7 +48,7 @@ export default function SettingsPage() {
     }
   }
 
-  const saveConfig = async (type: 'yaml' | 'messages', content: string) => {
+  const saveConfig = async (type: 'yaml' | 'messages' | 'late-messages', content: string) => {
     setLoading(true)
     try {
       const res = await fetch(`/api/settings/${type}`, {
@@ -111,21 +117,44 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* Éditeur Messages */}
-        <TabsContent value="messages">
+        <TabsContent value="messages" className="space-y-6">
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
-              <CardTitle className="text-slate-200">Modèles de Messages</CardTitle>
+              <CardTitle className="text-slate-200">Messages d'anniversaire du jour</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-slate-400">Un message par ligne. Utilisez {'{name}'} pour le prénom.</p>
               <Textarea
                 value={messages}
                 onChange={(e) => setMessages(e.target.value)}
-                className="font-mono text-sm h-[500px] bg-slate-950 border-slate-800 text-slate-300"
-                placeholder="Joyeux anniversaire {name} !..."
+                className="font-mono text-sm h-[400px] bg-slate-950 border-slate-800 text-slate-300"
+                placeholder="Joyeux anniversaire {name} !&#10;Happy birthday {name}! 🎂&#10;Bon anniversaire {name} !"
               />
               <Button onClick={() => saveConfig('messages', messages)} disabled={loading} className="bg-emerald-600 hover:bg-emerald-700">
-                <Save className="h-4 w-4 mr-2" /> Sauvegarder Messages
+                <Save className="h-4 w-4 mr-2" /> Sauvegarder Messages du jour
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900 border-slate-800 border-amber-600/50">
+            <CardHeader>
+              <CardTitle className="text-slate-200 flex items-center gap-2">
+                Messages d'anniversaire en retard
+                <span className="text-xs bg-amber-600/20 text-amber-400 px-2 py-1 rounded">En retard</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-slate-400">
+                Un message par ligne. Utilisez {'{name}'} pour le prénom et {'{days}'} pour le nombre de jours de retard.
+              </p>
+              <Textarea
+                value={lateMessages}
+                onChange={(e) => setLateMessages(e.target.value)}
+                className="font-mono text-sm h-[400px] bg-slate-950 border-slate-800 text-slate-300"
+                placeholder="Bon anniversaire en retard {name} ! J'espère que tu as passé une excellente journée il y a {days} jours !&#10;Happy belated birthday {name}! 🎂&#10;Joyeux anniversaire (avec {days} jours de retard) {name} !"
+              />
+              <Button onClick={() => saveConfig('late-messages', lateMessages)} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
+                <Save className="h-4 w-4 mr-2" /> Sauvegarder Messages en retard
               </Button>
             </CardContent>
           </Card>
