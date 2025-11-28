@@ -135,65 +135,27 @@ for file in "auth_state.json" "config/config.yaml"; do
 done
 
 # =========================================================================
-# 3. Patching Automatique (Dashboard)
+# 3. Vérification des fichiers dashboard
 # =========================================================================
 print_header "3. Vérification Code Source"
 
-mkdir -p dashboard/lib
+# Vérifier que les fichiers requis existent (sans les recréer)
+missing_files=()
+for file in "dashboard/lib/utils.ts" "dashboard/lib/puppet-master.ts" "dashboard/lib/api.ts"; do
+    if [ ! -f "$file" ]; then
+        missing_files+=("$file")
+    fi
+done
 
-# Patch utils.ts
-if [ ! -f "dashboard/lib/utils.ts" ]; then
-    print_info "Création dashboard/lib/utils.ts..."
-    cat > "dashboard/lib/utils.ts" << 'EOF'
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-EOF
+if [ ${#missing_files[@]} -gt 0 ]; then
+    print_error "Fichiers dashboard manquants:"
+    for file in "${missing_files[@]}"; do
+        echo "  - $file"
+    done
+    print_info "Ces fichiers doivent exister dans le dépôt. Vérifiez que vous avez la dernière version."
+    exit 1
 fi
 
-# Patch puppet-master.ts
-if [ ! -f "dashboard/lib/puppet-master.ts" ]; then
-    print_info "Création dashboard/lib/puppet-master.ts..."
-    cat > "dashboard/lib/puppet-master.ts" << 'EOF'
-export interface BotTask { id: string; type: string; payload: any; timestamp: number; }
-export interface BotStatus { state: 'IDLE' | 'WORKING' | 'COOLDOWN' | 'ERROR' | 'STARTING' | 'STOPPING'; currentTask?: string; lastActive: number; }
-class PuppetMaster {
-  private status: BotStatus = { state: 'IDLE', lastActive: Date.now() };
-  async getStatus(): Promise<BotStatus> { return this.status; }
-  async killSwitch(): Promise<void> { this.status.state = 'STOPPING'; setTimeout(() => { this.status.state = 'IDLE'; }, 2000); }
-  async startTask(task: BotTask): Promise<void> { this.status.state = 'WORKING'; this.status.currentTask = task.type; }
-}
-export const puppetMaster = new PuppetMaster();
-EOF
-fi
-
-# Patch api.ts
-if [ ! -f "dashboard/lib/api.ts" ]; then
-    print_info "Création dashboard/lib/api.ts..."
-    cat > "dashboard/lib/api.ts" << 'EOF'
-export interface SystemHealth { cpu_usage: number; memory_usage: { total: number; used: number; free: number; }; uptime: string; temperature: number; }
-export interface LogEntry { timestamp: string; level: string; message: string; }
-export interface BotStats { wishes_sent_total: number; wishes_sent_today: number; profiles_visited_total: number; profiles_visited_today: number; }
-
-export async function getSystemHealth(): Promise<SystemHealth> {
-  try {
-    const res = await fetch('/api/system/health', { cache: 'no-store' });
-    const data = await res.json();
-    const toBytes = (gb: number) => (gb || 0) * 1024 * 1024 * 1024;
-    return {
-      cpu_usage: 0,
-      memory_usage: { total: toBytes(data.totalMemory), used: toBytes(data.memoryUsage), free: 0 },
-      uptime: data.uptime || "0",
-      temperature: data.cpuTemp || 0
-    };
-  } catch (e) { return { cpu_usage: 0, memory_usage: { total: 1, used: 0, free: 0 }, uptime: "0", temperature: 0 }; }
-}
-export async function getLogs(): Promise<LogEntry[]> { return []; }
-export async function getBotStats(): Promise<BotStats> { return { wishes_sent_total: 0, wishes_sent_today: 0, profiles_visited_total: 0, profiles_visited_today: 0 }; }
-EOF
-fi
 print_success "Dépendances du dashboard vérifiées"
 
 # =========================================================================

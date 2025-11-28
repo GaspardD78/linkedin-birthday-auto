@@ -118,23 +118,7 @@ ______________________________________________________________________
 
 ### Nouveaux Documents
 
-#### 1. AUDIT_COMPLET_2024.md (12.5 KB)
-
-**Contenu:**
-
-- Résumé exécutif avec scores
-- Audit de la qualité du code (95/100)
-- Audit de la documentation (90/100)
-- Audit de la maintenabilité (92/100)
-- Audit de la scalabilité (88/100)
-- Audit de la sécurité (93/100)
-- Audit des tests (85/100)
-- Points d'excellence et innovations
-- Recommandations d'amélioration
-
-**Score global:** 92/100 ⭐⭐⭐⭐⭐ (Excellent)
-
-#### 2. AUTOMATION_DEPLOYMENT_PI4.md (20 KB)
+#### 1. AUTOMATION_DEPLOYMENT_PI4.md (20 KB)
 
 **Guide complet:**
 
@@ -147,7 +131,7 @@ ______________________________________________________________________
 - Troubleshooting complet
 - Désinstallation
 
-#### 3. deployment/README.md (6 KB)
+#### 2. deployment/README.md (6 KB)
 
 **Documentation technique:**
 
@@ -156,7 +140,7 @@ ______________________________________________________________________
 - Configuration des services
 - Dépannage spécifique
 
-#### 4. AMELIORATIONS_2024.md (ce fichier)
+#### 3. AMELIORATIONS_2024.md (ce fichier)
 
 **Récapitulatif:**
 
@@ -195,7 +179,6 @@ scripts/
 
 ```
 ./
-├── AUDIT_COMPLET_2024.md          # Rapport d'audit
 ├── AUTOMATION_DEPLOYMENT_PI4.md   # Guide automatisation
 ├── AMELIORATIONS_2024.md          # Ce fichier
 └── deployment/README.md           # Doc technique
