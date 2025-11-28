@@ -7,6 +7,7 @@ import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
 import { ActivityChartWidget } from "@/components/dashboard/ActivityChartWidget"
 import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 import { BotStatusWidget } from "@/components/dashboard/BotStatus"
+import { DeploymentWidget } from "@/components/dashboard/DeploymentWidget"
 
 export default function DashboardPage() {
   return (
@@ -60,6 +61,9 @@ export default function DashboardPage() {
 
           {/* System Health */}
           <SystemHealthWidget />
+
+          {/* Deployment & Maintenance */}
+          <DeploymentWidget />
 
           {/* Top 5 Contacts */}
           <TopContactsWidget />

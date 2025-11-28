@@ -26,12 +26,15 @@ Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts Linked
 - **Gestion d'erreurs** robuste avec retry et recovery automatique
 - **Anti-détection** : User-Agent rotation, viewport randomization, stealth mode
 
-### 📊 Monitoring
+### 📊 Monitoring & Déploiement
 
 - **Database SQLite** avec historique complet (messages, visites, erreurs)
 - **Statistiques en temps réel** via API `/metrics`
 - **Logs structurés** avec niveaux (DEBUG, INFO, WARNING, ERROR)
 - **Health checks** pour supervision
+- **🆕 Dashboard de déploiement** : surveillance des services, gestion des jobs, maintenance automatisée
+- **🆕 Script de déploiement** : automatisation complète (pull, rebuild, restart)
+- **🆕 Arrêt d'urgence** : bouton pour arrêter immédiatement tous les workers
 
 ### 🔧 Architecture v2.0
 
