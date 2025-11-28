@@ -20,7 +20,7 @@ services:
   # ========================================
   redis-bot:
     image: redis:7-alpine
-    container_name: linkedin-bot-redis
+    container_name: redis-bot
     volumes:
     - redis-bot-data:/data
     # Optimisations Redis pour Pi 4
@@ -68,7 +68,7 @@ services:
   # ========================================
   redis-dashboard:
     image: redis:7-alpine
-    container_name: linkedin-dashboard-redis
+    container_name: redis-dashboard
     # Cache only (no persistence) to avoid fork operations and memory overcommit warnings
     command: >
       redis-server
@@ -109,7 +109,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.multiarch
-    container_name: linkedin-bot-api
+    container_name: bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
     environment:
     - REDIS_HOST=redis-bot
@@ -148,7 +148,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.multiarch
-    container_name: linkedin-bot-worker
+    container_name: bot-worker
     command: python -m src.queue.worker
     depends_on:
       redis-bot:
@@ -204,7 +204,7 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile.prod.pi4
     restart: unless-stopped
-    container_name: linkedin-dashboard
+    container_name: dashboard
     ports:
     - ${DASHBOARD_PORT:-3000}:3000
     deploy:

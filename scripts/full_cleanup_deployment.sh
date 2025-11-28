@@ -208,7 +208,7 @@ fi
 print_header "ÉTAPE 2/8 : Nettoyage des Images Docker"
 
 # Suppression des images spécifiques au projet
-IMAGES_PATTERNS="linkedin-bot-worker linkedin-bot-api linkedin-dashboard"
+IMAGES_PATTERNS="bot-worker bot-api dashboard"
 TOTAL_IMAGES_REMOVED=0
 
 for pattern in $IMAGES_PATTERNS; do

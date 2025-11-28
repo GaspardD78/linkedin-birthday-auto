@@ -211,7 +211,7 @@ else
     print_warning "Vérification terminée avec $VERIFY_EXIT_CODE erreur(s)."
 
     # Vérifier si des conteneurs existent (signe d'installation précédente)
-    if docker ps -a --format '{{.Names}}' | grep -qE "linkedin-bot-worker|linkedin-bot-api|linkedin-dashboard|linkedin-bot-redis"; then
+    if docker ps -a --format '{{.Names}}' | grep -qE "bot-worker|bot-api|dashboard|redis-bot|redis-dashboard"; then
         print_warning "Des conteneurs du projet LinkedIn Bot ont été détectés."
         NEEDS_CLEANUP=true
     else
