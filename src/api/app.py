@@ -158,6 +158,14 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("shutting_down_api")
 
+    # Close any active Playwright browser sessions to prevent memory leaks
+    try:
+        from . import auth_routes
+        await auth_routes.close_browser_session()
+        logger.info("playwright_sessions_closed")
+    except Exception as e:
+        logger.warning(f"Error closing Playwright sessions during shutdown: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # APPLICATION FASTAPI
@@ -174,7 +182,12 @@ app = FastAPI(
 
 # Instrument the app with OpenTelemetry BEFORE adding routes/middleware
 # This must be done before the app starts serving requests
-instrument_app(app)
+# Only instrument if telemetry is explicitly enabled (saves CPU/RAM on Pi4)
+if os.getenv("ENABLE_TELEMETRY", "false").lower() in ("true", "1", "yes"):
+    instrument_app(app)
+    logger.info("opentelemetry_instrumentation_enabled")
+else:
+    logger.debug("opentelemetry_instrumentation_disabled")
 
 # Expose Prometheus metrics
 metrics_app = make_asgi_app()

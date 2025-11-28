@@ -17,14 +17,18 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def get_api_key_from_env() -> str:
-    """Retrieves API key from environment or generates a temporary one."""
+    """Retrieves API key from environment or generates a secure random one."""
     key = os.getenv("API_KEY")
     if not key:
-        logger.warning("no_api_key_configured", msg="Using temporary generated key")
-        # Generate a key if none provided (for safety, though in prod it should be set)
-        # In a real scenario, we might want to fail or default to a known dev key
-        # For this implementation, we'll warn.
-        return "default-dev-key"
+        # Generate a secure random key instead of using a predictable default
+        generated_key = secrets.token_urlsafe(32)
+        logger.warning(
+            "no_api_key_configured",
+            msg="API_KEY not set! Generated random key for this session.",
+            generated_key=generated_key,
+            recommendation="Set API_KEY environment variable in production",
+        )
+        return generated_key
     return key
 
 

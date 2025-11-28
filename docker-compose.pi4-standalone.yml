@@ -239,6 +239,8 @@ services:
     - ./late_messages.txt:/app/late_messages.txt
       # Base de données SQLite partagée avec le bot
     - shared-data:/app/data
+      # Monitoring de température du Raspberry Pi 4 (lecture seule)
+    - /sys/class/thermal:/sys/class/thermal:ro
     depends_on:
       redis-dashboard:
         condition: service_healthy
