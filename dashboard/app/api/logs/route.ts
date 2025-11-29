@@ -1,48 +1,52 @@
 import { NextResponse } from 'next/server';
-import * as fs from 'fs';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Cible uniquement le chemin Docker (volume garanti monté)
-    const LOG_FILE = '/app/logs/linkedin_bot.log';
+    const { searchParams } = new URL(request.url);
+    const service = searchParams.get('service') || 'worker';
+    const limit = searchParams.get('limit') || '50';
 
-    console.log('📋 [LOGS API] Lecture des logs depuis:', LOG_FILE);
+    const BOT_API_URL = process.env.BOT_API_URL || 'http://api:8000';
+    const API_KEY = process.env.BOT_API_KEY || '';
 
-    // Vérifier si le fichier existe
-    if (!fs.existsSync(LOG_FILE)) {
-      console.warn('⚠️  [LOGS API] Fichier de logs non trouvé');
+    console.log(`📋 [LOGS API] Proxying log request to Python API: ${BOT_API_URL}/logs?service=${service}&limit=${limit}`);
+
+    try {
+      const response = await fetch(`${BOT_API_URL}/logs?service=${service}&limit=${limit}`, {
+        headers: {
+          'X-API-Key': API_KEY,
+          'Accept': 'application/json'
+        },
+        cache: 'no-store'
+      });
+
+      if (!response.ok) {
+        console.error(`❌ [LOGS API] Python API error: ${response.status} ${response.statusText}`);
+        return NextResponse.json({
+            logs: [`[ERROR] Impossible de récupérer les logs depuis l'API Python (${response.status})`]
+        });
+      }
+
+      const data = await response.json();
+      return NextResponse.json(data);
+
+    } catch (fetchError) {
+      console.error('❌ [LOGS API] Connection error:', fetchError);
       return NextResponse.json({
-        logs: ["[SYSTEM] En attente de logs du worker..."]
+        logs: [
+          `[ERROR] Erreur de connexion à l'API Python: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`,
+          "[SYSTEM] Vérifiez que le container 'api' est en cours d'exécution."
+        ]
       });
     }
-
-    // Lire le fichier
-    const fileContent = fs.readFileSync(LOG_FILE, 'utf-8');
-
-    if (!fileContent || fileContent.trim() === '') {
-      console.warn('⚠️  [LOGS API] Fichier de logs vide');
-      return NextResponse.json({
-        logs: ["[SYSTEM] En attente de logs du worker..."]
-      });
-    }
-
-    // Diviser en lignes et prendre les 50 dernières lignes non vides
-    const lines = fileContent.split('\n').filter(line => line.trim() !== '');
-    const lastLines = lines.slice(-50);
-
-    console.log(`✅ [LOGS API] ${lastLines.length} lignes de logs retournées`);
-
-    return NextResponse.json({ logs: lastLines });
 
   } catch (error) {
-    console.error('❌ [LOGS API] Erreur lors de la lecture des logs:', error);
-
+    console.error('❌ [LOGS API] Internal error:', error);
     return NextResponse.json({
       logs: [
-        `[ERROR] Erreur: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        "[SYSTEM] Vérifiez que le volume ./logs est bien monté"
+        `[ERROR] Internal Dashboard Error: ${error instanceof Error ? error.message : String(error)}`
       ]
     });
   }
