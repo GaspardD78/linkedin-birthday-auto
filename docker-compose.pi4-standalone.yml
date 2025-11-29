@@ -124,7 +124,8 @@ services:
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    - ./auth_state.json:/app/auth_state.json:ro
+    # auth_state.json is optional - auth can be uploaded to /app/data/auth_state.json via dashboard
+    # Only mount if file exists on host
     - ./messages.txt:/app/messages.txt
     - ./late_messages.txt:/app/late_messages.txt
     - shared-data:/app/data
@@ -169,7 +170,7 @@ services:
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    - ./auth_state.json:/app/auth_state.json
+    # auth_state.json is optional - auth can be in environment variable or uploaded to /app/data/
     - ./messages.txt:/app/messages.txt
     - ./late_messages.txt:/app/late_messages.txt
     - shared-data:/app/data
