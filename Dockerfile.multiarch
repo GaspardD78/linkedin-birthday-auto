@@ -28,16 +28,22 @@ RUN playwright install chromium && \
     playwright install-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# Création utilisateur non-root pour la sécurité avec UID/GID fixe
-# UID/GID 1000 pour compatibilité avec le dashboard et permissions SQLite partagées
-RUN groupadd -g 1000 appgroup && \
-    useradd -u 1000 -g appgroup -m appuser && \
+# Utilisation de l'utilisateur avec UID/GID 1000 (compatible dashboard pour SQLite partagé)
+# Crée l'utilisateur appuser avec UID/GID 1000, ou utilise celui existant si présent
+RUN EXISTING_USER=$(getent passwd 1000 | cut -d: -f1) && \
+    if [ -n "$EXISTING_USER" ]; then \
+        usermod -l appuser $EXISTING_USER 2>/dev/null || true; \
+    else \
+        groupadd -g 1000 appgroup 2>/dev/null || true && \
+        useradd -u 1000 -g 1000 -m appuser; \
+    fi && \
     mkdir -p /app/logs /app/data /app/config && \
-    chown -R appuser:appgroup /app
+    chown -R 1000:1000 /app && \
+    echo "Using UID/GID 1000 for user appuser"
 
 # Copie du code source
 COPY . .
-RUN chown -R appuser:appgroup /app
+RUN chown -R 1000:1000 /app
 
 # Bascule sur l'utilisateur non-root
 USER appuser
