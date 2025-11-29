@@ -234,7 +234,8 @@ async def health_check():
     issues = []
 
     # Vérifier config
-    config_valid = config.validate() if hasattr(config, "validate") else True
+    # Si get_config() a réussi, la config est valide (Pydantic v2 valide à la création)
+    config_valid = True
 
     # Vérifier auth
     auth_available = False
