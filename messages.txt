@@ -1,2 +1,0 @@
-# Birthday messages (one per line)
-# Example: Joyeux anniversaire {first_name} ! 🎂

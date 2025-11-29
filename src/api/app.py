@@ -104,8 +104,9 @@ class ConfigUpdate(BaseModel):
 
 # --- Config ---
 CONFIG_PATH = Path("config/config.yaml")
-MESSAGES_PATH = Path("messages.txt")
-LATE_MESSAGES_PATH = Path("late_messages.txt")
+# Messages files are stored in /app/data/ (persistent volume shared with dashboard)
+MESSAGES_PATH = Path("/app/data/messages.txt")
+LATE_MESSAGES_PATH = Path("/app/data/late_messages.txt")
 
 
 class TriggerResponse(BaseModel):
