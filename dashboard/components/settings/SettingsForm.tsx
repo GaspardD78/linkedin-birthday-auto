@@ -128,8 +128,29 @@ export function SettingsForm() {
     }
   }
 
+  const validateConfig = (): string | null => {
+    if (!config) return null
+
+    // Validate visitor.limits.max_pages_without_new
+    if (config.visitor?.limits?.max_pages_without_new) {
+      const value = config.visitor.limits.max_pages_without_new
+      if (value < 1 || value > 50) {
+        return 'max_pages_without_new doit être entre 1 et 50'
+      }
+    }
+
+    return null
+  }
+
   const handleSave = async () => {
     if (!config) return
+
+    // Validate configuration before saving
+    const validationError = validateConfig()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -533,7 +554,19 @@ export function SettingsForm() {
                       onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_without_new'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
                     />
-                    <p className="text-xs text-slate-400">Arrêt après N pages sans nouveaux profils</p>
+                    <p className="text-xs text-slate-400">Arrêt après N pages sans nouveaux profils (entre 1 et 50)</p>
+                    {config.visitor.limits.max_pages_without_new > 50 && (
+                      <div className="flex items-start gap-2 p-2 bg-red-950/50 border border-red-800 rounded text-xs text-red-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>Valeur maximale autorisée : 50. La validation Pydantic échouera avec des valeurs supérieures.</span>
+                      </div>
+                    )}
+                    {config.visitor.limits.max_pages_without_new < 1 && (
+                      <div className="flex items-start gap-2 p-2 bg-red-950/50 border border-red-800 rounded text-xs text-red-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>Valeur minimale autorisée : 1. La validation Pydantic échouera avec des valeurs inférieures.</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -759,7 +792,7 @@ export function SettingsForm() {
         </Button>
         <Button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || validateConfig() !== null}
           className="bg-blue-600 hover:bg-blue-700"
         >
           {saving ? (
