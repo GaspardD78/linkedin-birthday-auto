@@ -128,8 +128,149 @@ export function SettingsForm() {
     }
   }
 
+  const validateConfig = (): string | null => {
+    if (!config) return null
+
+    // Validate messaging_limits.weekly_message_limit
+    if (config.messaging_limits?.weekly_message_limit) {
+      const value = config.messaging_limits.weekly_message_limit
+      if (value < 1 || value > 2000) {
+        return 'Limite hebdomadaire doit être entre 1 et 2000'
+      }
+    }
+
+    // Validate delays.min_delay_seconds
+    if (config.delays?.min_delay_seconds) {
+      const value = config.delays.min_delay_seconds
+      if (value < 30 || value > 3600) {
+        return 'Délai min entre messages doit être entre 30 et 3600 secondes'
+      }
+    }
+
+    // Validate delays.max_delay_seconds
+    if (config.delays?.max_delay_seconds) {
+      const value = config.delays.max_delay_seconds
+      if (value < 60 || value > 7200) {
+        return 'Délai max entre messages doit être entre 60 et 7200 secondes'
+      }
+    }
+
+    // Validate birthday_filter.max_days_late
+    if (config.birthday_filter?.max_days_late) {
+      const value = config.birthday_filter.max_days_late
+      if (value < 1 || value > 365) {
+        return 'Jours de retard max doit être entre 1 et 365'
+      }
+    }
+
+    // Validate messages.avoid_repetition_years
+    if (config.messages?.avoid_repetition_years !== undefined) {
+      const value = config.messages.avoid_repetition_years
+      if (value < 0 || value > 20) {
+        return 'Années anti-répétition doit être entre 0 et 20'
+      }
+    }
+
+    // Validate visitor.limits.profiles_per_run
+    if (config.visitor?.limits?.profiles_per_run) {
+      const value = config.visitor.limits.profiles_per_run
+      if (value < 1 || value > 500) {
+        return 'Profils par exécution doit être entre 1 et 500'
+      }
+    }
+
+    // Validate visitor.limits.max_pages_to_scrape
+    if (config.visitor?.limits?.max_pages_to_scrape) {
+      const value = config.visitor.limits.max_pages_to_scrape
+      if (value < 1 || value > 2000) {
+        return 'Pages max à scraper doit être entre 1 et 2000'
+      }
+    }
+
+    // Validate visitor.limits.max_pages_without_new
+    if (config.visitor?.limits?.max_pages_without_new) {
+      const value = config.visitor.limits.max_pages_without_new
+      if (value < 1 || value > 50) {
+        return 'Pages sans nouveaux profils doit être entre 1 et 50'
+      }
+    }
+
+    // Validate visitor.delays.min_seconds
+    if (config.visitor?.delays?.min_seconds) {
+      const value = config.visitor.delays.min_seconds
+      if (value < 1 || value > 300) {
+        return 'Délai min général doit être entre 1 et 300 secondes'
+      }
+    }
+
+    // Validate visitor.delays.max_seconds
+    if (config.visitor?.delays?.max_seconds) {
+      const value = config.visitor.delays.max_seconds
+      if (value < 5 || value > 600) {
+        return 'Délai max général doit être entre 5 et 600 secondes'
+      }
+    }
+
+    // Validate visitor.delays.profile_visit_min
+    if (config.visitor?.delays?.profile_visit_min) {
+      const value = config.visitor.delays.profile_visit_min
+      if (value < 5 || value > 300) {
+        return 'Temps visite profil min doit être entre 5 et 300 secondes'
+      }
+    }
+
+    // Validate visitor.delays.profile_visit_max
+    if (config.visitor?.delays?.profile_visit_max) {
+      const value = config.visitor.delays.profile_visit_max
+      if (value < 10 || value > 600) {
+        return 'Temps visite profil max doit être entre 10 et 600 secondes'
+      }
+    }
+
+    // Validate visitor.delays.page_navigation_min
+    if (config.visitor?.delays?.page_navigation_min) {
+      const value = config.visitor.delays.page_navigation_min
+      if (value < 1 || value > 60) {
+        return 'Navigation page min doit être entre 1 et 60 secondes'
+      }
+    }
+
+    // Validate visitor.delays.page_navigation_max
+    if (config.visitor?.delays?.page_navigation_max) {
+      const value = config.visitor.delays.page_navigation_max
+      if (value < 2 || value > 120) {
+        return 'Navigation page max doit être entre 2 et 120 secondes'
+      }
+    }
+
+    // Validate visitor.retry.max_attempts
+    if (config.visitor?.retry?.max_attempts) {
+      const value = config.visitor.retry.max_attempts
+      if (value < 1 || value > 20) {
+        return 'Tentatives max doit être entre 1 et 20'
+      }
+    }
+
+    // Validate visitor.retry.backoff_factor
+    if (config.visitor?.retry?.backoff_factor) {
+      const value = config.visitor.retry.backoff_factor
+      if (value < 1 || value > 20) {
+        return 'Facteur d\'augmentation doit être entre 1 et 20'
+      }
+    }
+
+    return null
+  }
+
   const handleSave = async () => {
     if (!config) return
+
+    // Validate configuration before saving
+    const validationError = validateConfig()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -293,11 +434,17 @@ export function SettingsForm() {
                 id="weekly_limit"
                 type="number"
                 min="1"
-                max="500"
+                max="2000"
                 value={config.messaging_limits.weekly_message_limit}
                 onChange={(e) => updateConfig(['messaging_limits', 'weekly_message_limit'], parseInt(e.target.value))}
                 className="bg-slate-950 border-slate-800"
               />
+              {config.messaging_limits.weekly_message_limit > 100 && (
+                <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>⚠️ LinkedIn recommande {"<"} 100 messages/semaine pour éviter les restrictions</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -369,11 +516,17 @@ export function SettingsForm() {
                 id="min_delay"
                 type="number"
                 min="30"
-                max="600"
+                max="3600"
                 value={config.delays.min_delay_seconds}
                 onChange={(e) => updateConfig(['delays', 'min_delay_seconds'], parseInt(e.target.value))}
                 className="bg-slate-950 border-slate-800"
               />
+              {config.delays.min_delay_seconds < 120 && (
+                <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>⚠️ Recommandé : {"≥"} 120 secondes (2 min) pour simuler un comportement humain</span>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -382,7 +535,7 @@ export function SettingsForm() {
                 id="max_delay"
                 type="number"
                 min="60"
-                max="1200"
+                max="7200"
                 value={config.delays.max_delay_seconds}
                 onChange={(e) => updateConfig(['delays', 'max_delay_seconds'], parseInt(e.target.value))}
                 className="bg-slate-950 border-slate-800"
@@ -502,11 +655,17 @@ export function SettingsForm() {
                       id="profiles_per_run"
                       type="number"
                       min="1"
-                      max="100"
+                      max="500"
                       value={config.visitor.limits.profiles_per_run}
                       onChange={(e) => updateConfig(['visitor', 'limits', 'profiles_per_run'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
                     />
+                    {config.visitor.limits.profiles_per_run > 50 && (
+                      <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>⚠️ Recommandé : {"≤"} 50 profils/jour pour éviter détection LinkedIn</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -515,7 +674,7 @@ export function SettingsForm() {
                       id="max_pages_scrape"
                       type="number"
                       min="1"
-                      max="500"
+                      max="2000"
                       value={config.visitor.limits.max_pages_to_scrape}
                       onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_to_scrape'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -528,12 +687,24 @@ export function SettingsForm() {
                       id="max_pages_without_new"
                       type="number"
                       min="1"
-                      max="10"
+                      max="50"
                       value={config.visitor.limits.max_pages_without_new}
                       onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_without_new'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
                     />
-                    <p className="text-xs text-slate-400">Arrêt après N pages sans nouveaux profils</p>
+                    <p className="text-xs text-slate-400">Arrêt après N pages sans nouveaux profils (entre 1 et 50)</p>
+                    {config.visitor.limits.max_pages_without_new > 50 && (
+                      <div className="flex items-start gap-2 p-2 bg-red-950/50 border border-red-800 rounded text-xs text-red-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>Valeur maximale autorisée : 50. La validation Pydantic échouera avec des valeurs supérieures.</span>
+                      </div>
+                    )}
+                    {config.visitor.limits.max_pages_without_new < 1 && (
+                      <div className="flex items-start gap-2 p-2 bg-red-950/50 border border-red-800 rounded text-xs text-red-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>Valeur minimale autorisée : 1. La validation Pydantic échouera avec des valeurs inférieures.</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -548,10 +719,17 @@ export function SettingsForm() {
                       id="visit_min_delay"
                       type="number"
                       min="1"
+                      max="300"
                       value={config.visitor.delays.min_seconds}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'min_seconds'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
                     />
+                    {config.visitor.delays.min_seconds < 5 && (
+                      <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>⚠️ Recommandé : {"≥"} 5 secondes entre actions pour paraître humain</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -560,6 +738,7 @@ export function SettingsForm() {
                       id="visit_max_delay"
                       type="number"
                       min="5"
+                      max="600"
                       value={config.visitor.delays.max_seconds}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'max_seconds'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -572,10 +751,17 @@ export function SettingsForm() {
                       id="profile_visit_min"
                       type="number"
                       min="5"
+                      max="300"
                       value={config.visitor.delays.profile_visit_min}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'profile_visit_min'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
                     />
+                    {config.visitor.delays.profile_visit_min < 10 && (
+                      <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>⚠️ Recommandé : {"≥"} 10 secondes pour simuler une vraie lecture de profil</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -584,6 +770,7 @@ export function SettingsForm() {
                       id="profile_visit_max"
                       type="number"
                       min="10"
+                      max="600"
                       value={config.visitor.delays.profile_visit_max}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'profile_visit_max'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -596,6 +783,7 @@ export function SettingsForm() {
                       id="page_nav_min"
                       type="number"
                       min="1"
+                      max="60"
                       value={config.visitor.delays.page_navigation_min}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'page_navigation_min'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -608,6 +796,7 @@ export function SettingsForm() {
                       id="page_nav_max"
                       type="number"
                       min="2"
+                      max="120"
                       value={config.visitor.delays.page_navigation_max}
                       onChange={(e) => updateConfig(['visitor', 'delays', 'page_navigation_max'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -626,7 +815,7 @@ export function SettingsForm() {
                       id="retry_max_attempts"
                       type="number"
                       min="1"
-                      max="10"
+                      max="20"
                       value={config.visitor.retry.max_attempts}
                       onChange={(e) => updateConfig(['visitor', 'retry', 'max_attempts'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -640,7 +829,7 @@ export function SettingsForm() {
                       id="retry_backoff"
                       type="number"
                       min="1"
-                      max="10"
+                      max="20"
                       value={config.visitor.retry.backoff_factor}
                       onChange={(e) => updateConfig(['visitor', 'retry', 'backoff_factor'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
@@ -689,7 +878,7 @@ export function SettingsForm() {
               id="avoid_repetition"
               type="number"
               min="0"
-              max="10"
+              max="20"
               value={config.messages.avoid_repetition_years}
               onChange={(e) => updateConfig(['messages', 'avoid_repetition_years'], parseInt(e.target.value))}
               className="bg-slate-950 border-slate-800"
@@ -759,7 +948,7 @@ export function SettingsForm() {
         </Button>
         <Button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || validateConfig() !== null}
           className="bg-blue-600 hover:bg-blue-700"
         >
           {saving ? (

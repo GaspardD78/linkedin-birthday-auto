@@ -184,3 +184,49 @@ monitoring:
 
   # Port pour Prometheus
   prometheus_port: 9090
+
+# ═══════════════════════════════════════════════════════════════════
+# VISITOR - Visite automatique de profils LinkedIn
+# ═══════════════════════════════════════════════════════════════════
+visitor:
+  # Activer la fonctionnalité de visite de profils
+  enabled: true
+
+  # Mots-clés pour la recherche de profils
+  keywords: []
+
+  # Localisation pour la recherche
+  location: France
+
+  # Limites
+  limits:
+    # Nombre de profils à visiter par exécution
+    profiles_per_run: 15
+
+    # Nombre maximum de pages de résultats à scraper
+    max_pages_to_scrape: 100
+
+    # Nombre max de pages sans nouveaux profils avant arrêt (1-50)
+    max_pages_without_new: 10
+
+  # Délais entre actions
+  delays:
+    # Délai général entre actions (secondes)
+    min_seconds: 8
+    max_seconds: 20
+
+    # Temps de visite d'un profil (secondes)
+    profile_visit_min: 15
+    profile_visit_max: 35
+
+    # Délai entre navigations de page (secondes)
+    page_navigation_min: 3
+    page_navigation_max: 6
+
+  # Configuration des tentatives de retry
+  retry:
+    # Nombre maximum de tentatives par profil
+    max_attempts: 3
+
+    # Facteur d'augmentation du délai entre tentatives
+    backoff_factor: 2
