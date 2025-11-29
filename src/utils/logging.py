@@ -34,6 +34,11 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
             base, ext = os.path.splitext(log_file)
             log_file = f"{base}_{service_name}{ext}"
 
+        # Créer le répertoire parent si nécessaire
+        from pathlib import Path
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
         handlers.append(logging.FileHandler(log_file))
 
     logging.basicConfig(format="%(message)s", level=level, handlers=handlers)
