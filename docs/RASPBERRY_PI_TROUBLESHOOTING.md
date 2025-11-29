@@ -376,39 +376,24 @@ WARNING Memory overcommit must be enabled! Without it, a background save or
 replication may fail under low memory condition.
 ```
 
-**This warning has been addressed in the Docker Compose configuration** by:
+**This warning has been fixed in the Docker Compose configuration** by enabling sysctls for both Redis containers:
 
-- Using AOF (Append-Only File) instead of RDB snapshots for bot Redis
-- Disabling persistence for dashboard Redis (cache only)
-- Configuring `--no-appendfsync-on-rewrite yes` to avoid fork during AOF rewrite
-
-**This approach works within Docker constraints and requires no host configuration.**
-
-#### Optional: Host-level optimization (advanced)
-
-For optimal Redis performance, you can enable memory overcommit at the host level:
-
-```bash
-# Enable memory overcommit (temporary)
-sudo sysctl vm.overcommit_memory=1
-
-# Make permanent (survives reboots)
-echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
-
-# Verify the setting
-sysctl vm.overcommit_memory
-
-# Restart Redis containers to benefit from the change
-docker-compose -f docker-compose.pi4-standalone.yml restart redis-bot redis-dashboard
+```yaml
+sysctls:
+  - net.core.somaxconn=511
+  - vm.overcommit_memory=1
 ```
 
-**Benefits of host-level configuration:**
+This configuration:
+- Automatically applies memory overcommit settings to Redis containers
+- Eliminates the warning without requiring host-level configuration
+- Works seamlessly with Docker's security model
 
-- Allows Redis to use RDB snapshots (faster startup recovery)
-- Slightly better performance during heavy write loads
-- Eliminates the warning completely
+**No additional configuration required!** The warning should no longer appear after restarting containers:
 
-**Note:** The Docker configuration already works well without this optimization.
+```bash
+docker-compose -f docker-compose.pi4-standalone.yml restart redis-bot redis-dashboard
+```
 
 ### Issue: System running out of memory
 
@@ -933,21 +918,16 @@ ______________________________________________________________________
 
 ### These warnings are NORMAL and can be ignored:
 
-#### 1. Redis Memory Warning
+#### 1. Redis Kernel Memory Limit Warning
 
 ```
 WARNING: kernel does not support memory soft limit capabilities or the cgroup is not mounted
 ```
 
 **Explanation:** Raspberry Pi kernel doesn't support all cgroup memory features. This doesn't affect
-functionality.
+functionality and can be safely ignored.
 
-**To silence (optional):**
-
-```bash
-sudo sysctl vm.overcommit_memory=1
-echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
-```
+**Note:** The memory overcommit warning has been fixed in the Docker Compose configuration and should no longer appear.
 
 #### 2. Docker Compose Warning
 
