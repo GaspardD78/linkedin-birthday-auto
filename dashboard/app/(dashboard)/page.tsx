@@ -9,65 +9,67 @@ import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 import { BotStatusWidget } from "@/components/dashboard/BotStatus"
 import { DeploymentWidget } from "@/components/dashboard/DeploymentWidget"
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader"
+import { PilotageOverview } from "@/components/dashboard/PilotageOverview"
 
 export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 lg:p-6">
       <div className="max-w-[1920px] mx-auto space-y-6">
-        {/* Enhanced Header */}
-        <DashboardHeader />
 
-      {/* Statistics Cards - 4 columns like V1 */}
-      <EnhancedStatsWidget />
+        {/* Hero Section - Vue d'ensemble Pilotage */}
+        <PilotageOverview />
 
-      {/* Weekly Limit Progress Bar */}
-      <WeeklyLimitWidget />
+        {/* Main Control & Monitoring Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-      {/* Main Grid Layout - 2 columns like V1 (8/12 + 4/12) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Zone de Contrôle Principale (8/12) */}
+          <div className="lg:col-span-8 space-y-6">
 
-        {/* Left Column (8/12) - Activity Chart + Logs */}
-        <div className="lg:col-span-8 space-y-5">
+            {/* Contrôle des Scripts - Mise en avant */}
+            <BotControlsWidget />
 
-          {/* Activity Chart */}
-          <ActivityChartWidget />
+            {/* Statistics Cards */}
+            <EnhancedStatsWidget />
 
-          {/* Logs Console */}
-          <div className="min-h-[400px]">
-            <LogsWidget />
+            {/* Weekly Limit Progress Bar */}
+            <WeeklyLimitWidget />
+
+            {/* Activity Chart */}
+            <ActivityChartWidget />
+
+            {/* Logs Console */}
+            <div className="min-h-[400px]">
+              <LogsWidget />
+            </div>
+
+          </div>
+
+          {/* Panneau de Monitoring (4/12) */}
+          <div className="lg:col-span-4 space-y-6">
+
+            {/* État des Workers - Détails */}
+            <BotStatusWidget />
+
+            {/* Santé Système - Détails */}
+            <SystemHealthWidget />
+
+            {/* Déploiement & Maintenance */}
+            <DeploymentWidget />
+
+            {/* Top 5 Contacts */}
+            <TopContactsWidget />
+
+            {/* Recent Errors */}
+            <RecentErrorsWidget />
+
           </div>
 
         </div>
 
-        {/* Right Column (4/12) - Controls + Weekly Limit + Contacts + Errors */}
-        <div className="lg:col-span-4 space-y-5">
-
-          {/* Bot Controls */}
-          <BotControlsWidget />
-
-          {/* Bot Status */}
-          <BotStatusWidget />
-
-          {/* System Health */}
-          <SystemHealthWidget />
-
-          {/* Deployment & Maintenance */}
-          <DeploymentWidget />
-
-          {/* Top 5 Contacts */}
-          <TopContactsWidget />
-
-          {/* Recent Errors */}
-          <RecentErrorsWidget />
-
-        </div>
-
-      </div>
-
         {/* Footer Info */}
         <div className="text-center text-xs text-slate-700 pt-6 border-t border-slate-800/50">
           <p className="flex items-center justify-center gap-2">
-            <span>LinkedIn Bot Dashboard v2</span>
+            <span>LinkedIn Bot Dashboard v2 - Pilotage</span>
             <span className="text-slate-800">•</span>
             <span>Powered by Next.js & Python</span>
             <span className="text-emerald-500">🚀</span>
