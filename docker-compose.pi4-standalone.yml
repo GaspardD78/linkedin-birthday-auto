@@ -122,6 +122,8 @@ services:
     - ENABLE_TELEMETRY=true
       # Nom du service pour séparer les logs
     - SERVICE_NAME=api
+      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
+    - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
@@ -166,6 +168,8 @@ services:
     - ENABLE_TELEMETRY=true
       # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
+      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
+    - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
