@@ -139,6 +139,18 @@ detect_platform() {
     fi
 }
 
+# Fonction pour vérifier les permissions Docker
+has_docker_access() {
+    docker ps > /dev/null 2>&1
+    return $?
+}
+
+# Fonction pour vérifier si l'utilisateur est dans le groupe docker
+is_in_docker_group() {
+    id -nG "$USER" | grep -qw "docker"
+    return $?
+}
+
 # =========================================================================
 # MAIN - Orchestration de l'installation
 # =========================================================================
@@ -305,6 +317,8 @@ print_header "ÉTAPE 1 : Vérification des prérequis"
 
 # Docker
 print_step "Vérification de Docker..."
+NEED_SG_DOCKER=false
+
 if ! command -v docker &> /dev/null; then
     print_warning "Docker n'est pas installé"
 
@@ -322,6 +336,7 @@ if ! command -v docker &> /dev/null; then
 
         print_success "Docker installé"
         print_warning "⚠️  Vous devrez vous déconnecter et reconnecter pour utiliser Docker sans sudo"
+        NEED_SG_DOCKER=true
     else
         print_error "Docker est requis pour continuer"
         print_info "Installez Docker et relancez ce script"
@@ -329,6 +344,30 @@ if ! command -v docker &> /dev/null; then
     fi
 else
     print_success "Docker est installé"
+
+    # Vérification des permissions
+    if ! has_docker_access; then
+        print_warning "L'utilisateur actuel n'a pas les droits pour exécuter des commandes Docker"
+
+        if is_in_docker_group; then
+            print_info "✅ L'utilisateur est DÉJÀ dans le groupe 'docker' mais la session actuelle ne le reflète pas."
+            print_info "Le script tentera d'utiliser 'sg docker' pour le déploiement."
+            NEED_SG_DOCKER=true
+        else
+            if ask_yes_no "Voulez-vous ajouter l'utilisateur $USER au groupe docker ?" "y"; then
+                sudo usermod -aG docker $USER
+                print_success "Utilisateur ajouté au groupe docker"
+                print_info "Le script tentera d'utiliser 'sg docker' pour le déploiement sans redémarrage."
+                NEED_SG_DOCKER=true
+            else
+                print_error "Les permissions Docker sont requises."
+                print_info "Exécutez manuellement: sudo usermod -aG docker $USER (puis redémarrez)"
+                exit 1
+            fi
+        fi
+    else
+        print_success "Permissions Docker OK"
+    fi
 fi
 
 # Docker Compose V2
@@ -520,8 +559,20 @@ if ask_yes_no "Voulez-vous continuer avec le déploiement ?" "y"; then
         print_info "Lancement du déploiement via easy_deploy.sh..."
         echo ""
 
-        ./scripts/easy_deploy.sh
-        DEPLOY_EXIT_CODE=$?
+        if [ "$NEED_SG_DOCKER" = true ]; then
+            print_info "⚠️  Exécution du déploiement avec le groupe 'docker' actif (via sg)..."
+            if command -v sg >/dev/null 2>&1; then
+                sg docker -c "./scripts/easy_deploy.sh"
+                DEPLOY_EXIT_CODE=$?
+            else
+                print_warning "Commande 'sg' introuvable. Tentative d'exécution standard..."
+                ./scripts/easy_deploy.sh
+                DEPLOY_EXIT_CODE=$?
+            fi
+        else
+            ./scripts/easy_deploy.sh
+            DEPLOY_EXIT_CODE=$?
+        fi
 
         if [ $DEPLOY_EXIT_CODE -eq 0 ]; then
             print_success "Déploiement réussi !"
