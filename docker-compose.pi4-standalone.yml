@@ -34,12 +34,9 @@ services:
       --maxmemory-policy allkeys-lru
       --loglevel warning
     # Fix memory overcommit warning
-    # NOTE: vm.overcommit_memory must be set on the Raspberry Pi host with:
-    #   sudo sysctl vm.overcommit_memory=1
-    #   echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
-    # sysctls:
-    #   - net.core.somaxconn=511
-    #   - vm.overcommit_memory=1
+    sysctls:
+      - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     deploy:
       resources:
         limits:
@@ -77,6 +74,10 @@ services:
       --save ""
       --appendonly no
       --loglevel warning
+    # Fix memory overcommit warning
+    sysctls:
+      - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     restart: unless-stopped
     volumes:
     - redis-dashboard-data:/data
