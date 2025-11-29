@@ -257,9 +257,11 @@ async def health_check():
         issues.append("database_unavailable")
 
     # Déterminer le statut global
-    if not config_valid or not auth_available:
+    # Note: auth_available n'est pas requis pour que l'API soit healthy
+    # L'auth peut être uploadé plus tard via le dashboard
+    if not config_valid:
         status = "unhealthy"
-    elif issues:
+    elif not auth_available or issues:
         status = "degraded"
 
     return HealthResponse(

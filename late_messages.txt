@@ -1,0 +1,2 @@
+# Late birthday messages (one per line)
+# Example: Joyeux anniversaire en retard {first_name} ! 🎉
