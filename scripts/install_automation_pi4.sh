@@ -85,12 +85,13 @@ else
 fi
 
 # Permissions Docker
+DOCKER_GROUP_ADDED=false
 if ! groups "$USER" | grep -q docker; then
     print_warning "L'utilisateur $USER n'est pas dans le groupe docker"
     print_info "Ajout au groupe docker..."
     usermod -aG docker "$USER"
     print_success "Utilisateur ajouté au groupe docker"
-    print_warning "⚠️  Vous devrez vous déconnecter et reconnecter pour que les changements de groupe prennent effet."
+    DOCKER_GROUP_ADDED=true
 else
     print_success "L'utilisateur $USER est déjà dans le groupe docker"
 fi
@@ -410,5 +411,25 @@ ${YELLOW}   sudo systemctl disable linkedin-bot${NC}
 EOF
 
 print_success "Installation complète réussie! 🎉"
+
+# Vérification finale : reboot requis si groupe docker ajouté
+if [ "$DOCKER_GROUP_ADDED" = true ]; then
+    echo ""
+    print_warning "⚠️  REBOOT REQUIS ⚠️"
+    print_warning "L'utilisateur $USER a été ajouté au groupe docker."
+    print_warning "Un redémarrage est OBLIGATOIRE pour que les changements prennent effet."
+    echo ""
+    read -p "Redémarrer maintenant ? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Redémarrage en cours..."
+        sleep 2
+        reboot
+    else
+        print_error "ATTENTION: Vous DEVEZ redémarrer manuellement avant de déployer le bot!"
+        print_info "Commande: sudo reboot"
+        exit 2  # Exit code 2 pour indiquer qu'un reboot est requis
+    fi
+fi
 
 exit 0

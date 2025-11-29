@@ -106,9 +106,7 @@ services:
   # API (Pont entre Dashboard et Worker)
   # ========================================
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile.multiarch
+    image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
     environment:
@@ -151,9 +149,7 @@ services:
   # BOT WORKER (RQ Worker avec Playwright)
   # ========================================
   bot-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.multiarch
+    image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-worker
     command: python -m src.queue.worker
     depends_on:
@@ -206,9 +202,7 @@ services:
   # DASHBOARD (Next.js avec SQLite)
   # ========================================
   dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile.prod.pi4
+    image: ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
     restart: unless-stopped
     container_name: dashboard
     ports:

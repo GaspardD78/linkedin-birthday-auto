@@ -1,8 +1,15 @@
 #!/bin/bash
 
 # =========================================================================
-# Script de déploiement OPTIMISÉ pour Raspberry Pi 4 (4GB)
+# Script de déploiement RAPIDE pour Raspberry Pi 4 (4GB)
 # Architecture: Standalone (Bot + Dashboard + Redis + SQLite)
+# Mode: Pull images pré-construites depuis GitHub Container Registry
+#
+# Avantages vs build local:
+# - Déploiement en ~2-3 minutes (vs 25-30 minutes)
+# - Zéro usure de la carte SD
+# - Zéro consommation RAM pendant le déploiement
+# - Images buildées par GitHub Actions avec optimisations
 # =========================================================================
 
 set -e  # Arrêt immédiat en cas d'erreur
@@ -11,9 +18,7 @@ set -e  # Arrêt immédiat en cas d'erreur
 COMPOSE_FILE="docker-compose.pi4-standalone.yml"
 ENV_FILE=".env"
 ENV_TEMPLATE=".env.pi4.example"
-MIN_RAM_MB=3500
-MIN_SWAP_MB=2000
-MIN_DISK_GB=5
+MIN_DISK_GB=3
 
 # --- Couleurs ---
 RED='\033[0;31m'
@@ -31,7 +36,7 @@ print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "ℹ️  $1"; }
 
 # =========================================================================
-# 1. Vérifications Système Approfondies
+# 1. Vérifications Système
 # =========================================================================
 print_header "1. Vérifications Système"
 
@@ -61,38 +66,11 @@ fi
 DISK_AVAIL=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
 if [ "$DISK_AVAIL" -lt "$MIN_DISK_GB" ]; then
     print_warning "Espace disque faible: ${DISK_AVAIL}GB (Recommandé: ${MIN_DISK_GB}GB+)"
-    print_warning "Le build Docker risque d'échouer."
     read -p "Continuer quand même ? [y/N] " -n 1 -r
     echo
     [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 else
     print_success "Espace disque OK (${DISK_AVAIL}GB)"
-fi
-
-# Vérification & Gestion du SWAP (CRITIQUE pour Next.js build)
-SWAP_TOTAL=$(free -m | awk '/Swap:/ {print $2}')
-print_info "SWAP Actif: ${SWAP_TOTAL}MB"
-
-if [ "$SWAP_TOTAL" -lt "$MIN_SWAP_MB" ]; then
-    print_warning "SWAP Actif insuffisant (${SWAP_TOTAL}MB) pour compiler le Dashboard."
-
-    SWAP_CONFIG_SIZE=$(grep -oP '^CONF_SWAPSIZE=\K\d+' /etc/dphys-swapfile || echo 0)
-
-    if [ "$SWAP_CONFIG_SIZE" -lt "$MIN_SWAP_MB" ]; then
-        print_error "Le SWAP est mal configuré (/etc/dphys-swapfile)."
-        print_info "Veuillez le reconfigurer et l'activer avec les commandes suivantes :"
-        echo "  sudo dphys-swapfile swapoff"
-        echo "  sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile"
-        echo "  sudo dphys-swapfile setup"
-        echo "  sudo dphys-swapfile swapon"
-        exit 1
-    else
-        print_error "Le SWAP est configuré mais pas actif."
-        print_info "Veuillez l'activer avec la commande : sudo dphys-swapfile swapon"
-        exit 1
-    fi
-else
-    print_success "Swap suffisant pour la compilation."
 fi
 
 # =========================================================================
@@ -201,28 +179,17 @@ for file in "auth_state.json" "config/config.yaml"; do
 done
 
 # =========================================================================
-# 3. Vérification des fichiers dashboard
+# 3. Authentification GitHub Container Registry (optionnel)
 # =========================================================================
-print_header "3. Vérification Code Source"
+print_header "3. Configuration Registry"
 
-# Vérifier que les fichiers requis existent (sans les recréer)
-missing_files=()
-for file in "dashboard/lib/utils.ts" "dashboard/lib/api.ts"; do
-    if [ ! -f "$file" ]; then
-        missing_files+=("$file")
-    fi
-done
-
-if [ ${#missing_files[@]} -gt 0 ]; then
-    print_error "Fichiers dashboard manquants:"
-    for file in "${missing_files[@]}"; do
-        echo "  - $file"
-    done
-    print_info "Ces fichiers doivent exister dans le dépôt. Vérifiez que vous avez la dernière version."
-    exit 1
-fi
-
-print_success "Dépendances du dashboard vérifiées"
+print_info "Les images seront téléchargées depuis GitHub Container Registry (GHCR)"
+print_info "Pour les repos publics, aucune authentification n'est requise."
+print_info "Si vous rencontrez des erreurs 403/401, créez un token GitHub:"
+print_info "  1. https://github.com/settings/tokens/new"
+print_info "  2. Cochez 'read:packages'"
+print_info "  3. docker login ghcr.io -u VOTRE_USERNAME"
+echo ""
 
 # =========================================================================
 # 4. Nettoyage Préalable
@@ -233,37 +200,23 @@ print_info "Arrêt des conteneurs existants..."
 docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 
 # =========================================================================
-# 5. Construction des Images (Build)
+# 5. Pull des Images Pré-construites
 # =========================================================================
-print_header "5. Construction (Patience... ~20-30 min sur carte SD)"
+print_header "5. Téléchargement Images (2-3 minutes)"
 
 export DOCKER_BUILDKIT=1
 
-print_info "[1/3] Pull des images de base..."
-docker compose -f "$COMPOSE_FILE" pull
-
-print_info "[2/3] Build Bot Worker..."
-if docker compose -f "$COMPOSE_FILE" build bot-worker; then
-    print_success "Bot Worker construit."
+print_info "Pull des images depuis GitHub Container Registry..."
+if docker compose -f "$COMPOSE_FILE" pull; then
+    print_success "Images téléchargées avec succès"
 else
-    print_error "Échec build Bot Worker."
+    print_error "Échec du téléchargement des images"
+    print_warning "Vérifiez:"
+    print_warning "  - Connexion internet active"
+    print_warning "  - Images publiées sur GHCR (vérifiez GitHub Actions)"
+    print_warning "  - Permissions du repo (public ou token configuré)"
     exit 1
 fi
-
-sleep 5
-
-print_info "[3/3] Build Dashboard (C'est le plus long - jusqu'à 25 min)..."
-export NPM_CONFIG_TIMEOUT=1800000  # 30 minutes (nécessaire pour carte SD lente)
-if docker compose -f "$COMPOSE_FILE" build dashboard; then
-    print_success "Dashboard construit."
-else
-    print_error "Échec build Dashboard."
-    print_warning "Vérifiez le SWAP si cela a échoué."
-    exit 1
-fi
-
-print_info "Nettoyage des images intermédiaires..."
-docker image prune -f > /dev/null 2>&1 || true
 
 # =========================================================================
 # 6. Démarrage
@@ -315,5 +268,9 @@ echo -e "
 📄 \033[1mLogs :\033[0m           docker compose -f $COMPOSE_FILE logs -f
 
 \033[1mNote :\033[0m Si le dashboard affiche une erreur 500 au début, attendez
-encore 1-2 minutes que Next.js finisse son premier démarrage/compilation.
+encore 1-2 minutes que Next.js finisse son premier démarrage.
+
+⚡ \033[1mDéploiement rapide réussi!\033[0m
+   Temps gagné vs build local: ~25 minutes
+   Usure carte SD évitée: ✅
 "

@@ -28,14 +28,16 @@ RUN playwright install chromium && \
     playwright install-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# Création utilisateur non-root pour la sécurité
-RUN useradd -m appuser && \
+# Création utilisateur non-root pour la sécurité avec UID/GID fixe
+# UID/GID 1000 pour compatibilité avec le dashboard et permissions SQLite partagées
+RUN groupadd -g 1000 appgroup && \
+    useradd -u 1000 -g appgroup -m appuser && \
     mkdir -p /app/logs /app/data /app/config && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appgroup /app
 
 # Copie du code source
 COPY . .
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appgroup /app
 
 # Bascule sur l'utilisateur non-root
 USER appuser
