@@ -143,8 +143,10 @@ class BrowserManager:
             f'--window-size={self.viewport["width"]},{self.viewport["height"]}',
         ]
 
-        # Optimisations RAM Spécifiques Pi 4 :
+        # Optimisations RAM et GPU Spécifiques Pi 4 :
         pi4_args = [
+            "--disable-gpu",  # CRITIQUE: Désactive GPU pour éviter les timeouts sur Pi 4
+            "--disable-software-rasterizer",  # CRITIQUE: Évite les blocages de rendu logiciel
             "--disable-gl-drawing-for-tests",
             "--mute-audio",
             "--disable-extensions",

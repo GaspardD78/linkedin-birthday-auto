@@ -82,6 +82,8 @@ class AuthManager:
         if writable_auth_file.exists():
             if self._validate_auth_file(writable_auth_file):
                 logger.info(f"Using auth state from writable data dir: {writable_auth_file}")
+                # BUGFIX: Nettoyer les cookies expirés du fichier
+                self._clean_auth_file_in_place(writable_auth_file)
                 return str(writable_auth_file)
             else:
                 logger.warning(f"Invalid auth state in: {writable_auth_file}")
@@ -91,6 +93,8 @@ class AuthManager:
         if auth_file.exists():
             if self._validate_auth_file(auth_file):
                 logger.info(f"Using auth state from: {auth_file}")
+                # BUGFIX: Nettoyer les cookies expirés du fichier
+                self._clean_auth_file_in_place(auth_file)
                 return str(auth_file)
             else:
                 logger.warning(f"Invalid auth state in: {auth_file}")
@@ -101,6 +105,8 @@ class AuthManager:
             if fallback_file.exists():
                 if self._validate_auth_file(fallback_file):
                     logger.info(f"Using fallback auth state from: {fallback_file}")
+                    # BUGFIX: Nettoyer les cookies expirés du fichier
+                    self._clean_auth_file_in_place(fallback_file)
                     return str(fallback_file)
                 else:
                     logger.warning(f"Invalid fallback auth state in: {fallback_file}")
@@ -155,6 +161,84 @@ class AuthManager:
             logger.error(f"Failed to decode auth state from env var: {e}")
             return None
 
+    def _clean_expired_cookies(self, auth_data: dict) -> dict:
+        """
+        Nettoie les cookies expirés d'un auth state.
+
+        Args:
+            auth_data: Données d'authentification avec cookies
+
+        Returns:
+            Nouveau dict avec seulement les cookies valides
+
+        Note:
+            Les cookies expirés peuvent causer des problèmes d'authentification.
+            Cette méthode les filtre pour garantir une session propre.
+        """
+        if "cookies" not in auth_data or not isinstance(auth_data["cookies"], list):
+            return auth_data
+
+        import time
+
+        current_time = time.time()
+        original_count = len(auth_data["cookies"])
+
+        # Filtrer les cookies expirés
+        valid_cookies = []
+        expired_count = 0
+
+        for cookie in auth_data["cookies"]:
+            expires = cookie.get("expires")
+
+            # Garder les cookies:
+            # - Sans date d'expiration (cookies de session)
+            # - Avec expires=-1 (cookies permanents)
+            # - Avec date d'expiration dans le futur
+            if expires is None or expires == -1 or expires > current_time:
+                valid_cookies.append(cookie)
+            else:
+                expired_count += 1
+                logger.debug(f"Removing expired cookie: {cookie.get('name', 'unknown')}")
+
+        if expired_count > 0:
+            logger.info(
+                f"Cleaned {expired_count} expired cookies "
+                f"({len(valid_cookies)}/{original_count} cookies remaining)"
+            )
+
+        # Créer un nouveau dict avec les cookies nettoyés
+        cleaned_data = auth_data.copy()
+        cleaned_data["cookies"] = valid_cookies
+
+        return cleaned_data
+
+    def _clean_auth_file_in_place(self, auth_file: Path) -> None:
+        """
+        Nettoie les cookies expirés d'un fichier auth state existant.
+
+        Args:
+            auth_file: Chemin vers le fichier à nettoyer
+
+        Note:
+            Modifie le fichier en place si des cookies expirés sont trouvés.
+        """
+        try:
+            # Lire le fichier
+            with open(auth_file, encoding="utf-8") as f:
+                auth_data = json.load(f)
+
+            # Nettoyer les cookies expirés
+            cleaned_data = self._clean_expired_cookies(auth_data)
+
+            # Réécrire seulement si des changements ont été faits
+            if len(cleaned_data.get("cookies", [])) < len(auth_data.get("cookies", [])):
+                with open(auth_file, "w", encoding="utf-8") as f:
+                    json.dump(cleaned_data, f, indent=2)
+                logger.info(f"Auth file cleaned in place: {auth_file}")
+
+        except Exception as e:
+            logger.warning(f"Failed to clean auth file in place: {e}")
+
     def _write_auth_to_file(self, auth_data: dict) -> str:
         """
         Écrit l'auth state dans un fichier temporaire.
@@ -171,9 +255,12 @@ class AuthManager:
         try:
             auth_file = Path(self.config.auth_file_path)
 
+            # BUGFIX: Nettoyer les cookies expirés avant d'écrire
+            cleaned_auth_data = self._clean_expired_cookies(auth_data)
+
             # Écrire le fichier
             with open(auth_file, "w", encoding="utf-8") as f:
-                json.dump(auth_data, f, indent=2)
+                json.dump(cleaned_auth_data, f, indent=2)
 
             self._temp_auth_file = auth_file
             logger.info(f"Auth state written to: {auth_file}")
