@@ -14,7 +14,7 @@ export async function GET() {
     if (!fs.existsSync(LOG_FILE)) {
       console.warn('⚠️  [LOGS API] Fichier de logs non trouvé');
       return NextResponse.json({
-        logs: ["[SYSTÈME] En attente de logs du worker..."]
+        logs: ["[SYSTEM] En attente de logs du worker..."]
       });
     }
 
@@ -24,7 +24,7 @@ export async function GET() {
     if (!fileContent || fileContent.trim() === '') {
       console.warn('⚠️  [LOGS API] Fichier de logs vide');
       return NextResponse.json({
-        logs: ["[SYSTÈME] En attente de logs du worker..."]
+        logs: ["[SYSTEM] En attente de logs du worker..."]
       });
     }
 
@@ -42,7 +42,7 @@ export async function GET() {
     return NextResponse.json({
       logs: [
         `[ERROR] Erreur: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        "[SYSTÈME] Vérifiez que le volume ./logs est bien monté"
+        "[SYSTEM] Vérifiez que le volume ./logs est bien monté"
       ]
     });
   }
