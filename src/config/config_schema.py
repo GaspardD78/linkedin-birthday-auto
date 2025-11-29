@@ -247,7 +247,7 @@ class VisitorLimitsConfig(BaseModel):
         default=100, ge=1, le=500, description="Nombre maximum de pages de résultats à scraper"
     )
     max_pages_without_new: int = Field(
-        default=3, ge=1, le=10, description="Nombre max de pages sans nouveaux profils avant arrêt"
+        default=3, ge=1, le=50, description="Nombre max de pages sans nouveaux profils avant arrêt"
     )
 
 

@@ -528,7 +528,7 @@ export function SettingsForm() {
                       id="max_pages_without_new"
                       type="number"
                       min="1"
-                      max="10"
+                      max="50"
                       value={config.visitor.limits.max_pages_without_new}
                       onChange={(e) => updateConfig(['visitor', 'limits', 'max_pages_without_new'], parseInt(e.target.value))}
                       className="bg-slate-900 border-slate-700"
