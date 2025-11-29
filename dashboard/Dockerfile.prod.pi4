@@ -51,16 +51,18 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Création utilisateur non-root
-RUN groupadd -r nodejs && useradd -r -g nodejs nextjs
+# Création utilisateur non-root avec UID/GID fixe
+# UID/GID 1000 pour compatibilité avec bot-worker et permissions SQLite partagées
+RUN groupadd -g 1000 appgroup && \
+    useradd -u 1000 -g appgroup -m nextjs
 
 # Créer les répertoires nécessaires
-RUN mkdir -p /app/data /app/logs && chown -R nextjs:nodejs /app
+RUN mkdir -p /app/data /app/logs && chown -R nextjs:appgroup /app
 
 # Copie des artefacts du build standalone
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:appgroup /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:appgroup /app/.next/static ./.next/static
 
 USER nextjs
 

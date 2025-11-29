@@ -235,7 +235,7 @@ docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 # =========================================================================
 # 5. Construction des Images (Build)
 # =========================================================================
-print_header "5. Construction (Patience... ~15-20 min)"
+print_header "5. Construction (Patience... ~20-30 min sur carte SD)"
 
 export DOCKER_BUILDKIT=1
 
@@ -252,8 +252,8 @@ fi
 
 sleep 5
 
-print_info "[3/3] Build Dashboard (C'est le plus long)..."
-export NPM_CONFIG_TIMEOUT=600000
+print_info "[3/3] Build Dashboard (C'est le plus long - jusqu'à 25 min)..."
+export NPM_CONFIG_TIMEOUT=1800000  # 30 minutes (nécessaire pour carte SD lente)
 if docker compose -f "$COMPOSE_FILE" build dashboard; then
     print_success "Dashboard construit."
 else
