@@ -202,6 +202,9 @@ class BaseLinkedInBot(ABC):
         """
         logger.info("Checking login status...")
 
+        # Vérification pré-connexion pour distinguer erreur réseau vs erreur LinkedIn
+        self._check_connectivity()
+
         try:
             self.page.goto("https://www.linkedin.com/feed/", timeout=60000)
 
@@ -216,6 +219,17 @@ class BaseLinkedInBot(ABC):
             logger.error("❌ Login verification failed")
             self.browser_manager.take_screenshot("error_login_verification_failed.png")
             raise SessionExpiredError("Failed to verify login - session may have expired")
+
+    def _check_connectivity(self) -> None:
+        """Vérifie la connectivité internet de base avant d'accéder à LinkedIn."""
+        try:
+            logger.debug("Checking internet connectivity...")
+            # Timeout court (5s) pour Google
+            self.page.goto("http://www.google.com", timeout=5000)
+            logger.debug("✅ Connectivity check passed")
+        except Exception as e:
+            logger.warning(f"⚠️ Connectivity check failed: {e}")
+            logger.warning("Attempting to continue anyway...")
 
     # ═══════════════════════════════════════════════════════════════
     # NAVIGATION ET EXTRACTION DES ANNIVERSAIRES

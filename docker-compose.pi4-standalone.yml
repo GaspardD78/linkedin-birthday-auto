@@ -123,6 +123,7 @@ services:
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
+    - ./src:/app/src
     - ./logs:/app/logs
     - ./config:/app/config
     # Messages files are stored in /app/data/ and editable via API
@@ -169,6 +170,7 @@ services:
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
+    - ./src:/app/src
     - ./logs:/app/logs
     - ./config:/app/config
     # Messages files are stored in /app/data/ and editable via API
@@ -179,10 +181,13 @@ services:
       resources:
         limits:
           cpus: '1.5'
-          memory: 900M
+          memory: 1.5G
         reservations:
           cpus: '0.5'
           memory: 450M
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     logging:
       driver: json-file
       options:

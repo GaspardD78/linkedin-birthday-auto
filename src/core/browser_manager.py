@@ -145,6 +145,8 @@ class BrowserManager:
 
         # Optimisations RAM Spécifiques Pi 4 :
         pi4_args = [
+            "--disable-gpu",
+            "--disable-software-rasterizer",
             "--disable-gl-drawing-for-tests",
             "--mute-audio",
             "--disable-extensions",
