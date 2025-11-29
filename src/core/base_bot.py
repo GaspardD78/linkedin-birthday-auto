@@ -190,6 +190,29 @@ class BaseLinkedInBot(ABC):
 
         logger.info("✅ Bot teardown completed")
 
+    def _check_connectivity(self) -> bool:
+        """
+        Vérifie la connectivité internet de base avant de tenter LinkedIn.
+
+        Returns:
+            True si la connexion internet fonctionne, False sinon
+
+        Note:
+            Cette vérification permet de diagnostiquer rapidement si le problème
+            vient de la connexion internet ou de LinkedIn spécifiquement.
+        """
+        try:
+            logger.debug("Checking internet connectivity...")
+            self.page.goto("https://www.google.com", timeout=15000)
+            logger.debug("✓ Internet connectivity OK")
+            return True
+        except PlaywrightTimeoutError:
+            logger.error("❌ No internet connectivity - cannot reach Google")
+            return False
+        except Exception as e:
+            logger.warning(f"Connectivity check failed: {e}")
+            return False
+
     def check_login_status(self) -> bool:
         """
         Vérifie que l'utilisateur est bien connecté à LinkedIn.
@@ -201,6 +224,10 @@ class BaseLinkedInBot(ABC):
             SessionExpiredError: Si la session a expiré
         """
         logger.info("Checking login status...")
+
+        # BUGFIX: Vérifier la connectivité internet d'abord
+        if not self._check_connectivity():
+            raise SessionExpiredError("No internet connectivity - check your network connection")
 
         try:
             # BUGFIX: Augmenter le timeout pour le Pi 4 (ressources limitées)
