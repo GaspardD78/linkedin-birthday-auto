@@ -203,19 +203,48 @@ class BaseLinkedInBot(ABC):
         logger.info("Checking login status...")
 
         try:
-            self.page.goto("https://www.linkedin.com/feed/", timeout=60000)
+            # Navigate to feed with extended timeout
+            self.page.goto("https://www.linkedin.com/feed/", timeout=90000, wait_until="domcontentloaded")
 
-            # Indicateur de connexion : avatar de profil
-            profile_avatar_selector = "img.global-nav__me-photo"
-            self.page.wait_for_selector(profile_avatar_selector, timeout=15000)
+            # Wait a bit for dynamic content to load
+            self.random_delay(2, 3)
 
-            logger.info("✅ Successfully logged in")
-            return True
+            # Multiple selectors to check for logged-in state (fallbacks)
+            login_selectors = [
+                "img.global-nav__me-photo",  # Original selector
+                "button.global-nav__primary-link-me-menu-trigger",  # Me menu button
+                "img[alt*='Photo']",  # Generic profile photo
+                "div.global-nav__me",  # Me navigation section
+                "[data-control-name='identity_profile_photo']",  # Profile photo with data attribute
+            ]
 
-        except PlaywrightTimeoutError:
-            logger.error("❌ Login verification failed")
+            # Try each selector with shorter individual timeouts
+            for i, selector in enumerate(login_selectors):
+                try:
+                    logger.debug(f"Trying login selector {i+1}/{len(login_selectors)}: {selector}")
+                    self.page.wait_for_selector(selector, timeout=8000, state="visible")
+                    logger.info(f"✅ Successfully logged in (matched selector: {selector})")
+                    return True
+                except PlaywrightTimeoutError:
+                    logger.debug(f"Selector not found: {selector}")
+                    continue
+
+            # If we get here, none of the selectors matched
+            logger.error("❌ Login verification failed - no login indicators found")
             self.browser_manager.take_screenshot("error_login_verification_failed.png")
+
+            # Log page URL and title for debugging
+            current_url = self.page.url
+            page_title = self.page.title()
+            logger.error(f"Current URL: {current_url}")
+            logger.error(f"Page title: {page_title}")
+
             raise SessionExpiredError("Failed to verify login - session may have expired")
+
+        except PlaywrightTimeoutError as e:
+            logger.error(f"❌ Login page navigation timeout: {e}")
+            self.browser_manager.take_screenshot("error_login_navigation_timeout.png")
+            raise SessionExpiredError("Failed to load LinkedIn feed - connection timeout")
 
     # ═══════════════════════════════════════════════════════════════
     # NAVIGATION ET EXTRACTION DES ANNIVERSAIRES
