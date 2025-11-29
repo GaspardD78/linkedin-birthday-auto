@@ -28,17 +28,18 @@ RUN playwright install chromium && \
     playwright install-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# Création utilisateur non-root pour la sécurité avec UID/GID fixe
-# UID/GID 1000 pour compatibilité avec le dashboard et permissions SQLite partagées
-# Gestion du cas où le groupe avec GID 1000 existe déjà (dans certaines images de base)
-RUN EXISTING_GROUP=$(getent group 1000 | cut -d: -f1) && \
-    if [ -z "$EXISTING_GROUP" ]; then \
-        groupadd -g 1000 appgroup && EXISTING_GROUP=appgroup; \
+# Utilisation de l'utilisateur avec UID/GID 1000 (compatible dashboard pour SQLite partagé)
+# Crée l'utilisateur appuser avec UID/GID 1000, ou utilise celui existant si présent
+RUN EXISTING_USER=$(getent passwd 1000 | cut -d: -f1) && \
+    if [ -n "$EXISTING_USER" ]; then \
+        usermod -l appuser $EXISTING_USER 2>/dev/null || true; \
+    else \
+        groupadd -g 1000 appgroup 2>/dev/null || true && \
+        useradd -u 1000 -g 1000 -m appuser; \
     fi && \
-    useradd -u 1000 -g $EXISTING_GROUP -m appuser && \
     mkdir -p /app/logs /app/data /app/config && \
     chown -R 1000:1000 /app && \
-    echo "Using group: $EXISTING_GROUP (GID 1000) for user appuser (UID 1000)"
+    echo "Using UID/GID 1000 for user appuser"
 
 # Copie du code source
 COPY . .
