@@ -292,8 +292,18 @@ async def get_stats(days: int = 30, authenticated: bool = Depends(verify_api_key
     """
     config = get_config()
 
+    # Valeurs par défaut si la base de données n'est pas accessible
+    default_stats = {
+        "wishes_sent_total": 0,
+        "wishes_sent_today": 0,
+        "wishes_sent_week": 0,
+        "profiles_visited_total": 0,
+        "profiles_visited_today": 0,
+    }
+
     if not config.database.enabled:
-        raise HTTPException(status_code=503, detail="Database not enabled in configuration")
+        logger.warning("Database not enabled, returning default stats")
+        return default_stats
 
     try:
         db = get_database(config.database.db_path)
@@ -303,7 +313,10 @@ async def get_stats(days: int = 30, authenticated: bool = Depends(verify_api_key
 
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve stats: {e!s}")
+        # Retourner des valeurs par défaut au lieu d'une erreur
+        # pour permettre au dashboard de s'afficher correctement
+        logger.warning("Returning default stats due to database error")
+        return default_stats
 
 
 @app.get("/detailed-stats", response_model=MetricsResponse, tags=["Metrics"])
@@ -350,7 +363,8 @@ async def get_activity(days: int = 30, authenticated: bool = Depends(verify_api_
     config = get_config()
 
     if not config.database.enabled:
-        raise HTTPException(status_code=503, detail="Database not enabled in configuration")
+        logger.warning("Database not enabled, returning empty activity")
+        return {"activity": [], "days": days}
 
     try:
         db = get_database(config.database.db_path)
@@ -359,7 +373,46 @@ async def get_activity(days: int = 30, authenticated: bool = Depends(verify_api_
 
     except Exception as e:
         logger.error(f"Failed to get activity: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve activity: {e!s}")
+        # Retourner une liste vide au lieu d'une erreur
+        logger.warning("Returning empty activity due to database error")
+        return {"activity": [], "days": days}
+
+
+@app.get("/contacts", tags=["Metrics"])
+async def get_contacts(limit: Optional[int] = None, sort: str = "messages", authenticated: bool = Depends(verify_api_key)):
+    """
+    Récupère la liste des contacts.
+
+    Args:
+        limit: Nombre maximum de contacts à retourner
+        sort: Tri (messages, name, date)
+
+    Returns:
+        Liste des contacts avec leurs statistiques
+    """
+    config = get_config()
+
+    if not config.database.enabled:
+        logger.warning("Database not enabled, returning empty contacts")
+        return {"contacts": []}
+
+    try:
+        db = get_database(config.database.db_path)
+
+        if sort == "messages":
+            # Récupérer les top contacts triés par nombre de messages
+            contacts = db.get_top_contacts(limit=limit or 50)
+        else:
+            # Pour les autres tris, retourner une liste vide pour l'instant
+            # TODO: implémenter d'autres méthodes de tri si nécessaire
+            contacts = []
+
+        return {"contacts": contacts}
+
+    except Exception as e:
+        logger.error(f"Failed to get contacts: {e}")
+        logger.warning("Returning empty contacts due to database error")
+        return {"contacts": []}
 
 
 @app.post("/trigger")
