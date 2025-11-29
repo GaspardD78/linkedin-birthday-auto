@@ -153,10 +153,10 @@ class MessagesConfig(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     messages_file: str = Field(
-        default="messages.txt", description="Fichier contenant les messages standard"
+        default="/app/data/messages.txt", description="Fichier contenant les messages standard"
     )
     late_messages_file: str = Field(
-        default="late_messages.txt", description="Fichier contenant les messages en retard"
+        default="/app/data/late_messages.txt", description="Fichier contenant les messages en retard"
     )
     avoid_repetition_years: int = Field(
         default=2, ge=1, le=10, description="Années d'historique pour éviter la répétition"

@@ -124,10 +124,8 @@ services:
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    # auth_state.json is optional - auth can be uploaded to /app/data/auth_state.json via dashboard
-    # Only mount if file exists on host
-    - ./messages.txt:/app/messages.txt
-    - ./late_messages.txt:/app/late_messages.txt
+    # Messages files are stored in /app/data/ and editable via API
+    # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - shared-data:/app/data
     deploy:
       resources:
@@ -170,9 +168,8 @@ services:
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    # auth_state.json is optional - auth can be in environment variable or uploaded to /app/data/
-    - ./messages.txt:/app/messages.txt
-    - ./late_messages.txt:/app/late_messages.txt
+    # Messages files are stored in /app/data/ and editable via API
+    # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - shared-data:/app/data
     # Optimisé pour Pi 4 avec 4GB RAM
     deploy:
