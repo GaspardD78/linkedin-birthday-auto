@@ -1,796 +1,130 @@
-# 🎂 LinkedIn Birthday Auto Bot v2.0
+# 🤖 LinkedIn Birthday Bot - Guide Raspberry Pi 4
 
-[![Raspberry Pi 4](https://img.shields.io/badge/Raspberry%20Pi-Optimized-red.svg)](docs/RPI_QUICKSTART.md)
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+Bienvenue ! Ce guide est conçu spécifiquement pour installer le bot sur un **Raspberry Pi 4**. Il est simplifié pour les débutants et utilise un script d'installation automatique.
 
-**Automatisez vos messages d'anniversaire LinkedIn** avec intelligence, flexibilité et sécurité.
+## 📋 Prérequis
 
-Bot moderne et modulaire pour souhaiter les anniversaires de vos contacts LinkedIn de manière
-naturelle et personnalisée. Optimisé pour fonctionner en local ou sur serveur (Raspberry Pi, VPS).
+*   **Matériel** :
+    *   Raspberry Pi 4 (2GB RAM minimum, 4GB+ recommandé).
+    *   Carte MicroSD de **32 Go minimum** (Classe 10 recommandée pour la vitesse).
+*   **Logiciel** :
+    *   **Raspberry Pi OS Lite (64-bit)**.
+        *   ⚠️ **Impératif** : N'utilisez pas la version 32-bit ni la version "Desktop" avec interface graphique.
+    *   Une connexion SSH active vers votre Raspberry Pi (ou un clavier/écran branché dessus).
 
-______________________________________________________________________
+---
 
-## ✨ Caractéristiques principales
+## Choisissez votre situation
 
-### 🎯 Modes d'exécution
+*   **Cas 1 : Je commence de zéro** (Carte SD vierge ou fraîchement flashée)
+    👉 [Aller à la Section 1 : Installation Automatique](#1-installation-automatique-de-zéro)
 
-- **Mode Standard** : Anniversaires du jour uniquement avec limites hebdomadaires (80/semaine
-  recommandé)
-- **Mode Unlimited** : Aujourd'hui + retard (jusqu'à N jours) sans limites hebdomadaires
-- **Mode API REST** : Contrôle via HTTP avec FastAPI (health checks, metrics, triggers)
+*   **Cas 2 : J'ai déjà essayé mais ça ne marche pas** (Erreurs, plantages, ou installation précédente ratée)
+    👉 [Aller à la Section 2 : Réparation](#2-réparation-et-réinstallation-propre)
 
-### 🧠 Intelligence
+---
 
-- **Messages personnalisés** avec rotation automatique et historique anti-répétition
-- **Comportement humain** : délais aléatoires, mouvements, scrolling naturel
-- **Gestion d'erreurs** robuste avec retry et recovery automatique
-- **Anti-détection** : User-Agent rotation, viewport randomization, stealth mode
+## 1. Installation Automatique (De Zéro)
 
-### 📊 Monitoring & Déploiement
+Suivez ces étapes une par une.
 
-- **Database SQLite** avec historique complet (messages, visites, erreurs)
-- **Statistiques en temps réel** via API `/metrics`
-- **Logs structurés** avec niveaux (DEBUG, INFO, WARNING, ERROR)
-- **Health checks** pour supervision
-- **🆕 Dashboard de déploiement** : surveillance des services, gestion des jobs, maintenance
-  automatisée
-- **🆕 Script de déploiement** : automatisation complète (pull, rebuild, restart)
-- **🆕 Arrêt d'urgence** : bouton pour arrêter immédiatement tous les workers
+### Étape A : Préparation de la carte SD (Sur votre ordinateur)
+1.  Téléchargez et installez [Raspberry Pi Imager](https://www.raspberrypi.com/software/).
+2.  **OS** : Choisissez `Raspberry Pi OS (other)` -> `Raspberry Pi OS Lite (64-bit)`.
+3.  **Stockage** : Sélectionnez votre carte SD.
+4.  **Configuration (Roue crantée ⚙️)** :
+    *   Cochez "Enable SSH" -> "Use password authentication".
+    *   Définissez un nom d'utilisateur (ex: `pi`) et un mot de passe.
+    *   Configurez votre WiFi si vous n'utilisez pas de câble Ethernet.
+5.  Cliquez sur **WRITE**. Une fois fini, insérez la carte dans le RPI4 et allumez-le.
 
-### 🔧 Architecture v2.0
-
-- **Modulaire** : Configuration Pydantic, exceptions typées, managers séparés
-- **Testable** : 30+ tests (unitaires, intégration, E2E) avec 85%+ coverage
-- **Type-safe** : Type hints complets + mypy validation
-- **Production-ready** : Pre-commit hooks, CI/CD, Docker support
-
-______________________________________________________________________
-
-## 🚀 Quick Start
-
-### ⚡ Installation Simplifiée (Recommandé - Toutes Plateformes)
-
-**Installation interactive en 3 commandes** :
+### Étape B : Récupération du projet (Sur le Raspberry Pi)
+Connectez-vous en SSH à votre RPI4, puis lancez ces commandes :
 
 ```bash
+# 1. Mettre à jour la liste des paquets système
+sudo apt update
+
+# 2. Installer Git
+sudo apt install -y git
+
+# 3. Configurer Git pour sauvegarder votre mot de passe (PAT)
+# Cette commande vous évitera de devoir retaper votre clé secrète à chaque mise à jour.
+git config --global credential.helper store
+
+# 4. Télécharger le projet
+# La première fois, on vous demandera votre "Username" et votre "Password" (votre PAT GitHub).
 git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+
+# 5. Entrer dans le dossier du projet
 cd linkedin-birthday-auto
+```
+
+### Étape C : Lancement de l'installation
+Nous avons un script "tout-en-un" qui va installer Docker, configurer vos accès et lancer le bot.
+
+```bash
 ./setup.sh
 ```
 
-Le script `setup.sh` détecte automatiquement votre plateforme et vous guide à travers :
-- ✅ Installation des prérequis (Docker, Docker Compose)
-- ✅ Configuration de l'authentification LinkedIn
-- ✅ Configuration du fichier `.env`
-- ✅ Déploiement des services Docker
-- ✅ Configuration de l'automatisation (Raspberry Pi uniquement)
+**Laissez-vous guider par les questions à l'écran.** Le script va :
+1.  Installer Docker et les outils nécessaires (répondez 'y' si demandé).
+2.  Vous aider à configurer vos cookies LinkedIn (`auth_state.json`) et vos réglages (`.env`).
+    *   *Astuce : Préparez vos cookies LinkedIn (exportés via l'extension Cookie-Editor) avant de lancer le script.*
+3.  Construire et lancer l'application (cela prend 15-20 minutes).
+4.  Configurer le démarrage automatique au boot (Systemd).
 
-**📖 Guide détaillé :** [QUICKSTART.md](QUICKSTART.md)
-
-______________________________________________________________________
-
-### 🍓 Raspberry Pi 4 - Optimisations
-
-Le projet est **entièrement optimisé** pour Raspberry Pi 4 (4GB RAM) :
-- SWAP automatique (2GB)
-- Limites mémoire par service
-- Auto-start au boot via systemd
-- Monitoring, backups et nettoyage automatiques
-
-**⚠️ Important :** Utilisez `./setup.sh` (pas `pip install`) pour éviter les problèmes de compilation.
-
-______________________________________________________________________
-
-### 💻 Installation Manuelle (PC/Mac/Linux)
+### Étape D : Finalisation
+Une fois le script terminé avec le message "INSTALLATION RÉUSSIE", redémarrez votre Pi pour finaliser les permissions :
 
 ```bash
-# 1. Cloner le projet
-git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
-cd linkedin-birthday-auto
-
-# 2. Créer environnement virtuel
-python3.9 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-
-# 3. Installer dépendances
-pip install -r requirements.txt
-playwright install chromium
-playwright install-deps chromium
-
-# 4. Configurer (voir section suivante)
-cp config/config.yaml config/my_config.yaml
-nano config/my_config.yaml  # Éditer selon vos besoins
+sudo reboot
 ```
 
-### Configuration minimale
+---
 
-**Option A: Variables d'environnement** (recommandé)
+## 2. Réparation et Réinstallation Propre
+
+Si votre installation est "cassée", que des conteneurs ne démarrent plus, ou que vous voulez repartir sur une base saine.
+
+### Étape A : Nettoyage complet
+Exécutez ce script de nettoyage. Il va tout supprimer (conteneurs, images) sauf vos configurations.
 
 ```bash
-# Créer .env
-cat > .env << 'EOF'
-# Authentification LinkedIn (base64)
-LINKEDIN_AUTH_STATE=eyJjb29raWVzIjpbeyJuYW1lIjoibGlfYXQiLC...
-
-# Mode
-LINKEDIN_BOT_DRY_RUN=false  # true pour tester
-LINKEDIN_BOT_MODE=standard
-
-# Optionnel
-LINKEDIN_BOT_BROWSER_HEADLESS=true
-EOF
-
-chmod 600 .env
+cd ~/linkedin-birthday-auto
+./scripts/full_cleanup_deployment.sh
 ```
+*Tapez "y" et Entrée si une confirmation est demandée.*
 
-**Option B: Fichier YAML**
-
-```yaml
-# config/my_config.yaml
-version: "2.0.0"
-dry_run: false
-bot_mode: "standard"
-
-browser:
-  headless: true
-
-messaging_limits:
-  weekly_message_limit: 80
-
-birthday_filter:
-  process_today: true
-  process_late: false
-
-database:
-  enabled: true
-  db_path: "data/linkedin_bot.db"
-```
-
-### Authentification LinkedIn
-
-**Méthode 1: Exporter les cookies** (recommandé)
-
-1. Installez l'extension [Cookie-Editor](https://cookie-editor.cgagnier.ca/)
-1. Connectez-vous à LinkedIn (avec 2FA si activé)
-1. Exportez les cookies en JSON
-1. Sauvegardez dans `auth_state.json`:
-
-```json
-{
-  "cookies": [
-    {
-      "name": "li_at",
-      "value": "VOTRE_TOKEN_ICI",
-      "domain": ".linkedin.com",
-      "path": "/",
-      "expires": 1234567890,
-      "httpOnly": true,
-      "secure": true,
-      "sameSite": "None"
-    }
-  ],
-  "origins": []
-}
-```
-
-**Méthode 2: Variable d'environnement**
+### Étape B : Relancer l'installation
+Une fois propre, relancez simplement le script d'installation :
 
 ```bash
-export LINKEDIN_AUTH_STATE=$(cat auth_state.json | base64)
-```
-
-### Premiers tests
-
-```bash
-# 1. Valider configuration
-python main.py validate
-
-# 2. Dry-run (test sans envoyer)
-python main.py bot --dry-run
-
-# 3. Production mode standard
-python main.py bot
-
-# 4. Mode unlimited (rattraper retard)
-python main.py bot --mode unlimited --max-days-late 10
-```
-
-______________________________________________________________________
-
-## 📖 Documentation
-
-### 📘 Guides principaux
-
-| Document | Description |
-| -------- | ----------- |
-| **[QUICKSTART.md](QUICKSTART.md)** | ⭐ **Guide d'installation rapide** (recommandé pour tous) |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architecture détaillée, patterns, composants |
-| **[AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md)** | Automatisation complète sur Raspberry Pi 4 |
-
-### 📁 Documentation avancée
-
-| Document | Description |
-| -------- | ----------- |
-| **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Guide de déploiement complet (Docker, cloud, GitHub Actions) |
-| **[docs/DEPLOYMENT_AUTOMATION.md](docs/DEPLOYMENT_AUTOMATION.md)** | Système de déploiement et maintenance automatisé |
-| **[docs/RPI_QUICKSTART.md](docs/RPI_QUICKSTART.md)** | Guide rapide Raspberry Pi 4 (Docker) |
-| **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** | Guide de dépannage Raspberry Pi |
-| **[deployment/README.md](deployment/README.md)** | Services systemd et automatisation |
-
-______________________________________________________________________
-
-## 🎯 Utilisation
-
-### CLI (Command Line Interface)
-
-Le bot dispose d'une CLI riche avec 3 commandes principales:
-
-#### 1. Valider configuration
-
-```bash
-# Valider config + authentification
-python main.py validate
-
-# Avec config custom
-python main.py validate --config ./prod.yaml
-```
-
-#### 2. Exécuter le bot
-
-```bash
-# Mode standard (anniversaires du jour uniquement)
-python main.py bot
-
-# Mode unlimited (today + late birthdays)
-python main.py bot --mode unlimited --max-days-late 10
-
-# Dry-run (test sans envoyer)
-python main.py bot --dry-run
-
-# Debug mode
-python main.py bot --debug
-
-# Avec config custom
-python main.py bot --config ./prod.yaml
-
-# Toutes les options
-python main.py bot --help
-```
-
-#### 3. Lancer l'API REST
-
-```bash
-# Mode production
-python main.py api
-
-# Mode développement (auto-reload)
-python main.py api --reload
-
-# Custom host/port
-python main.py api --host 0.0.0.0 --port 8080
-```
-
-### API REST
-
-L'API REST FastAPI permet un contrôle à distance:
-
-```bash
-# Démarrer l'API
-python main.py api
-
-# Health check
-curl http://localhost:8000/health
-
-# Métriques (30 derniers jours)
-curl http://localhost:8000/metrics
-
-# Déclencher un job
-curl -X POST http://localhost:8000/trigger \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your-api-key" \
-  -d '{
-    "bot_mode": "standard",
-    "dry_run": true
-  }'
-
-# Vérifier statut du job
-curl http://localhost:8000/jobs/{job_id}
-
-# Consulter les logs
-curl http://localhost:8000/logs?limit=100
-
-# Documentation interactive
-open http://localhost:8000/docs
-```
-
-### Python (usage programmatique)
-
-```python
-from src.bots.birthday_bot import BirthdayBot
-from src.bots.unlimited_bot import UnlimitedBirthdayBot
-from src.config import get_config
-
-# Configuration
-config = get_config()
-config.dry_run = True
-
-# Mode standard
-with BirthdayBot(config=config) as bot:
-    results = bot.run()
-    print(f"Messages sent: {results['messages_sent']}")
-
-# Mode unlimited
-with UnlimitedBirthdayBot(config=config) as bot:
-    results = bot.run()
-    print(f"Total processed: {results['contacts_processed']}")
-```
-
-______________________________________________________________________
-
-## 🔧 Configuration avancée
-
-### Structure du fichier config.yaml
-
-```yaml
-version: "2.0.0"
-dry_run: false
-bot_mode: "standard"  # ou "unlimited"
-
-# Navigateur
-browser:
-  headless: true
-  locale: "fr-FR"
-  timezone: "Europe/Paris"
-  slow_mo: [80, 150]  # Ralentissement (ms) pour paraître humain
-  viewport_sizes:  # Résolutions aléatoires
-    - [1920, 1080]
-    - [1366, 768]
-  user_agents:  # Rotation User-Agent
-    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64)..."
-
-# Authentification
-auth:
-  auth_file_path: "auth_state.json"
-  auth_env_var: "LINKEDIN_AUTH_STATE"
-
-# Limites de messages
-messaging_limits:
-  weekly_message_limit: 80
-  daily_message_limit: null  # null = pas de limite quotidienne
-  max_messages_per_run: null  # null = pas de limite par run
-
-# Filtrage des anniversaires
-birthday_filter:
-  process_today: true
-  process_late: false  # true pour mode unlimited
-  max_days_late: 10  # Si process_late=true
-
-# Délais entre messages
-delays:
-  min_delay_seconds: 180  # 3 minutes
-  max_delay_seconds: 300  # 5 minutes
-
-# Messages
-messages:
-  message_file_path: "messages.txt"
-  late_message_file_path: "late_messages.txt"
-  avoid_repetition_years: 2
-
-# Base de données
-database:
-  enabled: true
-  db_path: "data/linkedin_bot.db"
-
-# Scheduling
-scheduling:
-  daily_start_hour: 7
-  daily_end_hour: 19
-
-# Debug
-debug:
-  log_level: "INFO"
-  screenshot_on_error: true
-  save_html_on_error: false
-```
-
-### Variables d'environnement (overrides)
-
-Toutes les config YAML peuvent être overridées via env vars:
-
-```bash
-# Format: LINKEDIN_BOT_<SECTION>_<KEY>
-export LINKEDIN_BOT_DRY_RUN=true
-export LINKEDIN_BOT_BOT_MODE=unlimited
-export LINKEDIN_BOT_BROWSER_HEADLESS=false
-export LINKEDIN_BOT_MESSAGING_LIMITS_WEEKLY_MESSAGE_LIMIT=100
-```
-
-______________________________________________________________________
-
-## 🤖 Automatisation
-
-### 🍓 Raspberry Pi 4 (Recommandé)
-
-Sur Raspberry Pi, le script `./setup.sh` configure **automatiquement** :
-
-- ✅ **Auto-start au boot** via systemd
-- ✅ **Monitoring horaire** des ressources (CPU, RAM, température)
-- ✅ **Backups quotidiens** de la base de données (3h du matin)
-- ✅ **Nettoyage hebdomadaire** automatique (dimanche 2h)
-
-```bash
-# Installation complète avec automatisation
 ./setup.sh
 ```
 
-**Commandes utiles après installation :**
+---
 
-```bash
-# Gérer le service
-sudo systemctl status linkedin-bot    # Voir le statut
-sudo systemctl restart linkedin-bot   # Redémarrer
-sudo journalctl -u linkedin-bot -f    # Voir les logs
+## 🛠️ Installation Manuelle (Experts)
 
-# Voir les timers (monitoring, backup, cleanup)
-sudo systemctl list-timers linkedin-bot*
-```
+Si vous préférez contrôler chaque étape du déploiement (sans utiliser le script tout-en-un), une procédure manuelle détaillée est disponible.
 
-📖 **Documentation complète** : [AUTOMATION_DEPLOYMENT_PI4.md](AUTOMATION_DEPLOYMENT_PI4.md)
+👉 **[Voir le guide de déploiement manuel (AUTOMATION_DEPLOYMENT_PI4.md)](docs/AUTOMATION_DEPLOYMENT_PI4.md)**
 
-### 💻 Docker (Toutes Plateformes)
+---
 
-Le déploiement Docker est géré automatiquement par `./setup.sh`, mais vous pouvez aussi le faire manuellement :
+## 🌐 Accès et Utilisation
 
-```bash
-# Déploiement complet (optimisé Pi4)
-docker compose -f docker-compose.pi4-standalone.yml up -d
+Une fois l'installation terminée, attendez 2-3 minutes après le démarrage du Raspberry Pi.
 
-# Voir les logs
-docker compose -f docker-compose.pi4-standalone.yml logs -f
+*   **Dashboard (Tableau de bord)** :
+    Ouvrez votre navigateur web et allez sur : `http://<IP_DE_VOTRE_RPI>:3000`
+    *(Exemple : http://192.168.1.50:3000)*
 
-# Redémarrer
-docker compose -f docker-compose.pi4-standalone.yml restart
-
-# Arrêter
-docker compose -f docker-compose.pi4-standalone.yml down
-```
-
-**Architecture Docker optimisée pour Pi4 (4GB RAM) :**
-- Bot Worker : 900MB max
-- Dashboard : 400MB max
-- API : 300MB max
-- Redis (x2) : 100MB total
-
-### ⏰ Cron (Alternative pour Linux/macOS)
-
-Si vous n'utilisez pas Docker, configurez manuellement un cron job :
-
-```bash
-# Éditer crontab
-crontab -e
-
-# Ajouter (exécution quotidienne à 9h)
-0 9 * * * cd /path/to/linkedin-birthday-auto && /path/to/venv/bin/python main.py bot >> /var/log/linkedin-bot.log 2>&1
-```
-
-**Note :** Cette méthode nécessite une installation manuelle via `pip` (voir section "Installation Manuelle").
-
-______________________________________________________________________
-
-## 🧪 Tests
-
-### Exécuter les tests
-
-```bash
-# Tous les tests
-pytest
-
-# Tests unitaires uniquement
-pytest tests/unit/ -v
-
-# Tests d'intégration
-pytest tests/integration/ -v
-
-# Tests E2E
-pytest tests/e2e/ -v -m e2e
-
-# Avec couverture
-pytest --cov=src --cov-report=html --cov-report=term-missing
-
-# Test spécifique
-pytest tests/unit/test_config.py::TestConfigSchema::test_default_config_is_valid -v
-```
-
-### Pre-commit hooks
-
-```bash
-# Installer
-pip install pre-commit
-pre-commit install
-
-# Exécuter manuellement
-pre-commit run --all-files
-
-# Hooks inclus:
-# - black (formatting)
-# - ruff (linting)
-# - mypy (type checking)
-# - bandit (security)
-# - markdown formatting
-```
-
-______________________________________________________________________
-
-## 📊 Monitoring
-
-### Logs
-
-```bash
-# Suivre les logs en temps réel
-tail -f logs/linkedin_bot.log
-
-# Rechercher des erreurs
-grep ERROR logs/linkedin_bot.log
-
-# Statistiques database
-sqlite3 data/linkedin_bot.db "SELECT COUNT(*) FROM birthday_messages WHERE DATE(timestamp) = DATE('now');"
-```
-
-### Métriques API
-
-```bash
-# Métriques des 30 derniers jours
-curl http://localhost:8000/metrics
-
-# Réponse:
-{
-  "period_days": 30,
-  "messages": {
-    "total": 45,
-    "per_day_avg": 1.5
-  },
-  "contacts": {
-    "unique": 42,
-    "repeated": 3
-  },
-  "profile_visits": {
-    "total": 120
-  },
-  "errors": {
-    "total": 2,
-    "rate": 0.04
-  }
-}
-```
-
-______________________________________________________________________
-
-## 🔒 Sécurité & Bonnes pratiques
-
-### Sécurité
-
-- ✅ **Jamais committer** `auth_state.json` ou `.env` (dans `.gitignore`)
-- ✅ **Permissions strictes** : `chmod 600 .env auth_state.json`
-- ✅ **Secrets chiffrés** : Utiliser variables d'environnement sécurisées
-- ✅ **2FA activé** sur LinkedIn (recommandé)
-- ✅ **Rotation User-Agent** et anti-détection activés
-- ✅ **Pas de données transmises** à des tiers
-
-### Limites recommandées
-
-Pour éviter la détection LinkedIn:
-
-| Paramètre                | Recommandation             | Justification                               |
-| ------------------------ | -------------------------- | ------------------------------------------- |
-| **Messages/semaine**     | 80 maximum                 | Limite LinkedIn non documentée ~100/semaine |
-| **Messages/jour**        | 15-20 maximum              | Éviter pics suspects                        |
-| **Délai entre messages** | 3-5 minutes                | Comportement humain                         |
-| **Horaires**             | 7h-19h                     | Heures ouvrables                            |
-| **Mode headless**        | `true` en prod             | Performance                                 |
-| **IP**                   | Résidentielle > Datacenter | LinkedIn détecte les IPs cloud              |
-
-### Utilisation responsable
-
-⚠️ **Avertissement**: L'automatisation LinkedIn viole potentiellement leurs
-[CGU](https://www.linkedin.com/legal/user-agreement). Utilisez à vos propres risques.
-
-**Recommandations:**
-
-- 🟢 Utiliser pour un usage personnel raisonnable
-- 🟢 Messages authentiques et personnalisés
-- 🟢 Respecter les limites recommandées
-- 🔴 Pas de spam ou messages non sollicités
-- 🔴 Pas d'usage commercial massif
-- 🔴 Pas de collecte de données
-
-______________________________________________________________________
-
-## 🐛 Dépannage
-
-### Problèmes courants
-
-**1. "Authentication failed"**
-
-```bash
-# Vérifier auth
-python main.py validate
-
-# Régénérer auth_state.json
-# Exporter à nouveau les cookies depuis LinkedIn
-```
-
-**2. "Playwright browser not found"**
-
-```bash
-playwright install chromium
-playwright install-deps chromium
-```
-
-**3. "Weekly limit reached"**
-
-```bash
-# Vérifier limite actuelle
-python -c "from src.core.database import get_database; print(get_database().get_weekly_message_count())"
-
-# Attendre lundi ou passer en mode unlimited
-python main.py bot --mode unlimited
-```
-
-**4. "Database locked"**
-
-```bash
-# Tuer processus existants
-pkill -f "python.*main.py"
-
-# Supprimer lock
-rm data/linkedin_bot.db-wal data/linkedin_bot.db-shm
-```
-
-**5. Mode headless échoue**
-
-```bash
-# Tester en mode visible
-python main.py bot --headless false --debug
-```
-
-Voir **[QUICKSTART.md](QUICKSTART.md#-dépannage-rapide)** et **[docs/RASPBERRY_PI_TROUBLESHOOTING.md](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** pour plus de solutions.
-
-______________________________________________________________________
-
-## 📦 Structure du projet
-
-```
-linkedin-birthday-auto/
-├── main.py                    # Point d'entrée CLI unifié
-├── config/
-│   └── config.yaml           # Configuration YAML
-├── src/
-│   ├── api/
-│   │   └── app.py           # API REST FastAPI
-│   ├── bots/
-│   │   ├── birthday_bot.py  # Bot standard
-│   │   └── unlimited_bot.py # Bot unlimited
-│   ├── config/
-│   │   ├── config_schema.py # Schémas Pydantic
-│   │   └── config_manager.py # Singleton config
-│   ├── core/
-│   │   ├── base_bot.py      # Classe abstraite
-│   │   ├── browser_manager.py
-│   │   ├── auth_manager.py
-│   │   └── database.py
-│   └── utils/
-│       └── exceptions.py     # Hiérarchie exceptions
-├── tests/
-│   ├── unit/                # Tests unitaires
-│   ├── integration/         # Tests intégration
-│   └── e2e/                 # Tests E2E
-├── pyproject.toml           # Config moderne (black, ruff, mypy, pytest)
-├── .pre-commit-config.yaml  # Pre-commit hooks
-├── ARCHITECTURE.md          # Architecture détaillée
-├── MIGRATION_GUIDE.md       # Migration v1 -> v2
-└── DEPLOYMENT.md            # Guide déploiement
-```
-
-______________________________________________________________________
-
-## 🎉 Changelog v2.0
-
-### 🆕 Nouvelles fonctionnalités
-
-- ✅ **Architecture modulaire** avec Pydantic, managers, bots séparés
-- ✅ **API REST FastAPI** avec health checks, metrics, triggers
-- ✅ **CLI riche** avec 3 commandes (validate, bot, api)
-- ✅ **Tests complets** (30+ tests, 85%+ coverage)
-- ✅ **Mode unlimited** pour rattraper les retards
-- ✅ **Type hints** complets + mypy validation
-- ✅ **Pre-commit hooks** (black, ruff, mypy, bandit)
-- ✅ **Documentation complète** (ARCHITECTURE, MIGRATION, DEPLOYMENT)
-
-### 🐛 Bugs corrigés
-
-- ✅ **Modales multiples** : Détection et nettoyage automatique
-- ✅ **Element detached** : Re-recherche des éléments DOM
-- ✅ **Délais skip** : 1-3s au lieu de 3-4min
-- ✅ **Database locks** : WAL mode + retry avec backoff
-- ✅ **Memory leaks** : Cleanup proper des ressources
-
-### ⚡ Performances
-
-- ✅ **10x plus rapide** lors de contacts sans bouton Message
-- ✅ **Thread-safe** : Singleton avec locks
-- ✅ **Retry intelligent** : Exponential backoff
-- ✅ **Connection pooling** : Database WAL mode
-
-### 🔄 Breaking changes
-
-Voir **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** pour migration depuis v1.x.
-
-______________________________________________________________________
-
-## 🤝 Contribution
-
-Les contributions sont bienvenues !
-
-```bash
-# Fork et clone
-git clone https://github.com/your-username/linkedin-birthday-auto.git
-cd linkedin-birthday-auto
-
-# Installer dev dependencies
-pip install -r requirements-new.txt
-pip install -e ".[dev]"
-
-# Installer pre-commit
-pre-commit install
-
-# Créer branche
-git checkout -b feature/ma-fonctionnalite
-
-# Développer + tests
-# ...
-
-# Lancer tests et quality checks
-pytest
-pre-commit run --all-files
-
-# Commit et push
-git add .
-git commit -m "feat: ma nouvelle fonctionnalité"
-git push origin feature/ma-fonctionnalite
-```
-
-______________________________________________________________________
-
-## 📜 Licence
-
-Ce projet est fourni "tel quel", sans garantie d'aucune sorte.
-
-**Utilisation à vos propres risques.** LinkedIn peut détecter et bloquer l'automatisation.
-
-______________________________________________________________________
-
-## 🙏 Crédits
-
-- **Playwright** pour l'automatisation browser
-- **FastAPI** pour l'API REST
-- **Pydantic** pour la validation
-- **Communauté open-source** pour les feedbacks et contributions
-
-______________________________________________________________________
-
-## 📧 Support
-
-- **Issues**: [GitHub Issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
-- **Discussions**:
-  [GitHub Discussions](https://github.com/GaspardD78/linkedin-birthday-auto/discussions)
-- **Documentation**: Voir les fichiers `.md` dans le repo
-
-______________________________________________________________________
-
-**Conçu avec ❤️ pour automatiser intelligemment**
-
-*LinkedIn Birthday Auto Bot v2.0 - Architecture moderne, tests complets, production-ready*
+*   **Mises à jour** :
+    Pour mettre à jour le bot plus tard :
+    ```bash
+    cd ~/linkedin-birthday-auto
+    git pull
+    ./setup.sh
+    ```
