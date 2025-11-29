@@ -118,8 +118,8 @@ services:
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Clé API pour sécuriser les appels internes
     - API_KEY=${API_KEY:-internal_secret_key}
-      # Désactiver la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=false
+      # Activer la télémétrie OpenTelemetry
+    - ENABLE_TELEMETRY=true
       # Nom du service pour séparer les logs
     - SERVICE_NAME=api
     volumes:
@@ -162,8 +162,8 @@ services:
     - LOG_LEVEL=INFO
       # Utilisation SQLite partagé avec le dashboard
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Désactiver la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=false
+      # Activer la télémétrie OpenTelemetry
+    - ENABLE_TELEMETRY=true
       # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
     volumes:
