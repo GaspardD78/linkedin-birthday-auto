@@ -76,7 +76,7 @@ class MessagingLimitsConfig(BaseModel):
         default=None, description="Limite de messages par exécution (None = illimité)"
     )
     weekly_message_limit: int = Field(
-        default=80, ge=1, le=500, description="Limite hebdomadaire de messages (1-500)"
+        default=80, ge=1, le=2000, description="Limite hebdomadaire de messages (1-2000)"
     )
     daily_message_limit: Optional[int] = Field(
         default=None, description="Limite quotidienne de messages"
@@ -125,16 +125,16 @@ class DelaysConfig(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     min_delay_seconds: int = Field(
-        default=120, ge=30, description="Délai minimum entre messages (secondes)"
+        default=120, ge=30, le=3600, description="Délai minimum entre messages (secondes)"
     )
     max_delay_seconds: int = Field(
-        default=300, ge=60, description="Délai maximum entre messages (secondes)"
+        default=300, ge=60, le=7200, description="Délai maximum entre messages (secondes)"
     )
     action_delay_min: float = Field(
-        default=0.5, ge=0.1, description="Délai minimum entre micro-actions (secondes)"
+        default=0.5, ge=0.1, le=10.0, description="Délai minimum entre micro-actions (secondes)"
     )
     action_delay_max: float = Field(
-        default=1.5, ge=0.5, description="Délai maximum entre micro-actions (secondes)"
+        default=1.5, ge=0.5, le=20.0, description="Délai maximum entre micro-actions (secondes)"
     )
 
     @field_validator("max_delay_seconds")
@@ -159,7 +159,7 @@ class MessagesConfig(BaseModel):
         default="/app/data/late_messages.txt", description="Fichier contenant les messages en retard"
     )
     avoid_repetition_years: int = Field(
-        default=2, ge=1, le=10, description="Années d'historique pour éviter la répétition"
+        default=2, ge=1, le=20, description="Années d'historique pour éviter la répétition"
     )
 
 
@@ -210,7 +210,7 @@ class DatabaseConfig(BaseModel):
     enabled: bool = Field(default=True, description="Activer la base de données")
     db_path: str = Field(default="linkedin_automation.db", description="Chemin du fichier SQLite")
     timeout: int = Field(
-        default=30, ge=5, le=300, description="Timeout des opérations DB (secondes)"
+        default=30, ge=5, le=600, description="Timeout des opérations DB (secondes)"
     )
 
 
@@ -241,10 +241,10 @@ class VisitorLimitsConfig(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     profiles_per_run: int = Field(
-        default=15, ge=1, le=100, description="Nombre de profils à visiter par exécution"
+        default=15, ge=1, le=500, description="Nombre de profils à visiter par exécution"
     )
     max_pages_to_scrape: int = Field(
-        default=100, ge=1, le=500, description="Nombre maximum de pages de résultats à scraper"
+        default=100, ge=1, le=2000, description="Nombre maximum de pages de résultats à scraper"
     )
     max_pages_without_new: int = Field(
         default=3, ge=1, le=50, description="Nombre max de pages sans nouveaux profils avant arrêt"
@@ -257,22 +257,22 @@ class VisitorDelaysConfig(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     min_seconds: int = Field(
-        default=8, ge=1, description="Délai minimum entre actions générales (secondes)"
+        default=8, ge=1, le=300, description="Délai minimum entre actions générales (secondes)"
     )
     max_seconds: int = Field(
-        default=20, ge=5, description="Délai maximum entre actions générales (secondes)"
+        default=20, ge=5, le=600, description="Délai maximum entre actions générales (secondes)"
     )
     profile_visit_min: int = Field(
-        default=15, ge=5, description="Temps minimum de visite d'un profil (secondes)"
+        default=15, ge=5, le=300, description="Temps minimum de visite d'un profil (secondes)"
     )
     profile_visit_max: int = Field(
-        default=35, ge=10, description="Temps maximum de visite d'un profil (secondes)"
+        default=35, ge=10, le=600, description="Temps maximum de visite d'un profil (secondes)"
     )
     page_navigation_min: int = Field(
-        default=3, ge=1, description="Délai minimum entre navigations de page (secondes)"
+        default=3, ge=1, le=60, description="Délai minimum entre navigations de page (secondes)"
     )
     page_navigation_max: int = Field(
-        default=6, ge=2, description="Délai maximum entre navigations de page (secondes)"
+        default=6, ge=2, le=120, description="Délai maximum entre navigations de page (secondes)"
     )
 
 
@@ -282,10 +282,10 @@ class VisitorRetryConfig(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     max_attempts: int = Field(
-        default=3, ge=1, le=10, description="Nombre maximum de tentatives par profil"
+        default=3, ge=1, le=20, description="Nombre maximum de tentatives par profil"
     )
     backoff_factor: int = Field(
-        default=2, ge=1, le=10, description="Facteur d'augmentation du délai entre tentatives"
+        default=2, ge=1, le=20, description="Facteur d'augmentation du délai entre tentatives"
     )
 
 
