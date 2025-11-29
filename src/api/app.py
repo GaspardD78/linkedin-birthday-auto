@@ -455,10 +455,15 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
     # Calculer max_days_late en fonction de process_late
     max_days = config.max_days_late if config.process_late else 0
 
+    # Déterminer le mode en fonction de la configuration demandée
+    # Si on veut traiter les anniversaires en retard, il faut utiliser le mode "unlimited"
+    # car le mode "standard" ne traite que les anniversaires du jour.
+    bot_mode = "unlimited" if config.process_late else "standard"
+
     try:
         job = job_queue.enqueue(
             "src.queue.tasks.run_bot_task",
-            bot_mode="standard",
+            bot_mode=bot_mode,
             dry_run=config.dry_run,
             max_days_late=max_days,
             job_timeout="30m",
