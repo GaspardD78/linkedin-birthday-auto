@@ -203,14 +203,36 @@ class BaseLinkedInBot(ABC):
         logger.info("Checking login status...")
 
         try:
-            self.page.goto("https://www.linkedin.com/feed/", timeout=60000)
+            # BUGFIX: Augmenter le timeout pour le Pi 4 (ressources limitées)
+            self.page.goto("https://www.linkedin.com/feed/", timeout=90000)
 
-            # Indicateur de connexion : avatar de profil
-            profile_avatar_selector = "img.global-nav__me-photo"
-            self.page.wait_for_selector(profile_avatar_selector, timeout=15000)
+            # BUGFIX: Essayer plusieurs sélecteurs pour une détection plus robuste
+            login_selectors = [
+                "img.global-nav__me-photo",  # Avatar de profil (principal)
+                "button.global-nav__primary-link-me-menu-trigger",  # Bouton menu "Moi"
+                "div.feed-identity-module",  # Module d'identité du feed
+                "img[alt*='Photo']",  # Avatar alternatif
+            ]
 
-            logger.info("✅ Successfully logged in")
-            return True
+            # BUGFIX: Augmenter le timeout à 30s pour laisser le temps à la page de charger
+            for selector in login_selectors:
+                try:
+                    logger.debug(f"Trying login selector: {selector}")
+                    self.page.wait_for_selector(selector, timeout=30000)
+                    logger.info(f"✅ Successfully logged in (detected via: {selector})")
+                    return True
+                except PlaywrightTimeoutError:
+                    logger.debug(f"Selector not found: {selector}, trying next...")
+                    continue
+
+            # Si aucun sélecteur n'est trouvé, vérifier l'URL
+            current_url = self.page.url
+            if "/feed" in current_url or "/mynetwork" in current_url:
+                logger.info("✅ Login verified via URL pattern")
+                return True
+
+            # Tous les checks ont échoué
+            raise PlaywrightTimeoutError("No login indicators found")
 
         except PlaywrightTimeoutError:
             logger.error("❌ Login verification failed")
