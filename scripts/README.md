@@ -171,6 +171,48 @@ Le script effectue une analyse complète AVANT le nettoyage:
 
 ---
 
+### `rotate_api_key.sh` 🔐
+
+Script de rotation sécurisée de la clé API pour l'authentification entre Dashboard et API.
+
+**Usage:**
+```bash
+./scripts/rotate_api_key.sh
+```
+
+**Ce qu'il fait:**
+1. ✅ Génère une nouvelle clé API cryptographiquement sécurisée (64 caractères)
+2. ✅ Crée un backup automatique du fichier .env actuel (avec timestamp)
+3. ✅ Remplace la clé dans le fichier .env
+4. ✅ Redémarre tous les services Docker pour appliquer la nouvelle clé
+5. ✅ Vérifie l'absence d'erreurs d'authentification dans les logs
+
+**Méthodes de génération (par ordre de préférence):**
+- OpenSSL: `openssl rand -hex 32` (64 caractères hexadécimaux)
+- Python3: `secrets.token_urlsafe(32)` (base64 URL-safe)
+- /dev/urandom: Fallback si ni OpenSSL ni Python ne sont disponibles
+
+**Fonctionnalités de sécurité:**
+- 🔒 Backup automatique avant modification (`.env.backup.YYYYMMDD_HHMMSS`)
+- 🔍 Vérification de la mise à jour effective de la clé
+- 📋 Affichage de la clé (à sauvegarder dans un gestionnaire de mots de passe)
+- ✅ Validation post-rotation via analyse des logs API
+
+**Quand l'utiliser:**
+- 🔐 **Première installation** : Remplacer `internal_secret_key` par une clé sécurisée
+- 🔄 **Rotation périodique** : Changer la clé tous les 3-6 mois (bonne pratique)
+- ⚠️ **Compromission suspectée** : Révoquer immédiatement l'ancienne clé
+- 🆕 **Après un git pull** : Si le code de sécurité a été mis à jour
+
+**Durée estimée:** 30-60 secondes
+
+**Important:**
+- ⚠️ Sauvegardez la nouvelle clé affichée dans un gestionnaire de mots de passe
+- 📋 Les backups .env sont conservés pour rollback en cas de problème
+- 🔄 Les services sont automatiquement redémarrés (interruption de ~10 secondes)
+
+---
+
 ## ✅ Scripts de Vérification
 
 ### `verify_rpi_docker.sh`
