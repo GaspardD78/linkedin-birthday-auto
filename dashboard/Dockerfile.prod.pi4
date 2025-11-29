@@ -53,16 +53,22 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Création utilisateur non-root avec UID/GID fixe
 # UID/GID 1000 pour compatibilité avec bot-worker et permissions SQLite partagées
-RUN groupadd -g 1000 appgroup && \
-    useradd -u 1000 -g appgroup -m nextjs
+# Gestion du cas où le groupe avec GID 1000 existe déjà (dans l'image node de base)
+RUN EXISTING_GROUP=$(getent group 1000 | cut -d: -f1) && \
+    if [ -z "$EXISTING_GROUP" ]; then \
+        groupadd -g 1000 appgroup && EXISTING_GROUP=appgroup; \
+    fi && \
+    useradd -u 1000 -g $EXISTING_GROUP -m nextjs && \
+    echo "Using group: $EXISTING_GROUP (GID 1000) for user nextjs (UID 1000)"
 
 # Créer les répertoires nécessaires
-RUN mkdir -p /app/data /app/logs && chown -R nextjs:appgroup /app
+# Utiliser le GID 1000 pour les permissions (compatible quel que soit le nom du groupe)
+RUN mkdir -p /app/data /app/logs && chown -R 1000:1000 /app
 
 # Copie des artefacts du build standalone
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:appgroup /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:appgroup /app/.next/static ./.next/static
+COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
+COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
 
 USER nextjs
 
