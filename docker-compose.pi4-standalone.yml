@@ -203,7 +203,12 @@ services:
   # DASHBOARD (Next.js avec SQLite)
   # ========================================
   dashboard:
-    image: ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
+    # Build local obligatoire pour prendre en compte le fix next.config.js
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile.prod.pi4
+    image: linkedin-birthday-auto-dashboard:local
+    pull_policy: build
     restart: unless-stopped
     container_name: dashboard
     ports:

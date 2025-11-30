@@ -21,15 +21,6 @@ const nextConfig = {
     // Optimisations possibles pour build plus léger
     optimizePackageImports: ['lucide-react', 'recharts'],
   },
-  // CRITIQUE : Exposer les variables d'environnement pour le runtime serveur
-  // Sans cette config, les variables d'env Docker ne sont pas accessibles dans les API routes
-  env: {
-    BOT_API_URL: process.env.BOT_API_URL || 'http://api:8000',
-    BOT_API_KEY: process.env.BOT_API_KEY || 'internal_secret_key',
-    BOT_REDIS_HOST: process.env.BOT_REDIS_HOST || 'redis-bot',
-    BOT_REDIS_PORT: process.env.BOT_REDIS_PORT || '6379',
-    BOT_REDIS_URL: process.env.BOT_REDIS_URL || 'redis://redis-bot:6379',
-  },
 };
 
 module.exports = nextConfig;
