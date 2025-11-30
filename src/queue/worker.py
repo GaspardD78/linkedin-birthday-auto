@@ -32,6 +32,10 @@ def start_worker():
         redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
 
         with Connection(redis_conn):
+            # INFRA OPTIMIZATION: Use 'One-Shot' pattern
+            # Tasks (like run_bot_task) must handle their own BrowserManager lifecycle (setup/teardown).
+            # The worker itself just listens.
+            # We add a custom exception handler if needed, but standard RQ behavior is fine.
             worker = Worker(map(Queue, QUEUES))
             worker.work()
 

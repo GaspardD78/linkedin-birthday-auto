@@ -24,6 +24,7 @@ class ErrorCode(Enum):
     ELEMENT_NOT_FOUND = 2003
     ELEMENT_DETACHED = 2004
     NETWORK_ERROR = 2005
+    BROWSER_INIT_ERROR = 2006 # NEW CODE
 
     # LinkedIn Limits (3xxx)
     RATE_LIMIT_EXCEEDED = 3001
@@ -170,6 +171,21 @@ class BrowserError(LinkedInBotError):
             **kwargs,
         )
 
+class BrowserInitError(BrowserError):
+    """Erreur d'initialisation du navigateur."""
+
+    def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop("error_code", ErrorCode.BROWSER_INIT_ERROR)
+        recoverable = kwargs.pop("recoverable", True)
+        retry_after = kwargs.pop("retry_after", 60)
+        super().__init__(
+            message=f"Browser initialization failed: {message}",
+            error_code=error_code,
+            recoverable=recoverable,
+            retry_after=retry_after,
+            **kwargs,
+        )
 
 class PageLoadTimeoutError(BrowserError):
     """Timeout lors du chargement d'une page."""

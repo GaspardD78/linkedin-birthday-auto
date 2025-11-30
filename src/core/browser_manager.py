@@ -1,402 +1,213 @@
 """
-Gestionnaire de navigateur avec factory pattern.
+Gestionnaire de navigateur Playwright.
 
-Ce module fournit une interface unifiée pour créer et configurer des
-browsers Playwright avec anti-détection et gestion du proxy.
+Ce module encapsule la logique de gestion du cycle de vie du navigateur
+(lancement, contexte, fermeture) et les configurations spécifiques
+(proxy, user-agent, viewport).
 """
 
+import json
 import logging
 import random
-from typing import Any, Optional
+from typing import Optional, Tuple, Dict, Any
 
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
 
-from ..config.config_manager import get_config
 from ..config.config_schema import BrowserConfig
-from ..utils.exceptions import BrowserError
+from ..utils.exceptions import BrowserInitError
 
 logger = logging.getLogger(__name__)
 
 
 class BrowserManager:
     """
-    Factory pour créer et gérer des browsers Playwright.
+    Gère le cycle de vie du navigateur Playwright.
 
-    Cette classe encapsule la logique de création du browser avec :
-    - Anti-détection (User-Agent rotation, viewport randomization)
-    - Configuration du proxy
-    - Mode stealth (si playwright-stealth disponible)
-    - Gestion du contexte et de l'auth state
+    Responsabilités :
+    - Initialisation du navigateur (Chromium)
+    - Configuration du contexte (User-Agent, Viewport, Locale, Timezone)
+    - Gestion de l'état d'authentification (cookies)
+    - Nettoyage des ressources
 
-    Exemples d'utilisation :
-        >>> manager = BrowserManager()
-        >>> browser, context, page = manager.create_browser()
-        >>> # ... utiliser le browser
+    Exemples:
+        >>> config = BrowserConfig()
+        >>> manager = BrowserManager(config)
+        >>> browser, context, page = manager.create_browser("auth.json")
+        >>> # ... actions ...
         >>> manager.close()
     """
 
-    def __init__(self, config: Optional[BrowserConfig] = None):
+    def __init__(self, config: BrowserConfig):
         """
-        Initialise le gestionnaire de navigateur.
+        Initialise le gestionnaire.
 
         Args:
-            config: Configuration du navigateur (ou None pour config par défaut)
+            config: Configuration du navigateur
         """
-        self.config = config or get_config().browser
+        self.config = config
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-
-        # Sélectionner des paramètres aléatoires pour anti-détection
-        self.user_agent = random.choice(self.config.user_agents)
-        self.viewport = random.choice(self.config.viewport_sizes)
-        self.slow_mo = random.randint(*self.config.slow_mo)
-
-        logger.info(
-            f"BrowserManager initialized "
-            f"(headless={self.config.headless}, "
-            f"slow_mo={self.slow_mo}ms)"
-        )
+        logger.info("BrowserManager initialized")
 
     def create_browser(
-        self, auth_state_path: Optional[str] = None, proxy_config: Optional[dict[str, str]] = None
-    ) -> tuple[Browser, BrowserContext, Page]:
+        self,
+        auth_state_path: Optional[str] = None,
+        proxy_config: Optional[Dict[str, str]] = None,
+    ) -> Tuple[Browser, BrowserContext, Page]:
         """
-        Crée et configure un browser Playwright complet.
+        Crée une nouvelle instance de navigateur complète.
 
         Args:
-            auth_state_path: Chemin vers auth_state.json (optionnel)
-            proxy_config: Configuration proxy Playwright (optionnel)
+            auth_state_path: Chemin vers le fichier d'état d'authentification (optionnel)
+            proxy_config: Configuration du proxy (optionnel)
 
         Returns:
             Tuple (Browser, BrowserContext, Page)
 
         Raises:
-            BrowserError: Si la création du browser échoue
-
-        Exemples:
-            >>> manager = BrowserManager()
-            >>> browser, context, page = manager.create_browser(
-            ...     auth_state_path="auth_state.json"
-            ... )
+            BrowserInitError: Si l'initialisation échoue
         """
-        # BUGFIX: Fermer les instances existantes pour éviter les fuites mémoire
-        if self.browser or self.context or self.page or self.playwright:
-            logger.warning("Browser already exists, closing previous instance")
-            self.close()
-
         try:
-            # Lancer Playwright
+            logger.info("Starting Playwright...")
             self.playwright = sync_playwright().start()
 
-            # Configurer les arguments de lancement
-            launch_args = self._get_launch_args()
+            # Arguments de lancement
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",  # Often needed for Pi4
+                "--disable-software-rasterizer",
+                "--mute-audio",
+            ]
 
-            # Lancer le browser
+            # Custom args from config
+            if self.config.args:
+                launch_args.extend(self.config.args)
+
+            logger.info(f"Launching browser (headless={self.config.headless})...")
             self.browser = self.playwright.chromium.launch(
-                headless=self.config.headless, slow_mo=self.slow_mo, args=launch_args
+                headless=self.config.headless,
+                args=launch_args,
+                slow_mo=self.config.slow_mo,
+                timeout=60000, # Increased launch timeout
+                proxy=proxy_config,
             )
 
-            logger.info(f"Browser launched (user_agent: {self.user_agent[:50]}...)")
+            # Configuration du contexte
+            context_options = self._get_context_options()
 
-            # Créer le contexte
-            context_options = self._get_context_options(
-                auth_state_path=auth_state_path, proxy_config=proxy_config
-            )
+            # LOCALE-LOCK: Force English (US)
+            context_options["locale"] = "en-US"
+            context_options["timezone_id"] = "UTC" # Or Europe/Paris, but UTC matches standardized logs
 
+            # Load auth state if provided
+            if auth_state_path:
+                try:
+                    # Validate JSON first
+                    with open(auth_state_path, "r") as f:
+                        json.load(f)
+                    context_options["storage_state"] = auth_state_path
+                    logger.info(f"Loaded auth state from: {auth_state_path}")
+                except (FileNotFoundError, json.JSONDecodeError) as e:
+                    logger.warning(f"Could not load auth state (starting fresh): {e}")
+
+            logger.info("Creating browser context...")
             self.context = self.browser.new_context(**context_options)
 
-            # Appliquer le mode stealth si disponible
-            self._apply_stealth_mode()
-
-            # Créer une page
+            # Création de la page
             self.page = self.context.new_page()
 
-            logger.info(
-                f"Browser context created "
-                f"(viewport: {self.viewport['width']}x{self.viewport['height']})"
-            )
+            # Scripts anti-détection (Applied AFTER page creation)
+            self._apply_stealth_scripts(self.page)
 
+            # Timeout par défaut pour la page (HARDWARE REALISM)
+            self.page.set_default_timeout(self.config.timeout)
+            self.page.set_default_navigation_timeout(self.config.timeout)
+
+            logger.info("Browser session created successfully")
             return self.browser, self.context, self.page
 
         except Exception as e:
-            logger.error(f"Failed to create browser: {e}")
+            logger.error(f"Failed to initialize browser: {e}")
             self.close()
-            raise BrowserError(f"Failed to create browser: {e}")
+            raise BrowserInitError(f"Failed to initialize browser: {e}")
 
-    def _get_launch_args(self) -> list[str]:
-        """
-        Construit les arguments de lancement du browser.
+    def close(self) -> None:
+        """Ferme toutes les ressources du navigateur."""
+        logger.info("Closing browser resources...")
+        if self.context:
+            try:
+                self.context.close()
+            except Exception as e:
+                logger.debug(f"Error closing context: {e}")
+            self.context = None
 
-        Returns:
-            Liste d'arguments pour chromium.launch()
-        """
-        """Construit les arguments de lancement optimisés pour Pi 4."""
-        args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-web-security",
-            "--disable-features=IsolateOrigins,site-per-process",
-            f'--window-size={self.viewport["width"]},{self.viewport["height"]}',
-        ]
+        if self.browser:
+            try:
+                self.browser.close()
+            except Exception as e:
+                logger.debug(f"Error closing browser: {e}")
+            self.browser = None
 
-        # Optimisations RAM et GPU Spécifiques Pi 4 :
-        pi4_args = [
-            "--disable-gpu",  # CRITIQUE: Désactive GPU pour éviter les timeouts sur Pi 4
-            "--disable-software-rasterizer",  # CRITIQUE: Évite les blocages de rendu logiciel
-            "--disable-gl-drawing-for-tests",
-            "--mute-audio",
-            "--disable-extensions",
-            "--disable-background-networking",
-            "--disable-component-extensions-with-background-pages",
-        ]
-        args.extend(pi4_args)
+        if self.playwright:
+            try:
+                self.playwright.stop()
+            except Exception as e:
+                logger.debug(f"Error stopping playwright: {e}")
+            self.playwright = None
 
-        return args
-
-    def _get_context_options(
-        self, auth_state_path: Optional[str] = None, proxy_config: Optional[dict[str, str]] = None
-    ) -> dict[str, Any]:
-        """
-        Construit les options du contexte browser.
-
-        Args:
-            auth_state_path: Chemin vers auth_state.json
-            proxy_config: Configuration proxy
-
-        Returns:
-            Dict d'options pour browser.new_context()
-        """
-        options: dict[str, Any] = {
-            "user_agent": self.user_agent,
-            "viewport": self.viewport,
-            "locale": self.config.locale,
-            "timezone_id": self.config.timezone,
-        }
-
-        # Ajouter l'auth state si fourni
-        if auth_state_path:
-            options["storage_state"] = auth_state_path
-
-        # Ajouter le proxy si fourni
-        if proxy_config:
-            options["proxy"] = proxy_config
-
-        return options
-
-    def _apply_stealth_mode(self) -> None:
-        """
-        Applique le mode stealth au contexte si playwright-stealth est disponible.
-
-        Le mode stealth masque les indicateurs que le browser est automatisé.
-        """
-        try:
-            from playwright_stealth import Stealth
-
-            stealth = Stealth()
-            stealth.apply_stealth_sync(self.context)
-            logger.info("✅ Stealth mode applied successfully")
-        except ImportError:
-            logger.warning(
-                "⚠️ playwright-stealth not installed, "
-                "skipping stealth mode. Install with: pip install playwright-stealth"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to apply stealth mode: {e}")
-
-    def get_page(self) -> Page:
-        """
-        Retourne la page actuelle.
-
-        Returns:
-            Page Playwright
-
-        Raises:
-            BrowserError: Si aucune page n'est créée
-        """
+    def take_screenshot(self, name: str) -> None:
+        """Prend une capture d'écran de la page active."""
         if not self.page:
-            raise BrowserError("No page created. Call create_browser() first.")
-        return self.page
-
-    def navigate_to(self, url: str, timeout: int = 60000) -> None:
-        """
-        Navigue vers une URL.
-
-        Args:
-            url: URL de destination
-            timeout: Timeout en millisecondes
-
-        Raises:
-            BrowserError: Si la navigation échoue
-        """
-        if not self.page:
-            raise BrowserError("No page created. Call create_browser() first.")
-
-        try:
-            self.page.goto(url, timeout=timeout)
-            logger.info(f"Navigated to: {url}")
-        except Exception as e:
-            logger.error(f"Navigation failed to {url}: {e}")
-            raise BrowserError(f"Failed to navigate to {url}: {e}")
-
-    def save_auth_state(self, output_path: str) -> None:
-        """
-        Sauvegarde l'état d'authentification actuel.
-
-        Args:
-            output_path: Chemin du fichier de sortie
-
-        Raises:
-            BrowserError: Si la sauvegarde échoue
-        """
-        if not self.context:
-            raise BrowserError("No context created. Call create_browser() first.")
-
-        try:
-            self.context.storage_state(path=output_path)
-            logger.info(f"Auth state saved to: {output_path}")
-        except Exception as e:
-            logger.error(f"Failed to save auth state: {e}")
-            raise BrowserError(f"Failed to save auth state: {e}")
-
-    def take_screenshot(self, path: str, full_page: bool = False, timeout: int = 10000) -> None:
-        """
-        Prend une capture d'écran (non-bloquant pour le debug).
-
-        Args:
-            path: Chemin du fichier de sortie
-            full_page: Capturer la page entière ou seulement le viewport
-            timeout: Timeout en millisecondes (défaut: 10000ms = 10s)
-
-        Note:
-            Les erreurs de screenshot sont loguées mais ne lèvent pas d'exception
-            car les screenshots sont principalement utilisés pour le debug.
-        """
-        if not self.page:
-            logger.warning(f"Cannot take screenshot '{path}': No page created")
             return
 
         try:
-            # Petit délai pour stabiliser la page avant screenshot
-            self.page.wait_for_timeout(500)
-            self.page.screenshot(path=path, full_page=full_page, timeout=timeout)
-            logger.debug(f"Screenshot saved to: {path}")
+            path = f"/app/logs/{name}"
+            self.page.screenshot(path=path)
+            logger.info(f"Screenshot saved: {path}")
         except Exception as e:
-            # Screenshots sont pour debug uniquement - ne pas bloquer l'exécution
-            logger.warning(f"Failed to take screenshot '{path}': {e}")
+            logger.warning(f"Failed to take screenshot: {e}")
 
-    def close(self) -> None:
-        """Ferme proprement le browser et Playwright avec timeout protection."""
-        # BUGFIX: Amélioration de la robustesse du nettoyage avec timeout
-        import signal
+    def _get_context_options(self) -> Dict[str, Any]:
+        """Génère les options du contexte navigateur."""
 
-        def timeout_handler(signum, frame):
-            raise TimeoutError("Browser cleanup timeout")
+        # User Agent
+        user_agent = self.config.user_agent
+        if not user_agent:
+             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-        # Set 10 second timeout for cleanup
-        if hasattr(signal, "SIGALRM"):
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(10)
+        # Viewport
+        viewport = {"width": 1280, "height": 720}
+        if self.config.viewport_width and self.config.viewport_height:
+            viewport = {
+                "width": self.config.viewport_width,
+                "height": self.config.viewport_height,
+            }
 
+        return {
+            "user_agent": user_agent,
+            "viewport": viewport,
+            "accept_downloads": False,
+            "java_script_enabled": True,
+            "bypass_csp": True, # Helpful for scraping
+        }
+
+    def _apply_stealth_scripts(self, page: Page) -> None:
+        """Applique les scripts de dissimulation (stealth)."""
         try:
-            if self.page:
-                try:
-                    self.page.close()
-                    logger.debug("Page closed")
-                except Exception as e:
-                    logger.warning(f"Error closing page: {e}")
-                finally:
-                    self.page = None
+            # Try to use playwright-stealth if installed
+            from playwright_stealth import stealth_sync
+            stealth_sync(page)
+            logger.debug("Playwright-Stealth applied successfully")
+        except ImportError:
+            logger.warning("Playwright-Stealth not found, applying basic manual override")
 
-            if self.context:
-                try:
-                    self.context.close()
-                    logger.debug("Context closed")
-                except Exception as e:
-                    logger.warning(f"Error closing context: {e}")
-                finally:
-                    self.context = None
-
-            if self.browser:
-                try:
-                    self.browser.close()
-                    logger.debug("Browser closed")
-                except Exception as e:
-                    logger.warning(f"Error closing browser: {e}")
-                finally:
-                    self.browser = None
-
-            if self.playwright:
-                try:
-                    self.playwright.stop()
-                    logger.debug("Playwright stopped")
-                except Exception as e:
-                    logger.warning(f"Error stopping Playwright: {e}")
-                finally:
-                    self.playwright = None
-
-            logger.info("✅ Browser cleanup completed")
-
-        except TimeoutError:
-            logger.error("⚠️ Browser cleanup timeout - forcing cleanup")
-            # Force cleanup
-            self.page = None
-            self.context = None
-            self.browser = None
-            self.playwright = None
-        except Exception as e:
-            logger.error(f"Error during browser cleanup: {e}")
-            # Force cleanup même en cas d'erreur
-            self.page = None
-            self.context = None
-            self.browser = None
-            self.playwright = None
-        finally:
-            # Cancel alarm
-            if hasattr(signal, "SIGALRM"):
-                signal.alarm(0)
-
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.close()
-
-    def __repr__(self) -> str:
-        """Représentation string du manager."""
-        return (
-            f"<BrowserManager(headless={self.config.headless}, "
-            f"viewport={self.viewport['width']}x{self.viewport['height']})>"
-        )
-
-
-def create_browser_with_auth(
-    auth_state_path: str, proxy_config: Optional[dict[str, str]] = None
-) -> tuple[BrowserManager, Browser, BrowserContext, Page]:
-    """
-    Fonction helper pour créer rapidement un browser avec authentification.
-
-    Args:
-        auth_state_path: Chemin vers auth_state.json
-        proxy_config: Configuration proxy (optionnel)
-
-    Returns:
-        Tuple (BrowserManager, Browser, BrowserContext, Page)
-
-    Exemples:
-        >>> manager, browser, context, page = create_browser_with_auth(
-        ...     "auth_state.json"
-        ... )
-        >>> # ... utiliser le browser
-        >>> manager.close()
-    """
-    manager = BrowserManager()
-    browser, context, page = manager.create_browser(
-        auth_state_path=auth_state_path, proxy_config=proxy_config
-    )
-    return manager, browser, context, page
+        # Basic manual stealth overrides via init_script
+        page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)

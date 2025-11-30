@@ -10,7 +10,9 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
+
+import requests
 
 from ..config.config_manager import get_config
 from ..config.config_schema import AuthConfig
@@ -116,6 +118,84 @@ class AuthManager:
             "No valid auth state found. Please set LINKEDIN_AUTH_STATE "
             "environment variable or create auth_state.json"
         )
+
+    def validate_session_network(self) -> bool:
+        """
+        Validates the current session by pinging LinkedIn with the stored cookies.
+        Uses lightweight 'requests' instead of spinning up a browser.
+
+        Returns:
+            True if the session is valid (authenticated), False otherwise.
+        """
+        try:
+            # Load the current auth state (don't prepare/write, just load into memory)
+            auth_data = None
+
+            # Try writable path first
+            writable_auth_file = Path("/app/data/auth_state.json")
+            if writable_auth_file.exists() and self._validate_auth_file(writable_auth_file):
+                with open(writable_auth_file, encoding="utf-8") as f:
+                    auth_data = json.load(f)
+            else:
+                # Try config path
+                auth_file = Path(self.config.auth_file_path)
+                if auth_file.exists() and self._validate_auth_file(auth_file):
+                    with open(auth_file, encoding="utf-8") as f:
+                        auth_data = json.load(f)
+
+            if not auth_data:
+                logger.warning("No auth data found for network validation.")
+                return False
+
+            # Extract cookies for requests
+            cookies = {}
+            for cookie in auth_data.get("cookies", []):
+                # Only include cookies relevant for linkedin.com
+                if "linkedin.com" in cookie.get("domain", ""):
+                    cookies[cookie["name"]] = cookie["value"]
+
+            # Li_at is the most critical cookie
+            if "li_at" not in cookies:
+                logger.warning("Missing critical 'li_at' cookie.")
+                return False
+
+            # Perform the ping
+            # Using a lightweight endpoint that requires auth but is fast
+            url = "https://www.linkedin.com/feed/"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9"
+            }
+
+            logger.info("Pinging LinkedIn to validate session...")
+            response = requests.get(url, cookies=cookies, headers=headers, timeout=10, allow_redirects=False)
+
+            # Analysis of response:
+            # 200 OK -> Valid
+            # 302/303 Redirect -> Likely to login page (Invalid) or maybe to feed?
+            # Usually if unauthenticated, it redirects to /login or /checkpoint
+
+            if response.status_code == 200:
+                logger.info("Session network validation: SUCCESS (200 OK)")
+                return True
+            elif response.status_code in (302, 303, 307):
+                location = response.headers.get("Location", "")
+                if "login" in location or "checkpoint" in location or "auth" in location:
+                    logger.warning(f"Session network validation: FAILED (Redirect to {location})")
+                    return False
+                else:
+                    # Redirect to somewhere else (e.g. /feed/) might be fine?
+                    # But usually /feed/ returns 200 if logged in.
+                    logger.warning(f"Session network validation: AMBIGUOUS (Redirect to {location})")
+                    # Assume false to be safe, or check if it redirects back to feed
+                    return False
+            else:
+                logger.warning(f"Session network validation: FAILED (Status {response.status_code})")
+                return False
+
+        except Exception as e:
+            logger.error(f"Network validation error: {e}")
+            return False
 
     def _load_from_env(self) -> Optional[dict]:
         """
