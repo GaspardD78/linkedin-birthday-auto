@@ -28,8 +28,8 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
     # Handlers
     handlers = [logging.StreamHandler(sys.stdout)]
     if log_file:
-        # SECURITY FIX: On ne force plus le suffixe du service sur le fichier principal
-        # pour que le Dashboard puisse toujours trouver linkedin_bot.log
+        # CORRECTION v2.1 : On force le nom de fichier exact pour le Dashboard
+        # On ne rajoute plus le suffixe du service (worker, api, etc.)
 
         # Créer le répertoire parent si nécessaire
         log_path = Path(log_file)
@@ -48,11 +48,7 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
         structlog.processors.TimeStamper(fmt="iso"),
     ]
 
-    # Si on est en local (développement), on veut peut-être des logs colorés
-    # Sinon (production/JSON), on utilise JSONRenderer
-    # Pour simplifier ici, on va utiliser JSONRenderer si un fichier est spécifié,
-    # ou ConsoleRenderer sinon.
-
+    # En local : logs colorés. Avec fichier : JSON.
     if log_file:
         processors.append(structlog.processors.JSONRenderer())
     else:
