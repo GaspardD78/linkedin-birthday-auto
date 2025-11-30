@@ -10,10 +10,10 @@ from datetime import datetime
 import random
 import re
 import time
-from typing import Any, Optional
+from typing import Any, Optional, List, Union
 
 from opentelemetry import trace
-from playwright.sync_api import Page
+from playwright.sync_api import Page, Locator
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ..config.config_manager import get_config
@@ -431,99 +431,74 @@ class BaseLinkedInBot(ABC):
 
     def _get_birthday_type(self, contact_element) -> tuple[str, int]:
         """
-        Détermine le type d'anniversaire (today, late, ignore).
+        Détermine le type d'anniversaire (today, late, ignore) de manière robuste.
 
         Args:
             contact_element: Élément Playwright du contact
 
         Returns:
             Tuple (type: str, days_late: int)
-                type: 'today', 'late', ou 'ignore'
-                days_late: nombre de jours de retard (0 pour today)
         """
         card_text = contact_element.inner_text().lower()
 
-        # Méthode 1 : Analyser le texte du bouton
-        button_text_today = "je vous souhaite un très joyeux anniversaire"
-        button_text_late = "joyeux anniversaire avec un peu de retard"
-
-        if button_text_today in card_text:
-            logger.debug("✓ Today's birthday detected (standard button)")
+        # 1. Regex pour "Aujourd'hui" (multilingue)
+        # Matches: "aujourd'hui", "today", "is today", "anniversaire : aujourd'hui"
+        today_regex = r"(today|aujourd'hui|c'est aujourd'hui|is today)"
+        if re.search(today_regex, card_text):
+            logger.debug("✓ Today detected (regex)")
             return "today", 0
 
-        if button_text_late in card_text:
-            logger.debug("✓ Late birthday detected (late button)")
-            days = self._extract_days_from_date(card_text)
-            if days is not None:
+        # 2. Regex pour retard "Il y a X jours" (multilingue)
+        # Matches: "il y a 2 jours", "2 days ago", "hier", "yesterday"
+
+        # Hier / Yesterday = 1 jour de retard
+        yesterday_regex = r"(hier|yesterday)"
+        if re.search(yesterday_regex, card_text):
+             logger.debug("✓ Yesterday detected (regex)")
+             return "late", 1
+
+        # X jours de retard
+        days_ago_regex = r"(\d+)\s*(days?|jours?)\s*(ago|de retard|plus tôt)?"
+        match_days = re.search(days_ago_regex, card_text)
+
+        if match_days:
+            try:
+                days_late = int(match_days.group(1))
                 max_days = self.config.birthday_filter.max_days_late
-                if 1 <= days <= max_days:
-                    logger.debug(f"→ {days} day(s) late - classified as 'late'")
-                    return "late", days
+
+                if 1 <= days_late <= max_days:
+                    logger.debug(f"✓ Regex detected: {days_late} day(s) late")
+                    return "late", days_late
                 else:
-                    logger.debug(f"→ {days} day(s) late - too old, classified as 'ignore'")
-                    return "ignore", days
-            else:
-                logger.warning("⚠️ Late detected but date unparseable, estimating 2 days")
-                return "late", 2
+                    logger.debug(f"→ Regex: {days_late} days - too old or ignored")
+                    return "ignore", days_late
+            except Exception:
+                pass
 
-        # Méthode 2 : Mots-clés "aujourd'hui"
-        today_keywords = [
-            "aujourd'hui",
-            "aujourdhui",
-            "c'est aujourd'hui",
-            "today",
-            "is today",
-            "'s birthday is today",
-        ]
+        # 3. Fallback sur le texte des boutons (legacy mais utile)
+        button_text_today = ["joyeux anniversaire", "happy birthday"]
+        # Vérification simple si les mots clés apparaissent sans indicateur de retard
+        has_today_keyword = any(k in card_text for k in button_text_today)
+        has_delay_indicator = any(k in card_text for k in ["retard", "ago", "hier", "yesterday", "il y a"])
 
-        for keyword in today_keywords:
-            if keyword in card_text:
-                logger.debug(f"✓ Today detected (keyword: '{keyword}')")
-                return "today", 0
+        if has_today_keyword and not has_delay_indicator:
+             logger.debug("✓ Button text detected (today)")
+             return "today", 0
 
-        # Méthode 3 : Parser la date explicite
+        # 4. Parsing de date explicite (dernier recours)
         days = self._extract_days_from_date(card_text)
         if days is not None:
             max_days = self.config.birthday_filter.max_days_late
-
             if days == 0:
-                logger.debug("✓ Parsed date = today")
                 return "today", 0
             elif 1 <= days <= max_days:
-                logger.debug(f"✓ Parsed date = {days} day(s) late")
                 return "late", days
             else:
-                logger.debug(f"→ Parsed date = {days} days - too old")
                 return "ignore", days
 
-        # Méthode 4 : Regex "il y a X jours"
-        match_fr = re.search(r"il y a (\d+) jours?", card_text)
-        match_en = re.search(r"(\d+) days? ago", card_text)
-
-        if match_fr or match_en:
-            days_late = int(match_fr.group(1) if match_fr else match_en.group(1))
-            max_days = self.config.birthday_filter.max_days_late
-
-            if 1 <= days_late <= max_days:
-                logger.debug(f"✓ Regex detected: {days_late} day(s) late")
-                return "late", days_late
-            else:
-                logger.debug(f"→ Regex: {days_late} days - too old")
-                return "ignore", days_late
-
-        # Cas par défaut
-        logger.warning("⚠️ No pattern recognized in card")
-        logger.debug(f"Card text: {card_text[:200]}")
-
-        time_keywords = ["retard", "il y a", "ago", "récent"]
-        has_time_keyword = any(kw in card_text for kw in time_keywords)
-
-        if not has_time_keyword:
-            logger.debug("→ No delay indicator, classifying as 'today'")
-            return "today", 0
-        else:
-            logger.warning("→ Ambiguous time indicators, classifying as 'ignore'")
-            return "ignore", 0
+        # Défaut
+        logger.debug("→ No valid pattern detected, ignoring")
+        return "ignore", 0
 
     def _extract_days_from_date(self, card_text: str) -> Optional[int]:
         """
@@ -744,6 +719,31 @@ class BaseLinkedInBot(ABC):
         with self.tracer.start_as_current_span("send_birthday_message"):
             return self._send_birthday_message_internal(contact_element, is_late, days_late)
 
+    def _find_element_by_cascade(self, parent: Union[Page, Locator], strategies: List[str]) -> Optional[Locator]:
+        """
+        Cherche un élément en utilisant une stratégie en cascade (Fallback Strategy).
+
+        Args:
+            parent: Élément parent ou page où chercher
+            strategies: Liste de sélecteurs CSS à essayer dans l'ordre
+
+        Returns:
+            L'élément trouvé (Locator) ou None
+        """
+        for selector in strategies:
+            try:
+                # Utiliser .first pour éviter les erreurs si plusieurs éléments correspondent
+                element = parent.locator(selector).first
+                if element.count() > 0:
+                    # Vérifier visibilité si possible
+                    if element.is_visible():
+                        logger.debug(f"Element found via strategy: {selector}")
+                        return element
+            except Exception:
+                continue
+
+        return None
+
     def _send_birthday_message_internal(
         self, contact_element, is_late: bool, days_late: int
     ) -> bool:
@@ -768,23 +768,46 @@ class BaseLinkedInBot(ABC):
         log_msg = f"late ({days_late}d)" if is_late else "today"
         logger.info(f"--- Processing birthday ({log_msg}) for {full_name} ---", contact=full_name)
 
-        # Sélecteur du bouton Message
-        message_button_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+        # Stratégie de recherche du bouton "Message" (Fallback Strategy)
+        message_button_strategies = [
+            # 1. Attributs stables (Data Attributes)
+            'button[aria-label*="Envoyer un message"]',
+            'button[aria-label*="Send message"]',
+            'a[href*="/messaging/compose"]',
+
+            # 2. Rôles sémantiques combinés (via CSS pour Locator)
+            'button:has-text("Message")',
+
+            # 3. Classes CSS (dernier recours)
+            '.artdeco-button--primary',
+
+            # 4. Texte (Fallback ultime Multilingue)
+            'text="Message"',
+            'text="Envoyer un message"',
+            'text="Send message"'
+        ]
 
         try:
-            # Chercher le bouton Message
-            message_buttons = contact_element.query_selector_all(message_button_selector)
+            # Chercher le bouton Message avec la stratégie en cascade
+            message_button = self._find_element_by_cascade(contact_element, message_button_strategies)
+
+            if not message_button:
+                # Tentative directe avec query_selector_all pour compatibilité legacy si la cascade échoue
+                legacy_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
+                buttons = contact_element.query_selector_all(legacy_selector)
+                if buttons:
+                    message_button = contact_element.locator(legacy_selector).first
         except Exception as e:
             logger.error(f"❌ Error finding message button: {e}")
             return False
 
-        if not message_buttons:
+        if not message_button:
             logger.warning(f"Could not find 'Message' button for {full_name}. Skipping.")
             return False
 
         # Cliquer sur le bouton Message
         try:
-            message_buttons[0].click()
+            message_button.click()
             self.random_delay(1, 2)
         except Exception as e:
             logger.error(f"❌ Error clicking message button: {e}")
@@ -806,23 +829,16 @@ class BaseLinkedInBot(ABC):
             self._close_all_message_modals()
             self.random_delay(1, 2)
 
-            # Re-ouvrir la modale
+            # Re-ouvrir la modale (Retry Logic)
             try:
-                all_cards = self.page.query_selector_all("div[role='listitem']")
-                for card in all_cards:
-                    try:
-                        card_text = card.inner_text()
-                        if full_name in card_text or first_name in card_text:
-                            button = card.query_selector(message_button_selector)
-                            if button:
-                                button.click()
-                                self.random_delay(1, 2)
-                                self.page.wait_for_selector(
-                                    message_box_selector, state="visible", timeout=30000
-                                )
-                                break
-                    except Exception:
-                        continue
+                # Refaire la recherche du bouton
+                message_button = self._find_element_by_cascade(contact_element, message_button_strategies)
+                if message_button:
+                    message_button.click()
+                    self.random_delay(1, 2)
+                    self.page.wait_for_selector(
+                        message_box_selector, state="visible", timeout=30000
+                    )
             except Exception as e:
                 logger.error(f"❌ Failed to re-open modal: {e}")
                 return False
@@ -882,16 +898,44 @@ class BaseLinkedInBot(ABC):
                     logger.warning(f"Could not record dry-run to database: {e}")
             return True
 
-        # Taper le message
+        # Taper le message (Self-Healing Logic)
         try:
             logger.info(f"Typing message: '{message}'")
+
+            # S'assurer que le focus est sur la boite de message
+            message_box.click()
+            self.random_delay(0.2, 0.4)
             message_box.clear()
             self.random_delay(0.3, 0.5)
             message_box.fill(message)
             self.random_delay(1, 2)
+
         except Exception as e:
-            logger.error(f"❌ Error typing message: {e}")
-            return False
+            logger.warning(f"⚠️ Error typing message (attempt 1): {e}")
+
+            # Self-Healing: Fermer, rouvrir et réessayer
+            logger.info("♻️ Self-Healing: Closing modals and retrying...")
+            self._close_all_message_modals()
+            self.random_delay(1, 2)
+
+            try:
+                # Retry Process
+                message_button = self._find_element_by_cascade(contact_element, message_button_strategies)
+                if message_button:
+                    message_button.click()
+                    self.page.wait_for_selector(message_box_selector, state="visible", timeout=30000)
+
+                    message_box = self.page.locator(message_box_selector).last
+                    message_box.click() # Focus explicite
+                    self.random_delay(0.5, 1)
+                    message_box.fill(message)
+                    logger.info("✅ Retry successful")
+                else:
+                     raise Exception("Could not find message button on retry")
+
+            except Exception as e2:
+                logger.error(f"❌ Failed to type message after retry: {e2}")
+                return False
 
         # Bouton d'envoi
         submit_button = self.page.locator("button.msg-form__send-button").last
@@ -958,34 +1002,37 @@ class BaseLinkedInBot(ABC):
     def _close_all_message_modals(self) -> None:
         """Ferme toutes les modales de message ouvertes."""
         try:
-            close_buttons = self.page.locator(
-                "button[data-control-name='overlay.close_conversation_window']"
-            )
-            initial_count = close_buttons.count()
+            # Sélecteurs de fermeture de modale
+            close_selectors = [
+                "button[data-control-name='overlay.close_conversation_window']",
+                "button[aria-label='Dismiss']",
+                "button[aria-label='Fermer']"
+            ]
 
-            if initial_count > 0:
-                logger.debug(f"🧹 Closing {initial_count} modal(s)...")
-                closed_count = 0
-                max_attempts = initial_count + 2
+            # Essayer de trouver des boutons de fermeture
+            for selector in close_selectors:
+                close_buttons = self.page.locator(selector)
+                initial_count = close_buttons.count()
 
-                for attempt in range(max_attempts):
-                    current_count = self.page.locator(
-                        "button[data-control-name='overlay.close_conversation_window']"
-                    ).count()
+                if initial_count > 0:
+                    logger.debug(f"🧹 Closing {initial_count} modal(s) using {selector}...")
+                    closed_count = 0
+                    max_attempts = initial_count + 2
 
-                    if current_count == 0:
-                        break
+                    for attempt in range(max_attempts):
+                        current_count = self.page.locator(selector).count()
 
-                    try:
-                        self.page.locator(
-                            "button[data-control-name='overlay.close_conversation_window']"
-                        ).first.click(timeout=2000)
-                        closed_count += 1
-                        self.random_delay(0.3, 0.6)
-                    except Exception:
-                        break
+                        if current_count == 0:
+                            break
 
-                logger.debug(f"✅ {closed_count} modal(s) closed")
+                        try:
+                            self.page.locator(selector).first.click(timeout=2000)
+                            closed_count += 1
+                            self.random_delay(0.3, 0.6)
+                        except Exception:
+                            break
+
+                    logger.debug(f"✅ {closed_count} modal(s) closed")
 
         except Exception as e:
             logger.debug(f"Error closing modals (non-critical): {e}")
