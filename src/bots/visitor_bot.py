@@ -295,30 +295,11 @@ class VisitorBot(BaseLinkedInBot):
             self.browser_manager.take_screenshot("search_results_page.png")
 
         profile_links = []
-
-        # Sélecteurs de recherche (Fallback Strategy)
-        result_container_strategies = [
-            'div[data-view-name="people-search-result"]',
-            'li.reusable-search__result-container',
-            'li.search-result'
-        ]
+        result_container_selector = 'div[data-view-name="people-search-result"]'
 
         try:
             # Attendre les résultats
-            # On attend le premier sélecteur qui marche
-            found_selector = None
-            for selector in result_container_strategies:
-                try:
-                    self.page.wait_for_selector(selector, timeout=5000)
-                    found_selector = selector
-                    break
-                except Exception:
-                    continue
-
-            if not found_selector:
-                # Fallback sur un timeout plus long avec le sélecteur principal
-                self.page.wait_for_selector(result_container_strategies[0], timeout=15000)
-                found_selector = result_container_strategies[0]
+            self.page.wait_for_selector(result_container_selector, timeout=20000)
 
             # Scroller pour charger plus de résultats
             for _ in range(5):
@@ -326,23 +307,13 @@ class VisitorBot(BaseLinkedInBot):
                 self._random_delay_generic()
 
             # Extraire les liens
-            result_containers = self.page.query_selector_all(found_selector)
+            result_containers = self.page.query_selector_all(result_container_selector)
             logger.info(f"Found {len(result_containers)} result containers on the page.")
 
             for container in result_containers:
-                # Stratégie de recherche de lien dans le conteneur
-                link_strategies = [
-                   'a[data-view-name="search-result-lockup-title"]',
-                   'span.entity-result__title-text a.app-aware-link',
-                   'a.app-aware-link'
-                ]
-
-                link_element = None
-                for link_sel in link_strategies:
-                    link_element = container.query_selector(link_sel)
-                    if link_element:
-                        break
-
+                link_element = container.query_selector(
+                    'a[data-view-name="search-result-lockup-title"]'
+                )
                 if link_element:
                     href = link_element.get_attribute("href")
                     if href and "linkedin.com/in/" in href:
@@ -554,12 +525,11 @@ class VisitorBot(BaseLinkedInBot):
                     "h1[class*='heading']",
                 ]
 
-                # Utilisation de la méthode de fallback du BaseBot si disponible
-                if hasattr(self, '_find_element_by_cascade'):
-                    name_element = self._find_element_by_cascade(self.page, name_selectors)
-                    if name_element:
-                         full_name = name_element.inner_text(timeout=5000).strip()
-                         if full_name and len(full_name) > 0:
+                for selector in name_selectors:
+                    name_element = self.page.locator(selector).first
+                    if name_element.count() > 0:
+                        full_name = name_element.inner_text(timeout=5000).strip()
+                        if full_name and len(full_name) > 0:
                             scraped_data["full_name"] = full_name
 
                             # Séparer prénom et nom
@@ -570,24 +540,7 @@ class VisitorBot(BaseLinkedInBot):
                             elif len(name_parts) == 1:
                                 scraped_data["first_name"] = name_parts[0]
                                 scraped_data["last_name"] = ""
-                else:
-                    # Fallback manuel si la méthode n'est pas héritée
-                    for selector in name_selectors:
-                        name_element = self.page.locator(selector).first
-                        if name_element.count() > 0:
-                            full_name = name_element.inner_text(timeout=5000).strip()
-                            if full_name and len(full_name) > 0:
-                                scraped_data["full_name"] = full_name
-
-                                # Séparer prénom et nom
-                                name_parts = full_name.split()
-                                if len(name_parts) >= 2:
-                                    scraped_data["first_name"] = name_parts[0]
-                                    scraped_data["last_name"] = " ".join(name_parts[1:])
-                                elif len(name_parts) == 1:
-                                    scraped_data["first_name"] = name_parts[0]
-                                    scraped_data["last_name"] = ""
-                                break
+                            break
 
             except Exception as e:
                 logger.debug(f"Could not extract full name: {e}")
