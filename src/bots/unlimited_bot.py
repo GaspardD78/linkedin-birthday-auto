@@ -346,7 +346,7 @@ def run_unlimited_bot(
         >>> # Mode production avec max 10 jours
         >>> results = run_unlimited_bot(max_days_late=10)
     """
-    from ..config import get_config
+    from ..config.config_manager import get_config
 
     if config is None:
         config = get_config()

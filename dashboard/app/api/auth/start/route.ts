@@ -6,14 +6,24 @@ export async function POST(request: Request) {
 
   try {
     const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
-    const apiResponse = await fetch(`${apiUrl}/auth/start`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': process.env.BOT_API_KEY || 'internal_secret_key',
-      },
-      body: JSON.stringify({ email, password }),
-    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min
+
+    let apiResponse;
+    try {
+      apiResponse = await fetch(`${apiUrl}/auth/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': process.env.BOT_API_KEY || 'internal_secret_key',
+        },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const data = await apiResponse.json();
 
