@@ -188,6 +188,10 @@ async def start_authentication(request: StartAuthRequest):
                     feed_selector = "div.feed-identity-module, .feed-shared-update-v2, #global-nav"
                     error_selector = ".login__form_action_container .error, .alert-content"
                     captcha_selector = "#captcha-internal, iframe[src*='captcha']"
+                    # Device Check Selector (added for 2FA bypass)
+                    device_check_selector = (
+                        "h1:has-text('Check your'), h1:has-text('Vérifiez votre'), .secondary-action"
+                    )
 
                     logger.info("Waiting for login response...")
                     span.add_event("wait_for_response")
@@ -195,7 +199,7 @@ async def start_authentication(request: StartAuthRequest):
                     # Increased timeout for Raspberry Pi 4 (from 90s to 180s)
                     try:
                         await page.wait_for_selector(
-                            f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}",
+                            f"{pin_input_selector}, {feed_selector}, {error_selector}, {captcha_selector}, {device_check_selector}",
                             timeout=180000,
                         )
                     except PlaywrightTimeoutError:
@@ -223,6 +227,34 @@ async def start_authentication(request: StartAuthRequest):
                         raise HTTPException(
                             status_code=403, detail="Captcha detected. Please use manual cookie export."
                         )
+
+                    # 2FA Handling (Device Check bypass logic)
+                    device_check_selector = (
+                        "h1:has-text('Check your'), h1:has-text('Vérifiez votre'), .secondary-action"
+                    )
+                    try_another_way_btn = "button.secondary-action, a:has-text('Try another way'), a:has-text('Essayer une autre méthode')"
+
+                    if await page.is_visible(device_check_selector) and not await page.is_visible(
+                        pin_input_selector
+                    ):
+                        logger.info("Device check detected. Attempting to force fallback to SMS/Email...")
+                        try:
+                            # 1. Click 'Try another way'
+                            if await page.is_visible(try_another_way_btn):
+                                logger.info("Clicking 'Try another way'...")
+                                await page.click(try_another_way_btn)
+                                await page.wait_for_timeout(1000)
+
+                            # 2. Select SMS or Email option (looking for list items or buttons)
+                            sms_email_option = "button[aria-label*='SMS'], button[aria-label*='Email'], div:has-text('SMS'):visible, div:has-text('Email'):visible"
+                            if await page.is_visible(sms_email_option):
+                                logger.info("Selecting SMS/Email option...")
+                                await page.click(sms_email_option)
+                                # Wait for the PIN input to appear
+                                await page.wait_for_selector(pin_input_selector, timeout=10000)
+                        except Exception as e:
+                            logger.warning(f"Fallback attempt failed: {e}")
+                            # Continue to standard checks, maybe we are lucky
 
                     if await page.is_visible(pin_input_selector):
                         logger.info("2FA required.")
