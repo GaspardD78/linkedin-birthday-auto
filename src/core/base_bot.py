@@ -773,6 +773,7 @@ class BaseLinkedInBot(ABC):
             # 1. Attributs stables (Data Attributes)
             'button[aria-label*="Envoyer un message"]',
             'button[aria-label*="Send message"]',
+            'a[aria-label*="Envoyer un message"]',  # Support pour liens transformés en boutons
             'a[href*="/messaging/compose"]',
 
             # 2. Rôles sémantiques combinés (via CSS pour Locator)
@@ -791,12 +792,6 @@ class BaseLinkedInBot(ABC):
             # Chercher le bouton Message avec la stratégie en cascade
             message_button = self._find_element_by_cascade(contact_element, message_button_strategies)
 
-            if not message_button:
-                # Tentative directe avec query_selector_all pour compatibilité legacy si la cascade échoue
-                legacy_selector = 'a[aria-label*="Envoyer un message"], a[href*="/messaging/compose"], button:has-text("Message")'
-                buttons = contact_element.query_selector_all(legacy_selector)
-                if buttons:
-                    message_button = contact_element.locator(legacy_selector).first
         except Exception as e:
             logger.error(f"❌ Error finding message button: {e}")
             return False

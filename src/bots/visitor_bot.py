@@ -558,8 +558,7 @@ class VisitorBot(BaseLinkedInBot):
                 name_element = self._find_element_by_cascade(self.page, name_selectors)
                 if name_element:
                         full_name = name_element.inner_text(timeout=5000).strip()
-                        if full_name and len(full_name) > 0:
-                        #if full_name:
+                        if full_name:
                             scraped_data["full_name"] = full_name
 
                             # Séparer prénom et nom
@@ -584,17 +583,15 @@ class VisitorBot(BaseLinkedInBot):
                     "span[class*='distance']",
                 ]
 
-                for selector in relationship_selectors:
-                    rel_element = self.page.locator(selector).first
-                    if rel_element.count() > 0:
-                        rel_text = rel_element.inner_text(timeout=5000).strip()
-                        # Chercher "1er", "2e", "3e" ou "1st", "2nd", "3rd"
-                        if any(
-                            level in rel_text.lower()
-                            for level in ["1er", "2e", "3e", "1st", "2nd", "3rd"]
-                        ):
-                            scraped_data["relationship_level"] = rel_text
-                            break
+                rel_element = self._find_element_by_cascade(self.page, relationship_selectors)
+                if rel_element:
+                    rel_text = rel_element.inner_text(timeout=5000).strip()
+                    # Chercher "1er", "2e", "3e" ou "1st", "2nd", "3rd"
+                    if any(
+                        level in rel_text.lower()
+                        for level in ["1er", "2e", "3e", "1st", "2nd", "3rd"]
+                    ):
+                        scraped_data["relationship_level"] = rel_text
 
             except Exception as e:
                 logger.debug(f"Could not extract relationship level: {e}")
@@ -610,21 +607,19 @@ class VisitorBot(BaseLinkedInBot):
                     "div[class*='inline-show-more-text']",
                 ]
 
-                for selector in company_selectors:
-                    company_element = self.page.locator(selector).first
-                    if company_element.count() > 0:
-                        company_text = company_element.inner_text(timeout=5000).strip()
-                        if company_text and len(company_text) > 0:
-                            # Extraire l'entreprise (souvent après "chez" ou "at")
-                            if " chez " in company_text.lower():
-                                scraped_data["current_company"] = company_text.split(" chez ")[
-                                    -1
-                                ].strip()
-                            elif " at " in company_text.lower():
-                                scraped_data["current_company"] = company_text.split(" at ")[-1].strip()
-                            else:
-                                scraped_data["current_company"] = company_text
-                            break
+                company_element = self._find_element_by_cascade(self.page, company_selectors)
+                if company_element:
+                    company_text = company_element.inner_text(timeout=5000).strip()
+                    if company_text and len(company_text) > 0:
+                        # Extraire l'entreprise (souvent après "chez" ou "at")
+                        if " chez " in company_text.lower():
+                            scraped_data["current_company"] = company_text.split(" chez ")[
+                                -1
+                            ].strip()
+                        elif " at " in company_text.lower():
+                            scraped_data["current_company"] = company_text.split(" at ")[-1].strip()
+                        else:
+                            scraped_data["current_company"] = company_text
 
                 # Fallback: chercher dans la section Expérience
                 if scraped_data["current_company"] == "Unknown":
@@ -656,22 +651,20 @@ class VisitorBot(BaseLinkedInBot):
                     'section[id*="education"]',
                 ]
 
-                for selector in education_selectors:
-                    education_section = self.page.locator(selector).first
-                    if education_section.count() > 0:
-                        # Premier établissement
-                        first_education = education_section.locator(
-                            'div[class*="pvs-entity"]'
-                        ).first
-                        if first_education.count() > 0:
-                            education_text = (
-                                first_education.locator('span[aria-hidden="true"]')
-                                .first.inner_text(timeout=5000)
-                                .strip()
-                            )
-                            if education_text:
-                                scraped_data["education"] = education_text
-                                break
+                education_section = self._find_element_by_cascade(self.page, education_selectors)
+                if education_section:
+                    # Premier établissement
+                    first_education = education_section.locator(
+                        'div[class*="pvs-entity"]'
+                    ).first
+                    if first_education.count() > 0:
+                        education_text = (
+                            first_education.locator('span[aria-hidden="true"]')
+                            .first.inner_text(timeout=5000)
+                            .strip()
+                        )
+                        if education_text:
+                            scraped_data["education"] = education_text
 
             except Exception as e:
                 logger.debug(f"Could not extract education: {e}")
