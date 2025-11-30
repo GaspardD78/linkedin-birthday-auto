@@ -485,28 +485,32 @@ if [ ! -f ".env" ]; then
 
         # Générer des clés sécurisées
         SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1)
-        API_KEY=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1)
 
-        # Mettre à jour le .env
+        # Mettre à jour le .env pour SECRET_KEY
         if grep -q "SECRET_KEY=" .env; then
             sed -i "s|SECRET_KEY=.*|SECRET_KEY=$SECRET_KEY|" .env
         else
             echo "SECRET_KEY=$SECRET_KEY" >> .env
         fi
 
-        if grep -q "API_KEY=" .env; then
-            sed -i "s|API_KEY=.*|API_KEY=$API_KEY|" .env
+        # 1. Générer une clé unique et sécurisée pour l'API
+        GENERATED_KEY=$(openssl rand -hex 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 64 | head -n 1)
+
+        # 2. Définir ou Mettre à jour API_KEY
+        if grep -q "^API_KEY=" .env; then
+            sed -i "s|^API_KEY=.*|API_KEY=$GENERATED_KEY|" .env
         else
-            echo "API_KEY=$API_KEY" >> .env
+            echo "API_KEY=$GENERATED_KEY" >> .env
         fi
 
-        if grep -q "BOT_API_KEY=" .env; then
-            sed -i "s|BOT_API_KEY=.*|BOT_API_KEY=$API_KEY|" .env
+        # 3. Définir ou Mettre à jour BOT_API_KEY (DOIT être identique à API_KEY)
+        if grep -q "^BOT_API_KEY=" .env; then
+            sed -i "s|^BOT_API_KEY=.*|BOT_API_KEY=$GENERATED_KEY|" .env
         else
-            echo "BOT_API_KEY=$API_KEY" >> .env
+            echo "BOT_API_KEY=$GENERATED_KEY" >> .env
         fi
 
-        print_success "Fichier .env créé avec des clés sécurisées générées"
+        print_success "Clés API synchronisées (API_KEY et BOT_API_KEY) dans .env"
     else
         print_error "Template .env.pi4.example introuvable"
         exit 1
