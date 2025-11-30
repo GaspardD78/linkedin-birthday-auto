@@ -128,7 +128,7 @@ class BaseLinkedInBot(ABC):
             raise SessionExpiredError("No internet connectivity")
 
         try:
-            self.page.goto("https://www.linkedin.com/feed/", timeout=90000)
+            self.page.goto("https://www.linkedin.com/feed/", timeout=120000, wait_until="domcontentloaded")
             login_selectors = [
                 "img.global-nav__me-photo",
                 "button.global-nav__primary-link-me-menu-trigger",
@@ -260,7 +260,7 @@ class BaseLinkedInBot(ABC):
         """Navigue vers la page anniversaires et extrait tous les contacts."""
         with self.tracer.start_as_current_span("get_birthday_contacts"):
             logger.info("Navigating to birthdays page...")
-            self.page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000)
+            self.page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=120000, wait_until="domcontentloaded")
 
             card_selector = "div[role='listitem']"
             try:

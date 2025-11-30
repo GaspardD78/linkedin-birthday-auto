@@ -269,7 +269,7 @@ class VisitorBot(BaseLinkedInBot):
         for attempt in range(max_attempts):
             try:
                 logger.info(f"Visiting {url} (Attempt {attempt+1})")
-                self.page.goto(url, timeout=60000)
+                self.page.goto(url, timeout=90000, wait_until="domcontentloaded")
                 self._simulate_human_interactions()
                 data = self._scrape_profile_data()
                 self._random_delay_profile_visit()
