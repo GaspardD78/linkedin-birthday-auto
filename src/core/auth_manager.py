@@ -193,8 +193,8 @@ class AuthManager:
             # Garder les cookies:
             # - Sans date d'expiration (cookies de session)
             # - Avec expires=-1 (cookies permanents)
-            # - Avec date d'expiration dans le futur
-            if expires is None or expires == -1 or expires > current_time:
+            # - Avec date d'expiration dans le futur (+ buffer de 5 min pour clock skew)
+            if expires is None or expires == -1 or expires > (current_time - 300):
                 valid_cookies.append(cookie)
             else:
                 expired_count += 1
