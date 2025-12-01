@@ -88,10 +88,17 @@ class BrowserManager:
                 launch_args.extend(self.config.args)
 
             logger.info(f"Launching browser (headless={self.config.headless})...")
+
+            # Gestion du slow_mo aléatoire (Option B)
+            slow_mo = self.config.slow_mo
+            if isinstance(slow_mo, (tuple, list)) and len(slow_mo) == 2:
+                slow_mo = random.randint(slow_mo[0], slow_mo[1])
+                logger.debug(f"Randomized slow_mo: {slow_mo}ms")
+
             self.browser = self.playwright.chromium.launch(
                 headless=self.config.headless,
                 args=launch_args,
-                slow_mo=self.config.slow_mo,
+                slow_mo=slow_mo,
                 timeout=60000, # Increased launch timeout
                 proxy=proxy_config,
             )
@@ -124,8 +131,10 @@ class BrowserManager:
             self._apply_stealth_scripts(self.page)
 
             # Timeout par défaut pour la page (HARDWARE REALISM)
-            self.page.set_default_timeout(self.config.timeout)
-            self.page.set_default_navigation_timeout(self.config.timeout)
+            # Fix: Use constant or safe access as 'timeout' is not in BrowserConfig
+            timeout = getattr(self.config, "timeout", 60000)
+            self.page.set_default_timeout(timeout)
+            self.page.set_default_navigation_timeout(timeout)
 
             logger.info("Browser session created successfully")
             return self.browser, self.context, self.page
@@ -174,18 +183,26 @@ class BrowserManager:
     def _get_context_options(self) -> Dict[str, Any]:
         """Génère les options du contexte navigateur."""
 
-        # User Agent
-        user_agent = self.config.user_agent
-        if not user_agent:
-             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        # User Agent (Fix: Random selection from list)
+        if hasattr(self.config, "user_agent") and self.config.user_agent:
+            user_agent = self.config.user_agent
+        elif hasattr(self.config, "user_agents") and self.config.user_agents:
+            user_agent = random.choice(self.config.user_agents)
+        else:
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-        # Viewport
+        # Viewport (Fix: Random selection from list)
         viewport = {"width": 1280, "height": 720}
-        if self.config.viewport_width and self.config.viewport_height:
+
+        if hasattr(self.config, "viewport_width") and hasattr(self.config, "viewport_height") and self.config.viewport_width and self.config.viewport_height:
             viewport = {
                 "width": self.config.viewport_width,
                 "height": self.config.viewport_height,
             }
+        elif hasattr(self.config, "viewport_sizes") and self.config.viewport_sizes:
+            viewport = random.choice(self.config.viewport_sizes)
+
+        logger.debug(f"Context Config - UA: {user_agent[:50]}... Viewport: {viewport}")
 
         return {
             "user_agent": user_agent,
