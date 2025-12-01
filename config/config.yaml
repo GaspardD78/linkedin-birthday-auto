@@ -21,7 +21,7 @@ browser:
   headless: true
 
   # Ralentissement réduit pour meilleures performances sur Pi 4
-  slow_mo: 0
+  slow_mo: [0, 0]
 
   # Locale et fuseau horaire
   locale: fr-FR
