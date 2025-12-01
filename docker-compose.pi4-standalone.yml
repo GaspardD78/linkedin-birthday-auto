@@ -117,7 +117,7 @@ services:
       # Clé API pour sécuriser les appels internes
     - API_KEY=${API_KEY:-internal_secret_key}
       # Activer la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=true
+    - ENABLE_TELEMETRY=false
       # Nom du service pour séparer les logs
     - SERVICE_NAME=api
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
@@ -163,7 +163,7 @@ services:
       # Utilisation SQLite partagé avec le dashboard
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Activer la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=true
+    - ENABLE_TELEMETRY=false
       # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
