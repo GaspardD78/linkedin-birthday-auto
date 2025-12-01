@@ -402,7 +402,13 @@ fi
 print_header "ÉTAPE 2 : Configuration"
 
 # Vérifier si auth_state.json existe
-if [ ! -f "auth_state.json" ]; then
+if [ -f "$SCRIPT_DIR/auth_state.json" ]; then
+    print_success "✅ Fichier auth_state.json détecté localement."
+    # Pas besoin de copier si on est déjà dans le bon répertoire, mais au cas où :
+    if [ ! -f "auth_state.json" ]; then
+        cp "$SCRIPT_DIR/auth_state.json" "auth_state.json"
+    fi
+else
     print_warning "Fichier auth_state.json non trouvé"
     echo ""
     print_info "Pour configurer l'authentification LinkedIn :"
@@ -415,7 +421,7 @@ if [ ! -f "auth_state.json" ]; then
     if ask_yes_no "Souhaitez-vous configurer l'authentification maintenant ?" "n"; then
         echo ""
         echo -e "${BOLD}Choisissez une option :${NC}"
-        echo "  1. J'ai déjà un fichier auth_state.json (je vais le copier)"
+        echo "  1. J'ai déjà un fichier auth_state.json ailleurs (je vais le copier)"
         echo "  2. Je vais exporter mes cookies maintenant (pause de l'installation)"
         echo "  3. Continuer sans authentification (je le ferai plus tard)"
         echo ""
@@ -470,8 +476,6 @@ if [ ! -f "auth_state.json" ]; then
         echo "{}" > auth_state.json
         print_warning "Fichier auth_state.json vide créé - à configurer plus tard"
     fi
-else
-    print_success "Fichier auth_state.json existant détecté"
 fi
 
 # Configuration du .env
@@ -557,24 +561,27 @@ print_info "Cette étape peut prendre 15-20 minutes (compilation Next.js)."
 echo ""
 
 if ask_yes_no "Voulez-vous continuer avec le déploiement ?" "y"; then
-    # Utiliser le script easy_deploy existant
-    if [ -f "scripts/easy_deploy.sh" ]; then
-        chmod +x scripts/easy_deploy.sh
-        print_info "Lancement du déploiement via easy_deploy.sh..."
+    # Utiliser le script de déploiement RAPIDE (Pull) au lieu du rebuild
+    DEPLOY_SCRIPT="./scripts/deploy_pi4_pull.sh"
+
+    if [ -f "$DEPLOY_SCRIPT" ]; then
+        chmod +x "$DEPLOY_SCRIPT"
+        print_info "Lancement du déploiement optimisé via $(basename "$DEPLOY_SCRIPT")..."
+        print_info "Cela permet d'utiliser les images pré-compilées (gain de ~20 minutes)."
         echo ""
 
         if [ "$NEED_SG_DOCKER" = true ]; then
             print_info "⚠️  Exécution du déploiement avec le groupe 'docker' actif (via sg)..."
             if command -v sg >/dev/null 2>&1; then
-                sg docker -c "./scripts/easy_deploy.sh"
+                sg docker -c "$DEPLOY_SCRIPT"
                 DEPLOY_EXIT_CODE=$?
             else
                 print_warning "Commande 'sg' introuvable. Tentative d'exécution standard..."
-                ./scripts/easy_deploy.sh
+                "$DEPLOY_SCRIPT"
                 DEPLOY_EXIT_CODE=$?
             fi
         else
-            ./scripts/easy_deploy.sh
+            "$DEPLOY_SCRIPT"
             DEPLOY_EXIT_CODE=$?
         fi
 
@@ -586,12 +593,12 @@ if ask_yes_no "Voulez-vous continuer avec le déploiement ?" "y"; then
             exit 1
         fi
     else
-        print_error "Script scripts/easy_deploy.sh introuvable"
+        print_error "Script $DEPLOY_SCRIPT introuvable"
         exit 1
     fi
 else
     print_warning "Déploiement ignoré"
-    print_info "Vous pouvez le lancer plus tard avec : ./scripts/easy_deploy.sh"
+    print_info "Vous pouvez le lancer plus tard avec : ./scripts/deploy_pi4_pull.sh"
     exit 0
 fi
 
