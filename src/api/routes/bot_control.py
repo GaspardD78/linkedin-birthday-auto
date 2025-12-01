@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict
 from redis import Redis
 from rq import Queue
 from rq.job import Job
 from rq.registry import StartedJobRegistry
 import os
-from ..security import verify_api_key
-from ..utils.logging import get_logger
+from src.api.security import verify_api_key
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -38,6 +38,67 @@ class VisitorConfig(BaseModel):
 class StopRequest(BaseModel):
     job_type: Optional[str] = Field(None, description="Specific job type to stop (birthday, visit)")
     job_id: Optional[str] = Field(None, description="Specific job ID to stop")
+
+class JobStatus(BaseModel):
+    id: str
+    status: str
+    type: str
+    enqueued_at: str
+    started_at: Optional[str] = None
+
+class BotStatusResponse(BaseModel):
+    active_jobs: List[JobStatus]
+    queued_jobs: List[JobStatus]
+    worker_status: str
+
+@router.get("/status", response_model=BotStatusResponse)
+async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
+    """Get granular status of all bots."""
+    if not redis_conn:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    registry = StartedJobRegistry("linkedin-bot", connection=redis_conn)
+    started_ids = registry.get_job_ids()
+    queued_ids = job_queue.job_ids
+
+    active_jobs = []
+    queued_jobs = []
+
+    def get_job_details(job_id, status_list, status_label):
+        try:
+            job = Job.fetch(job_id, connection=redis_conn)
+            job_type = job.meta.get('job_type', 'unknown')
+
+            # Helper to safely format dates
+            def fmt_date(d):
+                return d.isoformat() if d else None
+
+            status_list.append(JobStatus(
+                id=job.id,
+                status=status_label,
+                type=job_type,
+                enqueued_at=fmt_date(job.enqueued_at) or "",
+                started_at=fmt_date(job.started_at)
+            ))
+        except Exception as e:
+            logger.warning(f"Could not fetch details for job {job_id}: {e}")
+
+    for jid in started_ids:
+        get_job_details(jid, active_jobs, "running")
+
+    for jid in queued_ids:
+        get_job_details(jid, queued_jobs, "queued")
+
+    # Determine worker status roughly
+    worker_status = "idle"
+    if active_jobs:
+        worker_status = "working"
+
+    return BotStatusResponse(
+        active_jobs=active_jobs,
+        queued_jobs=queued_jobs,
+        worker_status=worker_status
+    )
 
 @router.post("/start/birthday")
 async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depends(verify_api_key)):
