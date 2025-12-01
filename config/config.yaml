@@ -90,8 +90,8 @@ delays:
 # ═══════════════════════════════════════════════════════════════════
 messages:
   # Fichiers de messages
-  messages_file: messages.txt
-  late_messages_file: late_messages.txt
+  messages_file: /app/data/messages.txt
+  late_messages_file: /app/data/late_messages.txt
 
   # Années d'historique pour éviter la répétition
   avoid_repetition_years: 2
