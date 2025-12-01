@@ -248,8 +248,6 @@ services:
     - ./logs:/app/logs
       # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
     - ./config:/app/config
-    - ./messages.txt:/app/messages.txt
-    - ./late_messages.txt:/app/late_messages.txt
       # Base de données SQLite partagée avec le bot
     - shared-data:/app/data
       # Monitoring de température du Raspberry Pi 4 (lecture seule)
