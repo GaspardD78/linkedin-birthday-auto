@@ -37,6 +37,9 @@ class BrowserConfig(BaseModel):
     )
     locale: str = Field(default="fr-FR", description="Locale du navigateur")
     timezone: str = Field(default="Europe/Paris", description="Fuseau horaire")
+    args: Optional[list[str]] = Field(
+        default=None, description="Arguments supplémentaires pour Playwright"
+    )
 
     @field_validator("slow_mo")
     @classmethod
