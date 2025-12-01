@@ -1,3 +1,5 @@
+"use client"
+
 import { AlertCircle } from "lucide-react"
 import { useEffect, useState } from "react"
 import { getSystemHealth } from "@/lib/api"

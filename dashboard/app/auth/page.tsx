@@ -1,187 +1,136 @@
-"use client";
+"use client"
 
-import { useState, useRef, FormEvent, ChangeEvent } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal } from 'lucide-react';
-import { PageNavigation } from '@/components/layout/PageNavigation';
-
-type AuthState = 'idle' | 'pending-2fa' | 'loading' | 'success' | 'error';
+import { useState } from "react"
+import { useDropzone } from "react-dropzone"
+import { uploadAuthState } from "@/lib/api"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { CheckCircle2, UploadCloud, FileJson, AlertTriangle, ExternalLink } from "lucide-react"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function AuthPage() {
-  const [authState, setAuthState] = useState<AuthState>('idle');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [twoFaCode, setTwoFaCode] = useState('');
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    setAuthState('loading');
-    setFeedbackMessage('Attempting to log in...');
-    try {
-      const response = await fetch('/api/auth/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        if (data.status === '2fa_required') {
-          setAuthState('pending-2fa');
-          setFeedbackMessage('Two-factor authentication required. Please enter the code sent to your device.');
-        } else if (data.status === 'success') {
-          setAuthState('success');
-          setFeedbackMessage('Authentication successful! The auth_state.json has been generated.');
-        }
-      } else {
-        throw new Error(data.detail || 'Failed to log in.');
-      }
-    } catch (error: any) {
-      setAuthState('error');
-      setFeedbackMessage(error.message);
+  const onDrop = async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0]
+    if (!file) return
+
+    if (file.name !== "auth_state.json") {
+      setError("Le fichier doit se nommer exactement 'auth_state.json'")
+      return
     }
-  };
 
-  const handleVerify2FA = async (e: FormEvent) => {
-    e.preventDefault();
-    setAuthState('loading');
-    setFeedbackMessage('Verifying 2FA code...');
-    try {
-      const response = await fetch('/api/auth/verify-2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: twoFaCode }),
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        setAuthState('success');
-        setFeedbackMessage('2FA verification successful! The auth_state.json has been generated.');
-      } else {
-        throw new Error(data.detail || 'Failed to verify 2FA code.');
-      }
-    } catch (error: any) {
-      setAuthState('error');
-      setFeedbackMessage(error.message);
-    }
-  };
-
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setAuthState('loading');
-    setFeedbackMessage(`Uploading ${file.name}...`);
-    const formData = new FormData();
-    formData.append('file', file);
+    setUploading(true)
+    setError(null)
+    setSuccess(false)
 
     try {
-      const response = await fetch('/api/auth/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        setAuthState('success');
-        setFeedbackMessage(`Successfully uploaded and saved ${file.name}.`);
-      } else {
-        throw new Error(data.detail || 'File upload failed.');
-      }
-    } catch (error: any) {
-      setAuthState('error');
-      setFeedbackMessage(error.message);
+      await uploadAuthState(file)
+      setSuccess(true)
+      toast({
+        title: "Authentification réussie",
+        description: "Votre session a été mise à jour avec succès.",
+      })
+      setTimeout(() => window.location.href = "/dashboard", 1500)
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'upload")
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err.message || "L'upload a échoué",
+      })
+    } finally {
+      setUploading(false)
     }
-  };
+  }
 
-  const renderFeedback = () => {
-    if (!feedbackMessage) return null;
-    const variant = authState === 'error' ? 'destructive' : 'default';
-    return (
-      <Alert variant={variant} className="mt-4">
-        <Terminal className="h-4 w-4" />
-        <AlertTitle>
-          {authState === 'loading' && 'In Progress'}
-          {authState === 'success' && 'Success'}
-          {authState === 'error' && 'Error'}
-          {authState === 'pending-2fa' && 'Action Required'}
-        </AlertTitle>
-        <AlertDescription>
-          {feedbackMessage}
-        </AlertDescription>
-      </Alert>
-    );
-  };
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/json': ['.json']
+    },
+    maxFiles: 1
+  })
 
   return (
-    <div className="space-y-6">
-      <PageNavigation
-        title="Authentification LinkedIn"
-        description="Gérez l'authentification LinkedIn pour le bot"
-        showBackButton={false}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Automated Login</CardTitle>
-            <CardDescription>Enter your LinkedIn credentials to generate the authentication file automatically.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {authState !== 'pending-2fa' ? (
-              <form onSubmit={handleLogin}>
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="email">Email</label>
-                    <Input id="email" type="email" placeholder="email@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={authState === 'loading' || authState === 'success'} />
-                  </div>
-                  <div>
-                    <label htmlFor="password">Password</label>
-                    <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={authState === 'loading' || authState === 'success'} />
-                  </div>
-                </div>
-                <Button type="submit" className="mt-4 w-full" disabled={authState === 'loading' || authState === 'success'}>
-                  {authState === 'loading' ? 'Connecting...' : 'Connect'}
-                </Button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerify2FA}>
-                <div>
-                  <label htmlFor="2fa">Verification Code</label>
-                  <Input id="2fa" type="text" placeholder="Enter 6-digit code" value={twoFaCode} onChange={(e) => setTwoFaCode(e.target.value)} disabled={authState === 'loading' || authState === 'success'} />
-                </div>
-                <Button type="submit" className="mt-4 w-full" disabled={authState === 'loading' || authState === 'success'}>
-                  {authState === 'loading' ? 'Verifying...' : 'Verify'}
-                </Button>
-              </form>
-            )}
-          </CardContent>
-          <CardFooter>
-            {renderFeedback()}
-          </CardFooter>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Manual Upload</CardTitle>
-            <CardDescription>If you already have an `auth_state.json` file, you can upload it directly.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Input
-              type="file"
-              accept=".json"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <Button onClick={() => fileInputRef.current?.click()} className="w-full" variant="outline" disabled={authState === 'loading'}>
-              Upload auth_state.json
-            </Button>
-          </CardContent>
-        </Card>
+    <div className="container mx-auto max-w-2xl py-12 px-4">
+      <div className="mb-8 text-center">
+        <h1 className="text-3xl font-bold tracking-tight mb-2">Connexion LinkedIn</h1>
+        <p className="text-muted-foreground">
+          Importez votre session active pour permettre au bot d'agir en votre nom.
+        </p>
       </div>
+
+      <Card className="border-2 border-dashed border-muted-foreground/25 shadow-lg bg-card/50 backdrop-blur">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UploadCloud className="h-6 w-6 text-primary" />
+            Upload de Session
+          </CardTitle>
+          <CardDescription>
+            Glissez-déposez votre fichier <code>auth_state.json</code> ici.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div
+            {...getRootProps()}
+            className={`
+              flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-xl transition-all cursor-pointer
+              ${isDragActive ? "border-primary bg-primary/10" : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50"}
+              ${success ? "border-green-500 bg-green-500/10" : ""}
+            `}
+          >
+            <input {...getInputProps()} />
+
+            {success ? (
+              <div className="text-center animate-in zoom-in duration-300">
+                <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-green-500">Session Validée !</h3>
+                <p className="text-muted-foreground mt-2">Redirection en cours...</p>
+              </div>
+            ) : (
+              <div className="text-center space-y-4">
+                <div className="bg-background p-4 rounded-full inline-block shadow-sm">
+                  <FileJson className="h-10 w-10 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-lg font-medium">
+                    {isDragActive ? "Lâchez le fichier ici..." : "Glissez auth_state.json ici"}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ou cliquez pour parcourir vos fichiers
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <Alert variant="destructive" className="mt-6">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Erreur</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="mt-8 bg-muted/30 p-4 rounded-lg border text-sm space-y-3">
+            <h4 className="font-semibold flex items-center gap-2">
+              <ExternalLink className="h-4 w-4" />
+              Comment obtenir ce fichier ?
+            </h4>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Installez l&apos;extension Chrome <strong>EditThisCookie</strong>.</li>
+              <li>Connectez-vous à <strong>LinkedIn.com</strong> sur votre navigateur.</li>
+              <li>Ouvrez l&apos;extension et cliquez sur l&apos;icône <strong>Exporter</strong> (flèche vers l&apos;extérieur).</li>
+              <li>Collez le contenu dans un nouveau fichier nommé <code>auth_state.json</code>.</li>
+              <li>Uploadez ce fichier ci-dessus.</li>
+            </ol>
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }

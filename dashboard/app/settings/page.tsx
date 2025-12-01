@@ -1,165 +1,110 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { Save, RefreshCw } from "lucide-react"
-import { SettingsForm } from "@/components/settings/SettingsForm"
-import { PageNavigation } from "@/components/layout/PageNavigation"
+import { Download, Github, Bug } from "lucide-react"
+import { downloadDebugReport } from "@/lib/api"
+import { useToast } from "@/components/ui/use-toast"
+import { useState } from "react"
 
 export default function SettingsPage() {
-  const [configYaml, setConfigYaml] = useState("")
-  const [messages, setMessages] = useState("")
-  const [lateMessages, setLateMessages] = useState("")
-  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+  const [downloading, setDownloading] = useState(false)
 
-  // Charger les configurations au montage
-  useEffect(() => {
-    fetchConfig()
-  }, [])
-
-  const fetchConfig = async () => {
-    setLoading(true)
+  const handleDownloadReport = async () => {
+    setDownloading(true)
     try {
-      const [yamlRes, msgRes, lateMsgRes] = await Promise.all([
-        fetch('/api/settings/yaml'),
-        fetch('/api/settings/messages'),
-        fetch('/api/settings/late-messages')
-      ])
-
-      if (yamlRes.ok) {
-        const data = await yamlRes.json()
-        setConfigYaml(data.content)
-      }
-      if (msgRes.ok) {
-        const data = await msgRes.json()
-        setMessages(data.content)
-      }
-      if (lateMsgRes.ok) {
-        const data = await lateMsgRes.json()
-        setLateMessages(data.content)
-      }
-    } catch (error) {
-      console.error("Erreur chargement config:", error)
+      const blob = await downloadDebugReport()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `debug_report_${new Date().toISOString()}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast({ title: "Téléchargement lancé", description: "Le rapport a été généré." })
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de télécharger le rapport." })
     } finally {
-      setLoading(false)
+      setDownloading(false)
     }
   }
 
-  const saveConfig = async (type: 'yaml' | 'messages' | 'late-messages', content: string) => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/settings/${type}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      })
-
-      if (res.ok) {
-        alert("Sauvegardé avec succès !")
-      } else {
-        alert("Erreur lors de la sauvegarde.")
-      }
-    } catch (error) {
-      alert("Erreur réseau.")
-    } finally {
-      setLoading(false)
-    }
+  const handleGithubIssue = () => {
+    const params = new URLSearchParams({
+      title: "[Bug] Description du problème",
+      body: `**Description**\nDescribe the issue...\n\n**Technical Info**\nDashboard Version: 2.0.0\nUser Agent: ${navigator.userAgent}\n\n**Logs**\n(Attach the debug report zip here)`
+    })
+    window.open(`https://github.com/gaspardd78/linkedin-birthday-auto/issues/new?${params.toString()}`, '_blank')
   }
 
   return (
-    <div className="space-y-6">
-      <PageNavigation
-        title="Paramètres"
-        description="Configuration du bot et des messages"
-        showBackButton={false}
-      />
-
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={fetchConfig} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Actualiser
-        </Button>
+    <div className="container mx-auto py-8 space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Paramètres</h1>
+        <p className="text-muted-foreground">Configuration et maintenance du système.</p>
       </div>
 
-      <Tabs defaultValue="form" className="w-full">
-        <TabsList className="bg-slate-900 border border-slate-800">
-          <TabsTrigger value="form">Configuration</TabsTrigger>
-          <TabsTrigger value="messages">Messages</TabsTrigger>
-          <TabsTrigger value="advanced">Avancé (YAML)</TabsTrigger>
-        </TabsList>
+      <div className="grid gap-6">
+        {/* Zone Debug & Support */}
+        <Card className="border-orange-500/20 bg-orange-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-orange-500">
+              <Bug className="h-5 w-5" />
+              Support & Debug
+            </CardTitle>
+            <CardDescription>
+              Outils pour diagnostiquer les problèmes et contacter le support.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-4">
+            <Button
+              variant="outline"
+              className="flex-1 h-auto py-4 flex flex-col items-center gap-2 border-dashed"
+              onClick={handleDownloadReport}
+              disabled={downloading}
+            >
+              <Download className="h-6 w-6 mb-1" />
+              <div className="text-center">
+                <span className="font-semibold block">
+                  {downloading ? "Génération..." : "Télécharger Rapport Crash"}
+                </span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Logs, screenshots et dumps HTML (ZIP)
+                </span>
+              </div>
+            </Button>
 
-        {/* Formulaire de configuration */}
-        <TabsContent value="form">
-          <SettingsForm />
-        </TabsContent>
+            <Button
+              variant="secondary"
+              className="flex-1 h-auto py-4 flex flex-col items-center gap-2"
+              onClick={handleGithubIssue}
+            >
+              <Github className="h-6 w-6 mb-1" />
+              <div className="text-center">
+                <span className="font-semibold block">Ouvrir une Issue GitHub</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  Signaler un bug ou proposer une feature
+                </span>
+              </div>
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Éditeur YAML */}
-        <TabsContent value="advanced">
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-slate-200">Configuration du Bot</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                value={configYaml}
-                onChange={(e) => setConfigYaml(e.target.value)}
-                className="font-mono text-xs h-[500px] bg-slate-950 border-slate-800 text-slate-300"
-                spellCheck={false}
-              />
-              <Button onClick={() => saveConfig('yaml', configYaml)} disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-                <Save className="h-4 w-4 mr-2" /> Sauvegarder Config
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Éditeur Messages */}
-        <TabsContent value="messages" className="space-y-6">
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-slate-200">Messages d'anniversaire du jour</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-slate-400">Un message par ligne. Utilisez {'{name}'} pour le prénom.</p>
-              <Textarea
-                value={messages}
-                onChange={(e) => setMessages(e.target.value)}
-                className="font-mono text-sm h-[400px] bg-slate-950 border-slate-800 text-slate-300"
-                placeholder="Joyeux anniversaire {name} !&#10;Happy birthday {name}! 🎂&#10;Bon anniversaire {name} !"
-              />
-              <Button onClick={() => saveConfig('messages', messages)} disabled={loading} className="bg-emerald-600 hover:bg-emerald-700">
-                <Save className="h-4 w-4 mr-2" /> Sauvegarder Messages du jour
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-slate-900 border-slate-800 border-amber-600/50">
-            <CardHeader>
-              <CardTitle className="text-slate-200 flex items-center gap-2">
-                Messages d'anniversaire en retard
-                <span className="text-xs bg-amber-600/20 text-amber-400 px-2 py-1 rounded">En retard</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-slate-400">
-                Un message par ligne. Utilisez {'{name}'} pour le prénom et {'{days}'} pour le nombre de jours de retard.
-              </p>
-              <Textarea
-                value={lateMessages}
-                onChange={(e) => setLateMessages(e.target.value)}
-                className="font-mono text-sm h-[400px] bg-slate-950 border-slate-800 text-slate-300"
-                placeholder="Bon anniversaire en retard {name} ! J'espère que tu as passé une excellente journée il y a {days} jours !&#10;Happy belated birthday {name}! 🎂&#10;Joyeux anniversaire (avec {days} jours de retard) {name} !"
-              />
-              <Button onClick={() => saveConfig('late-messages', lateMessages)} disabled={loading} className="bg-amber-600 hover:bg-amber-700">
-                <Save className="h-4 w-4 mr-2" /> Sauvegarder Messages en retard
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        {/* Placeholder pour d'autres paramètres existants ou futurs */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Configuration Système</CardTitle>
+            <CardDescription>Géré via config.yaml (voir Dashboard API)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Pour modifier les délais, les limites ou les messages, utilisez les onglets dédiés dans le dashboard principal ou modifiez directement les fichiers de configuration via l'API.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
