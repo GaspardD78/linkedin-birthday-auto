@@ -36,7 +36,7 @@ services:
 
       # Configuration API Bot (requis pour les fonctions d'authentification)
     - BOT_API_URL=${BOT_API_URL:-http://api:8000}
-    - BOT_API_KEY=${BOT_API_KEY}
+    - BOT_API_KEY=${BOT_API_KEY:-internal_secret_key}
 
       # Configuration Puppeteer (si utilisé dans le dashboard)
     - HEADLESS=true

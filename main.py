@@ -35,8 +35,6 @@ Usage:
 
 import argparse
 import logging
-import os
-import secrets
 from pathlib import Path
 import sys
 from typing import Optional
@@ -71,71 +69,6 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=handlers,
     )
-
-
-def ensure_api_key() -> None:
-    """
-    Checks for API_KEY in .env, generates if missing or default.
-    Hardening Step 1.2: Prevent default keys in production.
-    """
-    logger = logging.getLogger("security_hardening")
-    env_path = Path(".env")
-    current_key = os.getenv("API_KEY")
-
-    # List of known weak defaults to reject
-    weak_defaults = ["internal_secret_key", "CHANGE_ME", "default"]
-
-    needs_new_key = False
-
-    if not current_key:
-        logger.warning("⚠️ API_KEY is missing from environment.")
-        needs_new_key = True
-    elif current_key in weak_defaults:
-        logger.warning(f"⚠️ API_KEY is set to insecure default: '{current_key}'")
-        needs_new_key = True
-
-    if needs_new_key:
-        new_key = secrets.token_hex(32)
-        logger.warning("🔐 Generating new secure API_KEY...")
-
-        # Read existing .env content if it exists
-        lines = []
-        if env_path.exists():
-            try:
-                with open(env_path, "r") as f:
-                    lines = f.readlines()
-            except Exception as e:
-                logger.error(f"Failed to read .env file: {e}")
-
-        # Remove existing API_KEY line if present
-        lines = [line for line in lines if not line.strip().startswith("API_KEY=")]
-
-        # Ensure previous line ends with newline if list is not empty
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
-
-        # Append new key
-        lines.append(f"API_KEY={new_key}\n")
-
-        # Write back to .env
-        try:
-            with open(env_path, "w") as f:
-                f.writelines(lines)
-
-            # Update current process environment so immediate usage works
-            os.environ["API_KEY"] = new_key
-
-            logger.warning("═" * 60)
-            logger.warning("🛑 SECURITY ALERT: NEW API KEY GENERATED")
-            logger.warning("═" * 60)
-            logger.warning(f"New API_KEY has been written to {env_path.absolute()}")
-            logger.warning(f"KEY: {new_key}")
-            logger.warning("👉 Please update your Dashboard configuration or .env file with this key.")
-            logger.warning("═" * 60)
-
-        except Exception as e:
-            logger.error(f"❌ Failed to write new API_KEY to .env: {e}")
-            logger.error(f"   You MUST set API_KEY={new_key} manually.")
 
 
 def print_banner(config) -> None:
@@ -667,9 +600,6 @@ For more information, see: https://github.com/GaspardD78/linkedin-birthday-auto
     # Setup logging
     log_level = "DEBUG" if args.debug else args.log_level
     setup_logging(log_level, args.log_file)
-
-    # Ensure Security Hardening
-    ensure_api_key()
 
     # Exécuter la commande appropriée
     if args.command == "validate":

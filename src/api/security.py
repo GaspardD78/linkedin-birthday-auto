@@ -15,14 +15,32 @@ logger = get_logger(__name__)
 # Header expected: X-API-Key: <your-key>
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+# Cache for the API key to avoid regenerating it on every request
+_cached_api_key: str | None = None
+
 
 def get_api_key_from_env() -> str:
-    """Retrieves API key from environment."""
+    """Retrieves API key from environment or generates a secure random one (cached)."""
+    global _cached_api_key
+
+    # Return cached key if already loaded
+    if _cached_api_key is not None:
+        return _cached_api_key
+
     key = os.getenv("API_KEY")
     if not key:
-        logger.critical("no_api_key_configured", msg="API_KEY not set in environment!")
-        # HARDENING: Raise explicit error if key is missing, no default fallback
-        raise RuntimeError("API_KEY environment variable is not set. Please run main.py to generate one.")
+        # Generate a secure random key instead of using a predictable default
+        generated_key = secrets.token_urlsafe(32)
+        logger.warning(
+            "no_api_key_configured",
+            msg="API_KEY not set! Generated random key for this session.",
+            generated_key=generated_key,
+            recommendation="Set API_KEY environment variable in production",
+        )
+        _cached_api_key = generated_key
+        return generated_key
+
+    _cached_api_key = key
     return key
 
 
