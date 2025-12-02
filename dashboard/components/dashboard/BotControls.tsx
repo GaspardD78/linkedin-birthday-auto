@@ -54,11 +54,17 @@ export function BotControlsWidget() {
     setLoading(type)
     try {
       if (type === 'birthday') {
+        // Mode Standard: Respecte la configuration (process_today/late selon config)
+        // Mais ici, le bouton s'appelle "Bot Anniversaires" (Jour uniquement selon description)
+        // On force processLate: false pour être cohérent avec le bouton UI
         await startBot({ dryRun: false, processLate: false })
       } else if (type === 'unlimited') {
+        // Mode Unlimited: Force le traitement des retards
         await startBot({ dryRun: false, processLate: true })
       } else if (type === 'visitor') {
-        await startVisitorBot({ dryRun: false, limit: 10 }) // Default limit, could be configurable
+        // Mode Visiteur: Utilise STRICTEMENT la configuration du fichier config.yaml
+        // Pas de surcharge de limite ici.
+        await startVisitorBot({ dryRun: false })
       }
       toast({ title: "Bot démarré", description: `Le bot ${type} a été lancé.` })
       await refreshStatus()
@@ -135,7 +141,7 @@ export function BotControlsWidget() {
               ) : (
                 <Square className="h-4 w-4 mr-2 fill-current" />
               )}
-              Arrêt d'Urgence
+              Arrêt d&apos;Urgence
             </Button>
           ) : (
             <Button
@@ -158,10 +164,10 @@ export function BotControlsWidget() {
   }
 
   return (
-    <Card className="w-full">
+    <Card className="w-full bg-slate-900 border-slate-800">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
+        <CardTitle className="flex items-center gap-2 text-slate-200">
+          <Activity className="h-5 w-5 text-blue-500" />
           Pilotage des Bots
         </CardTitle>
         <CardDescription>
@@ -185,7 +191,7 @@ export function BotControlsWidget() {
           type="visitor"
           title="Bot Visiteur"
           icon={Users}
-          description="Visite les profils ciblés pour générer du trafic."
+          description="Visite les profils selon config.yaml."
         />
 
         {status?.active_jobs.length === 0 && (
