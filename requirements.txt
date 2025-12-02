@@ -1,36 +1,30 @@
-# ── CORE ──
-playwright==1.41.0
-playwright-stealth==1.0.6
-pydantic==2.5.3
-pydantic-settings==2.1.0
-PyYAML==6.0.1
-pytz==2023.3
-
-# ── API (FastAPI) ──
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
-
-# ── QUEUE (Redis) ──
-redis==5.0.1
-rq==1.16.0
-
-# ── UTILS ──
-python-dotenv==1.0.0
-requests==2.31.0
-httpx==0.25.2
-structlog==23.2.0
 
 # ...
-# ────────────────────────────────────────────────────────────────────
-# MONITORING (Allégé pour Pi 4)
-# ────────────────────────────────────────────────────────────────────
-
 # Garder prometheus-client si vous voulez des stats simples, sinon commenter
-prometheus-client==0.19.0
-
+# MONITORING (Allégé pour Pi 4)
 # Télémétrie lourde (RÉACTIVÉ car nécessaire au code)
+# ── API (FastAPI) ──
+# ── CORE ──
+# ── QUEUE (Redis) ──
+# ── UTILS ──
+# ────────────────────────────────────────────────────────────────────
+PyYAML==6.0.1
+fastapi==0.109.0
+httpx==0.25.2
 opentelemetry-api==1.22.0
-opentelemetry-sdk==1.22.0
-opentelemetry-instrumentation-fastapi==0.43b0
 opentelemetry-exporter-otlp==1.22.0
+opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-sdk==1.22.0
+playwright-stealth==1.0.6
+playwright==1.41.0
+prometheus-client==0.19.0
+pydantic-settings==2.1.0
+pydantic==2.5.3
+python-dotenv==1.0.0
+python-multipart==0.0.6
+pytz==2023.3
+redis==5.0.1
+requests==2.31.0
+rq==1.16.0
+structlog==23.2.0
+uvicorn[standard]==0.27.0
