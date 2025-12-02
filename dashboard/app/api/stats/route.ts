@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
-    const apiKey = process.env.BOT_API_KEY;
+    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
 
     // Tentative de récupération des stats depuis l'API Python
     const response = await fetch(`${apiUrl}/stats`, {

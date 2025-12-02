@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     const sort = searchParams.get('sort') || 'messages';
 
     const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
-    const apiKey = process.env.BOT_API_KEY;
+    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
 
     const response = await fetch(`${apiUrl}/contacts?limit=${limit}&sort=${sort}`, {
       method: 'GET',
