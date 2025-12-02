@@ -10,7 +10,7 @@ from datetime import datetime
 import random
 import re
 import time
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Union
 
 from opentelemetry import trace
 from playwright.sync_api import Page, Locator
@@ -27,6 +27,7 @@ from ..utils.exceptions import (
     SessionExpiredError,
 )
 from ..utils.logging import get_logger
+from ..utils.date_parser import DateParsingService
 
 logger = get_logger(__name__)
 
@@ -191,143 +192,34 @@ class BaseLinkedInBot(ABC):
 
     def _get_birthday_type(self, contact_element: Union[Locator, Any]) -> tuple[str, int]:
         """
-        Détermine le type d'anniversaire avec approche "Locale-Lock".
-
-        Stratégie prioritaire :
-        1. Extraction de date numérique (ex: "Nov 23")
-        2. Comparaison mathématique avec aujourd'hui
-        3. Fallback sur regex textuelles (Today/Yesterday)
+        Détermine le type d'anniversaire via DateParsingService.
+        Compatible EN (prioritaire) et FR (fallback).
         """
-        # Handle Locator vs ElementHandle transparently
         if isinstance(contact_element, Locator):
              card_text = contact_element.inner_text()
         else:
              card_text = contact_element.inner_text()
 
-        # 1. Extraction numérique (Locale-Lock: Assume English due to Browser Config)
+        # Utilisation du service optimisé
         try:
-            days_diff = self._extract_days_from_date(card_text)
+            # Tente de parser avec la locale par défaut (EN) puis fallback automatique
+            days_diff = DateParsingService.parse_days_diff(card_text, locale='en')
+
             if days_diff is not None:
                 if days_diff == 0:
-                    logger.debug("✓ Today detected (date calc)")
+                    logger.debug(f"✓ Today detected: {card_text.strip()}")
                     return "today", 0
                 elif days_diff > 0:
-                     # Only return late if within max limit
                     max_days = self.config.birthday_filter.max_days_late
                     if days_diff <= max_days:
-                        logger.debug(f"✓ Late detected: {days_diff} days (date calc)")
+                        logger.debug(f"✓ Late detected: {days_diff} days ({card_text.strip()})")
                         return "late", days_diff
-                    else:
-                        return "ignore", days_diff
+
+            return "ignore", 0
+
         except Exception as e:
-            logger.debug(f"Date extraction failed: {e}")
-
-        # 2. Fallback Regex (Textual Safety Net)
-        # Note: Since we force 'en-US', we prioritize English, but keep French just in case.
-        card_text_lower = card_text.lower()
-
-        today_pattern = r"(today|aujourd'hui|joyeux anniversaire|happy birthday)"
-        if re.search(today_pattern, card_text_lower):
-            logger.debug("✓ Today detected (regex match)")
-            return "today", 0
-
-        if re.search(r"(yesterday|hier)", card_text_lower):
-             return "late", 1
-
-        # 3. Regex Relative Days (ex: "5 days ago")
-        days_pattern = r"(\d+)\s*(days?|jours?)"
-        match = re.search(days_pattern, card_text_lower)
-        if match:
-            days_late = int(match.group(1))
-            max_days = self.config.birthday_filter.max_days_late
-            if 1 <= days_late <= max_days:
-                logger.debug(f"✓ Late detected: {days_late} days")
-                return "late", days_late
-
-        return "ignore", 0
-
-    def _extract_days_from_date(self, card_text: str) -> Optional[int]:
-        """
-        Extracts date from text and returns days passed since that date.
-        Handles: "November 23", "Nov 23", "23 Nov", etc.
-        """
-        # Improved Regex for EN/FR months
-        # Matches: Day Month or Month Day
-        # Groups: 1=Day, 2=Month OR 3=Month, 4=Day
-        pattern = r"(?:(?:le\s+)?(\d{1,2})\s+(janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?))|(?:(janv?\.?|févr?\.?|mars?\.?|avr\.?|mai\.?|juin?\.?|juil\.?|août?\.?|sept?\.?|oct\.?|nov\.?|déc\.?|january?|february?|march?|april?|may|june?|july?|august?|september?|october?|november?|december?)\s+(\d{1,2}))"
-
-        match = re.search(pattern, card_text, re.IGNORECASE)
-
-        if not match:
-            return None
-
-        # Determine which group matched
-        if match.group(1): # Day Month
-            day = int(match.group(1))
-            month_str = match.group(2).lower()
-        else: # Month Day
-            day = int(match.group(4))
-            month_str = match.group(3).lower()
-
-        month_mapping = {
-            "jan": 1, "fév": 2, "fev": 2, "mar": 3, "apr": 4, "avr": 4, "may": 5, "mai": 5,
-            "jun": 6, "jui": 7, "jul": 7, "aug": 8, "aoû": 8, "aou": 8,
-            "sep": 9, "oct": 10, "nov": 11, "dec": 12, "déc": 12
-        }
-
-        # Helper to match partial months
-        month = None
-        for key, value in month_mapping.items():
-            if key in month_str:
-                month = value
-                break
-
-        if month is None:
-            # Fallback for full names if not caught by 3-letter prefix
-            full_mapping = {
-                "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-                "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
-            }
-            if month_str in full_mapping:
-                month = full_mapping[month_str]
-            else:
-                return None
-
-        current_year = datetime.now().year
-        try:
-            birthday_date = datetime(current_year, month, day)
-        except ValueError:
-            return None
-
-        # Logic to handle year wrap-around (e.g. in Jan, looking at a Dec birthday?
-        # But birthdays are usually 'upcoming' or 'recent'.
-        # If today is Jan 1, and birthday is Dec 31, it's late (1 day).
-        # If today is Dec 31, and birthday is Jan 1, it's upcoming (ignore).
-
-        now = datetime.now()
-
-        # If birthday is in the future this year, it might be from last year (late)
-        # But LinkedIn usually shows "Birthday was on..." or just the date.
-        # If it shows the date without year, we assume current year.
-
-        # Calculate delta
-        delta = now - birthday_date
-
-        # If delta is negative (birthday in future), assume it refers to last year ONLY if we are looking for late birthdays?
-        # Actually LinkedIn list usually has "Recent" and "Upcoming".
-        # We only care about Today or Past (Late).
-
-        if delta.days < 0:
-             # Check if it was actually last year (e.g. Today Jan 2, Birthday Dec 31)
-             last_year_date = datetime(current_year - 1, month, day)
-             delta_last = now - last_year_date
-             if delta_last.days > 0 and delta_last.days < 360: # Reasonable late window
-                 return delta_last.days
-             else:
-                 # It's truly in the future (Upcoming)
-                 return None # Ignore
-
-        return delta.days
+            logger.debug(f"Date extraction failed for '{card_text[:20]}...': {e}")
+            return "ignore", 0
 
     # ═══════════════════════════════════════════════════════════════
     #  EXTRACTION ET NAVIGATION
