@@ -6,7 +6,7 @@ export async function GET(request: Request) {
     const days = searchParams.get('days') || '30';
 
     const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
-    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
+    const apiKey = process.env.BOT_API_KEY;
 
     const response = await fetch(`${apiUrl}/activity?days=${days}`, {
       method: 'GET',

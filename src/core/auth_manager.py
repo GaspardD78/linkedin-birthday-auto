@@ -454,6 +454,12 @@ class AuthManager:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(auth_data, f, indent=2)
 
+            # SECURITY: Set restrictive permissions (600) on auth file
+            try:
+                os.chmod(output_path, 0o600)
+            except Exception as e:
+                logger.warning(f"Failed to set 0600 permissions on {output_path}: {e}")
+
             logger.info(f"New auth state saved to: {output_path}")
 
         except Exception as e:
