@@ -1,5 +1,8 @@
 """
 Bot LinkedIn pour la visite automatique de profils.
+
+Ce bot effectue des recherches basées sur des mots-clés et une localisation,
+puis visite les profils trouvés pour simuler de l'activité et générer des vues en retour.
 """
 from datetime import datetime
 import random
@@ -18,9 +21,28 @@ logger = get_logger(__name__)
 class VisitorBot(BaseLinkedInBot):
     """
     Bot LinkedIn pour la visite automatique de profils.
+
+    Fonctionnalités :
+    - Recherche de profils par mots-clés et lieu.
+    - Visite ("view") des profils pour apparaître dans leurs notifications.
+    - Scraping léger des informations publiques (Nom, Titre, Entreprise).
+    - Simulation de comportement humain (scroll, délais aléatoires).
+    - Respect des limites configurées (nombre de profils par jour).
+
+    Usage:
+        >>> from src.bots.visitor_bot import VisitorBot
+        >>> with VisitorBot() as bot:
+        >>>     bot.run()
     """
 
     def __init__(self, *args, **kwargs):
+        """
+        Initialise le VisitorBot.
+
+        Args:
+            *args: Arguments passés à BaseLinkedInBot
+            **kwargs: Arguments nommés passés à BaseLinkedInBot
+        """
         super().__init__(*args, **kwargs)
         self.db = None
         logger.info(
@@ -30,13 +52,26 @@ class VisitorBot(BaseLinkedInBot):
         )
 
     def run(self) -> dict[str, Any]:
+        """Point d'entrée principal pour l'exécution du bot."""
         return super().run()
 
     def _run_internal(self) -> dict[str, Any]:
+        """
+        Logique interne d'exécution du bot de visite.
+
+        Workflow :
+        1. Validation de la configuration et de l'authentification.
+        2. Boucle sur les pages de résultats de recherche.
+        3. Pour chaque profil trouvé :
+           a. Vérification si déjà visité (DB).
+           b. Visite du profil.
+           c. Simulation d'activité humaine.
+           d. Enregistrement de la visite en base.
+        """
         start_time = time.time()
         self._validate_visitor_config()
 
-        # Database init
+        # Initialisation de la base de données
         if self.config.database.enabled:
             try:
                 self.db = get_database(self.config.database.db_path)
@@ -110,7 +145,15 @@ class VisitorBot(BaseLinkedInBot):
     # ═══════════════════════════════════════════════════════════════
 
     def _search_profiles(self, page_number: int = 1) -> list[str]:
-        """Effectue une recherche LinkedIn et retourne les URLs de profils."""
+        """
+        Effectue une recherche LinkedIn et retourne les URLs de profils.
+
+        Args:
+            page_number: Numéro de la page de résultats à scraper.
+
+        Returns:
+            Liste des URLs de profils trouvées.
+        """
         keyword_str = " ".join(self.config.visitor.keywords)
         search_url = (
             f"https://www.linkedin.com/search/results/people/"
@@ -132,7 +175,7 @@ class VisitorBot(BaseLinkedInBot):
         try:
             self.page.wait_for_selector(result_container_selector, timeout=20000)
 
-            # Scroll simple pour charger
+            # Scroll simple pour charger (lazy loading)
             for _ in range(3):
                 self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 time.sleep(1)
@@ -167,6 +210,9 @@ class VisitorBot(BaseLinkedInBot):
         """
         Scrape les données détaillées d'un profil LinkedIn.
         Restauration de la logique complète (Education, Expérience, etc.).
+
+        Returns:
+            Dictionnaire contenant les données extraites (Nom, Entreprise, etc.)
         """
         scraped_data = {
             "full_name": "Unknown",
@@ -263,6 +309,7 @@ class VisitorBot(BaseLinkedInBot):
     # ═══════════════════════════════════════════════════════════════
 
     def _visit_profile_with_retry(self, url: str) -> tuple[bool, Optional[dict[str, Any]]]:
+        """Tente de visiter un profil avec mécanisme de retry."""
         max_attempts = self.config.visitor.retry.max_attempts
         backoff = self.config.visitor.retry.backoff_factor
 
@@ -282,7 +329,7 @@ class VisitorBot(BaseLinkedInBot):
         return False, None
 
     def _simulate_human_interactions(self) -> None:
-        """Simule des interactions humaines (Scroll + Mouse)."""
+        """Simule des interactions humaines (Scroll + Mouse) pour éviter la détection."""
         try:
             # Scroll
             for _ in range(random.randint(3, 5)):
@@ -294,10 +341,12 @@ class VisitorBot(BaseLinkedInBot):
         except Exception: pass
 
     def _is_profile_already_visited(self, url: str) -> bool:
+        """Vérifie dans la DB si le profil a déjà été visité récemment."""
         if not self.db: return False
         return self.db.is_profile_visited(url, 30)
 
     def _record_profile_visit(self, url, name, success):
+        """Enregistre la visite dans la base de données."""
         if self.db:
             try:
                 self.db.add_profile_visit(
@@ -313,12 +362,14 @@ class VisitorBot(BaseLinkedInBot):
                 logger.error(f"DB Error: {e}")
 
     def _save_scraped_profile_data(self, data):
+        """Sauvegarde les données scrapées."""
         if self.db:
             try:
                 self.db.save_scraped_profile(**data)
             except Exception: pass
 
     def _extract_profile_name_from_url(self, url: str) -> str:
+        """Extrait le nom du profil depuis l'URL (fallback)."""
         try:
             if "/in/" in url:
                 return url.split("/in/")[1].split("/")[0].replace("-", " ").title()
