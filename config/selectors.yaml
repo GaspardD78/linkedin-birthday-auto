@@ -1,0 +1,39 @@
+# LinkedIn CSS Selectors Configuration
+# Used by SelectorManager and BaseLinkedInBot
+# Organized by context/page
+
+login:
+  indicators:
+    - "img.global-nav__me-photo"
+    - "button.global-nav__primary-link-me-menu-trigger"
+    - "div.feed-identity-module"
+    - "img[alt*='Photo']"
+    - "#global-nav-typeahead"
+
+birthday:
+  card:
+    - "div[role='listitem']"
+
+messaging:
+  # Buttons to open the message modal/page from a profile or list
+  open_button:
+    - '[data-control-name="message"]'
+    - '[data-control-name="compose_message"]'
+    - 'button[aria-label*="Message"]'
+    - 'button[aria-label*="Envoyer"]'
+    - 'a[href*="/messaging/compose"]'
+    - 'button:has-text("Message")'
+    - 'button:has-text("Envoyer")'
+    - '.artdeco-button--secondary'
+
+  # The text area inside the message modal
+  modal_textarea:
+    - "div.msg-form__contenteditable[role='textbox']"
+
+  # The send button inside the message modal
+  send_button:
+    - "button.msg-form__send-button"
+
+  # Button to close the chat overlay
+  close_overlay:
+    - "button[data-control-name='overlay.close_conversation_window']"
