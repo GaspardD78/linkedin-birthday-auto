@@ -429,14 +429,23 @@ async def run_maintenance(
                 )
 
             db = get_database(config.database.db_path)
-            # Exécuter VACUUM
-            db.conn.execute("VACUUM")
+            # Exécuter VACUUM via la méthode dédiée de la classe Database
+            result = db.vacuum()
 
-            return MaintenanceResponse(
-                action=request.action,
-                status="success",
-                message="Base de données optimisée (VACUUM exécuté)",
-            )
+            if result.get("success"):
+                return MaintenanceResponse(
+                    action=request.action,
+                    status="success",
+                    message="Base de données optimisée (VACUUM exécuté)",
+                    details=result
+                )
+            else:
+                return MaintenanceResponse(
+                    action=request.action,
+                    status="error",
+                    message=f"Erreur VACUUM: {result.get('error')}",
+                    details=result
+                )
 
         else:
             raise HTTPException(status_code=400, detail=f"Action inconnue: {request.action}")
