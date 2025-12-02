@@ -51,6 +51,7 @@ class DateParsingService:
             },
             "relative": {
                 "aujourd'hui": 0,
+                "aujourd’hui": 0,  # Handle curly apostrophe
                 "hier": 1,
                 "avant-hier": 2
             }
