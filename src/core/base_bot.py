@@ -17,6 +17,7 @@ from playwright.sync_api import Page, Locator
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ..config.config_manager import get_config
+from ..core.selector_manager import SelectorManager
 from ..config.config_schema import LinkedInBotConfig
 from ..core.auth_manager import AuthManager
 from ..core.browser_manager import BrowserManager
@@ -40,6 +41,7 @@ class BaseLinkedInBot(ABC):
         self.config = config or get_config()
 
         # Managers
+        self.selector_manager = SelectorManager()
         self.browser_manager: Optional[BrowserManager] = None
         self.auth_manager: Optional[AuthManager] = None
 
@@ -133,20 +135,15 @@ class BaseLinkedInBot(ABC):
         try:
             # HARDWARE REALISM: Increased timeout to 60s for Pi4
             self.page.goto("https://www.linkedin.com/feed/", timeout=60000, wait_until="domcontentloaded")
-            login_selectors = [
-                "img.global-nav__me-photo",
-                "button.global-nav__primary-link-me-menu-trigger",
-                "div.feed-identity-module",
-                "img[alt*='Photo']",
-                "#global-nav-typeahead"
-            ]
-            for selector in login_selectors:
-                try:
-                    self.page.wait_for_selector(selector, timeout=60000)
-                    logger.info(f"✅ Successfully logged in (via: {selector})")
-                    return True
-                except PlaywrightTimeoutError:
-                    continue
+
+            # Use combined selector to wait for ANY login indicator
+            combined_selector = self.selector_manager.get_combined_selector("login.indicators")
+            try:
+                self.page.wait_for_selector(combined_selector, timeout=60000)
+                logger.info(f"✅ Successfully logged in")
+                return True
+            except PlaywrightTimeoutError:
+                pass # Continue to check URL
 
             if "/feed" in self.page.url or "/mynetwork" in self.page.url:
                  return True
@@ -161,19 +158,38 @@ class BaseLinkedInBot(ABC):
     #  STRATEGIE ANTI-FRAGILE (Sélecteurs & Dates)
     # ═══════════════════════════════════════════════════════════════
 
-    def _find_element_by_cascade(self, parent: Any, selectors: List[str]) -> Optional[Locator]:
-        """Cherche un élément en essayant une liste de sélecteurs par ordre de priorité."""
-        for selector in selectors:
-            try:
-                element = parent.query_selector(selector)
-                if element:
-                    logger.debug(f"✓ Element found using strategy: {selector}")
-                    return element
-            except Exception:
-                continue
+    def _find_element_by_cascade(self, parent: Any, selectors: Union[List[str], str]) -> Optional[Any]:
+        """
+        Legacy support for finding an element using a list of selectors.
+        Uses Playwright's combined selector syntax (OR) for efficiency.
+
+        Returns:
+            ElementHandle (if using query_selector) or None.
+            Kept compatible with VisitorBot which expects a handle/truthy return if found, or None.
+        """
+        if isinstance(selectors, str):
+            selectors = [selectors]
+
+        combined_selector = ", ".join(selectors)
+
+        try:
+            # Use query_selector to return an ElementHandle immediately (or None)
+            # This maintains compatibility with VisitorBot logic which checks 'if element:'
+            if hasattr(parent, "query_selector"):
+                return parent.query_selector(combined_selector)
+            elif isinstance(parent, Locator):
+                 # For Locator, we can't easily get an ElementHandle without evaluating
+                 # But usually VisitorBot passes ElementHandles from query_selector_all
+                 # If we must return a Locator, we must ensure it 'exists'
+                 loc = parent.locator(combined_selector).first
+                 if loc.count() > 0:
+                     return loc
+        except Exception:
+            pass
+
         return None
 
-    def _get_birthday_type(self, contact_element) -> tuple[str, int]:
+    def _get_birthday_type(self, contact_element: Union[Locator, Any]) -> tuple[str, int]:
         """
         Détermine le type d'anniversaire avec approche "Locale-Lock".
 
@@ -182,7 +198,11 @@ class BaseLinkedInBot(ABC):
         2. Comparaison mathématique avec aujourd'hui
         3. Fallback sur regex textuelles (Today/Yesterday)
         """
-        card_text = contact_element.inner_text()
+        # Handle Locator vs ElementHandle transparently
+        if isinstance(contact_element, Locator):
+             card_text = contact_element.inner_text()
+        else:
+             card_text = contact_element.inner_text()
 
         # 1. Extraction numérique (Locale-Lock: Assume English due to Browser Config)
         try:
@@ -320,7 +340,9 @@ class BaseLinkedInBot(ABC):
             # HARDWARE REALISM: 60s timeout
             self.page.goto("https://www.linkedin.com/mynetwork/catch-up/birthday/", timeout=60000, wait_until="domcontentloaded")
 
-            card_selector = "div[role='listitem']"
+            # Use selector manager combined selector
+            card_selector = self.selector_manager.get_combined_selector("birthday.card") or "div[role='listitem']"
+
             try:
                 self.page.wait_for_selector(card_selector, state="visible", timeout=30000)
             except PlaywrightTimeoutError:
@@ -329,20 +351,23 @@ class BaseLinkedInBot(ABC):
             all_contacts = self._scroll_and_collect_contacts(card_selector)
             return self._categorize_birthdays(all_contacts)
 
-    def _scroll_and_collect_contacts(self, card_selector: str, max_scrolls: int = 20) -> list:
+    def _scroll_and_collect_contacts(self, card_selector: str, max_scrolls: int = 20) -> List[Locator]:
         last_card_count = 0
         scroll_attempts = 0
         while scroll_attempts < max_scrolls:
-            current_contacts = self.page.query_selector_all(card_selector)
+            # Upgrade to Locators
+            current_contacts = self.page.locator(card_selector).all()
             if len(current_contacts) == last_card_count and scroll_attempts > 0:
                 break
             last_card_count = len(current_contacts)
             if current_contacts:
+                # Scroll the last one into view
                 current_contacts[-1].scroll_into_view_if_needed()
                 # HARDWARE REALISM: Slow down scroll
                 time.sleep(3)
             scroll_attempts += 1
-        return self.page.query_selector_all(card_selector)
+
+        return self.page.locator(card_selector).all()
 
     def _categorize_birthdays(self, contacts: list) -> dict[str, list]:
         birthdays = {"today": [], "late": []}
@@ -354,8 +379,13 @@ class BaseLinkedInBot(ABC):
             except Exception: continue
         return birthdays
 
-    def extract_contact_name(self, contact_element) -> Optional[str]:
-        paragraphs = contact_element.query_selector_all("p")
+    def extract_contact_name(self, contact_element: Union[Locator, Any]) -> Optional[str]:
+        # Handle Locator vs ElementHandle transparently
+        if isinstance(contact_element, Locator):
+            paragraphs = contact_element.locator("p").all()
+        else:
+            paragraphs = contact_element.query_selector_all("p")
+
         non_name_keywords = ["Célébrez", "anniversaire", "Aujourd'hui", "Message", "Say", "Happy", "Birthday"]
         for p in paragraphs:
             text = p.inner_text().strip()
@@ -400,25 +430,18 @@ class BaseLinkedInBot(ABC):
         logger.info(f"--- Processing birthday for {full_name} ---")
 
         # CASCADE DE SÉLECTEURS (Priority: Data Attributes > Roles > CSS > Fallback)
-        message_selectors = [
-            # 1. Attributes Semantic Stable
-            '[data-control-name="message"]',
-            '[data-control-name="compose_message"]',
-            'button[aria-label*="Message"]',
-            'button[aria-label*="Envoyer"]',
+        # Using SelectorManager
+        msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button")
 
-            # 2. Attributes Functional
-            'a[href*="/messaging/compose"]',
+        if not msg_btn_locator:
+            logger.warning("Configuration error: 'messaging.open_button' selector not found")
+            return False
 
-            # 3. CSS Classes / Text (Fallback)
-            'button:has-text("Message")',
-            'button:has-text("Envoyer")',
-            '.artdeco-button--secondary'
-        ]
-
-        msg_btn = self._find_element_by_cascade(contact_element, message_selectors)
-        if not msg_btn:
-            logger.warning("Could not find 'Message' button using any selector strategy")
+        # Scoped to contact_element, so usually one button, but be safe with .first
+        try:
+            msg_btn_locator.first.click(timeout=5000)
+        except Exception:
+            logger.warning("Could not find/click 'Message' button (timeout)")
             # Log HTML context for debugging (without crashing)
             try:
                 html_context = contact_element.inner_html()[:500] # Limit size
@@ -426,17 +449,23 @@ class BaseLinkedInBot(ABC):
             except: pass
             return False
 
-        msg_btn.click()
-
         # Attente modale (Increased Timeout)
-        message_box_selector = "div.msg-form__contenteditable[role='textbox']"
+        # Using SelectorManager
         try:
-            self.page.wait_for_selector(message_box_selector, state="visible", timeout=20000)
+             # Wait for at least one text box to appear
+            box_selector = self.selector_manager.get_combined_selector("messaging.modal_textarea")
+            self.page.wait_for_selector(box_selector, state="visible", timeout=20000)
         except Exception:
             logger.error("Message modal not found (timeout)")
             return False
 
-        message_box = self.page.locator(message_box_selector).last
+        # Get the textarea
+        message_box_locator = self.selector_manager.find_element(self.page, "messaging.modal_textarea")
+        if message_box_locator:
+             # We want the LAST one (active modal)
+             message_box = message_box_locator.last
+        else:
+             return False
 
         # Sélection message
         message_list = self.late_birthday_messages if is_late else self.birthday_messages
@@ -460,14 +489,20 @@ class BaseLinkedInBot(ABC):
             raise Exception(f"Failed to fill message box: {e}")
 
         # 3. ENVOI
-        submit_btn = self.page.locator("button.msg-form__send-button").last
-        if submit_btn.is_enabled():
-            submit_btn.click()
-            logger.info("✅ Message sent successfully")
-            MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
-            return True
+        submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
+
+        if submit_btn_locator:
+            try:
+                # Use click's native auto-wait logic instead of immediate is_enabled check
+                submit_btn_locator.last.click(timeout=5000)
+                logger.info("✅ Message sent successfully")
+                MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
+                return True
+            except Exception as e:
+                 logger.warning(f"Send button click failed (disabled or timeout): {e}")
+                 return False
         else:
-            logger.warning("Send button disabled")
+            logger.warning("Send button selector not found")
             return False
 
         self._close_all_message_modals()
@@ -475,12 +510,14 @@ class BaseLinkedInBot(ABC):
     def _close_all_message_modals(self) -> None:
         """Ferme toutes les modales de message ouvertes."""
         try:
-            close_buttons = self.page.locator("button[data-control-name='overlay.close_conversation_window']")
-            count = close_buttons.count()
-            if count > 0:
-                for _ in range(count):
+            close_buttons = self.selector_manager.find_all(self.page, "messaging.close_overlay")
+            # If find_all returns list of Locators, but typically it returns a single Locator matching multiple if we used .all()
+            # My find_all implementation returns List[Locator] (result of locator.all())
+
+            if close_buttons:
+                for btn in close_buttons:
                     try:
-                        close_buttons.first.click(timeout=2000)
+                        btn.click(timeout=2000)
                         self.random_delay(0.2, 0.5)
                     except Exception: break
         except Exception: pass
