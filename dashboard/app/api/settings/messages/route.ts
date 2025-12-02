@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const API_URL = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
+const API_URL = process.env.BOT_API_URL || 'http://api:8000';
 const API_KEY = process.env.BOT_API_KEY || 'internal_secret_key';
 
 export async function GET() {

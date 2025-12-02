@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     console.log('📡 [PROXY] Requête reçue du dashboard:', { action, job_type, dry_run, process_late, limit });
 
     // URL interne Docker (CRITIQUE: ne jamais utiliser localhost)
-    const apiUrl = process.env.BOT_API_URL || 'http://linkedin-bot-api:8000';
+    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
     const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
 
     let endpoint = '';
