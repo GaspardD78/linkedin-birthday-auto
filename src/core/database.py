@@ -2,12 +2,10 @@
 Module de gestion de la base de données SQLite pour LinkedIn Birthday Auto
 Gère les contacts, messages, visites de profils, erreurs et sélecteurs LinkedIn
 
-Version 2.1.0 - Corrections audit:
-- Mode WAL pour performances
-- Thread-safe singleton
-- Résolution des connexions nested
-- Retry logic pour locks
-- Timeout configuré
+Version 2.2.0 - Optimisation Concurrentielle:
+- Connexions persistantes (Thread-Local) pour réduire les I/O
+- Mode WAL confirmé
+- Gestion robuste des transactions
 """
 
 from contextlib import contextmanager
@@ -25,24 +23,34 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-def retry_on_lock(max_retries=3, delay=0.5):
-    """Decorator pour retry automatique en cas de database lock"""
+def retry_on_lock(max_retries=5, delay=0.2):
+    """
+    Decorator pour retry automatique en cas de database lock.
+    Augmenté pour gérer la contention Worker/API.
+    """
 
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            # Backoff exponentiel avec jitter serait idéal, mais simple exp suffit ici
+            current_delay = delay
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
                 except sqlite3.OperationalError as e:
-                    if "locked" in str(e) and attempt < max_retries - 1:
-                        wait_time = delay * (2**attempt)  # Exponential backoff
-                        logger.warning(
-                            f"Database locked, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
-                        )
-                        time.sleep(wait_time)
+                    if "locked" in str(e):
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"Database locked in {func.__name__}, retrying in {current_delay:.2f}s (attempt {attempt + 1}/{max_retries})"
+                            )
+                            time.sleep(current_delay)
+                            current_delay *= 2  # Exponential backoff
+                        else:
+                            logger.error(
+                                f"Database operation failed after {max_retries} attempts (Locked): {e}"
+                            )
+                            raise
                     else:
-                        logger.error(f"Database operation failed after {max_retries} attempts: {e}")
                         raise
             return None
 
@@ -52,56 +60,100 @@ def retry_on_lock(max_retries=3, delay=0.5):
 
 
 class Database:
-    """Classe de gestion de la base de données SQLite (thread-safe)"""
+    """
+    Classe de gestion de la base de données SQLite.
+    Utilise un stockage Thread-Local pour maintenir des connexions persistantes
+    et éviter l'overhead d'ouverture/fermeture (Connection Churn).
+    """
 
     # Version du schéma de BDD pour migrations futures
     SCHEMA_VERSION = "2.1.0"
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
         """
-        Initialise la connexion à la base de données
+        Initialise la gestion de base de données.
 
         Args:
             db_path: Chemin vers le fichier de base de données
         """
         self.db_path = db_path
-        self._configure_sqlite()
+        # Stockage local au thread pour les connexions persistantes
+        self._local = threading.local()
+
+        # Initialisation (création fichier si inexistant) via une connexion temporaire
         self.init_database()
 
-    def _configure_sqlite(self):
-        """Configure SQLite pour de meilleures performances et gestion de la concurrence"""
-        # Connexion temporaire pour configuration globale
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
+    def _create_connection(self) -> sqlite3.Connection:
+        """Crée et configure une nouvelle connexion SQLite"""
+        conn = sqlite3.connect(self.db_path, timeout=60.0) # Timeout augmenté à 60s
+        conn.row_factory = sqlite3.Row
+
+        # Optimisations Performance & Concurrence
         try:
-            # Mode WAL pour better concurrency
+            # WAL (Write-Ahead Logging) permet lecture et écriture simultanées
             conn.execute("PRAGMA journal_mode=WAL")
-            # Timeout pour éviter locks immédiats
-            conn.execute("PRAGMA busy_timeout=30000")  # 30 secondes
-            # Synchronisation NORMAL pour meilleures performances (safe avec WAL)
+            # Synchronous NORMAL est safe avec WAL et plus rapide
             conn.execute("PRAGMA synchronous=NORMAL")
-            # Cache size (en KB)
-            conn.execute("PRAGMA cache_size=-10000")  # 10MB
-            logger.info("SQLite configured: WAL mode, 30s timeout, optimized cache")
-        finally:
-            conn.close()
+            # Timeout de busy handler (attente de verrou)
+            conn.execute("PRAGMA busy_timeout=60000")
+            # Cache size (-10000 pages = ~40MB si pages de 4KB)
+            conn.execute("PRAGMA cache_size=-10000")
+            # Foreign keys enforce
+            conn.execute("PRAGMA foreign_keys=ON")
+        except Exception as e:
+            logger.warning(f"Failed to set PRAGMA optimizations: {e}")
+
+        return conn
 
     @contextmanager
     def get_connection(self):
-        """Context manager pour la connexion à la base de données"""
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.row_factory = sqlite3.Row  # Permet l'accès par nom de colonne
+        """
+        Context manager pour obtenir une connexion à la base de données.
+        Utilise une connexion persistante par thread (Thread-Local).
+        Ne ferme PAS la connexion à la sortie, mais commit/rollback la transaction.
+        """
+        # Vérifier si une connexion existe déjà pour ce thread
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            logger.debug("Creating new thread-local database connection")
+            self._local.conn = self._create_connection()
+
+        conn = self._local.conn
+
+        # Vérification basique si la connexion est fermée (programming error)
+        try:
+            # Test léger pour voir si la connexion est vivante
+            conn.in_transaction
+        except sqlite3.ProgrammingError:
+            # Connexion fermée ou invalide, on recrée
+            logger.warning("Thread-local connection was closed/invalid, recreating.")
+            self._local.conn = self._create_connection()
+            conn = self._local.conn
+
         try:
             yield conn
-            conn.commit()
+            if conn.in_transaction:
+                conn.commit()
         except Exception as e:
-            conn.rollback()
+            if conn.in_transaction:
+                conn.rollback()
             logger.error(f"Database transaction failed: {e}")
             raise e
-        finally:
-            conn.close()
+        # Note: On ne ferme PAS la connexion ici (conn.close())
+        # Elle reste ouverte pour le prochain appel dans ce thread.
+
+    def close(self):
+        """Ferme la connexion du thread courant (nettoyage explicite)"""
+        if hasattr(self._local, "conn") and self._local.conn:
+            try:
+                self._local.conn.close()
+            except Exception as e:
+                logger.error(f"Error closing database connection: {e}")
+            finally:
+                self._local.conn = None
 
     def init_database(self):
         """Crée les tables si elles n'existent pas"""
+        # Utilise get_connection pour bénéficier de la gestion transactionnelle
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -323,7 +375,7 @@ class Database:
 
     # ==================== CONTACTS ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def add_contact(
         self,
         name: str,
@@ -363,7 +415,7 @@ class Database:
             with self.get_connection() as conn:
                 return _add(conn.cursor())
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_contact_by_name(self, name: str, conn=None) -> Optional[dict]:
         """Récupère un contact par son nom"""
 
@@ -378,7 +430,7 @@ class Database:
             with self.get_connection() as conn:
                 return _get(conn.cursor())
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def update_contact_last_message(self, name: str, message_date: str, conn=None):
         """Met à jour la date du dernier message et incrémente le compteur"""
 
@@ -402,7 +454,7 @@ class Database:
 
     # ==================== BIRTHDAY MESSAGES ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def add_birthday_message(
         self,
         contact_name: str,
@@ -447,7 +499,7 @@ class Database:
 
             return cursor.lastrowid
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> list[dict]:
         """
         Récupère les messages envoyés à un contact sur les X dernières années
@@ -474,7 +526,7 @@ class Database:
 
             return [dict(row) for row in cursor.fetchall()]
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_weekly_message_count(self) -> int:
         """Retourne le nombre de messages envoyés cette semaine"""
         with self.get_connection() as conn:
@@ -491,7 +543,7 @@ class Database:
 
             return cursor.fetchone()["count"]
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_daily_message_count(self, date: Optional[str] = None) -> int:
         """Retourne le nombre de messages envoyés pour une date donnée"""
         with self.get_connection() as conn:
@@ -512,7 +564,7 @@ class Database:
 
     # ==================== PROFILE VISITS ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def add_profile_visit(
         self,
         profile_name: str,
@@ -563,7 +615,7 @@ class Database:
 
             return cursor.lastrowid
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_daily_visits_count(self, date: Optional[str] = None) -> int:
         """Retourne le nombre de profils visités pour une date donnée"""
         with self.get_connection() as conn:
@@ -582,7 +634,7 @@ class Database:
 
             return cursor.fetchone()["count"]
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def is_profile_visited(self, profile_url: str, days: int = 30) -> bool:
         """
         Vérifie si un profil a été visité dans les X derniers jours
@@ -610,7 +662,7 @@ class Database:
 
     # ==================== ERRORS ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def log_error(
         self,
         script_name: str,
@@ -653,7 +705,7 @@ class Database:
 
             return cursor.lastrowid
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_recent_errors(self, limit: int = 50) -> list[dict]:
         """Récupère les erreurs récentes"""
         with self.get_connection() as conn:
@@ -672,7 +724,7 @@ class Database:
 
     # ==================== LINKEDIN SELECTORS ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_selector(self, selector_name: str) -> Optional[dict]:
         """Récupère un sélecteur par son nom"""
         with self.get_connection() as conn:
@@ -686,7 +738,7 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def update_selector_validation(self, selector_name: str, is_valid: bool):
         """Met à jour le statut de validation d'un sélecteur"""
         with self.get_connection() as conn:
@@ -715,7 +767,7 @@ class Database:
                     (datetime.now().isoformat(), selector_name),
                 )
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_all_selectors(self) -> list[dict]:
         """Récupère tous les sélecteurs"""
         with self.get_connection() as conn:
@@ -725,7 +777,7 @@ class Database:
 
     # ==================== SCRAPED PROFILES ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def save_scraped_profile(
         self,
         profile_url: str,
@@ -790,7 +842,7 @@ class Database:
 
             return cursor.lastrowid
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_scraped_profile(self, profile_url: str) -> Optional[dict]:
         """
         Récupère les données scrapées d'un profil par son URL.
@@ -812,7 +864,7 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_all_scraped_profiles(self, limit: Optional[int] = None) -> list[dict]:
         """
         Récupère tous les profils scrapés.
@@ -845,7 +897,7 @@ class Database:
 
             return [dict(row) for row in cursor.fetchall()]
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def export_scraped_data_to_csv(self, output_path: str) -> str:
         """
         Exporte les données scrapées vers un fichier CSV.
@@ -935,7 +987,7 @@ class Database:
 
     # ==================== STATISTICS ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_statistics(self, days: int = 30) -> dict[str, Any]:
         """
         Récupère les statistiques d'activité
@@ -1016,7 +1068,7 @@ class Database:
                 },
             }
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_today_statistics(self) -> dict[str, int]:
         """
         Récupère les statistiques d'aujourd'hui uniquement
@@ -1085,7 +1137,7 @@ class Database:
                 "profiles_visited_today": profiles_visited_today,
             }
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_daily_activity(self, days: int = 30) -> list[dict]:
         """
         Récupère l'activité quotidienne
@@ -1171,7 +1223,7 @@ class Database:
 
             return result
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def get_top_contacts(self, limit: int = 10) -> list[dict]:
         """Récupère les contacts les plus contactés"""
         with self.get_connection() as conn:
@@ -1197,7 +1249,7 @@ class Database:
 
     # ==================== MAINTENANCE ====================
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def cleanup_old_data(self, days_to_keep: int = 365):
         """
         Supprime les anciennes données
@@ -1219,7 +1271,7 @@ class Database:
 
             return {"errors_deleted": errors_deleted, "visits_deleted": visits_deleted}
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def export_to_json(self, output_path: str):
         """Exporte toute la base de données en JSON"""
         data = {
@@ -1242,7 +1294,7 @@ class Database:
 
         return output_path
 
-    @retry_on_lock(max_retries=3)
+    @retry_on_lock()
     def vacuum(self) -> dict[str, Any]:
         """
         Exécute VACUUM pour optimiser la base de données.
@@ -1264,13 +1316,15 @@ class Database:
         db_size_before = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
 
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-
-                # VACUUM ne peut pas être exécuté dans une transaction
+            # Pour VACUUM, on a besoin d'une connexion isolée (pas de transaction)
+            # On ne peut pas utiliser get_connection() standard car il est dans un bloc transactionnel
+            conn = sqlite3.connect(self.db_path)
+            try:
                 conn.isolation_level = None
-                cursor.execute("VACUUM")
-                conn.isolation_level = ""
+                conn.execute("VACUUM")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)") # Force WAL flush
+            finally:
+                conn.close()
 
             # Get database size after vacuum
             db_size_after = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
@@ -1401,5 +1455,13 @@ if __name__ == "__main__":
     # Test d'export
     db.export_to_json("test_export.json")
     print("✓ Export JSON créé")
+
+    # Clean up test DB
+    if os.path.exists("test_linkedin.db"):
+        os.remove("test_linkedin.db")
+    if os.path.exists("test_linkedin.db-shm"):
+        os.remove("test_linkedin.db-shm")
+    if os.path.exists("test_linkedin.db-wal"):
+        os.remove("test_linkedin.db-wal")
 
     print("\n✓ Tous les tests sont passés avec succès !")
