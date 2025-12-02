@@ -2,14 +2,11 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, Github, Bug, Settings, MessageSquare, FileCode } from "lucide-react"
+import { Download, Github, Bug } from "lucide-react"
 import { downloadDebugReport } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SettingsForm } from "@/components/settings/SettingsForm"
-import { MessagesEditor } from "@/components/settings/MessagesEditor"
-import { YamlEditor } from "@/components/settings/YamlEditor"
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -96,35 +93,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Onglets de configuration */}
-        <Tabs defaultValue="form" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="form" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">Configuration</span>
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Messages</span>
-            </TabsTrigger>
-            <TabsTrigger value="yaml" className="flex items-center gap-2">
-              <FileCode className="h-4 w-4" />
-              <span className="hidden sm:inline">YAML Expert</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="form" className="mt-6">
-            <SettingsForm />
-          </TabsContent>
-
-          <TabsContent value="messages" className="mt-6">
-            <MessagesEditor />
-          </TabsContent>
-
-          <TabsContent value="yaml" className="mt-6">
-            <YamlEditor />
-          </TabsContent>
-        </Tabs>
+        {/* Le formulaire gère désormais ses propres onglets (Vertical Tabs) */}
+        <SettingsForm />
       </div>
     </div>
   )
