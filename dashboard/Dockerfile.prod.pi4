@@ -1,81 +1,67 @@
 # Dockerfile optimisé pour Raspberry Pi 4 (ARM64)
-# Simplifié pour éviter les problèmes d'architecture
+# Basé sur node:20-slim pour garantir la compatibilité avec les binaires SWC (glibc)
+# tout en restant plus léger et stable que Alpine pour Next.js sur ARM64.
 
-# Stage 1: Dependencies
+# --- Stage 1: Dependencies ---
 FROM node:20-slim AS deps
 WORKDIR /app
 
-# Installation des dépendances système pour ARM64 (minimales)
-RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copier package files
+# Copie des fichiers de définition de dépendances
 COPY package.json package-lock.json* ./
 
 # Installation des dépendances
-RUN npm install \
-    --fetch-timeout=300000 \
-    --fetch-retry-mintimeout=20000 \
-    --fetch-retry-maxtimeout=120000 \
-    --maxsockets=3 \
+# Note : Suppression de python3, make, g++ (build tools) car non requis par les dépendances actuelles.
+# Utilisation de 'npm ci' pour une installation propre et déterministe.
+RUN npm ci \
     --no-audit \
     --no-fund \
     && npm cache clean --force
 
-# Explicitement installer le binaire SWC pour ARM64
-# car il est parfois manqué lors de l'installation des dépendances optionnelles
+# Installation explicite du binaire SWC pour ARM64/glibc
+# Indispensable pour éviter le fallback vers WASM (lent) ou les erreurs de build
 RUN npm install @next/swc-linux-arm64-gnu --no-save
 
-# Stage 2: Builder
+# --- Stage 2: Builder ---
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Copier node_modules depuis deps
+# Copie des modules depuis le stage deps
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Désactiver la télémetrie Next.js
+# Désactivation de la télémétrie Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Build du projet avec npx pour s'assurer que next est trouvé
+# Build de l'application (génère le dossier .next/standalone)
 RUN npx next build
 
-# Stage 3: Runner (Production)
+# --- Stage 3: Runner ---
 FROM node:20-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
 
-# Utilisation de l'utilisateur avec UID/GID 1000 (compatible bot-worker pour SQLite partagé)
-# L'image node:20-slim contient déjà user 'node' avec UID/GID 1000
-# On le renomme en 'nextjs' pour cohérence avec le code
-RUN EXISTING_USER=$(getent passwd 1000 | cut -d: -f1) && \
-    if [ -n "$EXISTING_USER" ]; then \
-        usermod -l nextjs $EXISTING_USER 2>/dev/null || true; \
-    else \
-        groupadd -g 1000 appgroup 2>/dev/null || true && \
-        useradd -u 1000 -g 1000 -m nextjs; \
-    fi && \
-    echo "Using UID/GID 1000 for user nextjs"
+# Utilisation de l'utilisateur 'node' (UID 1000) inclus par défaut dans l'image
+# Cela assure la compatibilité avec les volumes partagés (ex: bases de données, logs)
+# sur le Raspberry Pi sans scripts complexes de modification d'UID.
 
-# Créer les répertoires nécessaires
-# Utiliser le GID 1000 pour les permissions (compatible quel que soit le nom du groupe)
-RUN mkdir -p /app/data /app/logs && chown -R 1000:1000 /app
+# Préparation des répertoires avec les bonnes permissions
+RUN mkdir -p /app/logs /app/data && \
+    chown -R node:node /app
 
-# Copie des artefacts du build standalone
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
-COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
+# Copie des artefacts optimisés
+# 'public' pour les assets statiques
+COPY --from=builder --chown=node:node /app/public ./public
+# 'standalone' contient le serveur minimal et les dépendances de prod
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+# 'static' est requis pour le rendu CSS/JS côté client
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
-USER nextjs
+# Bascule sur l'utilisateur non-privilégié
+USER node
 
 EXPOSE 3000
-
-ENV PORT=3000
 
 CMD ["node", "server.js"]
