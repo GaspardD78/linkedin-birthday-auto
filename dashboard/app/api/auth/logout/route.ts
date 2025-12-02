@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
   // Delete cookie
   response.cookies.set("session", "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.SECURE_COOKIES === "true",
     sameSite: "lax",
     path: "/",
     expires: new Date(0),
