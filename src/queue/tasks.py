@@ -19,9 +19,13 @@ def run_bot_task(
             return run_birthday_bot(dry_run=dry_run)
         elif bot_mode == "unlimited":
             return run_unlimited_bot(dry_run=dry_run, max_days_late=max_days_late)
+        else:
+            error_msg = f"Invalid bot_mode: {bot_mode}. Must be 'standard' or 'unlimited'."
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg, "bot_type": "birthday"}
     except Exception as e:
-        logger.error("task_failed", error=str(e))
-        raise e
+        logger.error("task_failed", error=str(e), exc_info=True)
+        raise
 
 
 def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, Any]:

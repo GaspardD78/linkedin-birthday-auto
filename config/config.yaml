@@ -147,7 +147,8 @@ database:
 
   # Base de données SQLite dans le volume partagé Docker
   # Compatible avec docker-compose.pi4-standalone.yml (shared-data volume)
-  db_path: /app/data/linkedin_automation.db
+  # IMPORTANT: Nom doit correspondre à DATABASE_URL dans .env (linkedin.db)
+  db_path: /app/data/linkedin.db
 
   # Timeout réduit grâce à la clé USB (plus rapide que SD)
   timeout: 30
