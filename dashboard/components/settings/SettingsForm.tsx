@@ -11,6 +11,7 @@ import { GlobalSettings } from "./GlobalSettings"
 import { BirthdaySettings } from "./BirthdaySettings"
 import { VisitorSettings } from "./VisitorSettings"
 import { AdvancedSettings } from "./AdvancedSettings"
+import { MessagesEditor } from "./MessagesEditor"
 import { ConfigData } from "./types"
 
 export function SettingsForm() {
@@ -272,6 +273,7 @@ export function SettingsForm() {
 
             <TabsContent value="birthday" className="mt-0 space-y-6">
                 <BirthdaySettings config={config} updateConfig={updateConfig} />
+                <MessagesEditor />
             </TabsContent>
 
             <TabsContent value="visitor" className="mt-0 space-y-6">

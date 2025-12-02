@@ -25,7 +25,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/:path*',
+        destination: `${process.env.BOT_API_URL || 'http://api:8000'}/:path*`,
       },
     ]
   },
