@@ -1,5 +1,5 @@
 import { SystemHealthWidget } from "@/components/dashboard/HealthWidget"
-import { LogsWidget } from "@/components/dashboard/LogsWidget"
+import { TaskStatusWidget } from "@/components/dashboard/TaskStatusWidget"
 import { BotControlsWidget } from "@/components/dashboard/BotControls"
 import { EnhancedStatsWidget } from "@/components/dashboard/EnhancedStatsWidget"
 import { WeeklyLimitWidget } from "@/components/dashboard/WeeklyLimitWidget"
@@ -37,15 +37,13 @@ export default function DashboardPage() {
             {/* Activity Chart */}
             <ActivityChartWidget />
 
-            {/* Logs Console */}
-            <div className="min-h-[400px]">
-              <LogsWidget />
-            </div>
-
           </div>
 
           {/* Panneau de Monitoring (4/12) */}
           <div className="lg:col-span-4 space-y-6">
+
+            {/* Activité en temps réel (Logs Light) */}
+            <TaskStatusWidget />
 
             {/* État des Workers - Détails */}
             <BotStatusWidget />
