@@ -21,6 +21,14 @@ const nextConfig = {
     // Optimisations possibles pour build plus léger
     optimizePackageImports: ['lucide-react', 'recharts'],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/:path*',
+      },
+    ]
+  },
 };
 
 module.exports = nextConfig;
