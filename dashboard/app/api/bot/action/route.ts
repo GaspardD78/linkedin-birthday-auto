@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       payload = {
         dry_run: dry_run ?? true,
         process_late: process_late ?? false,
-        max_days_late: 10
+        max_days_late: body.max_days_late ?? 10
       };
       console.log('🎂 [PROXY] Appel Birthday Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'start' && job_type === 'visit') {

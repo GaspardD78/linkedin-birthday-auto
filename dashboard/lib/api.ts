@@ -94,12 +94,6 @@ export async function getBotStatus(): Promise<BotStatus> {
 
 // Granular status
 export async function getBotStatusDetailed(): Promise<BotStatusDetailed> {
-  // We need to proxy this via Next.js API or call FastAPI directly if configured.
-  // Assuming Next.js proxies /api/* to FastAPI.
-  // The path in FastAPI is /bot/status, so in Next.js it should be /api/bot/status if proxied correctly.
-  // If Next.js only proxies specific routes, we might need to add this route to next.config.js or rewrite.
-  // Assuming the user set up a catch-all or we should use the existing proxy logic.
-  // If the standard proxy is /api -> fastapi:8000, then /api/bot/status works.
   return get('/api/bot/status');
 }
 
@@ -108,7 +102,9 @@ export async function startBot(options: {
   processLate?: boolean;
   maxDaysLate?: number;
 } = {}) {
-  return post('/api/bot/start/birthday', {
+  return post('/api/bot/action', {
+    action: 'start',
+    job_type: 'birthday',
     dry_run: options.dryRun ?? true,
     process_late: options.processLate ?? false,
     max_days_late: options.maxDaysLate ?? 10
@@ -119,14 +115,17 @@ export async function startVisitorBot(options: {
   dryRun?: boolean;
   limit?: number;
 } = {}) {
-  return post('/api/bot/start/visitor', {
+  return post('/api/bot/action', {
+    action: 'start',
+    job_type: 'visit',
     dry_run: options.dryRun ?? true,
     limit: options.limit ?? 10
   });
 }
 
 export async function stopBot(jobType?: string, jobId?: string) {
-  return post('/api/bot/stop', {
+  return post('/api/bot/action', {
+    action: 'stop',
     job_type: jobType,
     job_id: jobId
   });
@@ -191,54 +190,25 @@ export async function getBotStats(): Promise<BotStats> {
 }
 
 export async function getSystemHealth(): Promise<SystemHealth> {
-    const data = await get('/api/health'); // FastAPI /health
-    // Map FastAPI health response to SystemHealth expected by UI
-    // FastAPI: { status, version, timestamp, config_valid, auth_available, ... }
-    // We also need CPU/RAM which /health doesn't typically provide unless enhanced.
-    // Wait, the existing code called /api/system/health which was likely a Next.js route calling psutil.
-    // If we want CPU/RAM, we should keep using the Next.js API route if it exists, or update FastAPI to provide it.
-    // The instructions say "API /api/system/health provides CPU...".
-    // I will assume the Next.js API route /api/system/health exists and works.
-    // But wait, I'm defining `getSystemHealth` here.
-    // I'll stick to the existing endpoint pattern if possible.
+    const data = await get('/api/system/health');
 
-    // Fallback: Use the endpoint that was working before if strictly necessary.
-    // But since I'm refactoring, I'll point to /api/system/health which usually proxies to FastAPI or runs locally.
-    // Let's assume /api/system/health is correct.
-
+    // Also fetch auth status from FastAPI for the alert
+    let authAvailable = true;
     try {
-        const res = await fetch('/api/system/health', {
-            headers: localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}
-        });
-        if (!res.ok) throw new Error("Health check failed");
-        const sysData = await res.json();
+        const healthData = await get('/api/health'); // Lightweight check
+        authAvailable = healthData.auth_available;
+    } catch (e) {}
 
-        // Also fetch auth status from FastAPI for the alert
-        let authAvailable = true;
-        try {
-            const healthData = await get('/api/health'); // Lightweight check
-            authAvailable = healthData.auth_available;
-        } catch (e) {}
-
-        const toBytes = (gb: number) => (gb || 0) * 1024 * 1024 * 1024;
-        return {
-            cpu_usage: sysData.cpuTemp || 0, // Mapping temp to cpu_usage for visualization if needed, or keeping distinct
-            memory_usage: {
-                total: toBytes(sysData.totalMemory),
-                used: toBytes(sysData.memoryUsage),
-                free: 0
-            },
-            uptime: sysData.uptime,
-            temperature: sysData.cpuTemp,
-            auth_available: authAvailable
-        };
-    } catch (e) {
-        return {
-             cpu_usage: 0,
-             memory_usage: { total: 1, used: 0, free: 0 },
-             uptime: "0",
-             temperature: 0,
-             auth_available: false
-        };
-    }
+    const toBytes = (gb: number) => (gb || 0) * 1024 * 1024 * 1024;
+    return {
+        cpu_usage: data.cpuTemp || 0, // Mapping temp to cpu_usage for visualization if needed, or keeping distinct
+        memory_usage: {
+            total: toBytes(data.totalMemory),
+            used: toBytes(data.memoryUsage),
+            free: 0
+        },
+        uptime: data.uptime,
+        temperature: data.cpuTemp,
+        auth_available: authAvailable
+    };
 }
