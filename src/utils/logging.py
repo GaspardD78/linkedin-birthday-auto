@@ -8,6 +8,7 @@ facilitant l'intégration avec des systèmes comme Loki.
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import structlog
@@ -35,7 +36,15 @@ def setup_logging(log_level: str = "INFO", log_file: str = None) -> None:
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        handlers.append(logging.FileHandler(log_file))
+        # Utiliser RotatingFileHandler pour éviter saturation SD card
+        handlers.append(
+            RotatingFileHandler(
+                log_file,
+                maxBytes=10 * 1024 * 1024,  # 10MB par fichier
+                backupCount=3,               # Garde 3 fichiers = 30MB max
+                encoding='utf-8'
+            )
+        )
 
     logging.basicConfig(format="%(message)s", level=level, handlers=handlers)
 
