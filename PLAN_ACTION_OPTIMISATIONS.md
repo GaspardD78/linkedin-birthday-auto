@@ -23,8 +23,8 @@ Ce document contient des **prompts prêts à l'emploi** pour implémenter les op
 |-------|--------|--------|--------|
 | 🔴 Critiques | 4/4 | ✅ Complété | 1-2h |
 | 🟡 Importants | 0/6 | ⏳ À faire | 2-3h |
-| 🟢 Mineurs | 0/5 | ⏳ À faire | 30min |
-| **TOTAL** | **4/15** | **27%** | **4-6h** |
+| 🟢 Mineurs | 5/5 | ✅ Complété | 30min |
+| **TOTAL** | **9/15** | **60%** | **4-6h** |
 
 ---
 
@@ -845,11 +845,18 @@ PRÉCAUTIONS :
 
 ---
 
-### ✅ TICKET #10 : Nettoyer Code Commenté Docker Compose (5min)
+### ✅ TICKET #10 : Nettoyer Code Commenté Docker Compose (5min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟢 Mineure
 **Effort** : 5 minutes
 **Risque** : Nul
+**Date de réalisation** : 2 Décembre 2025
+
+#### 📊 Résultat
+✅ **Code commenté supprimé avec succès**
+- Lignes 209-211 du fichier `docker-compose.pi4-standalone.yml` supprimées
+- Commentaire explicatif ajouté : "Dashboard utilise l'image officielle depuis GHCR (plus de build local pour économiser ressources Pi4)"
+- Syntaxe YAML validée avec succès via `python -c "import yaml"`
 
 #### 📝 PROMPT POUR IA
 
@@ -895,11 +902,31 @@ LIVRABLE : Fichier docker-compose.pi4-standalone.yml nettoyé
 
 ---
 
-### ✅ TICKET #11 : Fix Fallback apiUrl Dashboard (2min)
+### ✅ TICKET #11 : Fix Fallback apiUrl Dashboard (2min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟢 Mineure
 **Effort** : 2 minutes
 **Risque** : Nul
+**Date de réalisation** : 2 Décembre 2025
+
+#### 📊 Résultat
+✅ **Tous les fallbacks apiUrl corrigés dans 13 fichiers**
+- dashboard/app/api/bot/action/route.ts
+- dashboard/app/api/contacts/route.ts
+- dashboard/app/api/settings/yaml/route.ts
+- dashboard/app/api/settings/late-messages/route.ts
+- dashboard/app/api/settings/messages/route.ts
+- dashboard/app/api/history/route.ts
+- dashboard/app/api/stats/route.ts
+- dashboard/app/api/auth/verify-2fa/route.ts
+- dashboard/app/api/auth/upload/route.ts
+- dashboard/app/api/auth/start/route.ts
+- dashboard/app/api/deployment/services/route.ts
+- dashboard/app/api/deployment/jobs/route.ts
+- dashboard/app/api/deployment/deploy/route.ts
+
+**Changement** : `'http://linkedin-bot-api:8000'` → `'http://api:8000'`
+**Raison** : Le nom du service dans docker-compose.pi4-standalone.yml est `api`, pas `linkedin-bot-api`
 
 #### 📝 PROMPT POUR IA
 
@@ -934,11 +961,21 @@ LIVRABLE : Fichier route.ts corrigé
 
 ---
 
-### ✅ TICKET #12 : Améliorer UX Redirect 401 (10min)
+### ✅ TICKET #12 : Améliorer UX Redirect 401 (10min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟢 Mineure
 **Effort** : 10 minutes
 **Risque** : Faible
+**Date de réalisation** : 2 Décembre 2025
+
+#### 📊 Résultat
+✅ **UX améliorée pour les redirects 401**
+- Fichier modifié : `dashboard/lib/api.ts`
+- Changements appliqués aux fonctions `get()` (ligne 56-69) et `post()` (ligne 88-101)
+- Ajout d'un message console : `⚠️  Session expirée, redirection vers login dans 2s...`
+- Délai de 2 secondes avant redirection (évite redirect brutal)
+- Vérification `window !== undefined` pour compatibilité SSR
+- TODO ajouté pour future intégration d'une bibliothèque de toast notifications
 
 #### 📝 PROMPT POUR IA
 
@@ -990,11 +1027,20 @@ LIVRABLE : UX améliorée avec délai et console.error
 
 ---
 
-### ✅ TICKET #13 : Vérifier Healthcheck Dashboard (5min)
+### ✅ TICKET #13 : Vérifier Healthcheck Dashboard (5min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟢 Mineure
 **Effort** : 5 minutes
 **Risque** : Faible
+**Date de réalisation** : 2 Décembre 2025
+
+#### 📊 Résultat
+✅ **Endpoint healthcheck déjà présent et fonctionnel**
+- Fichier existant : `dashboard/app/api/system/health/route.ts`
+- Retourne : température CPU, usage mémoire, total mémoire, uptime
+- Compatible avec le healthcheck Docker à la ligne 261 de docker-compose.pi4-standalone.yml
+- Endpoint optimisé pour Raspberry Pi (lecture température depuis `/sys/class/thermal/thermal_zone0/temp`)
+- Fallback inclus pour dev local (non-RPi)
 
 #### 📝 PROMPT POUR IA
 
@@ -1054,11 +1100,18 @@ LIVRABLE : Healthcheck fonctionnel (endpoint créé OU config modifiée)
 
 ---
 
-### ✅ TICKET #14 : Ajouter Newline Fin config.yaml (1min)
+### ✅ TICKET #14 : Ajouter Newline Fin config.yaml (1min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟢 Mineure
 **Effort** : 1 minute
 **Risque** : Nul
+**Date de réalisation** : 2 Décembre 2025
+
+#### 📊 Résultat
+✅ **Newline déjà présente - Aucune modification nécessaire**
+- Vérification : `tail -c 5 config/config.yaml | od -c` montre que le fichier se termine bien par `\n`
+- Syntaxe YAML validée avec succès via `python -c "import yaml"`
+- Fichier conforme aux bonnes pratiques
 
 #### 📝 PROMPT POUR IA
 

@@ -54,8 +54,18 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
   const res = await fetch(url, { headers: finalHeaders });
   if (!res.ok) {
      if (res.status === 401) {
-         window.location.href = '/login';
-         throw new Error('Unauthorized');
+         // Notifier user avant redirect
+         if (typeof window !== 'undefined') {
+             console.error('⚠️  Session expirée, redirection vers login dans 2s...');
+
+             // TODO: Remplacer par toast notification si bibliothèque disponible
+             // toast.error('Session expirée, redirection...')
+
+             setTimeout(() => {
+                 window.location.href = '/login';
+             }, 2000);
+         }
+         throw new Error('Session expirée');
      }
      const error = await res.json().catch(() => ({ detail: res.statusText }));
      throw new Error(error.detail || `Request failed: ${res.status}`);
@@ -76,8 +86,18 @@ async function post(url: string, body: any, headers: Record<string, string> = {}
 
   if (!res.ok) {
       if (res.status === 401) {
-         window.location.href = '/login';
-         throw new Error('Unauthorized');
+         // Notifier user avant redirect
+         if (typeof window !== 'undefined') {
+             console.error('⚠️  Session expirée, redirection vers login dans 2s...');
+
+             // TODO: Remplacer par toast notification si bibliothèque disponible
+             // toast.error('Session expirée, redirection...')
+
+             setTimeout(() => {
+                 window.location.href = '/login';
+             }, 2000);
+         }
+         throw new Error('Session expirée');
      }
      const error = await res.json().catch(() => ({ detail: res.statusText }));
      throw new Error(error.detail || `Request failed: ${res.status}`);

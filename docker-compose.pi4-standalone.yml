@@ -203,12 +203,10 @@ services:
   # DASHBOARD (Next.js avec SQLite)
   # ========================================
   dashboard:
-    # Image officielle depuis GHCR (plus de build local)
+    # Dashboard utilise l'image officielle depuis GHCR
+    # (plus de build local pour économiser ressources Pi4)
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
     pull_policy: always
-    # build:
-    #   context: ./dashboard
-    #   dockerfile: Dockerfile.prod.pi4
     restart: unless-stopped
     container_name: dashboard
     ports:
