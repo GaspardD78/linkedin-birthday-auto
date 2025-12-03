@@ -9,6 +9,7 @@ Usage:
     python scripts/init_data_files.py
 """
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ setup_logging(log_level="INFO")
 logger = get_logger(__name__)
 
 
+# Templates par défaut (utilisés uniquement en fallback)
 DEFAULT_MESSAGES = """Joyeux anniversaire {name} ! 🎂
 Bon anniversaire {name} ! J'espère que tu passes une excellente journée 🎉
 Meilleurs vœux pour ton anniversaire {name} ! 🎈"""
@@ -40,13 +42,25 @@ def ensure_data_directory():
         logger.info(f"ℹ️  Répertoire existe déjà: {data_dir}")
 
 
-def create_default_file(file_path: Path, content: str, description: str):
-    """Crée un fichier avec contenu par défaut s'il n'existe pas."""
-    if not file_path.exists():
-        file_path.write_text(content, encoding="utf-8")
-        logger.info(f"✅ Créé {description}: {file_path}")
-    else:
-        logger.info(f"ℹ️  {description} existe déjà: {file_path}")
+def copy_or_create_file(source_path: Path, dest_path: Path, fallback_content: str, description: str):
+    """Copie un fichier source vers destination, ou crée avec contenu fallback s'il n'existe pas."""
+    # Ne rien faire si le fichier de destination existe déjà
+    if dest_path.exists():
+        logger.info(f"ℹ️  {description} existe déjà: {dest_path}")
+        return
+
+    # Essayer de copier depuis le fichier source (dans l'image Docker)
+    if source_path.exists():
+        try:
+            shutil.copy2(source_path, dest_path)
+            logger.info(f"✅ Copié {description} personnalisé depuis {source_path} vers {dest_path}")
+            return
+        except Exception as e:
+            logger.warning(f"⚠️  Impossible de copier {source_path}: {e}")
+
+    # Fallback: créer avec contenu par défaut
+    dest_path.write_text(fallback_content, encoding="utf-8")
+    logger.info(f"✅ Créé {description} avec template par défaut: {dest_path}")
 
 
 def init_data_files():
@@ -58,13 +72,29 @@ def init_data_files():
     # Créer répertoire data
     ensure_data_directory()
 
-    # Créer messages.txt
-    messages_file = Path("/app/data/messages.txt")
-    create_default_file(messages_file, DEFAULT_MESSAGES, "Messages d'anniversaire")
+    # Chemins des fichiers sources (dans l'image Docker, copiés depuis la racine du repo)
+    source_messages = Path("/app/messages.txt")
+    source_late_messages = Path("/app/late_messages.txt")
 
-    # Créer late_messages.txt
-    late_messages_file = Path("/app/data/late_messages.txt")
-    create_default_file(late_messages_file, DEFAULT_LATE_MESSAGES, "Messages retard")
+    # Chemins des fichiers de destination
+    dest_messages = Path("/app/data/messages.txt")
+    dest_late_messages = Path("/app/data/late_messages.txt")
+
+    # Copier ou créer messages.txt
+    copy_or_create_file(
+        source_messages,
+        dest_messages,
+        DEFAULT_MESSAGES,
+        "Messages d'anniversaire"
+    )
+
+    # Copier ou créer late_messages.txt
+    copy_or_create_file(
+        source_late_messages,
+        dest_late_messages,
+        DEFAULT_LATE_MESSAGES,
+        "Messages de retard"
+    )
 
     logger.info("=" * 70)
     logger.info("✅ Initialisation terminée avec succès")
