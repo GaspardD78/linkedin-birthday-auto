@@ -93,14 +93,53 @@ Liens cliquables depuis Overview:
 
 ---
 
+### 5. **Navigation Fragile (PRIORITÉ MOYENNE)**
+**Avant:** Pas de breadcrumbs, pas d'indicateur clair de la page active, menu ambigu
+**Après:** Breadcrumbs partout + indicateur visuel renforcé + labels clarifiés
+
+**Fichiers modifiés:**
+- `dashboard/components/ui/breadcrumbs.tsx` (nouveau composant)
+- `dashboard/components/layout/Sidebar.tsx` (amélioration highlight)
+- `dashboard/components/layout/PageNavigation.tsx` (support breadcrumbs)
+- Pages: overview, settings, logs (breadcrumbs ajoutés)
+
+**Améliorations Sidebar:**
+- Label "Pilotage" → "Tableau de Bord" (clarification)
+- Descriptions sous chaque label (ex: "Monitoring système")
+- Highlight page active: gradient bleu/cyan + border-left + shadow
+- Icônes colorées selon état (bleu si actif, gris sinon)
+
+**Breadcrumbs:**
+- Composant réutilisable avec Home icon
+- Liens cliquables pour navigation rapide
+- Séparateurs ChevronRight
+- Styling cohérent avec thème dark
+
+---
+
 ## 📊 **Résumé des Fichiers Modifiés**
 
+### **PHASE 1: Lanceurs Distincts (Commit e7cfcd1)**
 | Fichier | Lignes Avant | Lignes Après | Changements |
 |---------|--------------|--------------|-------------|
 | `dashboard/app/(dashboard)/overview/page.tsx` | 478 | 812 | Refactorisation complète avec deux lanceurs |
 | `dashboard/components/settings/SettingsForm.tsx` | 290 | 297 | Support query params `?tab=` |
 
-**Total lignes modifiées:** ~341 lignes ajoutées
+**Sous-total Phase 1:** +546 insertions, -198 suppressions
+
+### **PHASE 2: Navigation & Breadcrumbs (Commit 915df0c)**
+| Fichier | Type | Changements |
+|---------|------|-------------|
+| `dashboard/components/ui/breadcrumbs.tsx` | Nouveau | Composant réutilisable (56 lignes) |
+| `dashboard/components/layout/Sidebar.tsx` | Modifié | Amélioration highlight + labels clarifiés |
+| `dashboard/components/layout/PageNavigation.tsx` | Modifié | Support breadcrumbs prop |
+| `dashboard/app/(dashboard)/overview/page.tsx` | Modifié | Breadcrumb ajouté |
+| `dashboard/app/settings/page.tsx` | Modifié | Breadcrumb ajouté |
+| `dashboard/app/(dashboard)/logs/page.tsx` | Modifié | Breadcrumb ajouté via PageNavigation |
+
+**Sous-total Phase 2:** +88 insertions, -15 suppressions
+
+**TOTAL REFONTE:** +634 insertions, -213 suppressions
 
 ---
 
