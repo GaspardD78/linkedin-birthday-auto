@@ -9,11 +9,13 @@ import {
   Terminal,
   KeyRound,
   History,
-  LogOut
+  LogOut,
+  Eye
 } from "lucide-react"
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Pilotage" },
+  { href: "/overview", icon: Eye, label: "Vue d'ensemble" },
   { href: "/history", icon: History, label: "Historique" },
   { href: "/logs", icon: Terminal, label: "Logs & Console" },
   { href: "/auth", icon: KeyRound, label: "Authentification" },
