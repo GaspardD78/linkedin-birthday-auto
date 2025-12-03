@@ -181,10 +181,19 @@ class ConfigManager:
             LINKEDIN_BOT_DEBUG_LOG_LEVEL=DEBUG
         """
         env_prefix = "LINKEDIN_BOT_"
+        # Variables système à exclure des overrides (ne sont pas des clés de config)
+        excluded_vars = {
+            "LINKEDIN_BOT_CONFIG_PATH",  # Utilisé pour localiser config.yaml
+        }
         overrides_count = 0
 
         for key, value in os.environ.items():
             if not key.startswith(env_prefix):
+                continue
+
+            # Ignorer les variables système
+            if key in excluded_vars:
+                logger.debug(f"Skipping system variable: {key}")
                 continue
 
             # Extraire la clé de config (ex: DRY_RUN, BROWSER_HEADLESS)
