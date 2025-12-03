@@ -31,9 +31,21 @@ export async function POST(request: Request) {
       };
       console.log('🔍 [PROXY] Appel Visitor Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'stop') {
-      endpoint = '/stop';
+      // Utiliser le endpoint granulaire /bot/stop au lieu de /stop
+      endpoint = '/bot/stop';
       payload = {};
-      console.log('🛑 [PROXY] Appel Stop Bot:', `${apiUrl}${endpoint}`);
+
+      // Ajouter job_type si fourni (pour arrêt par type)
+      if (body.job_type) {
+        payload.job_type = body.job_type;
+      }
+
+      // Ajouter job_id si fourni (pour arrêt par ID spécifique)
+      if (body.job_id) {
+        payload.job_id = body.job_id;
+      }
+
+      console.log('🛑 [PROXY] Appel Stop Bot:', `${apiUrl}${endpoint}`, payload);
     } else {
       console.error('❌ [PROXY] Action invalide:', { action, job_type });
       return NextResponse.json({ error: "Invalid action or job_type" }, { status: 400 });
