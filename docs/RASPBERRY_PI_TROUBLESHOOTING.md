@@ -439,6 +439,133 @@ ______________________________________________________________________
 
 ## 🌐 Network Issues
 
+### Issue: Abnormal network traffic after installing automations
+
+**Problem:** High or unusual network traffic on Raspberry Pi after running `setup.sh` with automation installation.
+
+**Symptoms:**
+- Constant network activity visible in router logs
+- High data usage even when not actively using the bot
+- Network traffic persists even after `full_clean`
+
+**Explanation:**
+
+When you install the automations via `setup.sh`, a systemd service (`linkedin-bot.service`) is configured to **start the bot automatically on boot** and keep it running continuously. This means:
+
+1. The bot is **always active** and connecting to LinkedIn
+2. It may be checking for birthdays, sending messages, or maintaining sessions
+3. Even in DRY_RUN mode, it still connects to LinkedIn to scrape data
+
+**Diagnosis:**
+
+Run the diagnostic script to identify the source of network traffic:
+
+```bash
+cd ~/linkedin-birthday-auto
+sudo ./scripts/diagnose_network_traffic.sh
+```
+
+This will show you:
+- Which services are active
+- Which containers are consuming network bandwidth
+- Real-time network traffic monitoring
+- Bot logs and configuration
+
+**Solution 1: Stop the bot service (immediate)**
+
+```bash
+# Stop the bot immediately
+sudo systemctl stop linkedin-bot
+
+# Disable automatic start on boot
+sudo systemctl disable linkedin-bot
+
+# Verify it's stopped
+sudo systemctl status linkedin-bot
+
+# Also stop Docker containers
+docker compose -f docker-compose.pi4-standalone.yml down
+```
+
+**Solution 2: Uninstall all automations (recommended)**
+
+If you don't want the bot to run automatically:
+
+```bash
+cd ~/linkedin-birthday-auto
+
+# Run the uninstall script
+sudo ./scripts/uninstall_automation_pi4.sh
+```
+
+This will remove:
+- ✅ Automatic bot startup service
+- ✅ Hourly monitoring
+- ✅ Daily backups
+- ✅ Weekly cleanup
+
+Your data and Docker images will be preserved.
+
+**Solution 3: Run bot manually only when needed**
+
+After uninstalling automations, control the bot manually:
+
+```bash
+# Start bot when you want it
+docker compose -f docker-compose.pi4-standalone.yml up -d
+
+# Stop bot when done
+docker compose -f docker-compose.pi4-standalone.yml down
+
+# Check status
+docker compose -f docker-compose.pi4-standalone.yml ps
+```
+
+**Solution 4: Monitor network usage**
+
+Install network monitoring tools:
+
+```bash
+# Install monitoring tools
+sudo apt install nethogs ifstat vnstat
+
+# Monitor network usage by process (requires sudo)
+sudo nethogs
+
+# Monitor interface statistics
+ifstat -t 5
+
+# View network usage over time
+vnstat -l
+```
+
+**Prevention:**
+
+When running `setup.sh`, you're asked:
+
+```
+Voulez-vous installer l'automatisation (services systemd) ? [y/N]
+```
+
+- Answer **"n"** if you don't want automatic startup
+- The bot will still be installed but won't run automatically
+- You can always install automations later with: `sudo ./scripts/install_automation_pi4.sh`
+
+**Verify network traffic has stopped:**
+
+After stopping the services:
+
+```bash
+# Wait a few minutes, then check
+ifstat -t 5
+
+# Or monitor with vnstat
+vnstat -l
+
+# Check if any linkedin containers are running
+docker ps | grep linkedin
+```
+
 ### Issue: Docker image pull timeout (TLS handshake timeout)
 
 **Error during installation/deployment:**
