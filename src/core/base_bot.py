@@ -125,7 +125,7 @@ class BaseLinkedInBot(ABC):
             self.page.goto("https://www.google.com", timeout=30000)
             return True
         except Exception as e:
-            logger.warning(f"Connectivity check failed: {e}")
+            logger.warning(f"Connectivity check failed: {e}", exc_info=True)
             return False
 
     def check_login_status(self) -> bool:
@@ -218,7 +218,7 @@ class BaseLinkedInBot(ABC):
             return "ignore", 0
 
         except Exception as e:
-            logger.debug(f"Date extraction failed for '{card_text[:20]}...': {e}")
+            logger.debug(f"Date extraction failed for '{card_text[:20]}...': {e}", exc_info=True)
             return "ignore", 0
 
     # ═══════════════════════════════════════════════════════════════

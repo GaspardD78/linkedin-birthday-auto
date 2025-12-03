@@ -106,7 +106,7 @@ class BirthdayBot(BaseLinkedInBot):
             try:
                 self.db = get_database(self.config.database.db_path)
             except Exception as e:
-                logger.warning(f"Database unavailable: {e}")
+                logger.warning(f"Database unavailable: {e}", exc_info=True)
                 self.db = None
 
         # Vérifier les limites avant de commencer

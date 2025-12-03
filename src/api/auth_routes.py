@@ -81,7 +81,7 @@ async def close_browser_session():
     if auth_session.get("playwright"):
         try:
             await auth_session["playwright"].stop()
-            logger.debug("Playwright instance stopped")
+            logger.debug("Playwright instance stopped", exc_info=True)
         except Exception as e:
             logger.error(f"Error stopping Playwright: {e}", exc_info=True)
 
@@ -216,12 +216,12 @@ async def start_authentication(request: StartAuthRequest):
                             await page.screenshot(path=screenshot_path)
                             logger.info(f"Screenshot saved to: {screenshot_path}")
                         except Exception as e:
-                            logger.warning(f"Failed to capture screenshot: {e}")
+                            logger.warning(f"Failed to capture screenshot: {e}", exc_info=True)
 
                         raise
 
                     if await page.is_visible(captcha_selector):
-                        logger.warning("Captcha detected! Automated login blocked.")
+                        logger.warning("Captcha detected! Automated login blocked.", exc_info=True)
                         span.set_attribute("result", "captcha")
                         await close_browser_session()
                         raise HTTPException(
@@ -253,7 +253,7 @@ async def start_authentication(request: StartAuthRequest):
                                 # Wait for the PIN input to appear
                                 await page.wait_for_selector(pin_input_selector, timeout=10000)
                         except Exception as e:
-                            logger.warning(f"Fallback attempt failed: {e}")
+                            logger.warning(f"Fallback attempt failed: {e}", exc_info=True)
                             # Continue to standard checks, maybe we are lucky
 
                     if await page.is_visible(pin_input_selector):

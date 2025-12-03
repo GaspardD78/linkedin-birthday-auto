@@ -45,7 +45,7 @@ try:
     # Queue 'linkedin-bot' (doit matcher src/queue/worker.py)
     job_queue = Queue("linkedin-bot", connection=redis_conn)
 except Exception as e:
-    logger.error(f"Failed to connect to Redis: {e}")
+    logger.error(f"Failed to connect to Redis: {e}", exc_info=True)
     job_queue = None
 
 # ═══════════════════════════════════════════════════════════════════
@@ -164,7 +164,7 @@ async def lifespan(app: FastAPI):
         await auth_routes.close_browser_session()
         logger.info("playwright_sessions_closed")
     except Exception as e:
-        logger.warning(f"Error closing Playwright sessions during shutdown: {e}")
+        logger.warning(f"Error closing Playwright sessions during shutdown: {e}", exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -250,7 +250,7 @@ async def health_check():
 
         auth_available = validate_auth()
     except Exception as e:
-        logger.warning(f"Auth check failed: {e}")
+        logger.warning(f"Auth check failed: {e}", exc_info=True)
         issues.append("auth_unavailable")
 
     # Vérifier database
@@ -261,7 +261,7 @@ async def health_check():
             db.get_statistics(days=1)
             database_connected = True
     except Exception as e:
-        logger.warning(f"Database check failed: {e}")
+        logger.warning(f"Database check failed: {e}", exc_info=True)
         issues.append("database_unavailable")
 
     # Déterminer le statut global
@@ -318,10 +318,10 @@ async def get_stats(days: int = 30, authenticated: bool = Depends(verify_api_key
         return stats
 
     except Exception as e:
-        logger.error(f"Failed to get stats: {e}")
+        logger.error(f"Failed to get stats: {e}", exc_info=True)
         # Retourner des valeurs par défaut au lieu d'une erreur
         # pour permettre au dashboard de s'afficher correctement
-        logger.warning("Returning default stats due to database error")
+        logger.warning("Returning default stats due to database error", exc_info=True)
         return default_stats
 
 
@@ -346,7 +346,7 @@ async def get_detailed_stats(days: int = 30, authenticated: bool = Depends(verif
         return MetricsResponse(**stats)
 
     except Exception as e:
-        logger.error(f"Failed to get detailed stats: {e}")
+        logger.error(f"Failed to get detailed stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve detailed stats: {e!s}")
 
 
@@ -378,9 +378,9 @@ async def get_activity(days: int = 30, authenticated: bool = Depends(verify_api_
         return {"activity": activity, "days": days}
 
     except Exception as e:
-        logger.error(f"Failed to get activity: {e}")
+        logger.error(f"Failed to get activity: {e}", exc_info=True)
         # Retourner une liste vide au lieu d'une erreur
-        logger.warning("Returning empty activity due to database error")
+        logger.warning("Returning empty activity due to database error", exc_info=True)
         return {"activity": [], "days": days}
 
 
@@ -416,8 +416,8 @@ async def get_contacts(limit: Optional[int] = None, sort: str = "messages", auth
         return {"contacts": contacts}
 
     except Exception as e:
-        logger.error(f"Failed to get contacts: {e}")
-        logger.warning("Returning empty contacts due to database error")
+        logger.error(f"Failed to get contacts: {e}", exc_info=True)
+        logger.warning("Returning empty contacts due to database error", exc_info=True)
         return {"contacts": []}
 
 
@@ -446,7 +446,7 @@ async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(ver
         logger.info(f"🚀 Job triggered: {job.id} ({request.job_type})")
         return {"job_id": job.id, "status": "queued", "type": request.job_type}
     except Exception as e:
-        logger.error(f"Failed to enqueue job: {e}")
+        logger.error(f"Failed to enqueue job: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {e!s}")
 
 
@@ -483,7 +483,7 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
             "message": f"Bot d'anniversaire mis en file d'attente (id={job.id})",
         }
     except Exception as e:
-        logger.error(f"Failed to enqueue birthday bot: {e}")
+        logger.error(f"Failed to enqueue birthday bot: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
 
 
@@ -511,7 +511,7 @@ async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends
             "message": f"Bot de visite mis en file d'attente (id={job.id})",
         }
     except Exception as e:
-        logger.error(f"Failed to enqueue visitor bot: {e}")
+        logger.error(f"Failed to enqueue visitor bot: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
 
 
@@ -556,7 +556,7 @@ async def stop_bot(authenticated: bool = Depends(verify_api_key)):
                 cancelled_count += 1
                 logger.info(f"   ✅ Job {job_id} annulé")
             except Exception as e:
-                logger.warning(f"   ⚠️  Impossible d'annuler le job {job_id}: {e}")
+                logger.warning(f"   ⚠️  Impossible d'annuler le job {job_id}: {e}", exc_info=True)
 
         # 2. Vider la queue des jobs en attente (queued)
         queued_job_ids = job_queue.job_ids
@@ -571,7 +571,7 @@ async def stop_bot(authenticated: bool = Depends(verify_api_key)):
                 emptied_count += 1
                 logger.info(f"   🗑️  Job {job_id} supprimé de la queue")
             except Exception as e:
-                logger.warning(f"   ⚠️  Impossible de supprimer le job {job_id}: {e}")
+                logger.warning(f"   ⚠️  Impossible de supprimer le job {job_id}: {e}", exc_info=True)
 
         # 3. Vider complètement la queue
         job_queue.empty()
@@ -590,7 +590,7 @@ async def stop_bot(authenticated: bool = Depends(verify_api_key)):
         }
 
     except Exception as e:
-        logger.error(f"❌ [STOP] Erreur lors de l'arrêt: {e}")
+        logger.error(f"❌ [STOP] Erreur lors de l'arrêt: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'arrêt d'urgence: {e!s}")
 
 
@@ -676,7 +676,7 @@ async def get_recent_logs(
                     # Estimation approximative
                     total_lines_estimate += 100 # On ne sait pas vraiment sans tout lire
             except Exception as e:
-                logger.warning(f"Error reading {file_path}: {e}")
+                logger.warning(f"Error reading {file_path}: {e}", exc_info=True)
 
         # Si on a lu plusieurs fichiers, on prend globalement les dernières lignes
         # Note: ce n'est pas un tri parfait par timestamp inter-fichiers,
@@ -691,7 +691,7 @@ async def get_recent_logs(
         }
 
     except Exception as e:
-        logger.error(f"Failed to read logs: {e}")
+        logger.error(f"Failed to read logs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to read logs: {e!s}")
 
 

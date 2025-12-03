@@ -140,7 +140,7 @@ class BrowserManager:
             return self.browser, self.context, self.page
 
         except Exception as e:
-            logger.error(f"Failed to initialize browser: {e}")
+            logger.error(f"Failed to initialize browser: {e}", exc_info=True)
             self.close()
             raise BrowserInitError(f"Failed to initialize browser: {e}")
 
@@ -151,21 +151,21 @@ class BrowserManager:
             try:
                 self.context.close()
             except Exception as e:
-                logger.debug(f"Error closing context: {e}")
+                logger.debug(f"Error closing context: {e}", exc_info=True)
             self.context = None
 
         if self.browser:
             try:
                 self.browser.close()
             except Exception as e:
-                logger.debug(f"Error closing browser: {e}")
+                logger.debug(f"Error closing browser: {e}", exc_info=True)
             self.browser = None
 
         if self.playwright:
             try:
                 self.playwright.stop()
             except Exception as e:
-                logger.debug(f"Error stopping playwright: {e}")
+                logger.debug(f"Error stopping playwright: {e}", exc_info=True)
             self.playwright = None
 
     def take_screenshot(self, name: str) -> None:
@@ -178,7 +178,7 @@ class BrowserManager:
             self.page.screenshot(path=path)
             logger.info(f"Screenshot saved: {path}")
         except Exception as e:
-            logger.warning(f"Failed to take screenshot: {e}")
+            logger.warning(f"Failed to take screenshot: {e}", exc_info=True)
 
     def _get_context_options(self) -> Dict[str, Any]:
         """Génère les options du contexte navigateur."""

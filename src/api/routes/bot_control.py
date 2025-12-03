@@ -21,7 +21,7 @@ try:
     redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
     job_queue = Queue("linkedin-bot", connection=redis_conn)
 except Exception as e:
-    logger.error(f"Failed to connect to Redis: {e}")
+    logger.error(f"Failed to connect to Redis: {e}", exc_info=True)
     redis_conn = None
     job_queue = None
 
@@ -81,7 +81,7 @@ async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
                 started_at=fmt_date(job.started_at)
             ))
         except Exception as e:
-            logger.warning(f"Could not fetch details for job {job_id}: {e}")
+            logger.warning(f"Could not fetch details for job {job_id}: {e}", exc_info=True)
 
     for jid in started_ids:
         get_job_details(jid, active_jobs, "running")
@@ -121,7 +121,7 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
         logger.info(f"✅ [BIRTHDAY] Job {job.id} queued (meta: birthday)")
         return {"job_id": job.id, "status": "queued", "type": "birthday"}
     except Exception as e:
-        logger.error(f"Failed to enqueue birthday bot: {e}")
+        logger.error(f"Failed to enqueue birthday bot: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/start/visitor")
@@ -141,7 +141,7 @@ async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends
         logger.info(f"✅ [VISITOR] Job {job.id} queued (meta: visit)")
         return {"job_id": job.id, "status": "queued", "type": "visit"}
     except Exception as e:
-        logger.error(f"Failed to enqueue visitor bot: {e}")
+        logger.error(f"Failed to enqueue visitor bot: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stop")
@@ -198,7 +198,7 @@ async def stop_bot(request: StopRequest, authenticated: bool = Depends(verify_ap
                 stopped_count += 1
 
         except Exception as e:
-            logger.warning(f"Error checking job {job_id}: {e}")
+            logger.warning(f"Error checking job {job_id}: {e}", exc_info=True)
 
     action_name = f"stopped ({request.job_type})" if request.job_type else "EMERGENCY STOP"
     return {

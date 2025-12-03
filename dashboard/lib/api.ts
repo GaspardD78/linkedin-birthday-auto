@@ -25,6 +25,17 @@ export interface LogEntry {
   message: string;
 }
 
+// Interface pour logs structlog (format JSON backend)
+interface StructlogEntry {
+  timestamp?: string;
+  event_time?: string;
+  level?: string;
+  log_level?: string;
+  event?: string;
+  message?: string;
+  msg?: string;
+}
+
 export interface BotStats {
   wishes_sent_total: number;
   wishes_sent_today: number;
@@ -182,20 +193,27 @@ export async function getLogs(limit: number = 100, service: string = 'worker'): 
         const data = await get(`/api/logs?limit=${limit}&service=${service}`);
         if (data.logs && Array.isArray(data.logs)) {
              return data.logs.map((line: string) => {
-                let timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-                let level = 'INFO';
-                let message = line;
                 try {
-                  // Simple parse attempt
-                  const parts = line.split(' - ');
-                  if (parts.length >= 3) {
-                      // rough guess: DATE - NAME - LEVEL - MSG
-                      // 2024-05-20 10:00:00,123 - src.api - INFO - Message
-                      // Actually formatting depends on logging.py
-                      // Let's rely on regex if needed or just return raw
-                  }
-                } catch(e) {}
-                return { timestamp, level, message };
+                    // Tenter de parser JSON (format structlog)
+                    const parsed: StructlogEntry = JSON.parse(line);
+
+                    return {
+                        timestamp: parsed.timestamp || parsed.event_time || new Date().toISOString(),
+                        level: (parsed.level || parsed.log_level || 'INFO').toUpperCase(),
+                        message: parsed.event || parsed.message || parsed.msg || line
+                    };
+                } catch (e) {
+                    // Fallback si le log n'est pas JSON (compatibilité avec anciens logs)
+                    // Garder le parsing simple pour anciens logs
+                    const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2})/);
+                    const levelMatch = line.match(/\b(DEBUG|INFO|WARNING|ERROR|CRITICAL)\b/i);
+
+                    return {
+                        timestamp: timestampMatch ? timestampMatch[1] : new Date().toISOString(),
+                        level: levelMatch ? levelMatch[1].toUpperCase() : 'INFO',
+                        message: line
+                    };
+                }
              });
         }
         return [];
