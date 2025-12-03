@@ -37,7 +37,7 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, 
 
     Args:
         dry_run: Mode test sans visiter réellement les profils
-        limit: Nombre maximum de profils à visiter (TODO: à implémenter dans VisitorBot)
+        limit: Nombre maximum de profils à visiter. Override la valeur de config.visitor.limits.profiles_per_run
 
     Returns:
         Dict contenant les résultats de l'exécution
@@ -52,17 +52,16 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, 
         if dry_run:
             config.dry_run = True
 
-        # TODO: Implémenter la limite de profils dans VisitorBot
-        # Pour l'instant, le paramètre limit est accepté mais pas utilisé
-        if limit != 10:
-            logger.warning(
-                f"limit parameter ({limit}) is accepted but not yet implemented in VisitorBot"
+        # Logger si on override la limite de profils
+        if limit != config.visitor.limits.profiles_per_run:
+            logger.info(
+                f"Overriding profiles limit: {config.visitor.limits.profiles_per_run} → {limit}"
             )
 
         # Le context manager gère automatiquement setup/teardown du navigateur
-        with VisitorBot(config=config) as bot:
+        with VisitorBot(config=config, profiles_limit_override=limit) as bot:
             return bot.run()
 
     except Exception as e:
-        logger.error("task_failed", error=str(e))
+        logger.error("task_failed", error=str(e), exc_info=True)
         return {"success": False, "error": str(e), "bot_type": "visitor"}

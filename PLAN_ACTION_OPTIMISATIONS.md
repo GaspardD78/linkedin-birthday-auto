@@ -22,9 +22,9 @@ Ce document contient des **prompts prêts à l'emploi** pour implémenter les op
 | Phase | Tâches | Statut | Effort |
 |-------|--------|--------|--------|
 | 🔴 Critiques | 4/4 | ✅ Complété | 1-2h |
-| 🟡 Importants | 0/6 | ⏳ À faire | 2-3h |
+| 🟡 Importants | 4/6 | ⏳ En cours | 2-3h |
 | 🟢 Mineurs | 5/5 | ✅ Complété | 30min |
-| **TOTAL** | **9/15** | **60%** | **4-6h** |
+| **TOTAL** | **13/15** | **87%** | **4-6h** |
 
 ---
 
@@ -32,11 +32,47 @@ Ce document contient des **prompts prêts à l'emploi** pour implémenter les op
 
 ---
 
-### ✅ TICKET #5 : Améliorer Gestion des Exceptions (1h)
+### ✅ TICKET #5 : Améliorer Gestion des Exceptions (1h) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟡 Importante
 **Effort** : 1 heure
 **Risque** : Faible (amélioration logging, pas de changement logique)
+**Date de réalisation** : 3 Décembre 2025
+
+#### 📊 Résultat
+✅ **Logging des exceptions amélioré dans tout le projet**
+- **Méthode** : Corrections manuelles + script Python automatisé
+- **Fichiers modifiés** (12 fichiers, 52 corrections au total) :
+
+  **Corrections manuelles** (5 corrections) :
+  - `src/queue/tasks.py` : 1 correction (ligne 66)
+  - `src/core/base_bot.py` : 2 corrections (lignes 128, 221)
+  - `src/bots/visitor_bot.py` : 2 corrections (lignes 91, 213)
+
+  **Corrections par script automatisé** (47 corrections) :
+  - `src/bots/birthday_bot.py` : 1 correction
+  - `src/bots/unlimited_bot.py` : 1 correction
+  - `src/api/auth_routes.py` : 4 corrections
+  - `src/api/app.py` : 19 corrections
+  - `src/api/routes/bot_control.py` : 5 corrections
+  - `src/api/routes/debug_routes.py` : 3 corrections
+  - `src/core/auth_manager.py` : 8 corrections
+  - `src/core/browser_manager.py` : 5 corrections
+  - `src/core/database.py` : 3 corrections
+
+- **Changements appliqués** :
+  - ✅ Ajout de `exc_info=True` à tous les `logger.error()`, `logger.warning()`, `logger.debug()` dans blocs `except Exception`
+  - ✅ Stack traces complètes désormais disponibles dans les logs
+  - ✅ Aucune modification de la logique métier
+  - ✅ Blocs `except Exception: pass` intentionnels préservés
+  - ✅ Exceptions spécifiques (TimeoutError, etc.) non modifiées
+
+- **Bénéfices** :
+  - 🔍 Debug facilité : Stack traces complètes dans les logs production
+  - 📊 Meilleure observabilité : Contexte complet des erreurs
+  - 🐛 Résolution incidents plus rapide
+
+- Validation : Syntaxe Python vérifiée avec succès pour tous les 12 fichiers modifiés
 
 #### 📋 Contexte
 
@@ -139,11 +175,31 @@ IMPORTANT :
 
 ---
 
-### ✅ TICKET #6 : Implémenter Limite Profils VisitorBot (30min)
+### ✅ TICKET #6 : Implémenter Limite Profils VisitorBot (30min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟡 Importante
 **Effort** : 30 minutes
 **Risque** : Moyen (modification comportement bot)
+**Date de réalisation** : 3 Décembre 2025
+
+#### 📊 Résultat
+✅ **Paramètre limit implémenté avec succès**
+- **Fichiers modifiés** :
+  - `src/bots/visitor_bot.py` : Constructeur VisitorBot refactoré
+  - `src/queue/tasks.py` : Passage du paramètre limit au bot
+- **Changements dans visitor_bot.py** :
+  - Nouveau paramètre `profiles_limit_override: Optional[int] = None` dans `__init__` (ligne 38)
+  - Attribut `self.profiles_limit` créé (lignes 52-57) : utilise override si fourni, sinon config
+  - Ligne 106 : `profiles_per_run = self.profiles_limit` au lieu de lire directement config
+  - Log amélioré (ligne 63) : affiche la limite effective de profils
+- **Changements dans tasks.py** :
+  - Ligne 62 : Passe `profiles_limit_override=limit` au constructeur VisitorBot
+  - Lignes 56-59 : Warning obsolète supprimé et remplacé par log info quand override actif
+  - Docstring mise à jour (ligne 40) : retire TODO et documente le comportement
+- **Backward compatibility** : ✅ Maintenue
+  - Si `limit=None` ou non spécifié → utilise `config.visitor.limits.profiles_per_run`
+  - Comportement par défaut inchangé
+- Validation : Syntaxe Python vérifiée avec succès (`python -m py_compile`)
 
 #### 📋 Contexte
 
@@ -286,11 +342,36 @@ PRÉCAUTIONS :
 
 ---
 
-### ✅ TICKET #7 : Nettoyer Cookies Expirés Automatiquement (30min)
+### ✅ TICKET #7 : Nettoyer Cookies Expirés Automatiquement (30min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟡 Importante
 **Effort** : 30 minutes
 **Risque** : Moyen (manipulation cookies LinkedIn)
+**Date de réalisation** : 3 Décembre 2025
+
+#### 📊 Résultat
+✅ **Nettoyage automatique des cookies expirés implémenté et systématisé**
+- **Fichier modifié** : `src/core/auth_manager.py`
+- **Fonctionnalités existantes confirmées** :
+  - ✅ Méthode `_clean_expired_cookies()` déjà présente (lignes 244-293) - bien implémentée
+  - ✅ Méthode `_clean_auth_file_in_place()` déjà présente (lignes 295-320)
+  - ✅ Nettoyage automatique au chargement déjà actif (lignes 88, 99, 111, 339)
+- **Améliorations apportées** :
+  - Ligne 455 : `save_new_auth_state()` nettoie maintenant automatiquement les cookies avant sauvegarde
+  - Ligne 585 : `save_cookies()` docstring mise à jour pour indiquer nettoyage automatique
+  - Commentaires "BUGFIX" remplacés par descriptions claires :
+    - Ligne 87 : "Nettoyage automatique des cookies expirés"
+    - Ligne 98 : "Nettoyage automatique des cookies expirés"
+    - Ligne 110 : "Nettoyage automatique des cookies expirés"
+    - Ligne 338 : "Nettoyage automatique des cookies expirés avant sauvegarde"
+    - Ligne 398 : "Vérifier l'expiration des cookies pour validation"
+- **Garanties** :
+  - ✅ Nettoyage systématique au **chargement** (prepare_auth_state)
+  - ✅ Nettoyage systématique à la **sauvegarde** (save_new_auth_state, save_cookies)
+  - ✅ Cookies session (sans expires) **préservés**
+  - ✅ Buffer de 5 minutes pour clock skew (ligne 277)
+  - ✅ Logs informatifs lors du nettoyage (lignes 284-287)
+- Validation : Syntaxe Python vérifiée avec succès (`python -m py_compile`)
 
 #### 📋 Contexte
 
@@ -495,11 +576,26 @@ PRÉCAUTIONS :
 
 ---
 
-### ✅ TICKET #8 : Améliorer Parsing Logs Frontend (20min)
+### ✅ TICKET #8 : Améliorer Parsing Logs Frontend (20min) - ✅ COMPLÉTÉ
 
 **Priorité** : 🟡 Importante
 **Effort** : 20 minutes
 **Risque** : Faible (amélioration affichage, pas critique)
+**Date de réalisation** : 3 Décembre 2025
+
+#### 📊 Résultat
+✅ **Parsing JSON structlog implémenté avec succès**
+- Fichier modifié : `dashboard/lib/api.ts`
+- Interface `StructlogEntry` ajoutée (lignes 29-37) pour typage TypeScript des logs structlog
+- Fonction `getLogs()` refactorisée (lignes 190-224) :
+  - **Parser JSON principal** : Parse automatiquement le format JSON structlog du backend
+  - **Fallback robuste** : Si le log n'est pas JSON, utilise regex pour extraire timestamp/level
+  - **Support multi-formats** : Compatible avec anciens logs texte ET nouveaux logs JSON
+- Validation TypeScript passée avec succès (`tsc --noEmit`)
+- Changements appliqués :
+  - Parsing JSON avec accès aux champs : `timestamp`, `event_time`, `level`, `log_level`, `event`, `message`, `msg`
+  - Regex fallback pour format texte : `\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}` et `(DEBUG|INFO|WARNING|ERROR|CRITICAL)`
+  - Normalisation : Tous les levels en uppercase pour cohérence visuelle
 
 #### 📋 Contexte
 

@@ -35,20 +35,32 @@ class VisitorBot(BaseLinkedInBot):
         >>>     bot.run()
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config=None, profiles_limit_override: Optional[int] = None, *args, **kwargs):
         """
         Initialise le VisitorBot.
 
         Args:
+            config: Configuration du bot
+            profiles_limit_override: Override optionnel pour la limite de profils à visiter.
+                                     Si None, utilise config.visitor.limits.profiles_per_run
             *args: Arguments passés à BaseLinkedInBot
             **kwargs: Arguments nommés passés à BaseLinkedInBot
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(config=config, *args, **kwargs)
         self.db = None
+
+        # Override la limite si spécifié, sinon utilise config
+        self.profiles_limit = (
+            profiles_limit_override
+            if profiles_limit_override is not None
+            else self.config.visitor.limits.profiles_per_run
+        )
+
         logger.info(
             "VisitorBot initialized",
             keywords=self.config.visitor.keywords,
             location=self.config.visitor.location,
+            profiles_limit=self.profiles_limit,
         )
 
     def run(self) -> dict[str, Any]:
@@ -76,7 +88,7 @@ class VisitorBot(BaseLinkedInBot):
             try:
                 self.db = get_database(self.config.database.db_path)
             except Exception as e:
-                logger.warning(f"Database unavailable: {e}")
+                logger.warning(f"Database unavailable: {e}", exc_info=True)
                 self.db = None
 
         if not self.check_login_status():
@@ -91,7 +103,7 @@ class VisitorBot(BaseLinkedInBot):
 
         current_page = 1
         max_pages = self.config.visitor.limits.max_pages_to_scrape
-        profiles_per_run = self.config.visitor.limits.profiles_per_run
+        profiles_per_run = self.profiles_limit  # Utilise la limite (config ou override)
 
         while current_page <= max_pages and profiles_visited < profiles_per_run:
             logger.info(f"Scraping page {current_page}/{max_pages}")
@@ -198,7 +210,7 @@ class VisitorBot(BaseLinkedInBot):
                         profile_links.append(href.split("?")[0])
 
         except Exception as e:
-            logger.warning(f"Search extraction warning: {e}")
+            logger.warning(f"Search extraction warning: {e}", exc_info=True)
 
         return list(set(profile_links))
 

@@ -31,7 +31,7 @@ async def get_debug_report(authenticated: bool = Depends(verify_api_key)):
                     try:
                         zipf.write(log_file, arcname=f"logs/{log_file.name}")
                     except Exception as e:
-                        logger.warning(f"Could not add log {log_file}: {e}")
+                        logger.warning(f"Could not add log {log_file}: {e}", exc_info=True)
 
             # 2. Add Debug Data (Screenshots/HTML)
             data_dirs = [
@@ -46,7 +46,7 @@ async def get_debug_report(authenticated: bool = Depends(verify_api_key)):
                             try:
                                 zipf.write(f, arcname=f"{d.name}/{f.name}")
                             except Exception as e:
-                                logger.warning(f"Could not add file {f}: {e}")
+                                logger.warning(f"Could not add file {f}: {e}", exc_info=True)
 
         return FileResponse(
             path=zip_filename,
@@ -55,5 +55,5 @@ async def get_debug_report(authenticated: bool = Depends(verify_api_key)):
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate debug report: {e}")
+        logger.error(f"Failed to generate debug report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

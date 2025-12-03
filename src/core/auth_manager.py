@@ -77,14 +77,14 @@ class AuthManager:
             try:
                 return self._write_auth_to_file(auth_from_env)
             except Exception as e:
-                logger.warning(f"Failed to write auth from env: {e}")
+                logger.warning(f"Failed to write auth from env: {e}", exc_info=True)
 
         # 2. Essayer depuis le répertoire data writable (prioritaire pour les fichiers uploadés)
         writable_auth_file = Path("/app/data/auth_state.json")
         if writable_auth_file.exists():
             if self._validate_auth_file(writable_auth_file):
                 logger.info(f"Using auth state from writable data dir: {writable_auth_file}")
-                # BUGFIX: Nettoyer les cookies expirés du fichier
+                # Nettoyage automatique des cookies expirés
                 self._clean_auth_file_in_place(writable_auth_file)
                 return str(writable_auth_file)
             else:
@@ -95,7 +95,7 @@ class AuthManager:
         if auth_file.exists():
             if self._validate_auth_file(auth_file):
                 logger.info(f"Using auth state from: {auth_file}")
-                # BUGFIX: Nettoyer les cookies expirés du fichier
+                # Nettoyage automatique des cookies expirés
                 self._clean_auth_file_in_place(auth_file)
                 return str(auth_file)
             else:
@@ -107,7 +107,7 @@ class AuthManager:
             if fallback_file.exists():
                 if self._validate_auth_file(fallback_file):
                     logger.info(f"Using fallback auth state from: {fallback_file}")
-                    # BUGFIX: Nettoyer les cookies expirés du fichier
+                    # Nettoyage automatique des cookies expirés
                     self._clean_auth_file_in_place(fallback_file)
                     return str(fallback_file)
                 else:
@@ -194,7 +194,7 @@ class AuthManager:
                 return False
 
         except Exception as e:
-            logger.error(f"Network validation error: {e}")
+            logger.error(f"Network validation error: {e}", exc_info=True)
             return False
 
     def _load_from_env(self) -> Optional[dict]:
@@ -317,7 +317,7 @@ class AuthManager:
                 logger.info(f"Auth file cleaned in place: {auth_file}")
 
         except Exception as e:
-            logger.warning(f"Failed to clean auth file in place: {e}")
+            logger.warning(f"Failed to clean auth file in place: {e}", exc_info=True)
 
     def _write_auth_to_file(self, auth_data: dict) -> str:
         """
@@ -335,7 +335,7 @@ class AuthManager:
         try:
             auth_file = Path(self.config.auth_file_path)
 
-            # BUGFIX: Nettoyer les cookies expirés avant d'écrire
+            # Nettoyage automatique des cookies expirés avant sauvegarde
             cleaned_auth_data = self._clean_expired_cookies(auth_data)
 
             # Écrire le fichier
@@ -347,7 +347,7 @@ class AuthManager:
             return str(auth_file)
 
         except Exception as e:
-            logger.error(f"Failed to write auth state to file: {e}")
+            logger.error(f"Failed to write auth state to file: {e}", exc_info=True)
             raise AuthenticationError(f"Failed to write auth state: {e}")
 
     def _validate_auth_file(self, auth_file: Path) -> bool:
@@ -395,7 +395,7 @@ class AuthManager:
                 logger.warning("Auth state has no LinkedIn cookies")
                 return False
 
-            # BUGFIX: Vérifier l'expiration des cookies
+            # Vérifier l'expiration des cookies pour validation
             import time
 
             current_time = time.time()
@@ -433,7 +433,7 @@ class AuthManager:
             logger.error(f"Invalid JSON in auth file: {e}")
             return False
         except Exception as e:
-            logger.error(f"Failed to validate auth file: {e}")
+            logger.error(f"Failed to validate auth file: {e}", exc_info=True)
             return False
 
     def save_new_auth_state(self, auth_data: dict, output_path: Optional[str] = None) -> None:
@@ -451,19 +451,22 @@ class AuthManager:
             output_path = self.config.auth_file_path
 
         try:
+            # Nettoyer les cookies expirés avant sauvegarde
+            cleaned_auth_data = self._clean_expired_cookies(auth_data)
+
             with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(auth_data, f, indent=2)
+                json.dump(cleaned_auth_data, f, indent=2)
 
             # SECURITY: Set restrictive permissions (600) on auth file
             try:
                 os.chmod(output_path, 0o600)
             except Exception as e:
-                logger.warning(f"Failed to set 0600 permissions on {output_path}: {e}")
+                logger.warning(f"Failed to set 0600 permissions on {output_path}: {e}", exc_info=True)
 
             logger.info(f"New auth state saved to: {output_path}")
 
         except Exception as e:
-            logger.error(f"Failed to save auth state: {e}")
+            logger.error(f"Failed to save auth state: {e}", exc_info=True)
             raise AuthenticationError(f"Failed to save auth state: {e}")
 
     def cleanup(self, keep_file: bool = False) -> None:
@@ -484,7 +487,7 @@ class AuthManager:
                 logger.info(f"Cleaned up temporary auth file: {self._temp_auth_file}")
                 self._temp_auth_file = None
             except Exception as e:
-                logger.warning(f"Failed to cleanup auth file: {e}")
+                logger.warning(f"Failed to cleanup auth file: {e}", exc_info=True)
 
     def is_auth_available(self) -> bool:
         """
@@ -576,11 +579,15 @@ class AuthManager:
         Args:
             cookies: A list of cookie dictionaries.
             output_path: The file path to save to. Defaults to the configured path.
+
+        Note:
+            Expired cookies are automatically cleaned before saving.
         """
         if output_path is None:
             output_path = self.config.auth_file_path
 
         auth_data = {"cookies": cookies}
+        # save_new_auth_state() appellera _clean_expired_cookies() automatiquement
         self.save_new_auth_state(auth_data, output_path)
 
     async def save_cookies_from_context(self, context, output_path: Optional[str] = None):

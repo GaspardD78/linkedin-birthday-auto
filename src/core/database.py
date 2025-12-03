@@ -102,7 +102,7 @@ class Database:
             # Foreign keys enforce
             conn.execute("PRAGMA foreign_keys=ON")
         except Exception as e:
-            logger.warning(f"Failed to set PRAGMA optimizations: {e}")
+            logger.warning(f"Failed to set PRAGMA optimizations: {e}", exc_info=True)
 
         return conn
 
@@ -157,7 +157,7 @@ class Database:
             try:
                 self._local.conn.close()
             except Exception as e:
-                logger.error(f"Error closing database connection: {e}")
+                logger.error(f"Error closing database connection: {e}", exc_info=True)
             finally:
                 self._local.conn = None
                 self._local.transaction_depth = 0
@@ -1404,7 +1404,7 @@ class Database:
                         return True
 
         except Exception as e:
-            logger.warning(f"Could not check fragmentation: {e}")
+            logger.warning(f"Could not check fragmentation: {e}", exc_info=True)
 
         return False
 
