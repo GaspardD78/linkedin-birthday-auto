@@ -348,6 +348,9 @@ def run_birthday_bot(config=None, dry_run: bool = False) -> dict[str, Any]:
     if config is None:
         config = get_config()
 
+    # FIX: Créer une COPIE de la config pour éviter de polluer le singleton
+    config = config.model_copy(deep=True)
+
     if dry_run:
         config.dry_run = True
 
