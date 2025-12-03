@@ -9,7 +9,15 @@ export async function POST(request: Request) {
 
     // URL interne Docker (CRITIQUE: ne jamais utiliser localhost)
     const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
-    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
+    const apiKey = process.env.BOT_API_KEY;
+
+    if (!apiKey) {
+      console.error('❌ [SECURITY] BOT_API_KEY environment variable is not set!');
+      return NextResponse.json({
+        error: 'Server configuration error',
+        detail: 'BOT_API_KEY is required but not configured'
+      }, { status: 500 });
+    }
 
     let endpoint = '';
     let payload: any = {};
@@ -68,7 +76,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
-    const data = await response.json();
+    // Try to parse JSON response, handle potential HTML errors
+    const contentType = response.headers.get('content-type');
+    let data;
+
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('❌ [PROXY] Failed to parse JSON despite content-type header');
+        return NextResponse.json({
+          error: 'Backend returned malformed JSON'
+        }, { status: 500 });
+      }
+    } else {
+      // Backend returned non-JSON (probably HTML error page)
+      const textResponse = await response.text();
+      console.error('❌ [PROXY] Backend returned non-JSON:', textResponse.substring(0, 500));
+      return NextResponse.json({
+        error: 'Backend returned invalid response (not JSON)',
+        detail: textResponse.substring(0, 500)
+      }, { status: 500 });
+    }
+
     console.log('✅ [PROXY] Réponse de l\'API:', data);
     return NextResponse.json(data);
 

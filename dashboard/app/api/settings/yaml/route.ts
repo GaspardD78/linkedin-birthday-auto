@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-
-const API_URL = process.env.BOT_API_URL || 'http://api:8000';
-const API_KEY = process.env.BOT_API_KEY || 'internal_secret_key';
+import { getApiUrl, getApiKey, validateApiKey } from '@/lib/api-config';
 
 export async function GET() {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   try {
-    const res = await fetch(`${API_URL}/config/yaml`, { headers: { 'X-API-Key': API_KEY } });
+    const res = await fetch(`${getApiUrl()}/config/yaml`, { headers: { 'X-API-Key': getApiKey()! } });
     if (!res.ok) {
         const errorText = await res.text();
         return NextResponse.json({ error: errorText }, { status: res.status });
@@ -16,11 +18,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   try {
     const body = await req.json();
-    const res = await fetch(`${API_URL}/config/yaml`, {
+    const res = await fetch(`${getApiUrl()}/config/yaml`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': getApiKey()! },
       body: JSON.stringify(body)
     });
     if (!res.ok) {

@@ -58,11 +58,11 @@ export interface SystemHealth {
 
 // Helper for fetching
 async function get(url: string, headers: Record<string, string> = {}, responseType: 'json' | 'blob' = 'json') {
-  const token = localStorage.getItem('token');
-  const finalHeaders = { ...headers };
-  if (token) finalHeaders['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, {
+    headers,
+    credentials: 'same-origin' // Automatically send session cookie
+  });
 
-  const res = await fetch(url, { headers: finalHeaders });
   if (!res.ok) {
      if (res.status === 401) {
          // Notifier user avant redirect
@@ -85,14 +85,13 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
 }
 
 async function post(url: string, body: any, headers: Record<string, string> = {}) {
-  const token = localStorage.getItem('token');
   const finalHeaders = { 'Content-Type': 'application/json', ...headers };
-  if (token) finalHeaders['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method: 'POST',
     headers: finalHeaders,
     body: JSON.stringify(body),
+    credentials: 'same-origin' // Automatically send session cookie
   });
 
   if (!res.ok) {
@@ -166,14 +165,10 @@ export async function uploadAuthState(file: File) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const token = localStorage.getItem('token');
-  const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
   const res = await fetch('/api/auth/upload', {
     method: 'POST',
-    headers,
     body: formData,
+    credentials: 'same-origin' // Automatically send session cookie
   });
 
   if (!res.ok) {

@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
+import { getApiUrl, getApiKey, validateApiKey } from '@/lib/api-config';
 
 export async function POST(request: Request) {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   try {
     const formData = await request.formData();
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
+    const apiUrl = getApiUrl();
 
     const apiResponse = await fetch(`${apiUrl}/auth/upload`, {
       method: 'POST',
       headers: {
-        'X-API-Key': process.env.BOT_API_KEY || 'internal_secret_key',
+        'X-API-Key': getApiKey()!,
       },
       body: formData,
     });

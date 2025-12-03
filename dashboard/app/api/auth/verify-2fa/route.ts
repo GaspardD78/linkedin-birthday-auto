@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
+import { getApiUrl, getApiKey, validateApiKey } from '@/lib/api-config';
 
 export async function POST(request: Request) {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   const body = await request.json();
   const { code } = body;
 
   try {
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
+    const apiUrl = getApiUrl();
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min
@@ -16,7 +21,7 @@ export async function POST(request: Request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': process.env.BOT_API_KEY || 'internal_secret_key',
+          'X-API-Key': getApiKey()!,
         },
         body: JSON.stringify({ code }),
         signal: controller.signal,

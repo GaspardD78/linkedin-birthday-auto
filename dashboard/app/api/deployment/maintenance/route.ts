@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
+import { getApiUrl, getApiHeaders, validateApiKey } from '@/lib/api-config';
 
 export async function POST(request: Request) {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   try {
     const body = await request.json();
     const { action } = body;
@@ -9,17 +14,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing 'action' parameter" }, { status: 400 });
     }
 
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
-    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
+    const apiUrl = getApiUrl();
 
     console.log('[DEPLOYMENT] Maintenance action:', action);
 
     const response = await fetch(`${apiUrl}/deployment/maintenance`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-      },
+      headers: getApiHeaders(),
       body: JSON.stringify({ action })
     });
 

@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import '../globals.css'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { ThemeProvider } from '@/components/theme-provider'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Menu, X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
@@ -57,7 +58,9 @@ export default function RootLayout({
 
             {/* Zone principale scrollable */}
             <main className="flex-1 overflow-y-auto bg-slate-950 p-4 md:p-8 pt-16 md:pt-8">
-              {children}
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
             </main>
           </div>
         </ThemeProvider>

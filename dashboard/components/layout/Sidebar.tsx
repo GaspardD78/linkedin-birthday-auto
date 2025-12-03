@@ -16,7 +16,7 @@ import {
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Tableau de Bord", description: "Monitoring système" },
   { href: "/overview", icon: Eye, label: "Vue d'ensemble", description: "Statut & actions" },
-  { href: "/history", icon: History, label: "Historique", description: "Détails exécutions" },
+  { href: "/history", icon: History, label: "Historique & Stats", description: "Détails exécutions" },
   { href: "/logs", icon: Terminal, label: "Logs & Console", description: "Console temps réel" },
   { href: "/auth", icon: KeyRound, label: "Authentification", description: "Cookies LinkedIn" },
   { href: "/settings", icon: Settings, label: "Paramètres", description: "Configuration bot" },

@@ -78,33 +78,46 @@ export default function OverviewPage() {
       const status = await getBotStatusDetailed()
       setBotStatus(status)
 
-      // Get config for both bots
+      // Get config for both bots (parsed server-side)
       try {
-        const configRes = await fetch('/api/settings/yaml')
+        const configRes = await fetch('/api/settings/config')
         if (configRes.ok) {
-          const configData = await configRes.json()
-          const yaml = await import('js-yaml')
-          const config: any = yaml.load(configData.content)
+          const config = await configRes.json()
 
-          // Birthday Bot Config
+          // Birthday Bot Config (already parsed server-side)
           setBirthdayConfig({
-            max_per_day: config.messaging_limits?.daily_message_limit || 50,
-            schedule_time: `${String(config.scheduling?.daily_start_hour || 7).padStart(2, '0')}:30`,
+            max_per_day: config.birthday.max_per_day,
+            schedule_time: config.birthday.schedule_time,
             auto_run_enabled: false, // TODO: Implement persistence
-            mode: config.bot_mode || 'standard'
+            mode: config.birthday.mode
           })
 
-          // Visitor Bot Config
+          // Visitor Bot Config (already parsed server-side)
           setVisitorConfig({
-            max_per_day: config.visitor?.limits?.profiles_per_run || 15,
-            schedule_time: `${String(config.scheduling?.daily_start_hour || 14).padStart(2, '0')}:00`,
+            max_per_day: config.visitor.max_per_day,
+            schedule_time: config.visitor.schedule_time,
             auto_run_enabled: false, // TODO: Implement persistence
-            mode: 'visit'
+            mode: config.visitor.mode
           })
 
           // Cookies status (check auth_state)
-          setCookiesValid(true) // TODO: Get from API
-          setCookiesLastUpdated(new Date().toISOString())
+          try {
+            const cookiesRes = await fetch('/api/auth/validate-cookies')
+            if (cookiesRes.ok) {
+              const cookiesData = await cookiesRes.json()
+              setCookiesValid(cookiesData.valid)
+              setCookiesLastUpdated(cookiesData.last_updated || new Date().toISOString())
+            } else {
+              // Default to false if API fails
+              setCookiesValid(false)
+              setCookiesLastUpdated(new Date().toISOString())
+            }
+          } catch (cookiesErr) {
+            console.error('Failed to check cookies status:', cookiesErr)
+            // Default to true to avoid blocking the user
+            setCookiesValid(true)
+            setCookiesLastUpdated(new Date().toISOString())
+          }
         }
       } catch (err) {
         console.error('Failed to load config:', err)
@@ -165,6 +178,19 @@ export default function OverviewPage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Load auto-run states from localStorage on mount
+  useEffect(() => {
+    const savedBirthday = localStorage.getItem('autoRunBirthdayEnabled')
+    const savedVisitor = localStorage.getItem('autoRunVisitorEnabled')
+
+    if (savedBirthday !== null) {
+      setAutoRunBirthdayEnabled(JSON.parse(savedBirthday))
+    }
+    if (savedVisitor !== null) {
+      setAutoRunVisitorEnabled(JSON.parse(savedVisitor))
+    }
+  }, [])
+
   // Check if there's a birthday job running
   const isBirthdayJobRunning = botStatus && botStatus.active_jobs.some(j => j.type === 'birthday')
   const birthdayJob = botStatus?.active_jobs.find(j => j.type === 'birthday')
@@ -188,9 +214,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'start',
           job_type: 'birthday',
@@ -222,9 +248,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'start',
           job_type: 'visit',
@@ -253,9 +279,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'stop',
           job_id: birthdayJob.id
@@ -282,9 +308,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'stop',
           job_id: visitorJob.id
@@ -304,26 +330,30 @@ export default function OverviewPage() {
 
   // Handle toggle auto-run (Birthday)
   const handleToggleAutoRunBirthday = () => {
-    setAutoRunBirthdayEnabled(!autoRunBirthdayEnabled)
+    const newState = !autoRunBirthdayEnabled
+    setAutoRunBirthdayEnabled(newState)
+    localStorage.setItem('autoRunBirthdayEnabled', JSON.stringify(newState))
+
     toast({
-      title: autoRunBirthdayEnabled ? "Auto-run Anniversaire désactivé" : "Auto-run Anniversaire activé",
-      description: autoRunBirthdayEnabled
-        ? "Les runs automatiques du bot d'Anniversaire sont désactivés."
-        : "Les runs automatiques du bot d'Anniversaire sont activés."
+      title: newState ? "Auto-run Anniversaire activé" : "Auto-run Anniversaire désactivé",
+      description: newState
+        ? "Les runs automatiques du bot d'Anniversaire sont activés."
+        : "Les runs automatiques du bot d'Anniversaire sont désactivés."
     })
-    // TODO: Persist to API
   }
 
   // Handle toggle auto-run (Visitor)
   const handleToggleAutoRunVisitor = () => {
-    setAutoRunVisitorEnabled(!autoRunVisitorEnabled)
+    const newState = !autoRunVisitorEnabled
+    setAutoRunVisitorEnabled(newState)
+    localStorage.setItem('autoRunVisitorEnabled', JSON.stringify(newState))
+
     toast({
-      title: autoRunVisitorEnabled ? "Auto-run Visiteur désactivé" : "Auto-run Visiteur activé",
-      description: autoRunVisitorEnabled
-        ? "Les runs automatiques du bot Visiteur sont désactivés."
-        : "Les runs automatiques du bot Visiteur sont activés."
+      title: newState ? "Auto-run Visiteur activé" : "Auto-run Visiteur désactivé",
+      description: newState
+        ? "Les runs automatiques du bot Visiteur sont activés."
+        : "Les runs automatiques du bot Visiteur sont désactivés."
     })
-    // TODO: Persist to API
   }
 
   // Calculate week totals
