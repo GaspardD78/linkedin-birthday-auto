@@ -165,6 +165,19 @@ export default function OverviewPage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Load auto-run states from localStorage on mount
+  useEffect(() => {
+    const savedBirthday = localStorage.getItem('autoRunBirthdayEnabled')
+    const savedVisitor = localStorage.getItem('autoRunVisitorEnabled')
+
+    if (savedBirthday !== null) {
+      setAutoRunBirthdayEnabled(JSON.parse(savedBirthday))
+    }
+    if (savedVisitor !== null) {
+      setAutoRunVisitorEnabled(JSON.parse(savedVisitor))
+    }
+  }, [])
+
   // Check if there's a birthday job running
   const isBirthdayJobRunning = botStatus && botStatus.active_jobs.some(j => j.type === 'birthday')
   const birthdayJob = botStatus?.active_jobs.find(j => j.type === 'birthday')
@@ -304,26 +317,30 @@ export default function OverviewPage() {
 
   // Handle toggle auto-run (Birthday)
   const handleToggleAutoRunBirthday = () => {
-    setAutoRunBirthdayEnabled(!autoRunBirthdayEnabled)
+    const newState = !autoRunBirthdayEnabled
+    setAutoRunBirthdayEnabled(newState)
+    localStorage.setItem('autoRunBirthdayEnabled', JSON.stringify(newState))
+
     toast({
-      title: autoRunBirthdayEnabled ? "Auto-run Anniversaire désactivé" : "Auto-run Anniversaire activé",
-      description: autoRunBirthdayEnabled
-        ? "Les runs automatiques du bot d'Anniversaire sont désactivés."
-        : "Les runs automatiques du bot d'Anniversaire sont activés."
+      title: newState ? "Auto-run Anniversaire activé" : "Auto-run Anniversaire désactivé",
+      description: newState
+        ? "Les runs automatiques du bot d'Anniversaire sont activés."
+        : "Les runs automatiques du bot d'Anniversaire sont désactivés."
     })
-    // TODO: Persist to API
   }
 
   // Handle toggle auto-run (Visitor)
   const handleToggleAutoRunVisitor = () => {
-    setAutoRunVisitorEnabled(!autoRunVisitorEnabled)
+    const newState = !autoRunVisitorEnabled
+    setAutoRunVisitorEnabled(newState)
+    localStorage.setItem('autoRunVisitorEnabled', JSON.stringify(newState))
+
     toast({
-      title: autoRunVisitorEnabled ? "Auto-run Visiteur désactivé" : "Auto-run Visiteur activé",
-      description: autoRunVisitorEnabled
-        ? "Les runs automatiques du bot Visiteur sont désactivés."
-        : "Les runs automatiques du bot Visiteur sont activés."
+      title: newState ? "Auto-run Visiteur activé" : "Auto-run Visiteur désactivé",
+      description: newState
+        ? "Les runs automatiques du bot Visiteur sont activés."
+        : "Les runs automatiques du bot Visiteur sont désactivés."
     })
-    // TODO: Persist to API
   }
 
   // Calculate week totals

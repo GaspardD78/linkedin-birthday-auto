@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { useDropzone } from "react-dropzone"
 import { uploadAuthState } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +10,7 @@ import { CheckCircle2, UploadCloud, FileJson, AlertTriangle, ExternalLink } from
 import { useToast } from "@/components/ui/use-toast"
 
 export default function AuthPage() {
+  const router = useRouter()
   const [uploading, setUploading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +36,7 @@ export default function AuthPage() {
         title: "Authentification réussie",
         description: "Votre session a été mise à jour avec succès.",
       })
-      setTimeout(() => window.location.href = "/dashboard", 1500)
+      setTimeout(() => router.push("/"), 1500)
     } catch (err: any) {
       setError(err.message || "Erreur lors de l'upload")
       toast({
