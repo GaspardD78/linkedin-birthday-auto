@@ -253,6 +253,7 @@ class BaseLinkedInBot(ABC):
         seen_contacts_html = set()  # Track unique contacts by HTML signature
         last_unique_count = 0
         scroll_attempts = 0
+        min_scrolls = 10  # Force au moins 10 scrolls pour voir tous les anniversaires
 
         while scroll_attempts < max_scrolls:
             # Get all current contacts
@@ -269,8 +270,8 @@ class BaseLinkedInBot(ABC):
 
             current_unique_count = len(seen_contacts_html)
 
-            # Stop if no new contacts found in last 2 scrolls
-            if current_unique_count == last_unique_count and scroll_attempts > 1:
+            # Stop if no new contacts found AND we've scrolled at least min_scrolls times
+            if current_unique_count == last_unique_count and scroll_attempts >= min_scrolls:
                 logger.debug(f"No new contacts after {scroll_attempts} scrolls, stopping")
                 break
 
