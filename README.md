@@ -31,6 +31,11 @@ cd linkedin-birthday-auto
 2. Vous aider à configurer vos cookies LinkedIn (`auth_state.json`) et préférences.
 3. Déployer les conteneurs (Dashboard, API, Worker, Redis, SQLite).
 
+> ⚠️ **Note sur connexion internet** : Le téléchargement des images Docker peut prendre 2-5 minutes selon votre connexion. Le script intègre automatiquement :
+> - Retry automatique en cas de timeout (jusqu'à 5 tentatives)
+> - Pull séquentiel optimisé pour connexions lentes
+> - Si vous rencontrez des erreurs réseau, consultez le [Guide de Dépannage](docs/RASPBERRY_PI_TROUBLESHOOTING.md#issue-docker-image-pull-timeout-tls-handshake-timeout).
+
 ---
 
 ## 📚 Documentation

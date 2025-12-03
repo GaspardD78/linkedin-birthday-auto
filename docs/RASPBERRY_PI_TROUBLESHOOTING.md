@@ -439,6 +439,126 @@ ______________________________________________________________________
 
 ## 🌐 Network Issues
 
+### Issue: Docker image pull timeout (TLS handshake timeout)
+
+**Error during installation/deployment:**
+
+```
+failed to copy: httpReadSeeker: failed open: failed to do request: Get "https://registry-1.docker.io/...": net/http: TLS handshake timeout
+```
+
+**Explanation:**
+
+This error occurs when downloading Docker images on slow or unstable internet connections. The Raspberry Pi's connection might timeout before large images finish downloading, especially when multiple images are pulled simultaneously.
+
+**The deployment script now handles this automatically with:**
+- ✅ **Automatic retry** with exponential backoff (up to 5 attempts)
+- ✅ **Sequential image pull** (one by one, more reliable than parallel)
+- ✅ **Extended timeouts** (300 seconds for slow connections)
+
+**If the error persists after automatic retries:**
+
+**Solution 1: Check your internet connection**
+
+```bash
+# Test internet speed
+ping -c 10 8.8.8.8
+
+# Check DNS resolution
+nslookup docker.io
+nslookup ghcr.io
+
+# Test Docker Hub connectivity
+curl -I https://registry-1.docker.io/v2/
+
+# Test GitHub Container Registry
+curl -I https://ghcr.io/v2/
+```
+
+**Solution 2: Pull images manually one by one**
+
+```bash
+cd ~/linkedin-birthday-auto
+
+# Pull Redis images first (smallest)
+docker pull redis:7-alpine
+
+# Pull bot image (can be large, ~500MB)
+docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
+
+# Pull dashboard image (can be large, ~400MB)
+docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
+
+# Then retry deployment
+./scripts/deploy_pi4_pull.sh
+```
+
+**Solution 3: Optimize Docker for slow connections**
+
+```bash
+# Edit Docker daemon config
+sudo nano /etc/docker/daemon.json
+
+# Add or update with extended timeouts:
+{
+  "max-concurrent-downloads": 1,
+  "max-download-attempts": 5,
+  "dns": ["8.8.8.8", "8.8.4.4"]
+}
+
+# Restart Docker
+sudo systemctl restart docker
+
+# Retry deployment
+cd ~/linkedin-birthday-auto
+./scripts/deploy_pi4_pull.sh
+```
+
+**Solution 4: Use a wired connection if possible**
+
+Wi-Fi on Raspberry Pi can be unstable:
+
+```bash
+# Check current connection
+ifconfig
+
+# If using Wi-Fi, consider:
+# 1. Moving closer to router
+# 2. Using Ethernet cable (more stable)
+# 3. Reducing interference (other devices)
+# 4. Upgrading to 5GHz Wi-Fi if available
+```
+
+**Solution 5: Wait and retry during off-peak hours**
+
+Docker registries can be slow during peak hours:
+
+```bash
+# Simply retry the deployment
+cd ~/linkedin-birthday-auto
+./scripts/deploy_pi4_pull.sh
+
+# The script will automatically:
+# - Skip already downloaded images
+# - Retry only failed ones
+# - Use exponential backoff
+```
+
+**Solution 6: Use a Docker registry mirror (advanced)**
+
+```bash
+# Add a registry mirror
+sudo nano /etc/docker/daemon.json
+
+# Add (adjust with your preferred mirror):
+{
+  "registry-mirrors": ["https://mirror.gcr.io"]
+}
+
+# Restart Docker
+sudo systemctl restart docker
+```
+
 ### Issue: Worker cannot connect to Redis
 
 **Error in worker logs:**

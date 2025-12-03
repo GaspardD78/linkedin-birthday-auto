@@ -589,8 +589,47 @@ if ask_yes_no "Voulez-vous continuer avec le déploiement ?" "y"; then
             print_success "Déploiement réussi !"
         else
             print_error "Le déploiement a rencontré des problèmes"
-            print_info "Consultez les logs ci-dessus pour plus de détails"
-            exit 1
+            echo ""
+            print_warning "Problèmes courants et solutions :"
+            echo ""
+            echo "  ${BOLD}1. Timeout réseau (TLS handshake timeout)${NC}"
+            echo "     → Connexion internet lente ou instable"
+            echo "     → Le script a déjà réessayé 5 fois avec backoff exponentiel"
+            echo "     → ${CYAN}Solution${NC}: Vérifiez votre connexion et relancez : $DEPLOY_SCRIPT"
+            echo ""
+            echo "  ${BOLD}2. Erreur 403/401 (GitHub Container Registry)${NC}"
+            echo "     → Images privées nécessitant authentification"
+            echo "     → ${CYAN}Solution${NC}: docker login ghcr.io -u VOTRE_USERNAME"
+            echo ""
+            echo "  ${BOLD}3. Espace disque insuffisant${NC}"
+            echo "     → Images Docker volumineuses (500MB-1GB chacune)"
+            echo "     → ${CYAN}Solution${NC}: Libérez de l'espace : docker system prune -a"
+            echo ""
+            print_info "💡 Pour réessayer uniquement le déploiement, lancez :"
+            echo "   ${CYAN}$DEPLOY_SCRIPT${NC}"
+            echo ""
+
+            if ask_yes_no "Voulez-vous réessayer le déploiement maintenant ?" "n"; then
+                echo ""
+                print_info "Nouvelle tentative de déploiement..."
+
+                if [ "$NEED_SG_DOCKER" = true ]; then
+                    sg docker -c "$DEPLOY_SCRIPT"
+                    DEPLOY_EXIT_CODE=$?
+                else
+                    "$DEPLOY_SCRIPT"
+                    DEPLOY_EXIT_CODE=$?
+                fi
+
+                if [ $DEPLOY_EXIT_CODE -eq 0 ]; then
+                    print_success "Déploiement réussi à la seconde tentative !"
+                else
+                    print_error "Le déploiement a échoué à nouveau"
+                    exit 1
+                fi
+            else
+                exit 1
+            fi
         fi
     else
         print_error "Script $DEPLOY_SCRIPT introuvable"
