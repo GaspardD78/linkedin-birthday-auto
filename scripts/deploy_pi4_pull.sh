@@ -200,21 +200,70 @@ print_info "Arrêt des conteneurs existants..."
 docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 
 # =========================================================================
-# 5. Pull des Images Pré-construites
+# 5. Pull des Images Pré-construites avec Retry
 # =========================================================================
-print_header "5. Téléchargement Images (2-3 minutes)"
+print_header "5. Téléchargement Images (2-5 minutes)"
 
 export DOCKER_BUILDKIT=1
+export DOCKER_CLIENT_TIMEOUT=300
+export COMPOSE_HTTP_TIMEOUT=300
 
-print_info "Pull des images depuis GitHub Container Registry..."
-if docker compose -f "$COMPOSE_FILE" pull; then
-    print_success "Images téléchargées avec succès"
+# Fonction de retry avec backoff exponentiel
+pull_with_retry() {
+    local max_attempts=5
+    local timeout=2
+    local attempt=1
+    local service_name=$1
+
+    while [ $attempt -le $max_attempts ]; do
+        print_info "Tentative $attempt/$max_attempts : Pull de $service_name..."
+
+        if docker compose -f "$COMPOSE_FILE" pull "$service_name" 2>&1; then
+            print_success "✓ $service_name téléchargé"
+            return 0
+        else
+            if [ $attempt -lt $max_attempts ]; then
+                print_warning "Échec, nouvelle tentative dans ${timeout}s..."
+                sleep $timeout
+                timeout=$((timeout * 2))  # Backoff exponentiel
+                attempt=$((attempt + 1))
+            else
+                print_error "Échec définitif après $max_attempts tentatives"
+                return 1
+            fi
+        fi
+    done
+}
+
+print_info "Pull séquentiel des images (plus robuste sur connexion lente)..."
+echo ""
+
+# Liste des services à télécharger dans l'ordre
+SERVICES=("redis-bot" "redis-dashboard" "api" "bot-worker" "dashboard")
+FAILED_SERVICES=()
+
+for service in "${SERVICES[@]}"; do
+    if ! pull_with_retry "$service"; then
+        FAILED_SERVICES+=("$service")
+    fi
+    echo ""
+done
+
+# Vérification finale
+if [ ${#FAILED_SERVICES[@]} -eq 0 ]; then
+    print_success "Toutes les images ont été téléchargées avec succès !"
 else
-    print_error "Échec du téléchargement des images"
-    print_warning "Vérifiez:"
-    print_warning "  - Connexion internet active"
-    print_warning "  - Images publiées sur GHCR (vérifiez GitHub Actions)"
-    print_warning "  - Permissions du repo (public ou token configuré)"
+    print_error "Échec du téléchargement de ${#FAILED_SERVICES[@]} service(s) :"
+    for failed in "${FAILED_SERVICES[@]}"; do
+        echo "  - $failed"
+    done
+    echo ""
+    print_warning "Solutions possibles :"
+    print_warning "  1. Vérifiez votre connexion internet : ping 8.8.8.8"
+    print_warning "  2. Réessayez plus tard (problème temporaire de registry)"
+    print_warning "  3. Pour Redis, utilisez un miroir : docker pull redis:7-alpine"
+    print_warning "  4. Augmentez la bande passante disponible"
+    print_warning "  5. Si connexion 4G, rapprochez-vous d'une fenêtre"
     exit 1
 fi
 
