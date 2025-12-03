@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Download, Github, Bug } from "lucide-react"
 import { downloadDebugReport } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
+import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import { useState } from "react"
 import { SettingsForm } from "@/components/settings/SettingsForm"
 
@@ -42,6 +43,8 @@ export default function SettingsPage() {
 
   return (
     <div className="container mx-auto py-8 space-y-8">
+      <Breadcrumbs items={[{ label: "Paramètres" }]} />
+
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Paramètres</h1>
         <p className="text-muted-foreground">Configuration et maintenance du système.</p>

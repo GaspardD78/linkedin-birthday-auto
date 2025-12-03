@@ -23,6 +23,15 @@ export function SettingsForm() {
   const [success, setSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState("global")
 
+  // Support query params for tab switching (from Overview links)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get('tab')
+    if (tab && ['global', 'birthday', 'visitor', 'advanced'].includes(tab)) {
+      setActiveTab(tab)
+    }
+  }, [])
+
   useEffect(() => {
     loadConfig()
   }, [])
