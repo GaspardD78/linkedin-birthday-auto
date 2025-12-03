@@ -78,33 +78,46 @@ export default function OverviewPage() {
       const status = await getBotStatusDetailed()
       setBotStatus(status)
 
-      // Get config for both bots
+      // Get config for both bots (parsed server-side)
       try {
-        const configRes = await fetch('/api/settings/yaml')
+        const configRes = await fetch('/api/settings/config')
         if (configRes.ok) {
-          const configData = await configRes.json()
-          const yaml = await import('js-yaml')
-          const config: any = yaml.load(configData.content)
+          const config = await configRes.json()
 
-          // Birthday Bot Config
+          // Birthday Bot Config (already parsed server-side)
           setBirthdayConfig({
-            max_per_day: config.messaging_limits?.daily_message_limit || 50,
-            schedule_time: `${String(config.scheduling?.daily_start_hour || 7).padStart(2, '0')}:30`,
+            max_per_day: config.birthday.max_per_day,
+            schedule_time: config.birthday.schedule_time,
             auto_run_enabled: false, // TODO: Implement persistence
-            mode: config.bot_mode || 'standard'
+            mode: config.birthday.mode
           })
 
-          // Visitor Bot Config
+          // Visitor Bot Config (already parsed server-side)
           setVisitorConfig({
-            max_per_day: config.visitor?.limits?.profiles_per_run || 15,
-            schedule_time: `${String(config.scheduling?.daily_start_hour || 14).padStart(2, '0')}:00`,
+            max_per_day: config.visitor.max_per_day,
+            schedule_time: config.visitor.schedule_time,
             auto_run_enabled: false, // TODO: Implement persistence
-            mode: 'visit'
+            mode: config.visitor.mode
           })
 
           // Cookies status (check auth_state)
-          setCookiesValid(true) // TODO: Get from API
-          setCookiesLastUpdated(new Date().toISOString())
+          try {
+            const cookiesRes = await fetch('/api/auth/validate-cookies')
+            if (cookiesRes.ok) {
+              const cookiesData = await cookiesRes.json()
+              setCookiesValid(cookiesData.valid)
+              setCookiesLastUpdated(cookiesData.last_updated || new Date().toISOString())
+            } else {
+              // Default to false if API fails
+              setCookiesValid(false)
+              setCookiesLastUpdated(new Date().toISOString())
+            }
+          } catch (cookiesErr) {
+            console.error('Failed to check cookies status:', cookiesErr)
+            // Default to true to avoid blocking the user
+            setCookiesValid(true)
+            setCookiesLastUpdated(new Date().toISOString())
+          }
         }
       } catch (err) {
         console.error('Failed to load config:', err)
