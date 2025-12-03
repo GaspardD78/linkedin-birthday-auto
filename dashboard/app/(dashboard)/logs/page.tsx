@@ -8,6 +8,7 @@ export default function LogsPage() {
         title="Logs & Console"
         description="Logs système en temps réel"
         showBackButton={false}
+        breadcrumbs={[{ label: "Logs & Console" }]}
       />
 
       <div className="min-h-[700px]">

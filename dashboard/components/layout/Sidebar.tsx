@@ -14,12 +14,12 @@ import {
 } from "lucide-react"
 
 const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Pilotage" },
-  { href: "/overview", icon: Eye, label: "Vue d'ensemble" },
-  { href: "/history", icon: History, label: "Historique" },
-  { href: "/logs", icon: Terminal, label: "Logs & Console" },
-  { href: "/auth", icon: KeyRound, label: "Authentification" },
-  { href: "/settings", icon: Settings, label: "Paramètres" },
+  { href: "/", icon: LayoutDashboard, label: "Tableau de Bord", description: "Monitoring système" },
+  { href: "/overview", icon: Eye, label: "Vue d'ensemble", description: "Statut & actions" },
+  { href: "/history", icon: History, label: "Historique", description: "Détails exécutions" },
+  { href: "/logs", icon: Terminal, label: "Logs & Console", description: "Console temps réel" },
+  { href: "/auth", icon: KeyRound, label: "Authentification", description: "Cookies LinkedIn" },
+  { href: "/settings", icon: Settings, label: "Paramètres", description: "Configuration bot" },
 ]
 
 export function Sidebar() {
@@ -43,21 +43,24 @@ export function Sidebar() {
         <span>LinkedIn Bot</span>
       </div>
 
-      <nav className="flex-1 px-4 space-y-2 mt-4">
+      <nav className="flex-1 px-4 space-y-1 mt-4">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all ${
+              className={`group flex flex-col rounded-lg px-3 py-2.5 transition-all ${
                 isActive
-                  ? "bg-slate-800 text-white font-medium"
-                  : "text-slate-300 hover:text-white hover:bg-slate-800"
+                  ? "bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border-l-4 border-blue-500 text-white font-medium shadow-lg shadow-blue-500/10"
+                  : "text-slate-300 hover:text-white hover:bg-slate-800/50 border-l-4 border-transparent"
               }`}
             >
-              <item.icon className="h-5 w-5" />
-              <span>{item.label}</span>
+              <div className="flex items-center gap-3">
+                <item.icon className={`h-5 w-5 ${isActive ? "text-blue-400" : "text-slate-400 group-hover:text-slate-200"}`} />
+                <span>{item.label}</span>
+              </div>
+              <span className="text-xs text-slate-500 ml-8 mt-0.5">{item.description}</span>
             </Link>
           )
         })}

@@ -4,11 +4,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronLeft, Home, Settings, History, Terminal, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Breadcrumbs, BreadcrumbItem } from "@/components/ui/breadcrumbs"
 
 interface PageNavigationProps {
   title: string
   description?: string
   showBackButton?: boolean
+  breadcrumbs?: BreadcrumbItem[]
 }
 
 const navigationItems = [
@@ -19,13 +21,16 @@ const navigationItems = [
   { href: "/settings", icon: Settings, label: "Paramètres" },
 ]
 
-export function PageNavigation({ title, description, showBackButton = false }: PageNavigationProps) {
+export function PageNavigation({ title, description, showBackButton = false, breadcrumbs }: PageNavigationProps) {
   const pathname = usePathname()
 
   return (
     <div className="mb-6">
-      {/* Breadcrumb / Back button */}
-      {showBackButton && (
+      {/* Breadcrumb */}
+      {breadcrumbs && <Breadcrumbs items={breadcrumbs} />}
+
+      {/* Legacy back button (kept for backwards compatibility) */}
+      {showBackButton && !breadcrumbs && (
         <Link href="/" className="inline-flex items-center text-sm text-slate-400 hover:text-white mb-3 transition-colors">
           <ChevronLeft className="h-4 w-4 mr-1" />
           Retour au tableau de bord

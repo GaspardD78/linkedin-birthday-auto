@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { getBotStatusDetailed, BotStatusDetailed } from "@/lib/api"
+import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import Link from "next/link"
 
 interface ActivitySummary {
@@ -388,6 +389,9 @@ export default function OverviewPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 lg:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Breadcrumbs */}
+        <Breadcrumbs items={[{ label: "Vue d'ensemble" }]} />
 
         {/* Header */}
         <div className="flex items-center justify-between">
