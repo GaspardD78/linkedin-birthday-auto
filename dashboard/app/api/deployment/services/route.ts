@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
+import { getApiUrl, getApiHeaders, validateApiKey } from '@/lib/api-config';
 
 export async function GET() {
+  // Validate API key is configured
+  const validationError = validateApiKey();
+  if (validationError) return validationError;
+
   try {
-    const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
-    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
+    const apiUrl = getApiUrl();
 
     const response = await fetch(`${apiUrl}/deployment/services/status`, {
       method: 'GET',
-      headers: {
-        'X-API-Key': apiKey
-      }
+      headers: getApiHeaders()
     });
 
     if (!response.ok) {

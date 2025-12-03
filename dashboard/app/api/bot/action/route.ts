@@ -9,7 +9,15 @@ export async function POST(request: Request) {
 
     // URL interne Docker (CRITIQUE: ne jamais utiliser localhost)
     const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
-    const apiKey = process.env.BOT_API_KEY || 'internal_secret_key';
+    const apiKey = process.env.BOT_API_KEY;
+
+    if (!apiKey) {
+      console.error('❌ [SECURITY] BOT_API_KEY environment variable is not set!');
+      return NextResponse.json({
+        error: 'Server configuration error',
+        detail: 'BOT_API_KEY is required but not configured'
+      }, { status: 500 });
+    }
 
     let endpoint = '';
     let payload: any = {};

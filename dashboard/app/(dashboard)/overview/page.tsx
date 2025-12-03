@@ -188,9 +188,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'start',
           job_type: 'birthday',
@@ -222,9 +222,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'start',
           job_type: 'visit',
@@ -253,9 +253,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'stop',
           job_id: birthdayJob.id
@@ -282,9 +282,9 @@ export default function OverviewPage() {
       const response = await fetch('/api/bot/action', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           action: 'stop',
           job_id: visitorJob.id
