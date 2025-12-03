@@ -109,16 +109,19 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
     max_days = config.max_days_late if config.process_late else 0
     bot_mode = "unlimited" if config.process_late else "standard"
 
+    # FIX: Augmenter le timeout pour le mode unlimited (peut prendre 2-3h avec beaucoup de contacts)
+    timeout = "180m" if bot_mode == "unlimited" else "30m"
+
     try:
         job = job_queue.enqueue(
             "src.queue.tasks.run_bot_task",
             bot_mode=bot_mode,
             dry_run=config.dry_run,
             max_days_late=max_days,
-            job_timeout="30m",
+            job_timeout=timeout,
             meta={'job_type': 'birthday'} # Metadata for granular control
         )
-        logger.info(f"✅ [BIRTHDAY] Job {job.id} queued (meta: birthday)")
+        logger.info(f"✅ [BIRTHDAY] Job {job.id} queued (mode: {bot_mode}, timeout: {timeout}, meta: birthday)")
         return {"job_id": job.id, "status": "queued", "type": "birthday"}
     except Exception as e:
         logger.error(f"Failed to enqueue birthday bot: {e}", exc_info=True)

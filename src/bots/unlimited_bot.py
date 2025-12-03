@@ -351,6 +351,9 @@ def run_unlimited_bot(
     if config is None:
         config = get_config()
 
+    # FIX: Créer une COPIE de la config pour éviter de polluer le singleton
+    config = config.model_copy(deep=True)
+
     if dry_run:
         config.dry_run = True
 

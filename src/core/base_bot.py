@@ -244,21 +244,52 @@ class BaseLinkedInBot(ABC):
             return self._categorize_birthdays(all_contacts)
 
     def _scroll_and_collect_contacts(self, card_selector: str, max_scrolls: int = 20) -> List[Locator]:
-        last_card_count = 0
+        """
+        Scroll la page et collecte tous les contacts d'anniversaire.
+
+        FIX: Extrait les données HTML PENDANT le scroll pour éviter la perte
+        d'éléments si LinkedIn décharge le DOM (pagination virtuelle).
+        """
+        seen_contacts_html = set()  # Track unique contacts by HTML signature
+        last_unique_count = 0
         scroll_attempts = 0
+
         while scroll_attempts < max_scrolls:
-            # Upgrade to Locators
+            # Get all current contacts
             current_contacts = self.page.locator(card_selector).all()
-            if len(current_contacts) == last_card_count and scroll_attempts > 0:
+
+            # Store HTML signatures to track uniqueness across scrolls
+            for contact in current_contacts:
+                try:
+                    # Use inner_html as unique signature (contains name, date, etc.)
+                    html_sig = contact.inner_html()[:200]  # First 200 chars is enough
+                    seen_contacts_html.add(html_sig)
+                except:
+                    pass  # Skip if element is stale
+
+            current_unique_count = len(seen_contacts_html)
+
+            # Stop if no new contacts found in last 2 scrolls
+            if current_unique_count == last_unique_count and scroll_attempts > 1:
+                logger.debug(f"No new contacts after {scroll_attempts} scrolls, stopping")
                 break
-            last_card_count = len(current_contacts)
+
+            last_unique_count = current_unique_count
+
+            # Scroll to load more
             if current_contacts:
-                # Scroll the last one into view
-                current_contacts[-1].scroll_into_view_if_needed()
-                # HARDWARE REALISM: Slow down scroll
-                time.sleep(3)
+                try:
+                    current_contacts[-1].scroll_into_view_if_needed()
+                    # HARDWARE REALISM: Slow down scroll
+                    time.sleep(3)
+                except:
+                    break  # Last element might be stale
+
             scroll_attempts += 1
 
+        logger.info(f"Collected {len(seen_contacts_html)} unique contacts after {scroll_attempts} scrolls")
+
+        # Return fresh locators from final page state
         return self.page.locator(card_selector).all()
 
     def _categorize_birthdays(self, contacts: list) -> dict[str, list]:
@@ -293,12 +324,74 @@ class BaseLinkedInBot(ABC):
     #  ENVOI AVEC AUTO-GUÉRISON (Self-Healing)
     # ═══════════════════════════════════════════════════════════════
 
+    def _was_contacted_today(self, contact_name: str) -> bool:
+        """
+        Vérifie si un contact a déjà été contacté aujourd'hui.
+
+        Args:
+            contact_name: Nom du contact
+
+        Returns:
+            True si déjà contacté aujourd'hui, False sinon
+        """
+        if not self.db:
+            return False
+
+        try:
+            today = datetime.now().date().isoformat()
+            daily_count = self.db.get_daily_message_count(date=today)
+
+            # Vérifier si ce contact spécifique a été contacté aujourd'hui
+            messages = self.db.get_messages_sent_to_contact(contact_name, years=1)
+            for msg in messages:
+                msg_date = msg.get("sent_at", "")
+                if msg_date.startswith(today):
+                    logger.debug(f"Contact {contact_name} already contacted today")
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"Could not check contact history: {e}")
+            return False
+
     def send_birthday_message(self, contact_element, is_late: bool = False, days_late: int = 0) -> bool:
         """Envoie un message avec stratégie de retry et nettoyage proactif (Self-Healing)."""
+        # FIX: Vérifier l'historique AVANT d'essayer d'envoyer
+        full_name = self.extract_contact_name(contact_element)
+        if not full_name:
+            logger.warning("Could not extract name from contact element")
+            return False
+
+        if self._was_contacted_today(full_name):
+            logger.info(f"⏭️  Skipping {full_name} - already contacted today")
+            return False
+
         max_retries = 2
         for attempt in range(1, max_retries + 1):
             try:
-                return self._send_birthday_message_internal(contact_element, is_late, days_late)
+                result = self._send_birthday_message_internal(contact_element, is_late, days_late)
+
+                # FIX: Enregistrer en DB si envoi réussi
+                if result and self.db and not self.config.dry_run:
+                    try:
+                        first_name = self.standardize_first_name(full_name.split()[0])
+                        message_list = self.late_birthday_messages if is_late else self.birthday_messages
+                        message_text = random.choice(message_list).format(name=first_name) if message_list else ""
+
+                        self.db.add_birthday_message(
+                            contact_name=full_name,
+                            message_text=message_text,
+                            is_late=is_late,
+                            days_late=days_late,
+                            script_mode=self.config.bot_mode
+                        )
+                        logger.debug(f"✅ Message recorded in database for {full_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to record message in database: {e}")
+
+                return result
+
             except Exception as e:
                 logger.warning(f"⚠️ Attempt {attempt}/{max_retries} failed: {e}")
                 if attempt < max_retries:
@@ -313,6 +406,8 @@ class BaseLinkedInBot(ABC):
     def _send_birthday_message_internal(self, contact_element, is_late: bool, days_late: int) -> bool:
         self._close_all_message_modals() # Cleanup préventif
 
+        # FIX: Le nom est déjà extrait par send_birthday_message, mais on le re-extrait ici
+        # car cette fonction peut être appelée directement dans certains cas
         full_name = self.extract_contact_name(contact_element)
         if not full_name:
             logger.warning("Could not extract name from contact element")

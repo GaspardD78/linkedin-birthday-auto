@@ -429,12 +429,14 @@ async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(ver
 
     try:
         if request.job_type == "birthday":
+            # FIX: Augmenter le timeout pour le mode unlimited (peut prendre 2-3h avec beaucoup de contacts)
+            timeout = "180m" if request.bot_mode == "unlimited" else "30m"
             job = job_queue.enqueue(
                 "src.queue.tasks.run_bot_task",
                 bot_mode=request.bot_mode,
                 dry_run=request.dry_run,
                 max_days_late=request.max_days_late,
-                job_timeout="30m",  # Timeout généreux pour le bot
+                job_timeout=timeout,
             )
         elif request.job_type == "visit":
             job = job_queue.enqueue(
@@ -466,13 +468,16 @@ async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depen
     # car le mode "standard" ne traite que les anniversaires du jour.
     bot_mode = "unlimited" if config.process_late else "standard"
 
+    # FIX: Augmenter le timeout pour le mode unlimited (peut prendre 2-3h avec beaucoup de contacts)
+    timeout = "180m" if bot_mode == "unlimited" else "30m"
+
     try:
         job = job_queue.enqueue(
             "src.queue.tasks.run_bot_task",
             bot_mode=bot_mode,
             dry_run=config.dry_run,
             max_days_late=max_days,
-            job_timeout="30m",
+            job_timeout=timeout,
         )
 
         logger.info(f"✅ [BIRTHDAY BOT] Job {job.id} queued successfully")
