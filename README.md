@@ -56,6 +56,12 @@ Une fois installé :
 *   **Dashboard** : `http://<IP_DE_VOTRE_RPI>:3000`
 *   **API** : `http://<IP_DE_VOTRE_RPI>:8000/docs`
 
+> ⚠️ **Trafic réseau et automatisations** : Si vous avez installé les automatisations systemd, le bot démarre **automatiquement au boot** et reste actif en permanence. Cela génère du trafic réseau continu vers LinkedIn.
+> - Pour arrêter : `sudo systemctl stop linkedin-bot && docker compose -f docker-compose.pi4-standalone.yml down`
+> - Pour diagnostic : `sudo ./scripts/diagnose_network_traffic.sh`
+> - Pour désinstaller : `sudo ./scripts/uninstall_automation_pi4.sh`
+> - Voir le [Guide de Dépannage](docs/RASPBERRY_PI_TROUBLESHOOTING.md#issue-abnormal-network-traffic-after-installing-automations)
+
 ---
 
 ## 🛠️ Commandes Utiles
