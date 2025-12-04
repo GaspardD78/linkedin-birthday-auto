@@ -111,14 +111,12 @@ export function BotControlPanel() {
     title,
     icon: Icon,
     description,
-    color,
     settingsLink
   }: {
     type: 'birthday' | 'visitor' | 'unlimited'
     title: string
     icon: any
     description: string
-    color: string
     settingsLink: string
   }) => {
     const running = isRunning(type === 'unlimited' ? 'birthday' : type)
@@ -126,16 +124,41 @@ export function BotControlPanel() {
     const stopKey = `stop-${type}`
     const progress = getJobProgress(type === 'unlimited' ? 'birthday' : type)
 
+    // Mapping des couleurs statiques
+    const colorClasses = {
+      birthday: {
+        card: 'bg-gradient-to-br from-pink-900/20 to-slate-900 border-pink-700/40 hover:shadow-pink-500/10',
+        icon: running ? 'bg-pink-500/20' : 'bg-slate-800/50',
+        iconColor: running ? 'text-pink-400' : 'text-slate-400',
+        title: running ? 'text-pink-400' : 'text-slate-200',
+        button: 'bg-pink-600 hover:bg-pink-700'
+      },
+      unlimited: {
+        card: 'bg-gradient-to-br from-indigo-900/20 to-slate-900 border-indigo-700/40 hover:shadow-indigo-500/10',
+        icon: running ? 'bg-indigo-500/20' : 'bg-slate-800/50',
+        iconColor: running ? 'text-indigo-400' : 'text-slate-400',
+        title: running ? 'text-indigo-400' : 'text-slate-200',
+        button: 'bg-indigo-600 hover:bg-indigo-700'
+      },
+      visitor: {
+        card: 'bg-gradient-to-br from-emerald-900/20 to-slate-900 border-emerald-700/40 hover:shadow-emerald-500/10',
+        icon: running ? 'bg-emerald-500/20' : 'bg-slate-800/50',
+        iconColor: running ? 'text-emerald-400' : 'text-slate-400',
+        title: running ? 'text-emerald-400' : 'text-slate-200',
+        button: 'bg-emerald-600 hover:bg-emerald-700'
+      }
+    }[type]
+
     return (
-      <Card className={`bg-gradient-to-br from-${color}-900/20 to-slate-900 border-${color}-700/40 transition-all duration-300 hover:shadow-lg hover:shadow-${color}-500/10`}>
+      <Card className={`${colorClasses.card} transition-all duration-300 hover:shadow-lg`}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-full ${running ? `bg-${color}-500/20` : 'bg-slate-800/50'}`}>
-                <Icon className={`h-5 w-5 ${running ? `text-${color}-400` : 'text-slate-400'}`} />
+              <div className={`p-2 rounded-full ${colorClasses.icon}`}>
+                <Icon className={`h-5 w-5 ${colorClasses.iconColor}`} />
               </div>
               <div>
-                <CardTitle className={`text-lg ${running ? `text-${color}-400` : 'text-slate-200'}`}>
+                <CardTitle className={`text-lg ${colorClasses.title}`}>
                   {title}
                 </CardTitle>
                 <CardDescription className="text-xs mt-1">{description}</CardDescription>
@@ -186,7 +209,7 @@ export function BotControlPanel() {
                   size="sm"
                   onClick={() => handleStart(type)}
                   disabled={!!loading || (status?.worker_status === 'working')}
-                  className={`flex-1 bg-${color}-600 hover:bg-${color}-700`}
+                  className={`flex-1 ${colorClasses.button}`}
                 >
                   {loading === type ? (
                     <span className="animate-spin mr-2">⏳</span>
@@ -271,7 +294,6 @@ export function BotControlPanel() {
             title="Bot Anniversaires"
             icon={Gift}
             description="Messages du jour uniquement"
-            color="pink"
             settingsLink="/settings?tab=birthday"
           />
           <BotCard
@@ -279,7 +301,6 @@ export function BotControlPanel() {
             title="Bot Unlimited"
             icon={InfinityIcon}
             description="Jour + Retards (max 10j)"
-            color="indigo"
             settingsLink="/settings?tab=birthday"
           />
           <BotCard
@@ -287,7 +308,6 @@ export function BotControlPanel() {
             title="Bot Visiteur"
             icon={Users}
             description="Visite automatique de profils"
-            color="emerald"
             settingsLink="/settings?tab=visitor"
           />
         </div>
