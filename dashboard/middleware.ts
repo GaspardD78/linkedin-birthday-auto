@@ -22,14 +22,19 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
+     * - api (API routes are handled separately)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - login (login page)
-     *
-     * IMPORTANT: This now protects ALL /api routes except /api/auth/*
      */
-    "/((?!_next/static|_next/image|favicon.ico|login).*)",
-    "/api/((?!auth/).*)", // Protect all API routes except /api/auth/*
+    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
+
+    /*
+     * Match API routes, but EXCLUDE:
+     * - auth/* (login, logout, etc.)
+     * - system/* (health checks, etc.)
+     */
+    "/api/((?!auth|system).*)",
   ],
 };
