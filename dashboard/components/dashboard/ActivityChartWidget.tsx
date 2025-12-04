@@ -18,51 +18,58 @@ export function ActivityChartWidget() {
   useEffect(() => {
     const fetchActivityData = async () => {
       try {
-        // Fetch activity for last 7 days
+        // Fetch activity for last 7 days from backend
         const res = await fetch('/api/history?days=7', { cache: 'no-store' })
+
         if (res.ok) {
           const historyData = await res.json()
 
-          // Generate last 7 days
-          const last7Days: ActivityData[] = []
-          for (let i = 6; i >= 0; i--) {
-            const date = new Date()
-            date.setDate(date.getDate() - i)
-            const dateStr = date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
+          // Backend returns: { activity: [{date, messages, late_messages, visits, contacts}, ...], days: 7 }
+          if (historyData.activity && Array.isArray(historyData.activity)) {
+            // Transform backend data to chart format
+            const chartData: ActivityData[] = historyData.activity.map((item: any) => {
+              // Parse date from backend (format: YYYY-MM-DD)
+              const dateObj = new Date(item.date + 'T00:00:00')
+              const dateStr = dateObj.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
 
-            // Count messages and visits for this day
-            const dayStart = new Date(date.setHours(0, 0, 0, 0))
-            const dayEnd = new Date(date.setHours(23, 59, 59, 999))
-
-            // Mock data for now (you'd need to implement proper API endpoint)
-            // For real implementation, the API should return daily aggregated stats
-            last7Days.push({
-              date: dateStr,
-              messages: Math.floor(Math.random() * 20), // Replace with real data
-              visits: Math.floor(Math.random() * 30)     // Replace with real data
+              return {
+                date: dateStr,
+                messages: (item.messages || 0) + (item.late_messages || 0), // Total messages
+                visits: item.visits || 0
+              }
             })
-          }
 
-          setData(last7Days)
+            setData(chartData)
+          } else {
+            // Empty activity, fill with zeros for last 7 days
+            setData(generateEmptyData())
+          }
+        } else {
+          console.error("Failed to fetch activity data", await res.text())
+          setData(generateEmptyData())
         }
       } catch (e) {
         console.error("Failed to fetch activity data", e)
-        // Generate empty data for last 7 days
-        const last7Days: ActivityData[] = []
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date()
-          date.setDate(date.getDate() - i)
-          const dateStr = date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
-          last7Days.push({
-            date: dateStr,
-            messages: 0,
-            visits: 0
-          })
-        }
-        setData(last7Days)
+        setData(generateEmptyData())
       } finally {
         setLoading(false)
       }
+    }
+
+    // Helper to generate empty data for visualization
+    const generateEmptyData = (): ActivityData[] => {
+      const emptyData: ActivityData[] = []
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        const dateStr = date.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
+        emptyData.push({
+          date: dateStr,
+          messages: 0,
+          visits: 0
+        })
+      }
+      return emptyData
     }
 
     fetchActivityData()

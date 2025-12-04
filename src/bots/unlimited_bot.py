@@ -143,8 +143,8 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
             logger.info(f"⏭️  Skipping {total_today} birthdays from today (disabled)")
 
         # Ajouter les anniversaires en retard
+        late_count = 0
         if self.config.birthday_filter.process_late:
-            late_count = 0
             for contact, days_late in birthdays["late"]:
                 # Respecter max_days_late
                 if days_late <= self.config.birthday_filter.max_days_late:
@@ -156,6 +156,14 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         else:
             logger.info(f"⏭️  Skipping {total_late} late birthdays (disabled)")
 
+        # Calculer les messages ignorés
+        messages_ignored_today = 0 if self.config.birthday_filter.process_today else total_today
+        messages_ignored_late = total_late - late_count
+        messages_ignored = messages_ignored_today + messages_ignored_late
+
+        if messages_ignored > 0:
+            logger.info(f"⚠️  {messages_ignored} birthdays ignored (filters/limits)")
+
         total_to_process = len(contacts_to_process)
 
         if total_to_process == 0:
@@ -165,6 +173,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
                 contacts_processed=0,
                 birthdays_today=total_today,
                 birthdays_late=total_late,
+                messages_ignored=messages_ignored,
                 duration_seconds=time.time() - start_time,
             )
 
@@ -217,6 +226,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
             contacts_processed=self.stats["contacts_processed"],
             birthdays_today=total_today,
             birthdays_late=total_late,
+            messages_ignored=messages_ignored,
             duration_seconds=duration,
         )
 
@@ -293,6 +303,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         contacts_processed: int,
         birthdays_today: int,
         birthdays_late: int,
+        messages_ignored: int,
         duration_seconds: float,
     ) -> dict[str, Any]:
         """Construit le dictionnaire de résultats."""
@@ -303,6 +314,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
             "contacts_processed": contacts_processed,
             "birthdays_today": birthdays_today,
             "birthdays_late": birthdays_late,
+            "messages_ignored": messages_ignored,
             "errors": self.stats["errors"],
             "duration_seconds": round(duration_seconds, 2),
             "dry_run": self.config.dry_run,
