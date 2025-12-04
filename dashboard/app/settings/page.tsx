@@ -2,12 +2,13 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, Github, Bug } from "lucide-react"
+import { Download, Github, Bug, FileCode, Terminal, Bell, Webhook } from "lucide-react"
 import { downloadDebugReport } from "@/lib/api"
 import { useToast } from "@/components/ui/use-toast"
 import { Breadcrumbs } from "@/components/ui/breadcrumbs"
 import { useState } from "react"
 import { SettingsForm } from "@/components/settings/SettingsForm"
+import Link from "next/link"
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -93,6 +94,80 @@ export default function SettingsPage() {
                 </span>
               </div>
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Outils Avancés */}
+        <Card className="border-cyan-500/20 bg-cyan-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-cyan-500">
+              <Terminal className="h-5 w-5" />
+              Outils Avancés
+            </CardTitle>
+            <CardDescription>
+              Fonctionnalités avancées pour un contrôle total sans SSH.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/settings/config-editor" className="block">
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              >
+                <FileCode className="h-6 w-6 mb-1 text-cyan-500" />
+                <div className="text-center">
+                  <span className="font-semibold block">Éditeur Config</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Modifier config.yaml
+                  </span>
+                </div>
+              </Button>
+            </Link>
+
+            <Link href="/settings/terminal" className="block">
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              >
+                <Terminal className="h-6 w-6 mb-1 text-cyan-500" />
+                <div className="text-center">
+                  <span className="font-semibold block">Terminal Web</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Console d'urgence
+                  </span>
+                </div>
+              </Button>
+            </Link>
+
+            <Link href="/settings/notifications" className="block">
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              >
+                <Bell className="h-6 w-6 mb-1 text-cyan-500" />
+                <div className="text-center">
+                  <span className="font-semibold block">Notifications</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Alertes en temps réel
+                  </span>
+                </div>
+              </Button>
+            </Link>
+
+            <Link href="/settings/webhooks" className="block">
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              >
+                <Webhook className="h-6 w-6 mb-1 text-cyan-500" />
+                <div className="text-center">
+                  <span className="font-semibold block">Webhooks</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    Automatisation externe
+                  </span>
+                </div>
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
