@@ -103,6 +103,25 @@ async def close_browser_session():
 # ═══════════════════════════════════════════════════════════════════
 
 
+@router.get("/status")
+async def get_auth_status():
+    """
+    Checks the current authentication status.
+    """
+    auth_manager = AuthManager()
+    is_available = auth_manager.is_auth_available()
+    source = auth_manager.get_auth_source()
+
+    # We can also return if the session is currently active in memory
+    session_active = auth_session.get("page") is not None
+
+    return {
+        "authenticated": is_available,
+        "source": source,
+        "session_active": session_active,
+    }
+
+
 @router.post("/start")
 async def start_authentication(request: StartAuthRequest):
     """
