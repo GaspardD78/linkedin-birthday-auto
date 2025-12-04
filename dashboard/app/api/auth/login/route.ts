@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { signSession, DEFAULT_USER, DEFAULT_PASSWORD } from "@/lib/auth";
+import { signSession, DEFAULT_USER, DEFAULT_PASSWORD, validateCredentials } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate credentials are properly configured at runtime
+    validateCredentials();
+
     const body = await request.json();
     const { username, password } = body;
 
