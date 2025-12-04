@@ -38,6 +38,11 @@ services:
     - BOT_API_URL=${BOT_API_URL:-http://api:8000}
     - BOT_API_KEY=${BOT_API_KEY}
 
+      # Configuration Authentification Dashboard (REQUIS)
+    - JWT_SECRET=${JWT_SECRET}
+    - DASHBOARD_USER=${DASHBOARD_USER}
+    - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+
       # Configuration Puppeteer (si utilisé dans le dashboard)
     - HEADLESS=true
     - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu

@@ -33,6 +33,20 @@ export async function POST(request: NextRequest) {
       { status: 401 }
     );
   } catch (error) {
+    console.error("[Login Error]", error);
+    const errorMessage = error instanceof Error ? error.message : "Erreur serveur";
+
+    // Return more descriptive error for configuration issues
+    if (errorMessage.includes('JWT_SECRET') || errorMessage.includes('DASHBOARD_USER') || errorMessage.includes('DASHBOARD_PASSWORD')) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Configuration manquante. Veuillez configurer les variables d'environnement (JWT_SECRET, DASHBOARD_USER, DASHBOARD_PASSWORD)."
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { success: false, message: "Erreur serveur" },
       { status: 500 }
