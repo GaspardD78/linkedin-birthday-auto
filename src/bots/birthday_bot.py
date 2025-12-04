@@ -133,6 +133,7 @@ class BirthdayBot(BaseLinkedInBot):
                 contacts_processed=0,
                 birthdays_today=0,
                 birthdays_late_ignored=total_late,
+                messages_ignored=0,
                 duration_seconds=time.time() - start_time,
             )
 
@@ -146,6 +147,7 @@ class BirthdayBot(BaseLinkedInBot):
                 contacts_processed=0,
                 birthdays_today=total_today,
                 birthdays_late_ignored=total_late,
+                messages_ignored=total_today,  # Tous les anniversaires sont ignorés
                 duration_seconds=time.time() - start_time,
             )
 
@@ -153,6 +155,11 @@ class BirthdayBot(BaseLinkedInBot):
 
         # Traiter les anniversaires du jour
         contacts_to_process = birthdays["today"][:max_to_send]
+
+        # Comptabiliser les messages ignorés (contacts non traités à cause des limites)
+        messages_ignored = total_today - len(contacts_to_process)
+        if messages_ignored > 0:
+            logger.info(f"⚠️  {messages_ignored} birthdays ignored due to limits")
 
         for i, contact in enumerate(contacts_to_process):
             try:
@@ -199,6 +206,7 @@ class BirthdayBot(BaseLinkedInBot):
             contacts_processed=self.stats["contacts_processed"],
             birthdays_today=total_today,
             birthdays_late_ignored=total_late,
+            messages_ignored=messages_ignored,
             duration_seconds=duration,
         )
 
@@ -293,6 +301,7 @@ class BirthdayBot(BaseLinkedInBot):
         contacts_processed: int,
         birthdays_today: int,
         birthdays_late_ignored: int,
+        messages_ignored: int,
         duration_seconds: float,
     ) -> dict[str, Any]:
         """Construit le dictionnaire de résultats."""
@@ -303,6 +312,7 @@ class BirthdayBot(BaseLinkedInBot):
             "contacts_processed": contacts_processed,
             "birthdays_today": birthdays_today,
             "birthdays_late_ignored": birthdays_late_ignored,
+            "messages_ignored": messages_ignored,
             "errors": self.stats["errors"],
             "duration_seconds": round(duration_seconds, 2),
             "dry_run": self.config.dry_run,

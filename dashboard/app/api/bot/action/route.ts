@@ -22,9 +22,9 @@ export async function POST(request: Request) {
     let endpoint = '';
     let payload: any = {};
 
-    // Routage vers les endpoints spécifiques
+    // Routage vers les endpoints spécifiques (Architecture V2 - Routes /bot/*)
     if (action === 'start' && job_type === 'birthday') {
-      endpoint = '/start-birthday-bot';
+      endpoint = '/bot/start/birthday';
       payload = {
         dry_run: dry_run ?? true,
         process_late: process_late ?? false,
@@ -32,14 +32,13 @@ export async function POST(request: Request) {
       };
       console.log('🎂 [PROXY] Appel Birthday Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'start' && job_type === 'visit') {
-      endpoint = '/start-visitor-bot';
+      endpoint = '/bot/start/visitor';
       payload = {
         dry_run: dry_run ?? true,
         limit: limit ?? 10
       };
       console.log('🔍 [PROXY] Appel Visitor Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'stop') {
-      // Utiliser le endpoint granulaire /bot/stop au lieu de /stop
       endpoint = '/bot/stop';
       payload = {};
 

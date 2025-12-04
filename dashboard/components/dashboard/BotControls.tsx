@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import {
   getBotStatusDetailed,
   startBot,
@@ -17,13 +19,15 @@ import {
   Activity,
   Gift,
   Users,
-  Infinity as InfinityIcon
+  Infinity as InfinityIcon,
+  AlertTriangle
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
 export function BotControlsWidget() {
   const [status, setStatus] = useState<BotStatusDetailed | null>(null)
   const [loading, setLoading] = useState<string | null>(null) // 'birthday', 'visitor', 'stop-birthday', etc.
+  const [dryRun, setDryRun] = useState<boolean>(true) // Default to dry-run for safety
   const { toast } = useToast()
 
   const refreshStatus = async () => {
@@ -57,16 +61,22 @@ export function BotControlsWidget() {
         // Mode Standard: Respecte la configuration (process_today/late selon config)
         // Mais ici, le bouton s'appelle "Bot Anniversaires" (Jour uniquement selon description)
         // On force processLate: false pour être cohérent avec le bouton UI
-        await startBot({ dryRun: false, processLate: false })
+        await startBot({ dryRun, processLate: false })
       } else if (type === 'unlimited') {
         // Mode Unlimited: Force le traitement des retards
-        await startBot({ dryRun: false, processLate: true })
+        await startBot({ dryRun, processLate: true })
       } else if (type === 'visitor') {
         // Mode Visiteur: Utilise STRICTEMENT la configuration du fichier config.yaml
         // Pas de surcharge de limite ici.
-        await startVisitorBot({ dryRun: false })
+        await startVisitorBot({ dryRun })
       }
-      toast({ title: "Bot démarré", description: `Le bot ${type} a été lancé.` })
+
+      const mode = dryRun ? "test (dry-run)" : "production"
+      toast({
+        title: "Bot démarré",
+        description: `Le bot ${type} a été lancé en mode ${mode}.`,
+        variant: dryRun ? "default" : "default"
+      })
       await refreshStatus()
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erreur", description: error.message })
@@ -175,6 +185,46 @@ export function BotControlsWidget() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Dry Run Toggle */}
+        <div className="flex items-center justify-between p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className={`h-5 w-5 ${dryRun ? 'text-yellow-500' : 'text-slate-500'}`} />
+            <div>
+              <Label htmlFor="dry-run-switch" className="text-sm font-medium text-slate-200 cursor-pointer">
+                Mode Test (Dry Run)
+              </Label>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {dryRun
+                  ? "Aucune action réelle ne sera effectuée"
+                  : "⚠️ Les bots enverront de vrais messages"}
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="dry-run-switch"
+            checked={dryRun}
+            onCheckedChange={setDryRun}
+            className="data-[state=checked]:bg-yellow-500"
+          />
+        </div>
+
+        {/* Warning Banner when Dry Run is OFF */}
+        {!dryRun && (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-yellow-500 mb-1">
+                ⚠️ Mode Production Activé
+              </h4>
+              <p className="text-xs text-yellow-200/80">
+                Les bots vont effectuer de vraies actions (envoi de messages, visites de profils).
+                Assurez-vous que la configuration est correcte avant de lancer.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Bot Control Rows */}
         <BotRow
           type="birthday"
           title="Bot Anniversaires"

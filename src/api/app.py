@@ -74,28 +74,8 @@ class MetricsResponse(BaseModel):
     errors: dict[str, int]
 
 
-class TriggerRequest(BaseModel):
-    job_type: str = Field(..., description="Type de job: 'birthday' ou 'visit'")
-    bot_mode: str = "standard"
-    dry_run: bool = True
-    max_days_late: Optional[int] = 10
-
-
-class BirthdayConfig(BaseModel):
-    """Configuration pour le bot d'anniversaire."""
-
-    dry_run: bool = Field(default=True, description="Mode test sans envoi réel")
-    process_late: bool = Field(default=False, description="Traiter les anniversaires en retard")
-    max_days_late: Optional[int] = Field(
-        default=10, description="Nombre de jours maximum de retard"
-    )
-
-
-class VisitorConfig(BaseModel):
-    """Configuration pour le bot de visite de profils."""
-
-    dry_run: bool = Field(default=True, description="Mode test sans visite réelle")
-    limit: int = Field(default=10, description="Nombre de profils à visiter")
+# Bot configuration models moved to src/api/routes/bot_control.py
+# to avoid duplication and maintain single source of truth
 
 
 class ConfigUpdate(BaseModel):
@@ -479,182 +459,19 @@ async def get_contacts(limit: Optional[int] = None, sort: str = "messages", auth
         return {"contacts": []}
 
 
-@app.post("/trigger")
-async def trigger_job(request: TriggerRequest, authenticated: bool = Depends(verify_api_key)):
-    """Déclenche une tâche (Anniversaire ou Visite) via Redis Queue"""
-    if not job_queue:
-        raise HTTPException(status_code=503, detail="Redis Queue not available")
-
-    try:
-        if request.job_type == "birthday":
-            # FIX: Augmenter le timeout pour le mode unlimited (peut prendre 2-3h avec beaucoup de contacts)
-            timeout = "180m" if request.bot_mode == "unlimited" else "30m"
-            job = job_queue.enqueue(
-                "src.queue.tasks.run_bot_task",
-                bot_mode=request.bot_mode,
-                dry_run=request.dry_run,
-                max_days_late=request.max_days_late,
-                job_timeout=timeout,
-            )
-        elif request.job_type == "visit":
-            job = job_queue.enqueue(
-                "src.queue.tasks.run_profile_visit_task", dry_run=request.dry_run, job_timeout="45m"
-            )
-        else:
-            raise HTTPException(status_code=400, detail="Unknown job type")
-
-        logger.info(f"🚀 Job triggered: {job.id} ({request.job_type})")
-        return {"job_id": job.id, "status": "queued", "type": request.job_type}
-    except Exception as e:
-        logger.error(f"Failed to enqueue job: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {e!s}")
-
-
-@app.post("/start-birthday-bot", tags=["Bot"])
-async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depends(verify_api_key)):
-    """
-    Démarre le bot d'anniversaire avec la configuration fournie (via RQ).
-    """
-    if not job_queue:
-        raise HTTPException(status_code=503, detail="Redis Queue not available")
-
-    # Calculer max_days_late en fonction de process_late
-    max_days = config.max_days_late if config.process_late else 0
-
-    # Déterminer le mode en fonction de la configuration demandée
-    # Si on veut traiter les anniversaires en retard, il faut utiliser le mode "unlimited"
-    # car le mode "standard" ne traite que les anniversaires du jour.
-    bot_mode = "unlimited" if config.process_late else "standard"
-
-    # FIX: Augmenter le timeout pour le mode unlimited (peut prendre 2-3h avec beaucoup de contacts)
-    timeout = "180m" if bot_mode == "unlimited" else "30m"
-
-    try:
-        job = job_queue.enqueue(
-            "src.queue.tasks.run_bot_task",
-            bot_mode=bot_mode,
-            dry_run=config.dry_run,
-            max_days_late=max_days,
-            job_timeout=timeout,
-        )
-
-        logger.info(f"✅ [BIRTHDAY BOT] Job {job.id} queued successfully")
-
-        return {
-            "job_id": job.id,
-            "status": "queued",
-            "message": f"Bot d'anniversaire mis en file d'attente (id={job.id})",
-        }
-    except Exception as e:
-        logger.error(f"Failed to enqueue birthday bot: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
-
-
-@app.post("/start-visitor-bot", tags=["Bot"])
-async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends(verify_api_key)):
-    """
-    Démarre le bot de visite de profils avec la configuration fournie (via RQ).
-    """
-    if not job_queue:
-        raise HTTPException(status_code=503, detail="Redis Queue not available")
-
-    try:
-        job = job_queue.enqueue(
-            "src.queue.tasks.run_profile_visit_task",
-            dry_run=config.dry_run,
-            limit=config.limit,
-            job_timeout="45m",
-        )
-
-        logger.info(f"✅ [VISITOR BOT] Job {job.id} queued successfully")
-
-        return {
-            "job_id": job.id,
-            "status": "queued",
-            "message": f"Bot de visite mis en file d'attente (id={job.id})",
-        }
-    except Exception as e:
-        logger.error(f"Failed to enqueue visitor bot: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to start bot: {e!s}")
-
-
-@app.post("/stop", tags=["Bot"])
-async def stop_bot(authenticated: bool = Depends(verify_api_key)):
-    """
-    Arrête tous les bots actifs.
-
-    Annule les jobs en cours et vide la queue des jobs en attente.
-
-    Returns:
-        status: Statut de l'arrêt
-        message: Message de confirmation
-        cancelled_jobs: Nombre de jobs annulés
-        emptied_queue: Nombre de jobs supprimés de la queue
-    """
-    logger.info("🛑 [STOP] Requête d'arrêt d'urgence reçue")
-
-    if not job_queue or not redis_conn:
-        logger.error("❌ [STOP] Redis Queue non disponible")
-        raise HTTPException(status_code=503, detail="Redis Queue not available - cannot stop jobs")
-
-    try:
-        cancelled_count = 0
-        emptied_count = 0
-
-        # 1. Annuler tous les jobs actuellement en cours (started)
-        from rq.registry import StartedJobRegistry
-
-        started_registry = StartedJobRegistry("linkedin-bot", connection=redis_conn)
-        started_job_ids = started_registry.get_job_ids()
-
-        logger.info(f"📋 [STOP] Jobs en cours trouvés: {len(started_job_ids)}")
-
-        for job_id in started_job_ids:
-            try:
-                from rq.job import Job
-
-                job = Job.fetch(job_id, connection=redis_conn)
-                # Marquer le job comme annulé
-                job.cancel()
-                cancelled_count += 1
-                logger.info(f"   ✅ Job {job_id} annulé")
-            except Exception as e:
-                logger.warning(f"   ⚠️  Impossible d'annuler le job {job_id}: {e}", exc_info=True)
-
-        # 2. Vider la queue des jobs en attente (queued)
-        queued_job_ids = job_queue.job_ids
-        logger.info(f"📋 [STOP] Jobs en attente trouvés: {len(queued_job_ids)}")
-
-        for job_id in queued_job_ids:
-            try:
-                from rq.job import Job
-
-                job = Job.fetch(job_id, connection=redis_conn)
-                job.delete()
-                emptied_count += 1
-                logger.info(f"   🗑️  Job {job_id} supprimé de la queue")
-            except Exception as e:
-                logger.warning(f"   ⚠️  Impossible de supprimer le job {job_id}: {e}", exc_info=True)
-
-        # 3. Vider complètement la queue
-        job_queue.empty()
-
-        total_stopped = cancelled_count + emptied_count
-        logger.info(
-            f"✅ [STOP] Arrêt d'urgence terminé: {cancelled_count} jobs annulés, {emptied_count} jobs supprimés"
-        )
-
-        return {
-            "status": "success",
-            "message": f"Arrêt d'urgence effectué avec succès ({total_stopped} jobs arrêtés)",
-            "cancelled_jobs": cancelled_count,
-            "emptied_queue": emptied_count,
-            "total_stopped": total_stopped,
-        }
-
-    except Exception as e:
-        logger.error(f"❌ [STOP] Erreur lors de l'arrêt: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'arrêt d'urgence: {e!s}")
+# ═══════════════════════════════════════════════════════════════════
+# DEPRECATED ROUTES - Removed in favor of /bot/* routes (bot_control.py)
+# ═══════════════════════════════════════════════════════════════════
+# Legacy routes /trigger, /start-birthday-bot, /start-visitor-bot, /stop
+# have been removed to avoid duplication with the new granular bot control
+# endpoints in src/api/routes/bot_control.py
+#
+# Dashboard now uses:
+# - POST /bot/start/birthday (instead of /start-birthday-bot)
+# - POST /bot/start/visitor (instead of /start-visitor-bot)
+# - POST /bot/stop (instead of /stop)
+# - GET /bot/status (for detailed status)
+# ═══════════════════════════════════════════════════════════════════
 
 
 @app.get("/jobs/{job_id}", tags=["Bot"])
