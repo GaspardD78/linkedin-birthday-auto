@@ -239,6 +239,11 @@ services:
     - BOT_API_URL=http://api:8000
     - BOT_API_KEY=${API_KEY:-internal_secret_key}
 
+      # Configuration Authentification Dashboard (REQUIS)
+    - JWT_SECRET=${JWT_SECRET}
+    - DASHBOARD_USER=${DASHBOARD_USER}
+    - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+
       # Nom du service pour séparer les logs
     - SERVICE_NAME=dashboard
     volumes:
