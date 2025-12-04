@@ -104,7 +104,7 @@ export function SystemStatusHero() {
 
   // Calculate global status
   const getGlobalStatus = () => {
-    if (!systemHealth) return { status: 'loading', color: 'slate', text: 'Chargement...', icon: Server }
+    if (!systemHealth) return { status: 'loading', text: 'Chargement...', icon: Server }
 
     const cpuCritical = systemHealth.cpu_usage > 80
     const ramCritical = (systemHealth.memory_usage.used / systemHealth.memory_usage.total) > 0.9
@@ -112,25 +112,68 @@ export function SystemStatusHero() {
     const cookiesInvalid = !cookiesStatus.valid
 
     if (cpuCritical || ramCritical || workerError) {
-      return { status: 'unhealthy', color: 'red', text: 'Alerte Système', icon: AlertCircle }
+      return { status: 'unhealthy', text: 'Alerte Système', icon: AlertCircle }
     }
 
     if (cookiesInvalid) {
-      return { status: 'degraded', color: 'amber', text: 'Système Dégradé', icon: AlertCircle }
+      return { status: 'degraded', text: 'Système Dégradé', icon: AlertCircle }
     }
 
     if (workerStatus.status === 'actif') {
-      return { status: 'healthy', color: 'emerald', text: 'Système Opérationnel', icon: CheckCircle2 }
+      return { status: 'healthy', text: 'Système Opérationnel', icon: CheckCircle2 }
     }
 
     if (workerStatus.status === 'en attente' && workerStatus.pending_tasks > 0) {
-      return { status: 'waiting', color: 'blue', text: 'Tâches en Attente', icon: Clock }
+      return { status: 'waiting', text: 'Tâches en Attente', icon: Clock }
     }
 
-    return { status: 'idle', color: 'slate', text: 'Système en Veille', icon: Activity }
+    return { status: 'idle', text: 'Système en Veille', icon: Activity }
   }
 
   const globalStatus = getGlobalStatus()
+
+  // Mapping des classes Tailwind basé sur le status
+  const getStatusClasses = () => {
+    switch (globalStatus.status) {
+      case 'healthy':
+        return {
+          bg: 'bg-emerald-500/20',
+          border: 'border-emerald-500/50',
+          text: 'text-emerald-500',
+          pulse: true
+        }
+      case 'unhealthy':
+        return {
+          bg: 'bg-red-500/20',
+          border: 'border-red-500/50',
+          text: 'text-red-500',
+          pulse: true
+        }
+      case 'degraded':
+        return {
+          bg: 'bg-amber-500/20',
+          border: 'border-amber-500/50',
+          text: 'text-amber-500',
+          pulse: false
+        }
+      case 'waiting':
+        return {
+          bg: 'bg-blue-500/20',
+          border: 'border-blue-500/50',
+          text: 'text-blue-500',
+          pulse: false
+        }
+      default:
+        return {
+          bg: 'bg-slate-500/20',
+          border: 'border-slate-500/50',
+          text: 'text-slate-500',
+          pulse: false
+        }
+    }
+  }
+
+  const statusClasses = getStatusClasses()
   const memoryUsedGB = systemHealth ? systemHealth.memory_usage.used / (1024 ** 3) : 0
   const memoryTotalGB = systemHealth ? systemHealth.memory_usage.total / (1024 ** 3) : 0
   const memoryPercent = systemHealth ? (memoryUsedGB / memoryTotalGB) * 100 : 0
@@ -143,8 +186,8 @@ export function SystemStatusHero() {
         <div className="flex items-center justify-between mb-8">
           {/* Status Badge & Title */}
           <div className="flex items-center gap-4">
-            <div className={`relative h-16 w-16 rounded-full bg-${globalStatus.color}-500/20 border-2 border-${globalStatus.color}-500/50 flex items-center justify-center`}>
-              <globalStatus.icon className={`h-8 w-8 text-${globalStatus.color}-500 ${globalStatus.status === 'healthy' || globalStatus.status === 'unhealthy' ? 'animate-pulse' : ''}`} />
+            <div className={`relative h-16 w-16 rounded-full ${statusClasses.bg} border-2 ${statusClasses.border} flex items-center justify-center`}>
+              <globalStatus.icon className={`h-8 w-8 ${statusClasses.text} ${statusClasses.pulse ? 'animate-pulse' : ''}`} />
               {globalStatus.status === 'healthy' && (
                 <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-emerald-500 border-2 border-slate-900 animate-pulse" />
               )}

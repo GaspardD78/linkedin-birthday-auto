@@ -10,10 +10,37 @@ interface KPICard {
   value: string
   subtitle: string
   icon: React.ElementType
-  color: string
+  colorKey: 'blue' | 'emerald' | 'purple' | 'cyan'
   trend?: {
     value: string
     positive: boolean
+  }
+}
+
+const colorClasses = {
+  blue: {
+    accent: 'bg-gradient-to-r from-blue-500 to-blue-600',
+    iconBg: 'bg-blue-500/10',
+    iconBorder: 'border-blue-500/20',
+    iconColor: 'text-blue-400'
+  },
+  emerald: {
+    accent: 'bg-gradient-to-r from-emerald-500 to-emerald-600',
+    iconBg: 'bg-emerald-500/10',
+    iconBorder: 'border-emerald-500/20',
+    iconColor: 'text-emerald-400'
+  },
+  purple: {
+    accent: 'bg-gradient-to-r from-purple-500 to-purple-600',
+    iconBg: 'bg-purple-500/10',
+    iconBorder: 'border-purple-500/20',
+    iconColor: 'text-purple-400'
+  },
+  cyan: {
+    accent: 'bg-gradient-to-r from-cyan-500 to-cyan-600',
+    iconBg: 'bg-cyan-500/10',
+    iconBorder: 'border-cyan-500/20',
+    iconColor: 'text-cyan-400'
   }
 }
 
@@ -128,7 +155,7 @@ export function KPICards() {
       value: stats.wishes_sent_total.toString(),
       subtitle: `+${stats.wishes_sent_today} aujourd'hui`,
       icon: Mail,
-      color: "blue",
+      colorKey: "blue",
       trend: stats.wishes_sent_today > 0 ? {
         value: `+${stats.wishes_sent_today}`,
         positive: true
@@ -139,7 +166,7 @@ export function KPICards() {
       value: stats.profiles_visited_total.toString(),
       subtitle: `+${stats.profiles_visited_today} aujourd'hui`,
       icon: Eye,
-      color: "emerald",
+      colorKey: "emerald",
       trend: stats.profiles_visited_today > 0 ? {
         value: `+${stats.profiles_visited_today}`,
         positive: true
@@ -150,7 +177,7 @@ export function KPICards() {
       value: weeklyMessages.toString(),
       subtitle: "Messages envoyés (7j)",
       icon: Calendar,
-      color: "purple",
+      colorKey: "purple",
       trend: weeklyMessages > 0 ? {
         value: `${weeklyMessages} msg`,
         positive: true
@@ -161,34 +188,36 @@ export function KPICards() {
       value: uniqueContacts.toString(),
       subtitle: "Base de données",
       icon: Users,
-      color: "cyan",
+      colorKey: "cyan",
     }
   ]
 
   return (
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-      {kpiCards.map((kpi, index) => (
-        <Card
-          key={index}
-          className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-300 hover:shadow-lg overflow-hidden group"
-        >
-          <CardContent className="p-6 relative">
+      {kpiCards.map((kpi, index) => {
+        const colors = colorClasses[kpi.colorKey]
+        return (
+          <Card
+            key={index}
+            className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-300 hover:shadow-lg overflow-hidden group"
+          >
+            <CardContent className="p-6 relative">
 
-            {/* Gradient Accent Line */}
-            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-${kpi.color}-500 to-${kpi.color}-600`} />
+              {/* Gradient Accent Line */}
+              <div className={`absolute top-0 left-0 right-0 h-1 ${colors.accent}`} />
 
-            {/* Icon Background Decoration */}
-            <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity`}>
-              <kpi.icon className="h-32 w-32" />
-            </div>
+              {/* Icon Background Decoration */}
+              <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity`}>
+                <kpi.icon className="h-32 w-32" />
+              </div>
 
-            {/* Content */}
-            <div className="relative z-10">
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-2 rounded-lg bg-${kpi.color}-500/10 border border-${kpi.color}-500/20`}>
-                  <kpi.icon className={`h-5 w-5 text-${kpi.color}-400`} />
-                </div>
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`p-2 rounded-lg ${colors.iconBg} border ${colors.iconBorder}`}>
+                    <kpi.icon className={`h-5 w-5 ${colors.iconColor}`} />
+                  </div>
                 {kpi.trend && (
                   <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${kpi.trend.positive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                     <TrendingUp className={`h-3 w-3 ${!kpi.trend.positive && 'rotate-180'}`} />
@@ -214,7 +243,8 @@ export function KPICards() {
             </div>
           </CardContent>
         </Card>
-      ))}
+        )
+      })}
 
       {/* Error Card (5th card) */}
       <Card
