@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+import aiofiles
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
@@ -552,9 +553,11 @@ async def get_recent_logs(
         for file_path in files_to_read:
             try:
                 # Utiliser deque pour lire efficacement les dernières lignes sans tout charger en mémoire
-                # On lit un peu plus que la limite pour avoir de la marge lors du merge
-                with open(file_path, encoding="utf-8") as f:
-                    last_lines = deque(f, maxlen=limit)
+                # Lecture asynchrone avec aiofiles pour ne pas bloquer l'event loop
+                async with aiofiles.open(file_path, encoding="utf-8") as f:
+                    last_lines = deque(maxlen=limit)
+                    async for line in f:
+                        last_lines.append(line)
 
                     prefix = f"[{Path(file_path).stem}] " if len(files_to_read) > 1 else ""
                     all_lines.extend([f"{prefix}{line.strip()}" for line in last_lines])
@@ -583,19 +586,22 @@ async def get_recent_logs(
 
 @app.get("/config/yaml")
 async def get_yaml_config(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier config.yaml"""
+    """Lit le fichier config.yaml (async I/O)"""
     if not CONFIG_PATH.exists():
         raise HTTPException(404, "Config file not found")
-    return {"content": CONFIG_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(CONFIG_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/yaml")
 async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour config.yaml"""
+    """Met à jour config.yaml (async I/O)"""
     try:
         # Vérifier que c'est du YAML valide
         yaml.safe_load(config.content)
-        CONFIG_PATH.write_text(config.content, encoding="utf-8")
+        async with aiofiles.open(CONFIG_PATH, 'w', encoding="utf-8") as f:
+            await f.write(config.content)
         return {"status": "updated"}
     except Exception as e:
         raise HTTPException(400, f"Invalid YAML: {e!s}")
@@ -603,31 +609,37 @@ async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends
 
 @app.get("/config/messages")
 async def get_messages(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier messages.txt"""
+    """Lit le fichier messages.txt (async I/O)"""
     if not MESSAGES_PATH.exists():
         return {"content": ""}
-    return {"content": MESSAGES_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(MESSAGES_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/messages")
 async def update_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour messages.txt"""
-    MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    """Met à jour messages.txt (async I/O)"""
+    async with aiofiles.open(MESSAGES_PATH, 'w', encoding="utf-8") as f:
+        await f.write(config.content)
     return {"status": "updated"}
 
 
 @app.get("/config/late-messages")
 async def get_late_messages(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier late_messages.txt"""
+    """Lit le fichier late_messages.txt (async I/O)"""
     if not LATE_MESSAGES_PATH.exists():
         return {"content": ""}
-    return {"content": LATE_MESSAGES_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(LATE_MESSAGES_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/late-messages")
 async def update_late_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour late_messages.txt"""
-    LATE_MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    """Met à jour late_messages.txt (async I/O)"""
+    async with aiofiles.open(LATE_MESSAGES_PATH, 'w', encoding="utf-8") as f:
+        await f.write(config.content)
     return {"status": "updated"}
 
 

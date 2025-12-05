@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 import subprocess
 import os
+import re
+from types import MappingProxyType
 from src.api.security import verify_api_key
 from src.utils.logging import get_logger
 
@@ -10,13 +12,16 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/automation", tags=["Automation Control"])
 
-# Liste des services systemd gérés
-MANAGED_SERVICES = {
+# Liste des services systemd gérés (immuable pour sécurité)
+MANAGED_SERVICES = MappingProxyType({
     "monitor": "linkedin-bot-monitor.timer",
     "backup": "linkedin-bot-backup.timer",
     "cleanup": "linkedin-bot-cleanup.timer",
     "main": "linkedin-bot.service"
-}
+})
+
+# Pattern de validation pour les noms de services (sécurité)
+SAFE_SERVICE_PATTERN = re.compile(r'^[a-z0-9\-\.]+\.(?:service|timer)$')
 
 # Models
 class ServiceStatus(BaseModel):
@@ -92,9 +97,14 @@ def get_service_status(service_name: str) -> Dict:
 
 def execute_service_action(service_name: str, action: str) -> bool:
     """Execute a systemd action on a service."""
-    valid_actions = ["start", "stop", "enable", "disable", "restart"]
+    # Validation stricte de l'action (whitelist)
+    valid_actions = {"start", "stop", "enable", "disable", "restart"}
     if action not in valid_actions:
         raise ValueError(f"Invalid action: {action}")
+
+    # Validation stricte du service name (protection contre injection)
+    if not SAFE_SERVICE_PATTERN.match(service_name):
+        raise ValueError(f"Invalid service name pattern: {service_name}")
 
     try:
         # Try without sudo first (works in Docker with privileged mode)

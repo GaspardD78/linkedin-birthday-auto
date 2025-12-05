@@ -30,3 +30,4 @@ structlog==23.2.0
 uvicorn[standard]==0.27.0
 aiosmtplib==3.0.1
 email-validator==2.1.0
+aiofiles==23.2.1

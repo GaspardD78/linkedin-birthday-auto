@@ -153,28 +153,63 @@ class BrowserManager:
             raise BrowserInitError(f"Failed to initialize browser: {e}")
 
     def close(self) -> None:
-        """Ferme toutes les ressources du navigateur."""
+        """
+        Ferme TOUTES les ressources du navigateur avec garantie de nettoyage.
+
+        Ordre important pour éviter les fuites mémoire :
+        1. Pages individuelles
+        2. Contexte browser
+        3. Browser
+        4. Playwright
+
+        Note: Utilise finally pour garantir le nettoyage même en cas d'erreur.
+        """
         logger.info("Closing browser resources...")
+        errors = []
+
+        # Étape 1: Fermer toutes les pages du contexte
+        if self.context:
+            try:
+                for page in self.context.pages:
+                    try:
+                        page.close()
+                    except Exception as e:
+                        errors.append(f"Page close: {e}")
+            except Exception as e:
+                errors.append(f"Pages enumeration: {e}")
+
+        # Étape 2: Fermer le contexte
         if self.context:
             try:
                 self.context.close()
             except Exception as e:
-                logger.debug(f"Error closing context: {e}", exc_info=True)
-            self.context = None
+                errors.append(f"Context close: {e}")
+            finally:
+                self.context = None
 
+        # Étape 3: Fermer le browser
         if self.browser:
             try:
                 self.browser.close()
             except Exception as e:
-                logger.debug(f"Error closing browser: {e}", exc_info=True)
-            self.browser = None
+                errors.append(f"Browser close: {e}")
+            finally:
+                self.browser = None
 
+        # Étape 4: Arrêter Playwright
         if self.playwright:
             try:
                 self.playwright.stop()
             except Exception as e:
-                logger.debug(f"Error stopping playwright: {e}", exc_info=True)
-            self.playwright = None
+                errors.append(f"Playwright stop: {e}")
+            finally:
+                self.playwright = None
+
+        # Logger les erreurs APRÈS le nettoyage complet
+        if errors:
+            logger.error(f"Cleanup errors (resources freed anyway): {', '.join(errors)}")
+        else:
+            logger.info("Browser resources closed successfully")
 
     def take_screenshot(self, name: str) -> None:
         """Prend une capture d'écran de la page active."""
