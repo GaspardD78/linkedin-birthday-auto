@@ -21,14 +21,9 @@ const nextConfig = {
     // Optimisations possibles pour build plus léger
     optimizePackageImports: ['lucide-react', 'recharts'],
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.BOT_API_URL || 'http://api:8000'}/:path*`,
-      },
-    ]
-  },
+  // REMOVED: Rewrite rule that was bypassing route handlers and their authentication
+  // All API proxying is now handled by dedicated route handlers in app/api/*
+  // which properly inject API keys for backend communication
 };
 
 module.exports = nextConfig;
