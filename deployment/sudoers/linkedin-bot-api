@@ -1,0 +1,40 @@
+# Sudoers configuration for LinkedIn Bot API
+# This allows the API to control systemd services without password
+# Install this file with: sudo visudo -c -f /etc/sudoers.d/linkedin-bot-api
+
+# Allow the current user to manage LinkedIn Bot systemd services
+%docker ALL=(root) NOPASSWD: /bin/systemctl start linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl stop linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl restart linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl enable linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl disable linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-active linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-enabled linkedin-bot.service
+%docker ALL=(root) NOPASSWD: /bin/systemctl status linkedin-bot.service
+
+%docker ALL=(root) NOPASSWD: /bin/systemctl start linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl stop linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl restart linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl enable linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl disable linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-active linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-enabled linkedin-bot-monitor.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl status linkedin-bot-monitor.timer
+
+%docker ALL=(root) NOPASSWD: /bin/systemctl start linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl stop linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl restart linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl enable linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl disable linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-active linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-enabled linkedin-bot-backup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl status linkedin-bot-backup.timer
+
+%docker ALL=(root) NOPASSWD: /bin/systemctl start linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl stop linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl restart linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl enable linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl disable linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-active linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl is-enabled linkedin-bot-cleanup.timer
+%docker ALL=(root) NOPASSWD: /bin/systemctl status linkedin-bot-cleanup.timer

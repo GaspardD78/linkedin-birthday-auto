@@ -365,7 +365,20 @@ else
 fi
 
 # =========================================================================
-# 8. Résumé Final
+# 8. Installation Configuration Sudoers pour l'API
+# =========================================================================
+print_header "8. Configuration Sudoers pour le Contrôle API"
+
+print_info "Installation de la configuration sudoers..."
+if [ -f "scripts/install_sudoers.sh" ]; then
+    bash scripts/install_sudoers.sh
+    print_success "Configuration sudoers installée"
+else
+    print_warning "Script install_sudoers.sh non trouvé, ignoré"
+fi
+
+# =========================================================================
+# 9. Résumé Final
 # =========================================================================
 print_header "✅ Installation Terminée"
 
@@ -382,6 +395,7 @@ cat << EOF
   • /etc/systemd/system/linkedin-bot-monitor.{service,timer}
   • /etc/systemd/system/linkedin-bot-backup.{service,timer}
   • /etc/systemd/system/linkedin-bot-cleanup.{service,timer}
+  • /etc/sudoers.d/linkedin-bot-api
   • $PROJECT_DIR/scripts/monitor_pi4_health.sh
   • $PROJECT_DIR/scripts/backup_database.sh
 

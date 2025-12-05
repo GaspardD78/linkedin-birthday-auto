@@ -5,6 +5,8 @@ import { ActivityMonitor } from "@/components/dashboard/ActivityMonitor"
 import { WeeklyLimitWidget } from "@/components/dashboard/WeeklyLimitWidget"
 import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
 import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
+import { AutomationServicesControl } from "@/components/dashboard/AutomationServicesControl"
+import { WorkerManagementPanel } from "@/components/dashboard/WorkerManagementPanel"
 
 export default function DashboardPage() {
   return (
@@ -23,6 +25,12 @@ export default function DashboardPage() {
 
         {/* Hero Section - System Status */}
         <SystemStatusHero />
+
+        {/* Automation Controls - Full Width */}
+        <AutomationServicesControl />
+
+        {/* Worker Management - Full Width */}
+        <WorkerManagementPanel />
 
         {/* Main Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

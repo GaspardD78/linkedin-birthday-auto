@@ -245,3 +245,45 @@ export async function getSystemHealth(): Promise<SystemHealth> {
         auth_available: authAvailable
     };
 }
+
+// Automation control
+export interface ServiceStatus {
+  name: string
+  display_name: string
+  active: boolean
+  enabled: boolean
+  status: string
+  description: string
+}
+
+export interface ServicesStatusResponse {
+  services: ServiceStatus[]
+  is_systemd_available: boolean
+}
+
+export async function getAutomationServicesStatus(): Promise<ServicesStatusResponse> {
+  return get('/api/automation/services/status')
+}
+
+export async function executeServiceAction(service: string, action: string) {
+  return post('/api/automation/services/action', { service, action })
+}
+
+// Worker management
+export interface WorkerInfo {
+  name: string
+  state: string
+  current_job: string | null
+  successful_jobs: number
+  failed_jobs: number
+  total_working_time: number
+}
+
+export interface WorkersStatusResponse {
+  workers: WorkerInfo[]
+  total_workers: number
+}
+
+export async function getWorkersStatus(): Promise<WorkersStatusResponse> {
+  return get('/api/automation/workers/status')
+}
