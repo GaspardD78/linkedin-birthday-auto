@@ -1,0 +1,26 @@
+# Docker Compose Override pour le développement local
+# Usage: docker compose -f docker-compose.pi4-standalone.yml -f docker-compose.dev.yml up -d
+#
+# Cette configuration monte le code source pour un développement rapide
+# sans reconstruire les images à chaque modification
+
+services:
+  api:
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./main.py:/app/main.py:ro
+    environment:
+      # Enable hot reload for development
+      - LOG_LEVEL=DEBUG
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+  bot-worker:
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./main.py:/app/main.py:ro
+    environment:
+      - LOG_LEVEL=DEBUG
