@@ -21,6 +21,68 @@ from ..utils.exceptions import AuthenticationError, InvalidAuthStateError
 logger = logging.getLogger(__name__)
 
 
+def normalize_same_site(value) -> str:
+    """
+    Normalizes sameSite cookie attribute to Playwright format.
+
+    Playwright expects exactly one of: "Strict", "Lax", or "None".
+    This function handles various formats from different cookie sources.
+
+    Args:
+        value: The sameSite value (can be string, None, or other types)
+
+    Returns:
+        One of "Strict", "Lax", or "None" (Playwright format)
+    """
+    if not value or not isinstance(value, str):
+        return "Lax"
+
+    # Normalize to lowercase for comparison
+    value_lower = value.strip().lower()
+
+    # Map common variations to Playwright format
+    if value_lower in ("strict", "Strict"):
+        return "Strict"
+    elif value_lower in ("lax", "Lax"):
+        return "Lax"
+    elif value_lower in ("none", "None", "no_restriction", "unspecified"):
+        return "None"
+    else:
+        # Default to Lax for any unrecognized value
+        logger.warning(f"Unknown sameSite value '{value}', defaulting to 'Lax'")
+        return "Lax"
+
+
+def sanitize_cookies(cookies: list) -> list:
+    """
+    Sanitizes a list of cookies to ensure compatibility with Playwright.
+
+    This function normalizes the sameSite attribute to one of the values
+    expected by Playwright: "Strict", "Lax", or "None".
+
+    Args:
+        cookies: List of cookie dictionaries
+
+    Returns:
+        List of sanitized cookies
+    """
+    sanitized = []
+    for cookie in cookies:
+        # Make a copy to avoid modifying the original
+        cookie_copy = cookie.copy()
+
+        # Normalize sameSite value
+        if "sameSite" in cookie_copy:
+            cookie_copy["sameSite"] = normalize_same_site(cookie_copy["sameSite"])
+        else:
+            # Add default sameSite if missing
+            cookie_copy["sameSite"] = "Lax"
+
+        sanitized.append(cookie_copy)
+
+    return sanitized
+
+
 class AuthManager:
     """
     Gestionnaire d'authentification LinkedIn.
@@ -243,17 +305,17 @@ class AuthManager:
 
     def _clean_expired_cookies(self, auth_data: dict) -> dict:
         """
-        Nettoie les cookies expirés d'un auth state.
+        Nettoie les cookies expirés d'un auth state et sanitize les cookies valides.
 
         Args:
             auth_data: Données d'authentification avec cookies
 
         Returns:
-            Nouveau dict avec seulement les cookies valides
+            Nouveau dict avec seulement les cookies valides et sanitisés
 
         Note:
             Les cookies expirés peuvent causer des problèmes d'authentification.
-            Cette méthode les filtre pour garantir une session propre.
+            Cette méthode les filtre et sanitize les cookies pour garantir une session propre.
         """
         if "cookies" not in auth_data or not isinstance(auth_data["cookies"], list):
             return auth_data
@@ -286,9 +348,12 @@ class AuthManager:
                 f"({len(valid_cookies)}/{original_count} cookies remaining)"
             )
 
-        # Créer un nouveau dict avec les cookies nettoyés
+        # Sanitize cookies to ensure sameSite compatibility
+        sanitized_cookies = sanitize_cookies(valid_cookies)
+
+        # Créer un nouveau dict avec les cookies nettoyés et sanitisés
         cleaned_data = auth_data.copy()
-        cleaned_data["cookies"] = valid_cookies
+        cleaned_data["cookies"] = sanitized_cookies
 
         return cleaned_data
 
@@ -581,12 +646,14 @@ class AuthManager:
             output_path: The file path to save to. Defaults to the configured path.
 
         Note:
-            Expired cookies are automatically cleaned before saving.
+            Cookies are sanitized and expired cookies are automatically cleaned before saving.
         """
         if output_path is None:
             output_path = self.config.auth_file_path
 
-        auth_data = {"cookies": cookies}
+        # Sanitize cookies to ensure sameSite compatibility
+        sanitized_cookies = sanitize_cookies(cookies)
+        auth_data = {"cookies": sanitized_cookies}
         # save_new_auth_state() appellera _clean_expired_cookies() automatiquement
         self.save_new_auth_state(auth_data, output_path)
 
@@ -597,12 +664,16 @@ class AuthManager:
         Args:
             context: The Playwright BrowserContext.
             output_path: The file path to save to.
+
+        Note:
+            Cookies are automatically sanitized to ensure sameSite compatibility.
         """
         if not context:
             raise ValueError("Playwright context cannot be None.")
 
         logger.info("Extracting cookies from browser context...")
         cookies = await context.cookies()
+        # save_cookies() will sanitize the cookies
         self.save_cookies(cookies, output_path)
         logger.info(f"Successfully saved {len(cookies)} cookies.")
 

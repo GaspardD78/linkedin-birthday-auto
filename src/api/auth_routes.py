@@ -66,6 +66,46 @@ class Verify2FARequest(BaseModel):
 # ═══════════════════════════════════════════════════════════════════
 
 
+def normalize_same_site(value: Any) -> str:
+    """
+    Normalizes sameSite cookie attribute to Playwright format.
+
+    Playwright expects exactly one of: "Strict", "Lax", or "None".
+    This function handles various formats from different cookie sources.
+
+    Args:
+        value: The sameSite value (can be string, None, or other types)
+
+    Returns:
+        One of "Strict", "Lax", or "None" (Playwright format)
+
+    Examples:
+        >>> normalize_same_site("lax")
+        "Lax"
+        >>> normalize_same_site("no_restriction")
+        "None"
+        >>> normalize_same_site("")
+        "Lax"
+    """
+    if not value or not isinstance(value, str):
+        return "Lax"
+
+    # Normalize to lowercase for comparison
+    value_lower = value.strip().lower()
+
+    # Map common variations to Playwright format
+    if value_lower in ("strict", "Strict"):
+        return "Strict"
+    elif value_lower in ("lax", "Lax"):
+        return "Lax"
+    elif value_lower in ("none", "None", "no_restriction", "unspecified"):
+        return "None"
+    else:
+        # Default to Lax for any unrecognized value
+        logger.warning(f"Unknown sameSite value '{value}', defaulting to 'Lax'")
+        return "Lax"
+
+
 def convert_editthiscookie_to_playwright(cookies: list) -> list:
     """
     Converts cookies from EditThisCookie format to Playwright format.
@@ -82,6 +122,10 @@ def convert_editthiscookie_to_playwright(cookies: list) -> list:
     playwright_cookies = []
 
     for cookie in cookies:
+        # Normalize sameSite value to Playwright format (Strict|Lax|None)
+        same_site_raw = cookie.get("sameSite", "Lax")
+        same_site = normalize_same_site(same_site_raw)
+
         playwright_cookie = {
             "name": cookie.get("name", ""),
             "value": cookie.get("value", ""),
@@ -89,7 +133,7 @@ def convert_editthiscookie_to_playwright(cookies: list) -> list:
             "path": cookie.get("path", "/"),
             "secure": cookie.get("secure", False),
             "httpOnly": cookie.get("httpOnly", False),
-            "sameSite": cookie.get("sameSite", "Lax"),
+            "sameSite": same_site,
         }
 
         # Convert expirationDate to expires (Unix timestamp)
