@@ -1,3 +1,4 @@
+import "server-only"; // Garantit que ce code ne s'exécute JAMAIS côté client
 import { SignJWT, jwtVerify } from "jose";
 
 // Lazy initialization to avoid failing during Next.js build time
@@ -31,8 +32,18 @@ export async function verifySession(token: string) {
   }
 }
 
-// Default credentials - Lazy evaluation to avoid build-time failures
-function getCredentials() {
+/**
+ * Valide les credentials utilisateur de façon sécurisée (server-only).
+ *
+ * ⚠️ SÉCURITÉ: Ne jamais exposer DEFAULT_USER/DEFAULT_PASSWORD en exports !
+ * Cette fonction est la SEULE API pour vérifier les credentials.
+ *
+ * @param username - Nom d'utilisateur fourni
+ * @param password - Mot de passe fourni
+ * @returns true si les credentials sont valides, false sinon
+ * @throws Error si les variables d'environnement ne sont pas configurées
+ */
+export function validateUserCredentials(username: string, password: string): boolean {
   const DEFAULT_USER = process.env.DASHBOARD_USER;
   const DEFAULT_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
@@ -40,14 +51,6 @@ function getCredentials() {
     throw new Error('❌ [SECURITY] DASHBOARD_USER and DASHBOARD_PASSWORD environment variables are required but not set! Please configure them in your .env file.');
   }
 
-  return { DEFAULT_USER, DEFAULT_PASSWORD };
-}
-
-// Export constants with fallback for build time, but actual validation happens at runtime
-export const DEFAULT_USER = process.env.DASHBOARD_USER || '';
-export const DEFAULT_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
-
-// Runtime validation helper
-export function validateCredentials() {
-  getCredentials(); // This will throw if credentials are missing
+  // Validation avec comparaison stricte
+  return username === DEFAULT_USER && password === DEFAULT_PASSWORD;
 }
