@@ -329,9 +329,9 @@ EOF
         echo ""
 
         SMTP_USER=$(ask_input "Email d'envoi (votre adresse email)")
-        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe d'application: ${NC})" SMTP_PASSWORD
+        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe application: ${NC})" SMTP_PASSWORD
         echo ""
-        SMTP_FROM_EMAIL=$(ask_input "Adresse email d'envoi (généralement la même)" "$SMTP_USER")
+        SMTP_FROM_EMAIL=$(ask_input "Adresse email d envoi (generalement la meme)" "$SMTP_USER")
 
         # Mettre à jour le .env avec les paramètres SMTP
         if grep -q "^SMTP_HOST=" .env; then
@@ -653,9 +653,9 @@ if [ "$MODE" != "quick" ]; then
         echo ""
 
         SMTP_USER=$(ask_input "Email d'envoi (votre adresse email)")
-        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe d'application: ${NC})" SMTP_PASSWORD
+        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe application: ${NC})" SMTP_PASSWORD
         echo ""
-        SMTP_FROM_EMAIL=$(ask_input "Adresse email d'envoi (généralement la même)" "$SMTP_USER")
+        SMTP_FROM_EMAIL=$(ask_input "Adresse email d envoi (generalement la meme)" "$SMTP_USER")
 
         # Mettre à jour le .env avec les paramètres SMTP
         if grep -q "^SMTP_HOST=" .env; then
