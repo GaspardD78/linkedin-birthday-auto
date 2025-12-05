@@ -108,6 +108,8 @@ services:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+    # Enable privileged mode to allow systemctl commands
+    privileged: true
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
@@ -128,6 +130,10 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - shared-data:/app/data
+    # Mount systemd and D-Bus to allow systemctl commands from container
+    - /run/systemd:/run/systemd:ro
+    - /var/run/dbus:/var/run/dbus:ro
+    - /bin/systemctl:/bin/systemctl:ro
     deploy:
       resources:
         limits:

@@ -1,0 +1,252 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional
+import subprocess
+import os
+from src.api.security import verify_api_key
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter(prefix="/automation", tags=["Automation Control"])
+
+# Liste des services systemd gérés
+MANAGED_SERVICES = {
+    "monitor": "linkedin-bot-monitor.timer",
+    "backup": "linkedin-bot-backup.timer",
+    "cleanup": "linkedin-bot-cleanup.timer",
+    "main": "linkedin-bot.service"
+}
+
+# Models
+class ServiceStatus(BaseModel):
+    name: str
+    display_name: str
+    active: bool
+    enabled: bool
+    status: str
+    description: str
+
+class ServicesStatusResponse(BaseModel):
+    services: List[ServiceStatus]
+    is_systemd_available: bool
+
+class ServiceActionRequest(BaseModel):
+    service: str = Field(..., description="Service key (monitor, backup, cleanup, main)")
+    action: str = Field(..., description="Action to perform (start, stop, enable, disable)")
+
+# Helper functions
+def is_systemd_available() -> bool:
+    """Check if systemd is available on the system."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--version"],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def get_service_status(service_name: str) -> Dict:
+    """Get the status of a systemd service/timer."""
+    try:
+        # Check if service is active
+        active_result = subprocess.run(
+            ["systemctl", "is-active", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_active = active_result.stdout.strip() == "active"
+
+        # Check if service is enabled
+        enabled_result = subprocess.run(
+            ["systemctl", "is-enabled", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        is_enabled = enabled_result.stdout.strip() == "enabled"
+
+        # Get detailed status
+        status_result = subprocess.run(
+            ["systemctl", "status", service_name],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        status_text = status_result.stdout.strip()
+
+        return {
+            "active": is_active,
+            "enabled": is_enabled,
+            "status": status_text[:200] if status_text else "N/A"  # Limit status text
+        }
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Timeout checking status for {service_name}")
+        return {"active": False, "enabled": False, "status": "Timeout"}
+    except Exception as e:
+        logger.error(f"Error getting status for {service_name}: {e}", exc_info=True)
+        return {"active": False, "enabled": False, "status": f"Error: {str(e)}"}
+
+def execute_service_action(service_name: str, action: str) -> bool:
+    """Execute a systemd action on a service."""
+    valid_actions = ["start", "stop", "enable", "disable", "restart"]
+    if action not in valid_actions:
+        raise ValueError(f"Invalid action: {action}")
+
+    try:
+        # Try without sudo first (works in Docker with privileged mode)
+        # If that fails, try with sudo (works on host with sudoers config)
+        commands = [
+            ["systemctl", action, service_name],
+            ["sudo", "systemctl", action, service_name]
+        ]
+
+        for cmd in commands:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+
+                if result.returncode == 0:
+                    logger.info(f"Successfully executed {action} on {service_name} using: {' '.join(cmd)}")
+                    return True
+                else:
+                    logger.debug(f"Command {' '.join(cmd)} failed: {result.stderr}")
+            except FileNotFoundError:
+                # Command not found, try next one
+                continue
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Timeout executing {' '.join(cmd)}")
+                continue
+
+        logger.error(f"Failed to {action} {service_name} with all attempted commands")
+        return False
+    except Exception as e:
+        logger.error(f"Error executing {action} on {service_name}: {e}", exc_info=True)
+        return False
+
+# API Routes
+@router.get("/services/status", response_model=ServicesStatusResponse)
+async def get_services_status(authenticated: bool = Depends(verify_api_key)):
+    """Get status of all managed automation services."""
+    systemd_available = is_systemd_available()
+
+    if not systemd_available:
+        logger.warning("Systemd is not available on this system")
+        return ServicesStatusResponse(
+            services=[],
+            is_systemd_available=False
+        )
+
+    services = []
+
+    # Service descriptions
+    descriptions = {
+        "monitor": "Surveillance système toutes les heures",
+        "backup": "Sauvegarde quotidienne à 3h00",
+        "cleanup": "Nettoyage hebdomadaire le dimanche à 2h00",
+        "main": "Service principal LinkedIn Bot"
+    }
+
+    display_names = {
+        "monitor": "Monitoring",
+        "backup": "Backup",
+        "cleanup": "Cleanup",
+        "main": "Bot Principal"
+    }
+
+    for key, service_name in MANAGED_SERVICES.items():
+        status = get_service_status(service_name)
+        services.append(ServiceStatus(
+            name=key,
+            display_name=display_names.get(key, key),
+            active=status["active"],
+            enabled=status["enabled"],
+            status=status["status"],
+            description=descriptions.get(key, "")
+        ))
+
+    return ServicesStatusResponse(
+        services=services,
+        is_systemd_available=True
+    )
+
+@router.post("/services/action")
+async def execute_service_action_endpoint(
+    request: ServiceActionRequest,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Execute an action on a systemd service."""
+    if not is_systemd_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Systemd is not available on this system"
+        )
+
+    if request.service not in MANAGED_SERVICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service: {request.service}. Valid services: {list(MANAGED_SERVICES.keys())}"
+        )
+
+    service_name = MANAGED_SERVICES[request.service]
+
+    try:
+        success = execute_service_action(service_name, request.action)
+
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to {request.action} {service_name}"
+            )
+
+        return {
+            "status": "success",
+            "message": f"Successfully executed {request.action} on {request.service}",
+            "service": request.service,
+            "action": request.action
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in service action: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/workers/status")
+async def get_workers_status(authenticated: bool = Depends(verify_api_key)):
+    """Get status of RQ workers."""
+    try:
+        # Import Redis connection from bot_control
+        from src.api.routes.bot_control import redis_conn
+
+        if not redis_conn:
+            raise HTTPException(status_code=503, detail="Redis not available")
+
+        # Get worker information from RQ
+        from rq import Worker
+        workers = Worker.all(connection=redis_conn)
+
+        worker_info = []
+        for worker in workers:
+            worker_info.append({
+                "name": worker.name,
+                "state": worker.get_state(),
+                "current_job": worker.get_current_job_id(),
+                "successful_jobs": worker.successful_job_count,
+                "failed_jobs": worker.failed_job_count,
+                "total_working_time": worker.total_working_time
+            })
+
+        return {
+            "workers": worker_info,
+            "total_workers": len(workers)
+        }
+    except Exception as e:
+        logger.error(f"Error getting workers status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

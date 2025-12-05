@@ -28,7 +28,7 @@ from ..monitoring.tracing import instrument_app, setup_tracing
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 from . import auth_routes  # Import the new auth router
-from .routes import deployment, bot_control, debug_routes  # Import the deployment router
+from .routes import deployment, bot_control, debug_routes, automation_control  # Import the deployment router
 from .security import verify_api_key
 
 logger = get_logger(__name__)
@@ -239,6 +239,9 @@ app.include_router(deployment.router)
 
 # Include the bot control router (Granular Control)
 app.include_router(bot_control.router)
+
+# Include the automation control router
+app.include_router(automation_control.router)
 
 # Include the debug router
 app.include_router(debug_routes.router)
