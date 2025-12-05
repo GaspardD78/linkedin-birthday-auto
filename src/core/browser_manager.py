@@ -113,11 +113,19 @@ class BrowserManager:
             # Load auth state if provided
             if auth_state_path:
                 try:
-                    # Validate JSON first
+                    # Load and sanitize auth state
                     with open(auth_state_path, "r") as f:
-                        json.load(f)
-                    context_options["storage_state"] = auth_state_path
-                    logger.info(f"Loaded auth state from: {auth_state_path}")
+                        auth_state = json.load(f)
+
+                    # Sanitize cookies to ensure sameSite compatibility
+                    if "cookies" in auth_state and isinstance(auth_state["cookies"], list):
+                        from ..core.auth_manager import sanitize_cookies
+                        auth_state["cookies"] = sanitize_cookies(auth_state["cookies"])
+                        logger.debug(f"Sanitized {len(auth_state['cookies'])} cookies for Playwright compatibility")
+
+                    # Pass sanitized auth state as a dict instead of file path
+                    context_options["storage_state"] = auth_state
+                    logger.info(f"Loaded and sanitized auth state from: {auth_state_path}")
                 except (FileNotFoundError, json.JSONDecodeError) as e:
                     logger.warning(f"Could not load auth state (starting fresh): {e}")
 
