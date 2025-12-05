@@ -238,6 +238,26 @@ class PathsConfig(BaseModel):
     data_dir: str = Field(default="data", description="Dossier pour les données")
 
 
+class NotificationConfig(BaseModel):
+    """Configuration des notifications par email."""
+
+    model_config = ConfigDict(frozen=False)
+
+    enabled: bool = Field(default=False, description="Activer les notifications par email")
+    smtp_host: Optional[str] = Field(default=None, description="Hôte SMTP (ex: smtp.gmail.com)")
+    smtp_port: int = Field(default=587, ge=1, le=65535, description="Port SMTP (587 pour TLS)")
+    smtp_user: Optional[str] = Field(default=None, description="Nom d'utilisateur SMTP")
+    smtp_password: Optional[str] = Field(default=None, description="Mot de passe SMTP")
+    smtp_use_tls: bool = Field(default=True, description="Utiliser TLS/STARTTLS")
+    from_email: Optional[str] = Field(default=None, description="Adresse email d'envoi")
+    to_email: Optional[str] = Field(default=None, description="Adresse email de destination")
+    notify_on_error: bool = Field(default=True, description="Notifier en cas d'erreur critique")
+    notify_on_success: bool = Field(default=False, description="Notifier après chaque exécution réussie")
+    notify_on_bot_start: bool = Field(default=False, description="Notifier au démarrage du bot")
+    notify_on_bot_stop: bool = Field(default=False, description="Notifier à l'arrêt du bot")
+    notify_on_cookies_expiry: bool = Field(default=True, description="Notifier quand les cookies expirent")
+
+
 class VisitorLimitsConfig(BaseModel):
     """Configuration des limites pour la visite de profils."""
 
@@ -346,6 +366,7 @@ class LinkedInBotConfig(BaseModel):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
 
     def get_daily_window_seconds(self) -> int:
         """Calcule la fenêtre quotidienne en secondes."""
