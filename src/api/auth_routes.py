@@ -66,6 +66,44 @@ class Verify2FARequest(BaseModel):
 # ═══════════════════════════════════════════════════════════════════
 
 
+def convert_editthiscookie_to_playwright(cookies: list) -> list:
+    """
+    Converts cookies from EditThisCookie format to Playwright format.
+
+    EditThisCookie uses 'expirationDate' while Playwright uses 'expires'.
+    Also removes fields not needed by Playwright like 'storeId', 'id', 'hostOnly'.
+
+    Args:
+        cookies: List of cookies in EditThisCookie format
+
+    Returns:
+        List of cookies in Playwright format
+    """
+    playwright_cookies = []
+
+    for cookie in cookies:
+        playwright_cookie = {
+            "name": cookie.get("name", ""),
+            "value": cookie.get("value", ""),
+            "domain": cookie.get("domain", ""),
+            "path": cookie.get("path", "/"),
+            "secure": cookie.get("secure", False),
+            "httpOnly": cookie.get("httpOnly", False),
+            "sameSite": cookie.get("sameSite", "Lax"),
+        }
+
+        # Convert expirationDate to expires (Unix timestamp)
+        if "expirationDate" in cookie and cookie["expirationDate"]:
+            playwright_cookie["expires"] = int(cookie["expirationDate"])
+        elif "expires" in cookie and cookie["expires"]:
+            playwright_cookie["expires"] = int(cookie["expires"])
+        # If no expiration, it's a session cookie (no 'expires' field)
+
+        playwright_cookies.append(playwright_cookie)
+
+    return playwright_cookies
+
+
 async def close_browser_session():
     """Safely closes any active Playwright browser session."""
     logger.info("Closing browser session.")
@@ -442,17 +480,30 @@ async def upload_auth_file(file: UploadFile = File(...)):
         content = await file.read()
         # The content might be inside a "cookies" key or be the list itself
         parsed_json = json.loads(content)
-        cookies = parsed_json.get("cookies", parsed_json)
 
-        if not isinstance(cookies, list):
+        # Handle both formats: list of cookies or object with "cookies" key
+        if isinstance(parsed_json, list):
+            cookies = parsed_json
+        elif isinstance(parsed_json, dict):
+            cookies = parsed_json.get("cookies", [])
+        else:
             raise ValueError(
                 "JSON content must be a list of cookies or an object with a 'cookies' key."
             )
 
+        if not isinstance(cookies, list) or len(cookies) == 0:
+            raise ValueError(
+                "JSON content must contain a non-empty list of cookies."
+            )
+
+        # Convert EditThisCookie format to Playwright format if needed
+        playwright_cookies = convert_editthiscookie_to_playwright(cookies)
+        logger.info(f"Converted {len(cookies)} cookies to Playwright format")
+
         auth_manager = AuthManager()
         # Save to writable /app/data directory instead of read-only mounted file
         writable_auth_path = "/app/data/auth_state.json"
-        auth_manager.save_cookies(cookies, output_path=writable_auth_path)
+        auth_manager.save_cookies(playwright_cookies, output_path=writable_auth_path)
         logger.info(f"Successfully saved cookies from uploaded file to: {writable_auth_path}")
         return {"status": "success", "filename": file.filename, "saved_to": writable_auth_path}
     except json.JSONDecodeError:
