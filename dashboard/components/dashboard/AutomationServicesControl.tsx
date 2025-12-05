@@ -93,7 +93,7 @@ export function AutomationServicesControl() {
     )
   }
 
-  if (!status.is_systemd_available) {
+  if (!status.is_systemd_available && status.services.length === 0) {
     return (
       <Card className="w-full bg-slate-900 border-slate-800">
         <CardHeader>
@@ -103,15 +103,15 @@ export function AutomationServicesControl() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
-            <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+            <AlertTriangle className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-semibold text-amber-400 mb-1">
-                Systemd non disponible
+              <h4 className="text-sm font-semibold text-blue-300 mb-1">
+                Mode Docker détecté
               </h4>
-              <p className="text-xs text-amber-200/80">
-                Les services d'automatisation nécessitent systemd.
-                Ce système n'est probablement pas un Raspberry Pi ou Linux avec systemd.
+              <p className="text-xs text-blue-200/80">
+                Les services d'automatisation sont gérés par RQ Workers dans Docker.
+                Aucun worker actif n'a été détecté. Vérifiez que le service worker est démarré.
               </p>
             </div>
           </div>
@@ -121,6 +121,11 @@ export function AutomationServicesControl() {
   }
 
   const getServiceIcon = (name: string) => {
+    // RQ Worker services (Docker mode)
+    if (name.startsWith("rq_worker")) return Server
+    if (name === "rq_queue") return Clock
+
+    // Systemd services (Raspberry Pi mode)
     switch (name) {
       case "monitor":
         return Clock
@@ -136,6 +141,11 @@ export function AutomationServicesControl() {
   }
 
   const getServiceColor = (name: string) => {
+    // RQ Worker services (Docker mode)
+    if (name.startsWith("rq_worker")) return "green"
+    if (name === "rq_queue") return "blue"
+
+    // Systemd services (Raspberry Pi mode)
     switch (name) {
       case "monitor":
         return "purple"
@@ -231,75 +241,89 @@ export function AutomationServicesControl() {
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            {service.active ? (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => handleServiceAction(service.name, "stop")}
-                disabled={loading === stopKey}
-                className="text-xs"
-              >
-                {loading === stopKey ? (
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <PowerOff className="h-3 w-3 mr-1" />
-                )}
-                Arrêter
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => handleServiceAction(service.name, "start")}
-                disabled={loading === startKey}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700"
-              >
-                {loading === startKey ? (
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Power className="h-3 w-3 mr-1" />
-                )}
-                Démarrer
-              </Button>
-            )}
+          {/* Only show control buttons for systemd services, not for RQ workers in Docker */}
+          {!service.name.startsWith("rq_") ? (
+            <div className="grid grid-cols-2 gap-2">
+              {service.active ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleServiceAction(service.name, "stop")}
+                  disabled={loading === stopKey}
+                  className="text-xs"
+                >
+                  {loading === stopKey ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <PowerOff className="h-3 w-3 mr-1" />
+                  )}
+                  Arrêter
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleServiceAction(service.name, "start")}
+                  disabled={loading === startKey}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {loading === startKey ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Power className="h-3 w-3 mr-1" />
+                  )}
+                  Démarrer
+                </Button>
+              )}
 
-            {service.enabled ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleServiceAction(service.name, "disable")}
-                disabled={loading === disableKey}
-                className="text-xs border-slate-700"
-              >
-                {loading === disableKey ? (
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <XCircle className="h-3 w-3 mr-1" />
-                )}
-                Désactiver
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleServiceAction(service.name, "enable")}
-                disabled={loading === enableKey}
-                className="text-xs border-slate-700"
-              >
-                {loading === enableKey ? (
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                )}
-                Activer
-              </Button>
-            )}
-          </div>
+              {service.enabled ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleServiceAction(service.name, "disable")}
+                  disabled={loading === disableKey}
+                  className="text-xs border-slate-700"
+                >
+                  {loading === disableKey ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <XCircle className="h-3 w-3 mr-1" />
+                  )}
+                  Désactiver
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleServiceAction(service.name, "enable")}
+                  disabled={loading === enableKey}
+                  className="text-xs border-slate-700"
+                >
+                  {loading === enableKey ? (
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                  )}
+                  Activer
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400 text-center py-2">
+              Géré par Docker Compose
+            </div>
+          )}
         </CardContent>
       </Card>
     )
   }
+
+  // Determine mode-specific display text
+  const isDockerMode = !status.is_systemd_available
+  const title = isDockerMode ? "Workers d'Automatisation (Docker)" : "Services d'Automatisation"
+  const description = isDockerMode
+    ? "Workers RQ pour tâches asynchrones (birthday messages, profile visits)"
+    : "Gestion des services systemd (monitoring, backup, cleanup)"
 
   return (
     <Card className="w-full bg-slate-900 border-slate-800">
@@ -308,10 +332,10 @@ export function AutomationServicesControl() {
           <div>
             <CardTitle className="flex items-center gap-2 text-slate-200">
               <Server className="h-5 w-5 text-purple-500" />
-              Services d'Automatisation
+              {title}
             </CardTitle>
             <CardDescription className="mt-1">
-              Gestion des services systemd (monitoring, backup, cleanup)
+              {description}
             </CardDescription>
           </div>
           <Button
