@@ -293,6 +293,41 @@ class Database:
             """
             )
 
+            # Table notification_settings
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email_enabled BOOLEAN DEFAULT 0,
+                    email_address TEXT,
+                    notify_on_error BOOLEAN DEFAULT 1,
+                    notify_on_success BOOLEAN DEFAULT 0,
+                    notify_on_bot_start BOOLEAN DEFAULT 0,
+                    notify_on_bot_stop BOOLEAN DEFAULT 0,
+                    notify_on_cookies_expiry BOOLEAN DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """
+            )
+
+            # Table notification_logs
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notification_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    recipient_email TEXT,
+                    subject TEXT,
+                    body TEXT,
+                    status TEXT NOT NULL,
+                    sent_at TEXT,
+                    error_message TEXT,
+                    created_at TEXT NOT NULL
+                )
+            """
+            )
+
             # Index pour améliorer les performances
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)"
@@ -315,6 +350,12 @@ class Database:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_scraped_at ON scraped_profiles(scraped_at)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notification_logs_event_type ON notification_logs(event_type)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notification_logs_created_at ON notification_logs(created_at)"
             )
 
             # Initialiser les sélecteurs par défaut

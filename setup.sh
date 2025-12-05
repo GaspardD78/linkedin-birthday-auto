@@ -52,14 +52,16 @@ OPTIONS:
 
 DESCRIPTION:
   Ce script orchestre l'installation complète du LinkedIn Birthday Bot
-  de manière interactive et optimisée pour Raspberry Pi 4.
+  de manière interactive et optimisé pour Raspberry Pi 4.
 
   Il guide l'utilisateur à travers:
   1. La détection de l'environnement
   2. L'installation des prérequis (Docker, Compose)
   3. La configuration de l'authentification LinkedIn
-  4. Le déploiement des services
-  5. La configuration de l'automatisation (sur Pi4)
+  4. La configuration des paramètres de base (mode, limites)
+  5. La configuration des notifications par email (SMTP)
+  6. Le déploiement des services
+  7. La configuration de l'automatisation (sur Pi4)
 
 EOF
             exit 0
@@ -300,6 +302,82 @@ EOF
     fi
 
     print_success "Configuration .env mise à jour !"
+
+    # Configuration des notifications par email
+    echo ""
+    if ask_yes_no "Voulez-vous configurer les notifications par email (SMTP) ?" "n"; then
+        echo ""
+        print_info "${BOLD}Configuration des notifications par email${NC}"
+        echo ""
+        print_info "Les notifications par email permettent de recevoir des alertes :"
+        echo "  • Erreurs critiques du bot"
+        echo "  • Exécutions réussies"
+        echo "  • Démarrage/Arrêt du bot"
+        echo "  • Expiration des cookies LinkedIn"
+        echo ""
+
+        SMTP_HOST=$(ask_input "Hôte SMTP (ex: smtp.gmail.com)" "smtp.gmail.com")
+        SMTP_PORT=$(ask_input "Port SMTP (587 pour TLS, 465 pour SSL)" "587")
+        SMTP_USE_TLS=$(ask_input "Utiliser TLS/STARTTLS ? (true/false)" "true")
+
+        echo ""
+        print_info "Pour Gmail, vous devez créer un mot de passe d'application :"
+        print_info "  1. Activez la validation en 2 étapes sur votre compte Google"
+        print_info "  2. Allez dans : Compte Google > Sécurité > Mots de passe des applications"
+        print_info "  3. Générez un nouveau mot de passe d'application"
+        print_info "  URL: ${CYAN}https://support.google.com/accounts/answer/185833${NC}"
+        echo ""
+
+        SMTP_USER=$(ask_input "Email d'envoi (votre adresse email)")
+        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe d'application: ${NC})" SMTP_PASSWORD
+        echo ""
+        SMTP_FROM_EMAIL=$(ask_input "Adresse email d'envoi (généralement la même)" "$SMTP_USER")
+
+        # Mettre à jour le .env avec les paramètres SMTP
+        if grep -q "^SMTP_HOST=" .env; then
+            sed -i "s|^SMTP_HOST=.*|SMTP_HOST=$SMTP_HOST|" .env
+        else
+            echo "SMTP_HOST=$SMTP_HOST" >> .env
+        fi
+
+        if grep -q "^SMTP_PORT=" .env; then
+            sed -i "s|^SMTP_PORT=.*|SMTP_PORT=$SMTP_PORT|" .env
+        else
+            echo "SMTP_PORT=$SMTP_PORT" >> .env
+        fi
+
+        if grep -q "^SMTP_USE_TLS=" .env; then
+            sed -i "s|^SMTP_USE_TLS=.*|SMTP_USE_TLS=$SMTP_USE_TLS|" .env
+        else
+            echo "SMTP_USE_TLS=$SMTP_USE_TLS" >> .env
+        fi
+
+        if grep -q "^SMTP_USER=" .env; then
+            sed -i "s|^SMTP_USER=.*|SMTP_USER=$SMTP_USER|" .env
+        else
+            echo "SMTP_USER=$SMTP_USER" >> .env
+        fi
+
+        if grep -q "^SMTP_PASSWORD=" .env; then
+            sed -i "s|^SMTP_PASSWORD=.*|SMTP_PASSWORD=$SMTP_PASSWORD|" .env
+        else
+            echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> .env
+        fi
+
+        if grep -q "^SMTP_FROM_EMAIL=" .env; then
+            sed -i "s|^SMTP_FROM_EMAIL=.*|SMTP_FROM_EMAIL=$SMTP_FROM_EMAIL|" .env
+        else
+            echo "SMTP_FROM_EMAIL=$SMTP_FROM_EMAIL" >> .env
+        fi
+
+        print_success "Configuration SMTP ajoutée au fichier .env"
+        print_info "Vous pourrez activer/désactiver les notifications depuis le dashboard"
+        print_info "Section : Paramètres → Notifications"
+    else
+        print_info "Configuration SMTP ignorée"
+        print_info "Vous pourrez la configurer plus tard en éditant .env"
+    fi
+
     echo ""
     print_info "Fichier .env configuré : $SCRIPT_DIR/.env"
     print_info "Vous pouvez l'éditer manuellement pour des options avancées : nano .env"
@@ -548,6 +626,81 @@ if [ "$MODE" != "quick" ]; then
 
         print_success "Configuration .env mise à jour"
     fi
+
+    # Configuration des notifications par email
+    echo ""
+    if ask_yes_no "Voulez-vous configurer les notifications par email (SMTP) ?" "n"; then
+        echo ""
+        print_info "${BOLD}Configuration des notifications par email${NC}"
+        echo ""
+        print_info "Les notifications par email permettent de recevoir des alertes :"
+        echo "  • Erreurs critiques du bot"
+        echo "  • Exécutions réussies"
+        echo "  • Démarrage/Arrêt du bot"
+        echo "  • Expiration des cookies LinkedIn"
+        echo ""
+
+        SMTP_HOST=$(ask_input "Hôte SMTP (ex: smtp.gmail.com)" "smtp.gmail.com")
+        SMTP_PORT=$(ask_input "Port SMTP (587 pour TLS, 465 pour SSL)" "587")
+        SMTP_USE_TLS=$(ask_input "Utiliser TLS/STARTTLS ? (true/false)" "true")
+
+        echo ""
+        print_info "Pour Gmail, vous devez créer un mot de passe d'application :"
+        print_info "  1. Activez la validation en 2 étapes sur votre compte Google"
+        print_info "  2. Allez dans : Compte Google > Sécurité > Mots de passe des applications"
+        print_info "  3. Générez un nouveau mot de passe d'application"
+        print_info "  URL: ${CYAN}https://support.google.com/accounts/answer/185833${NC}"
+        echo ""
+
+        SMTP_USER=$(ask_input "Email d'envoi (votre adresse email)")
+        read -sp "$(echo -e ${CYAN}❓ Mot de passe SMTP ou mot de passe d'application: ${NC})" SMTP_PASSWORD
+        echo ""
+        SMTP_FROM_EMAIL=$(ask_input "Adresse email d'envoi (généralement la même)" "$SMTP_USER")
+
+        # Mettre à jour le .env avec les paramètres SMTP
+        if grep -q "^SMTP_HOST=" .env; then
+            sed -i "s|^SMTP_HOST=.*|SMTP_HOST=$SMTP_HOST|" .env
+        else
+            echo "SMTP_HOST=$SMTP_HOST" >> .env
+        fi
+
+        if grep -q "^SMTP_PORT=" .env; then
+            sed -i "s|^SMTP_PORT=.*|SMTP_PORT=$SMTP_PORT|" .env
+        else
+            echo "SMTP_PORT=$SMTP_PORT" >> .env
+        fi
+
+        if grep -q "^SMTP_USE_TLS=" .env; then
+            sed -i "s|^SMTP_USE_TLS=.*|SMTP_USE_TLS=$SMTP_USE_TLS|" .env
+        else
+            echo "SMTP_USE_TLS=$SMTP_USE_TLS" >> .env
+        fi
+
+        if grep -q "^SMTP_USER=" .env; then
+            sed -i "s|^SMTP_USER=.*|SMTP_USER=$SMTP_USER|" .env
+        else
+            echo "SMTP_USER=$SMTP_USER" >> .env
+        fi
+
+        if grep -q "^SMTP_PASSWORD=" .env; then
+            sed -i "s|^SMTP_PASSWORD=.*|SMTP_PASSWORD=$SMTP_PASSWORD|" .env
+        else
+            echo "SMTP_PASSWORD=$SMTP_PASSWORD" >> .env
+        fi
+
+        if grep -q "^SMTP_FROM_EMAIL=" .env; then
+            sed -i "s|^SMTP_FROM_EMAIL=.*|SMTP_FROM_EMAIL=$SMTP_FROM_EMAIL|" .env
+        else
+            echo "SMTP_FROM_EMAIL=$SMTP_FROM_EMAIL" >> .env
+        fi
+
+        print_success "Configuration SMTP ajoutée au fichier .env"
+        print_info "Vous pourrez activer/désactiver les notifications depuis le dashboard"
+        print_info "Section : Paramètres → Notifications"
+    else
+        print_info "Configuration SMTP ignorée"
+        print_info "Vous pourrez la configurer plus tard en éditant .env"
+    fi
 fi
 
 # =========================================================================
@@ -705,6 +858,18 @@ echo -e "${BOLD}📁 Fichiers de configuration :${NC}"
 echo -e "  • Configuration : ${CYAN}.env${NC}"
 echo -e "  • Authentification : ${CYAN}auth_state.json${NC}"
 echo -e "  • Config avancée : ${CYAN}config/config.yaml${NC}"
+echo -e "  • Messages : ${CYAN}/app/data/messages.txt${NC}"
+echo ""
+
+echo -e "${BOLD}🔔 Notifications :${NC}"
+if grep -q "^SMTP_HOST=" .env 2>/dev/null && [ "$(grep "^SMTP_HOST=" .env | cut -d'=' -f2)" != "smtp.gmail.com" ]; then
+    echo -e "  ${GREEN}✅ SMTP configuré${NC}"
+    echo -e "  • Activez les notifications dans : ${CYAN}Dashboard > Paramètres > Notifications${NC}"
+else
+    echo -e "  ${YELLOW}⚠️  SMTP non configuré${NC}"
+    echo -e "  • Pour activer les notifications, éditez ${CYAN}.env${NC} et ajoutez les paramètres SMTP"
+    echo -e "  • Consultez : ${CYAN}.env.pi4.example${NC} pour voir les variables requises"
+fi
 echo ""
 
 echo -e "${BOLD}🔧 Commandes utiles :${NC}"

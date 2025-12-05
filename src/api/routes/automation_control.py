@@ -138,12 +138,72 @@ async def get_services_status(authenticated: bool = Depends(verify_api_key)):
     systemd_available = is_systemd_available()
 
     if not systemd_available:
-        logger.warning("Systemd is not available on this system")
-        return ServicesStatusResponse(
-            services=[],
-            is_systemd_available=False
-        )
+        logger.info("Systemd is not available - using Docker/RQ worker mode")
+        # In Docker mode, return RQ worker status as "services"
+        try:
+            from src.api.routes.bot_control import redis_conn
+            from rq import Worker, Queue
 
+            if not redis_conn:
+                return ServicesStatusResponse(
+                    services=[],
+                    is_systemd_available=False
+                )
+
+            # Get RQ workers status
+            workers = Worker.all(connection=redis_conn)
+            queue = Queue("linkedin-bot", connection=redis_conn)
+
+            services = []
+
+            # Create a virtual "service" for RQ workers
+            if workers:
+                for idx, worker in enumerate(workers):
+                    worker_state = worker.get_state()
+                    is_active = worker_state in ["busy", "idle"]
+                    current_job = worker.get_current_job()
+
+                    # Format job ID safely
+                    job_info = "idle"
+                    if current_job:
+                        try:
+                            job_info = current_job.id[:8] if hasattr(current_job, 'id') else "processing"
+                        except Exception:
+                            job_info = "processing"
+
+                    services.append(ServiceStatus(
+                        name=f"rq_worker_{idx}",
+                        display_name=f"Worker RQ {idx + 1}",
+                        active=is_active,
+                        enabled=True,  # Workers are always "enabled" in Docker
+                        status=f"{worker_state} - Jobs: ✓{worker.successful_job_count} ✗{worker.failed_job_count}",
+                        description=f"Worker RQ pour tâches asynchrones ({job_info})"
+                    ))
+
+            # Add queue status as a service
+            queued_jobs = queue.count
+            services.append(ServiceStatus(
+                name="rq_queue",
+                display_name="File d'attente",
+                active=True,
+                enabled=True,
+                status=f"{queued_jobs} job(s) en attente",
+                description="File d'attente Redis pour les tâches LinkedIn"
+            ))
+
+            return ServicesStatusResponse(
+                services=services,
+                is_systemd_available=False  # Indicate Docker mode
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting RQ workers status: {e}", exc_info=True)
+            return ServicesStatusResponse(
+                services=[],
+                is_systemd_available=False
+            )
+
+    # Systemd mode (Raspberry Pi)
     services = []
 
     # Service descriptions
