@@ -91,16 +91,25 @@ class Database:
 
         # Optimisations Performance & Concurrence
         try:
+            # 🚀 OPTIMISATIONS RASPBERRY PI 4
             # WAL (Write-Ahead Logging) permet lecture et écriture simultanées
             conn.execute("PRAGMA journal_mode=WAL")
             # Synchronous NORMAL est safe avec WAL et plus rapide
             conn.execute("PRAGMA synchronous=NORMAL")
             # Timeout de busy handler (attente de verrou)
             conn.execute("PRAGMA busy_timeout=60000")
-            # Cache size (-10000 pages = ~40MB si pages de 4KB)
-            conn.execute("PRAGMA cache_size=-10000")
+            # Cache size RÉDUIT: 20MB au lieu de 40MB (optimisé Pi4)
+            conn.execute("PRAGMA cache_size=-5000")  # -5000 pages = ~20MB
             # Foreign keys enforce
             conn.execute("PRAGMA foreign_keys=ON")
+            # Tables temporaires en RAM
+            conn.execute("PRAGMA temp_store=MEMORY")
+            # Memory-mapped I/O 256MB (accélère lectures)
+            conn.execute("PRAGMA mmap_size=268435456")
+            # Checkpoint tous les 1000 pages
+            conn.execute("PRAGMA wal_autocheckpoint=1000")
+            # Limite WAL à 4MB
+            conn.execute("PRAGMA journal_size_limit=4194304")
         except Exception as e:
             logger.warning(f"Failed to set PRAGMA optimizations: {e}", exc_info=True)
 

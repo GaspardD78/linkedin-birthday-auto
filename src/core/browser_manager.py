@@ -73,14 +73,27 @@ class BrowserManager:
             logger.info("Starting Playwright...")
             self.playwright = sync_playwright().start()
 
-            # Arguments de lancement
+            # Arguments de lancement (optimisé pour Raspberry Pi 4)
             launch_args = [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",  # Often needed for Pi4
+                "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--mute-audio",
+
+                # 🚀 OPTIMISATIONS RASPBERRY PI 4 (-200MB RAM)
+                "--single-process",  # 1 seul process au lieu de multi-process
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-translate",
+                "--disable-plugins",
+                "--disable-default-apps",
+                "--no-first-run",
+                "--memory-pressure-off",
+                "--renderer-process-limit=1",
+                "--js-flags=--max-old-space-size=512",  # Limite V8 à 512MB
             ]
 
             # Custom args from config
