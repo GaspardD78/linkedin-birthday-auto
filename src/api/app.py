@@ -30,7 +30,7 @@ from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
 from . import auth_routes  # Import the new auth router
-from .routes import deployment, bot_control, debug_routes, automation_control, notifications  # Import the routers
+from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes  # Import the routers
 from .security import verify_api_key
 
 logger = get_logger(__name__)
@@ -139,12 +139,30 @@ async def lifespan(app: FastAPI):
 
     setup_tracing(service_name="linkedin-bot-api")
 
+    # Start automation scheduler
+    try:
+        from src.scheduler.scheduler import AutomationScheduler
+        scheduler = AutomationScheduler()
+        scheduler.start()
+        logger.info("automation_scheduler_started")
+    except Exception as e:
+        logger.error(f"Failed to start automation scheduler: {e}", exc_info=True)
+
     logger.info("api_started", mode=config.bot_mode, dry_run=config.dry_run)
 
     yield  # L'application tourne
 
     # Shutdown
     logger.info("shutting_down_api")
+
+    # Shutdown automation scheduler
+    try:
+        from src.scheduler.scheduler import AutomationScheduler
+        scheduler = AutomationScheduler()
+        scheduler.shutdown(wait=True)
+        logger.info("automation_scheduler_stopped")
+    except Exception as e:
+        logger.warning(f"Error stopping automation scheduler: {e}", exc_info=True)
 
     # Close any active Playwright browser sessions to prevent memory leaks
     try:
@@ -198,6 +216,9 @@ app.include_router(debug_routes.router)
 
 # Include the notifications router
 app.include_router(notifications.router)
+
+# Include the scheduler router
+app.include_router(scheduler_routes.router)
 
 
 # Authentification importée de security.py
