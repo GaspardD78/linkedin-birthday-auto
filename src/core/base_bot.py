@@ -247,28 +247,42 @@ class BaseLinkedInBot(ABC):
         """
         Scroll la page et collecte tous les contacts d'anniversaire.
 
-        FIX: Extrait les données HTML PENDANT le scroll pour éviter la perte
+        FIX: Extrait les données complètes PENDANT le scroll pour éviter la perte
         d'éléments si LinkedIn décharge le DOM (pagination virtuelle).
+
+        Cette version stocke les données complètes de chaque contact pendant le scroll,
+        puis scrolle en arrière pour récupérer les Locators valides de tous les contacts.
         """
-        seen_contacts_html = set()  # Track unique contacts by HTML signature
+        seen_contacts_data = {}  # Track unique contacts by name -> full data
         last_unique_count = 0
         scroll_attempts = 0
         min_scrolls = 10  # Force au moins 10 scrolls pour voir tous les anniversaires
 
+        # Phase 1: Scroll et collecte des données
         while scroll_attempts < max_scrolls:
             # Get all current contacts
             current_contacts = self.page.locator(card_selector).all()
 
-            # Store HTML signatures to track uniqueness across scrolls
+            # Extract and store full contact data during scroll
             for contact in current_contacts:
                 try:
-                    # Use inner_html as unique signature (contains name, date, etc.)
-                    html_sig = contact.inner_html()[:200]  # First 200 chars is enough
-                    seen_contacts_html.add(html_sig)
+                    # Extract name as unique identifier
+                    contact_name = self.extract_contact_name(contact)
+                    if not contact_name:
+                        continue
+
+                    # Only store if not already seen (avoid duplicates)
+                    if contact_name not in seen_contacts_data:
+                        # Store complete data for later categorization
+                        seen_contacts_data[contact_name] = {
+                            'name': contact_name,
+                            'html': contact.inner_html(),
+                            'text': contact.inner_text()
+                        }
                 except:
                     pass  # Skip if element is stale
 
-            current_unique_count = len(seen_contacts_html)
+            current_unique_count = len(seen_contacts_data)
 
             # Stop if no new contacts found AND we've scrolled at least min_scrolls times
             if current_unique_count == last_unique_count and scroll_attempts >= min_scrolls:
@@ -288,10 +302,53 @@ class BaseLinkedInBot(ABC):
 
             scroll_attempts += 1
 
-        logger.info(f"Collected {len(seen_contacts_html)} unique contacts after {scroll_attempts} scrolls")
+        logger.info(f"Collected {len(seen_contacts_data)} unique contacts after {scroll_attempts} scrolls")
 
-        # Return fresh locators from final page state
-        return self.page.locator(card_selector).all()
+        # Phase 2: Scroll back to top to ensure all contacts are loaded
+        try:
+            self.page.evaluate("window.scrollTo(0, 0)")
+            time.sleep(2)  # Wait for DOM to stabilize
+        except:
+            pass
+
+        # Phase 3: Collect all valid locators by matching stored names
+        all_locators_final = []
+        scroll_position = 0
+        max_search_scrolls = max_scrolls + 5  # Extra scrolls to ensure we get everyone
+
+        for _ in range(max_search_scrolls):
+            current_contacts = self.page.locator(card_selector).all()
+
+            for contact in current_contacts:
+                try:
+                    contact_name = self.extract_contact_name(contact)
+                    # If this contact is one we recorded, and we haven't added it yet
+                    if contact_name and contact_name in seen_contacts_data:
+                        # Check if we already added this contact (avoid duplicates in final list)
+                        already_added = any(
+                            self.extract_contact_name(loc) == contact_name
+                            for loc in all_locators_final
+                        )
+                        if not already_added:
+                            all_locators_final.append(contact)
+                except:
+                    pass
+
+            # If we've collected all unique contacts, stop
+            if len(all_locators_final) >= len(seen_contacts_data):
+                break
+
+            # Scroll down gradually to load more
+            try:
+                if current_contacts:
+                    current_contacts[-1].scroll_into_view_if_needed()
+                    time.sleep(1)
+            except:
+                break
+
+        logger.info(f"Retrieved {len(all_locators_final)} valid locators out of {len(seen_contacts_data)} unique contacts")
+
+        return all_locators_final
 
     def _categorize_birthdays(self, contacts: list) -> dict[str, list]:
         birthdays = {"today": [], "late": []}
