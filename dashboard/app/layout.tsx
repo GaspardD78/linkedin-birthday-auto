@@ -4,6 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { GlobalAuthAlert } from '@/components/layout/GlobalAuthAlert';
 import { Toaster } from "@/components/ui/toaster";
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -20,11 +21,13 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`${inter.className} bg-slate-950 text-slate-100`}>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-          <GlobalAuthAlert />
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+            <GlobalAuthAlert />
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

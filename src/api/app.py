@@ -28,6 +28,7 @@ from ..core.database import get_database
 from ..monitoring.tracing import instrument_app, setup_tracing
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
+from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
 from . import auth_routes  # Import the new auth router
 from .routes import deployment, bot_control, debug_routes, automation_control, notifications  # Import the routers
 from .security import verify_api_key
@@ -123,58 +124,6 @@ active_jobs: dict[str, dict[str, Any]] = {}
 # ═══════════════════════════════════════════════════════════════════
 
 
-def initialize_data_files():
-    """
-    Initialise les fichiers de données (messages.txt, late_messages.txt).
-
-    Cette fonction est appelée au démarrage de l'API pour s'assurer que les fichiers
-    de messages existent dans /app/data/ avant que le bot ne tente de les lire.
-    Elle copie les fichiers personnalisés depuis la racine du projet si disponibles,
-    ou crée des fichiers avec des templates par défaut.
-    """
-    try:
-        import shutil
-
-        # Chemins des fichiers sources (dans l'image Docker)
-        source_messages = Path("/app/messages.txt")
-        source_late_messages = Path("/app/late_messages.txt")
-
-        # Chemins de destination
-        dest_messages = Path("/app/data/messages.txt")
-        dest_late_messages = Path("/app/data/late_messages.txt")
-
-        # Créer le répertoire data s'il n'existe pas
-        dest_messages.parent.mkdir(parents=True, exist_ok=True)
-
-        # Templates par défaut (utilisés uniquement en fallback)
-        default_messages = """Joyeux anniversaire {name} ! 🎂
-Bon anniversaire {name} ! J'espère que tu passes une excellente journée 🎉
-Meilleurs vœux pour ton anniversaire {name} ! 🎈"""
-
-        default_late_messages = """Bon anniversaire (un peu en retard) {name} ! 🎂
-Désolé pour le retard {name}, meilleurs vœux pour ton anniversaire ! 🎉
-Mieux vaut tard que jamais : bon anniversaire {name} ! 🎈"""
-
-        # Initialiser messages.txt
-        if not dest_messages.exists():
-            if source_messages.exists():
-                shutil.copy2(source_messages, dest_messages)
-                logger.info(f"✅ Copié messages personnalisés depuis {source_messages}")
-            else:
-                dest_messages.write_text(default_messages, encoding="utf-8")
-                logger.info("✅ Créé messages.txt avec template par défaut")
-
-        # Initialiser late_messages.txt
-        if not dest_late_messages.exists():
-            if source_late_messages.exists():
-                shutil.copy2(source_late_messages, dest_late_messages)
-                logger.info(f"✅ Copié messages de retard personnalisés depuis {source_late_messages}")
-            else:
-                dest_late_messages.write_text(default_late_messages, encoding="utf-8")
-                logger.info("✅ Créé late_messages.txt avec template par défaut")
-
-    except Exception as e:
-        logger.warning(f"⚠️  Erreur lors de l'initialisation des fichiers de données: {e}")
 
 
 @asynccontextmanager

@@ -1,157 +1,110 @@
-'use client'
+'use client';
 
-import React from 'react'
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
-import { Button } from './ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
-  children: React.ReactNode
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
 interface State {
-  hasError: boolean
-  error?: Error
-  errorInfo?: React.ErrorInfo
+  hasError: boolean;
+  error: Error | null;
 }
 
 /**
- * ErrorBoundary Component
+ * Error Boundary pour capturer les erreurs React et afficher un fallback UI.
  *
- * Catches React errors in any child component tree and displays a fallback UI
- * instead of crashing the entire application.
- *
- * Usage:
+ * Utilisation:
  * ```tsx
  * <ErrorBoundary>
- *   <YourComponent />
+ *   <MonComposant />
  * </ErrorBoundary>
  * ```
  */
-export class ErrorBoundary extends React.Component<Props, State> {
+export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false }
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    // Update state so the next render will show the fallback UI
-    return { hasError: true, error }
+    // Met à jour l'état pour afficher le fallback UI au prochain render
+    return {
+      hasError: true,
+      error,
+    };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to console for debugging
-    console.error('ErrorBoundary caught an error:', error, errorInfo)
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // Logger l'erreur
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
 
-    // You can also log the error to an error reporting service here
-    // Example: logErrorToService(error, errorInfo)
-
-    this.setState({ errorInfo })
+    // Appeler le callback onError si fourni
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
   }
 
   handleReset = () => {
-    // Reset error boundary state
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined })
-  }
-
-  handleGoHome = () => {
-    // Navigate to home page
-    window.location.href = '/'
-  }
+    this.setState({
+      hasError: false,
+      error: null,
+    });
+  };
 
   render() {
     if (this.state.hasError) {
+      // Si un fallback personnalisé est fourni, l'utiliser
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      // Sinon, afficher le fallback par défaut
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4">
-          <Card className="max-w-2xl w-full border-red-500/20 bg-slate-900/50 backdrop-blur">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-full bg-red-500/20">
-                  <AlertTriangle className="h-8 w-8 text-red-500" />
-                </div>
-                <div>
-                  <CardTitle className="text-2xl text-white">Une erreur s'est produite</CardTitle>
-                  <CardDescription className="text-slate-400 mt-1">
-                    L'application a rencontré un problème inattendu
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Error Details */}
-              {this.state.error && (
-                <div className="bg-slate-950 border border-red-500/20 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-red-400 mb-2">Détails de l'erreur :</p>
-                  <code className="text-xs text-slate-300 font-mono block overflow-x-auto">
-                    {this.state.error.message}
-                  </code>
+        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-red-200 bg-red-50 p-8 dark:border-red-800 dark:bg-red-950">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="rounded-full bg-red-100 p-3 dark:bg-red-900">
+              <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
+            </div>
 
-                  {/* Stack trace (only in development) */}
-                  {process.env.NODE_ENV === 'development' && this.state.error.stack && (
-                    <details className="mt-3">
-                      <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-300">
-                        Stack Trace (dev only)
-                      </summary>
-                      <pre className="text-xs text-slate-400 mt-2 overflow-x-auto max-h-64">
-                        {this.state.error.stack}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              )}
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-red-900 dark:text-red-100">
+                Une erreur est survenue
+              </h2>
+              <p className="max-w-md text-sm text-red-700 dark:text-red-300">
+                {this.state.error?.message || "Une erreur inattendue s'est produite"}
+              </p>
+            </div>
 
-              {/* Component Stack (development only) */}
-              {process.env.NODE_ENV === 'development' && this.state.errorInfo?.componentStack && (
-                <details className="bg-slate-950 border border-slate-800 rounded-lg p-4">
-                  <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-300">
-                    Component Stack (dev only)
-                  </summary>
-                  <pre className="text-xs text-slate-400 mt-2 overflow-x-auto max-h-64">
-                    {this.state.errorInfo.componentStack}
-                  </pre>
-                </details>
-              )}
+            <button
+              onClick={this.handleReset}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Réessayer
+            </button>
 
-              {/* Actions */}
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Button
-                  onClick={this.handleReset}
-                  className="flex-1 gap-2"
-                  variant="default"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Réessayer
-                </Button>
-                <Button
-                  onClick={this.handleGoHome}
-                  variant="outline"
-                  className="flex-1 gap-2"
-                >
-                  <Home className="h-4 w-4" />
-                  Retour à l'accueil
-                </Button>
-              </div>
-
-              {/* Help Text */}
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <p className="text-sm text-blue-400">
-                  <strong>Que faire ?</strong>
-                </p>
-                <ul className="text-xs text-slate-400 mt-2 space-y-1 list-disc list-inside">
-                  <li>Cliquez sur "Réessayer" pour tenter de résoudre le problème</li>
-                  <li>Si l'erreur persiste, rechargez la page (F5)</li>
-                  <li>En dernier recours, retournez à l'accueil</li>
-                  {process.env.NODE_ENV === 'development' && (
-                    <li>En mode développement, vérifiez la console pour plus de détails</li>
-                  )}
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+            {process.env.NODE_ENV === 'development' && this.state.error && (
+              <details className="mt-4 w-full max-w-2xl text-left">
+                <summary className="cursor-pointer text-sm font-medium text-red-700 dark:text-red-300">
+                  Détails de l'erreur (dev only)
+                </summary>
+                <pre className="mt-2 overflow-auto rounded-lg bg-red-100 p-4 text-xs text-red-900 dark:bg-red-900 dark:text-red-100">
+                  {this.state.error.stack}
+                </pre>
+              </details>
+            )}
+          </div>
         </div>
-      )
+      );
     }
 
-    return this.props.children
+    return this.props.children;
   }
 }
