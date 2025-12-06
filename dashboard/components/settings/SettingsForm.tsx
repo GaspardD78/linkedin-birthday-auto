@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Save, Loader2, AlertCircle, Settings, MessageSquare, Search, FileCode } from "lucide-react"
+import { Save, Loader2, AlertCircle, Settings, MessageSquare, Search, FileCode, Calendar } from "lucide-react"
 import yaml from 'js-yaml'
 
 // Sub-components
@@ -12,6 +12,7 @@ import { BirthdaySettings } from "./BirthdaySettings"
 import { VisitorSettings } from "./VisitorSettings"
 import { AdvancedSettings } from "./AdvancedSettings"
 import { MessagesEditor } from "./MessagesEditor"
+import { SchedulerSettings } from "../scheduler/SchedulerSettings"
 import { ConfigData } from "./types"
 
 export function SettingsForm() {
@@ -27,7 +28,7 @@ export function SettingsForm() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const tab = params.get('tab')
-    if (tab && ['global', 'birthday', 'visitor', 'advanced'].includes(tab)) {
+    if (tab && ['global', 'birthday', 'visitor', 'automation', 'advanced'].includes(tab)) {
       setActiveTab(tab)
     }
   }, [])
@@ -266,6 +267,13 @@ export function SettingsForm() {
                 Visitor Bot
             </TabsTrigger>
             <TabsTrigger
+                value="automation"
+                className="w-full justify-start gap-2 px-4 py-3 data-[state=active]:bg-slate-800 data-[state=active]:text-cyan-400 border border-transparent data-[state=active]:border-slate-700"
+            >
+                <Calendar className="h-4 w-4" />
+                Automation
+            </TabsTrigger>
+            <TabsTrigger
                 value="advanced"
                 className="w-full justify-start gap-2 px-4 py-3 data-[state=active]:bg-slate-800 data-[state=active]:text-amber-400 border border-transparent data-[state=active]:border-slate-700 mt-auto"
             >
@@ -287,6 +295,10 @@ export function SettingsForm() {
 
             <TabsContent value="visitor" className="mt-0 space-y-6">
                 <VisitorSettings config={config} updateConfig={updateConfig} />
+            </TabsContent>
+
+            <TabsContent value="automation" className="mt-0 space-y-6">
+                <SchedulerSettings />
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-0">

@@ -7,6 +7,7 @@ import { TopContactsWidget } from "@/components/dashboard/TopContactsWidget"
 import { RecentErrorsWidget } from "@/components/dashboard/RecentErrorsWidget"
 import { AutomationServicesControl } from "@/components/dashboard/AutomationServicesControl"
 import { WorkerManagementPanel } from "@/components/dashboard/WorkerManagementPanel"
+import { ScheduledJobsWidget } from "@/components/scheduler/ScheduledJobsWidget"
 
 export default function DashboardPage() {
   return (
@@ -28,6 +29,9 @@ export default function DashboardPage() {
 
         {/* Automation Controls - Full Width */}
         <AutomationServicesControl />
+
+        {/* Scheduled Jobs Widget - Full Width */}
+        <ScheduledJobsWidget />
 
         {/* Worker Management - Full Width */}
         <WorkerManagementPanel />
