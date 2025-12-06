@@ -73,14 +73,27 @@ class BrowserManager:
             logger.info("Starting Playwright...")
             self.playwright = sync_playwright().start()
 
-            # Arguments de lancement
+            # Arguments de lancement (optimisé pour Raspberry Pi 4)
             launch_args = [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",  # Often needed for Pi4
+                "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--mute-audio",
+
+                # 🚀 OPTIMISATIONS RASPBERRY PI 4 (-200MB RAM)
+                "--single-process",  # 1 seul process au lieu de multi-process
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-translate",
+                "--disable-plugins",
+                "--disable-default-apps",
+                "--no-first-run",
+                "--memory-pressure-off",
+                "--renderer-process-limit=1",
+                "--js-flags=--max-old-space-size=512",  # Limite V8 à 512MB
             ]
 
             # Custom args from config
@@ -153,28 +166,63 @@ class BrowserManager:
             raise BrowserInitError(f"Failed to initialize browser: {e}")
 
     def close(self) -> None:
-        """Ferme toutes les ressources du navigateur."""
+        """
+        Ferme TOUTES les ressources du navigateur avec garantie de nettoyage.
+
+        Ordre important pour éviter les fuites mémoire :
+        1. Pages individuelles
+        2. Contexte browser
+        3. Browser
+        4. Playwright
+
+        Note: Utilise finally pour garantir le nettoyage même en cas d'erreur.
+        """
         logger.info("Closing browser resources...")
+        errors = []
+
+        # Étape 1: Fermer toutes les pages du contexte
+        if self.context:
+            try:
+                for page in self.context.pages:
+                    try:
+                        page.close()
+                    except Exception as e:
+                        errors.append(f"Page close: {e}")
+            except Exception as e:
+                errors.append(f"Pages enumeration: {e}")
+
+        # Étape 2: Fermer le contexte
         if self.context:
             try:
                 self.context.close()
             except Exception as e:
-                logger.debug(f"Error closing context: {e}", exc_info=True)
-            self.context = None
+                errors.append(f"Context close: {e}")
+            finally:
+                self.context = None
 
+        # Étape 3: Fermer le browser
         if self.browser:
             try:
                 self.browser.close()
             except Exception as e:
-                logger.debug(f"Error closing browser: {e}", exc_info=True)
-            self.browser = None
+                errors.append(f"Browser close: {e}")
+            finally:
+                self.browser = None
 
+        # Étape 4: Arrêter Playwright
         if self.playwright:
             try:
                 self.playwright.stop()
             except Exception as e:
-                logger.debug(f"Error stopping playwright: {e}", exc_info=True)
-            self.playwright = None
+                errors.append(f"Playwright stop: {e}")
+            finally:
+                self.playwright = None
+
+        # Logger les erreurs APRÈS le nettoyage complet
+        if errors:
+            logger.error(f"Cleanup errors (resources freed anyway): {', '.join(errors)}")
+        else:
+            logger.info("Browser resources closed successfully")
 
     def take_screenshot(self, name: str) -> None:
         """Prend une capture d'écran de la page active."""

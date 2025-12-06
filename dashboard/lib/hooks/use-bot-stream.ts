@@ -35,26 +35,25 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
     }
 
     // Création de la nouvelle connexion SSE
-    // Utilisation d'un chemin relatif qui sera géré par le proxy Next.js ou la réécriture
     const url = `/api/stream/events?service=${service}`;
     console.log(`🔌 Connecting to EventStream: ${url}`);
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
-    eventSource.onopen = () => {
+    // Définir les handlers avec des références stables pour le nettoyage
+    const handleOpen = () => {
       console.log("✅ EventStream Connected");
       setConnected(true);
     };
 
-    eventSource.onerror = (err) => {
+    const handleError = (err: Event) => {
       console.error("❌ EventStream Error:", err);
       setConnected(false);
       // EventSource tente de se reconnecter automatiquement
     };
 
-    // Écoute des événements de type 'log'
-    eventSource.addEventListener('log', (event) => {
+    const handleLog = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
         const newLog = {
@@ -73,20 +72,30 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
       } catch (e) {
         console.error("Error parsing log event:", e);
       }
-    });
+    };
 
-    // Écoute des événements de type 'status'
-    eventSource.addEventListener('status', (event) => {
+    const handleStatus = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
         setStatus(data);
       } catch (e) {
         console.error("Error parsing status event:", e);
       }
-    });
+    };
+
+    // Attacher les listeners
+    eventSource.onopen = handleOpen;
+    eventSource.onerror = handleError;
+    eventSource.addEventListener('log', handleLog);
+    eventSource.addEventListener('status', handleStatus);
 
     return () => {
-      console.log("🔌 Closing EventStream");
+      console.log("🔌 Closing EventStream - Removing listeners");
+      // CRITIQUE: Supprimer les listeners AVANT de fermer pour éviter les fuites mémoire
+      eventSource.removeEventListener('log', handleLog);
+      eventSource.removeEventListener('status', handleStatus);
+      eventSource.onopen = null;
+      eventSource.onerror = null;
       eventSource.close();
       setConnected(false);
     };

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+import aiofiles
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
@@ -27,6 +28,7 @@ from ..core.database import get_database
 from ..monitoring.tracing import instrument_app, setup_tracing
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
+from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
 from . import auth_routes  # Import the new auth router
 from .routes import deployment, bot_control, debug_routes, automation_control, notifications  # Import the routers
 from .security import verify_api_key
@@ -122,58 +124,6 @@ active_jobs: dict[str, dict[str, Any]] = {}
 # ═══════════════════════════════════════════════════════════════════
 
 
-def initialize_data_files():
-    """
-    Initialise les fichiers de données (messages.txt, late_messages.txt).
-
-    Cette fonction est appelée au démarrage de l'API pour s'assurer que les fichiers
-    de messages existent dans /app/data/ avant que le bot ne tente de les lire.
-    Elle copie les fichiers personnalisés depuis la racine du projet si disponibles,
-    ou crée des fichiers avec des templates par défaut.
-    """
-    try:
-        import shutil
-
-        # Chemins des fichiers sources (dans l'image Docker)
-        source_messages = Path("/app/messages.txt")
-        source_late_messages = Path("/app/late_messages.txt")
-
-        # Chemins de destination
-        dest_messages = Path("/app/data/messages.txt")
-        dest_late_messages = Path("/app/data/late_messages.txt")
-
-        # Créer le répertoire data s'il n'existe pas
-        dest_messages.parent.mkdir(parents=True, exist_ok=True)
-
-        # Templates par défaut (utilisés uniquement en fallback)
-        default_messages = """Joyeux anniversaire {name} ! 🎂
-Bon anniversaire {name} ! J'espère que tu passes une excellente journée 🎉
-Meilleurs vœux pour ton anniversaire {name} ! 🎈"""
-
-        default_late_messages = """Bon anniversaire (un peu en retard) {name} ! 🎂
-Désolé pour le retard {name}, meilleurs vœux pour ton anniversaire ! 🎉
-Mieux vaut tard que jamais : bon anniversaire {name} ! 🎈"""
-
-        # Initialiser messages.txt
-        if not dest_messages.exists():
-            if source_messages.exists():
-                shutil.copy2(source_messages, dest_messages)
-                logger.info(f"✅ Copié messages personnalisés depuis {source_messages}")
-            else:
-                dest_messages.write_text(default_messages, encoding="utf-8")
-                logger.info("✅ Créé messages.txt avec template par défaut")
-
-        # Initialiser late_messages.txt
-        if not dest_late_messages.exists():
-            if source_late_messages.exists():
-                shutil.copy2(source_late_messages, dest_late_messages)
-                logger.info(f"✅ Copié messages de retard personnalisés depuis {source_late_messages}")
-            else:
-                dest_late_messages.write_text(default_late_messages, encoding="utf-8")
-                logger.info("✅ Créé late_messages.txt avec template par défaut")
-
-    except Exception as e:
-        logger.warning(f"⚠️  Erreur lors de l'initialisation des fichiers de données: {e}")
 
 
 @asynccontextmanager
@@ -552,9 +502,11 @@ async def get_recent_logs(
         for file_path in files_to_read:
             try:
                 # Utiliser deque pour lire efficacement les dernières lignes sans tout charger en mémoire
-                # On lit un peu plus que la limite pour avoir de la marge lors du merge
-                with open(file_path, encoding="utf-8") as f:
-                    last_lines = deque(f, maxlen=limit)
+                # Lecture asynchrone avec aiofiles pour ne pas bloquer l'event loop
+                async with aiofiles.open(file_path, encoding="utf-8") as f:
+                    last_lines = deque(maxlen=limit)
+                    async for line in f:
+                        last_lines.append(line)
 
                     prefix = f"[{Path(file_path).stem}] " if len(files_to_read) > 1 else ""
                     all_lines.extend([f"{prefix}{line.strip()}" for line in last_lines])
@@ -583,19 +535,22 @@ async def get_recent_logs(
 
 @app.get("/config/yaml")
 async def get_yaml_config(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier config.yaml"""
+    """Lit le fichier config.yaml (async I/O)"""
     if not CONFIG_PATH.exists():
         raise HTTPException(404, "Config file not found")
-    return {"content": CONFIG_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(CONFIG_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/yaml")
 async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour config.yaml"""
+    """Met à jour config.yaml (async I/O)"""
     try:
         # Vérifier que c'est du YAML valide
         yaml.safe_load(config.content)
-        CONFIG_PATH.write_text(config.content, encoding="utf-8")
+        async with aiofiles.open(CONFIG_PATH, 'w', encoding="utf-8") as f:
+            await f.write(config.content)
         return {"status": "updated"}
     except Exception as e:
         raise HTTPException(400, f"Invalid YAML: {e!s}")
@@ -603,31 +558,37 @@ async def update_yaml_config(config: ConfigUpdate, authenticated: bool = Depends
 
 @app.get("/config/messages")
 async def get_messages(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier messages.txt"""
+    """Lit le fichier messages.txt (async I/O)"""
     if not MESSAGES_PATH.exists():
         return {"content": ""}
-    return {"content": MESSAGES_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(MESSAGES_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/messages")
 async def update_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour messages.txt"""
-    MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    """Met à jour messages.txt (async I/O)"""
+    async with aiofiles.open(MESSAGES_PATH, 'w', encoding="utf-8") as f:
+        await f.write(config.content)
     return {"status": "updated"}
 
 
 @app.get("/config/late-messages")
 async def get_late_messages(authenticated: bool = Depends(verify_api_key)):
-    """Lit le fichier late_messages.txt"""
+    """Lit le fichier late_messages.txt (async I/O)"""
     if not LATE_MESSAGES_PATH.exists():
         return {"content": ""}
-    return {"content": LATE_MESSAGES_PATH.read_text(encoding="utf-8")}
+    async with aiofiles.open(LATE_MESSAGES_PATH, encoding="utf-8") as f:
+        content = await f.read()
+    return {"content": content}
 
 
 @app.post("/config/late-messages")
 async def update_late_messages(config: ConfigUpdate, authenticated: bool = Depends(verify_api_key)):
-    """Met à jour late_messages.txt"""
-    LATE_MESSAGES_PATH.write_text(config.content, encoding="utf-8")
+    """Met à jour late_messages.txt (async I/O)"""
+    async with aiofiles.open(LATE_MESSAGES_PATH, 'w', encoding="utf-8") as f:
+        await f.write(config.content)
     return {"status": "updated"}
 
 

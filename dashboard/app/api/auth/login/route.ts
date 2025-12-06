@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { signSession, DEFAULT_USER, DEFAULT_PASSWORD, validateCredentials } from "@/lib/auth";
+import { signSession, validateUserCredentials } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate credentials are properly configured at runtime
-    validateCredentials();
-
     const body = await request.json();
     const { username, password } = body;
 
-    if (username === DEFAULT_USER && password === DEFAULT_PASSWORD) {
+    // Valider les credentials de façon sécurisée (server-only)
+    if (validateUserCredentials(username, password)) {
       // Create session
       const token = await signSession({ username });
 
