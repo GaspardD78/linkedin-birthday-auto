@@ -280,9 +280,15 @@ class BaseLinkedInBot(ABC):
             # Scroll to load more
             if current_contacts:
                 try:
+                    # 1. Force scroll to bottom using Keyboard (triggers lazy loading better than element scroll)
+                    self.page.keyboard.press("End")
+                    time.sleep(1.5)
+
+                    # 2. Also scroll specific element just in case
                     current_contacts[-1].scroll_into_view_if_needed()
+
                     # HARDWARE REALISM: Slow down scroll
-                    time.sleep(3)
+                    time.sleep(2)
                 except:
                     break  # Last element might be stale
 
