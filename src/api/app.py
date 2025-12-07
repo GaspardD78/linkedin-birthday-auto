@@ -29,6 +29,7 @@ from ..monitoring.tracing import instrument_app, setup_tracing
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
+import pickle
 from . import auth_routes  # Import the new auth router
 from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes  # Import the routers
 from .security import verify_api_key
@@ -635,6 +636,45 @@ async def linkedin_bot_error_handler(request, exc: LinkedInBotError):
             "recoverable": exc.recoverable,
             "details": exc.details,
         },
+    )
+
+
+@app.exception_handler(pickle.PicklingError)
+async def pickling_error_handler(request, exc: pickle.PicklingError):
+    """Handler pour les erreurs de sérialisation (APScheduler)."""
+    logger.error(f"Pickling error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "SerializationError",
+            "detail": f"Impossible de sérialiser les données de la tâche: {exc!s}"
+        }
+    )
+
+
+@app.exception_handler(TypeError)
+async def type_error_handler(request, exc: TypeError):
+    """Handler pour les TypeError (souvent liés au pickling)."""
+    # On ne veut attraper que les erreurs liées au pickling, mais c'est difficile à distinguer.
+    # On loggue l'erreur et on renvoie un 500 propre si c'est une erreur "cannot pickle".
+    if "pickle" in str(exc) or "serialize" in str(exc):
+        logger.error(f"Serialization/Type error: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "SerializationError",
+                "detail": f"Erreur de sérialisation: {exc!s}"
+            }
+        )
+
+    # Pour les autres TypeError, on laisse FastAPI gérer ou on renvoie un 500 générique
+    logger.error(f"Internal Type Error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "InternalServerError",
+            "detail": str(exc)
+        }
     )
 
 

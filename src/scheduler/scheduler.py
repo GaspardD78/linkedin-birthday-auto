@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Optional, List
+from typing import Optional, List, Union, Dict, Any
 from datetime import datetime
 import pytz
 
@@ -296,10 +296,15 @@ class AutomationScheduler:
             return
 
         # Schedule the job
+        # FIX: Convert job_config to dict to avoid pickling issues with Pydantic/Threads
+        # APScheduler uses pickle for serialization, and Pydantic v2 models or
+        # objects with thread locks can cause issues. Passing raw dict is safer.
+        job_config_dict = job_config.model_dump()
+
         self.scheduler.add_job(
             func=self._execute_job,
             trigger=trigger,
-            args=[job_config],
+            args=[job_config_dict],
             id=job_config.id,
             name=job_config.name,
             replace_existing=True,
@@ -361,13 +366,21 @@ class AutomationScheduler:
         logger.error(f"Unknown schedule type: {schedule_type}")
         return None
 
-    def _execute_job(self, job_config: ScheduledJobConfig):
+    def _execute_job(self, job_config: Union[ScheduledJobConfig, Dict[str, Any]]):
         """
         Execute a job by enqueuing it to RQ.
 
         Args:
-            job_config: Job configuration
+            job_config: Job configuration (object or dict)
         """
+        # FIX: Reconstruct model if dict is passed (from APScheduler serialization fix)
+        if isinstance(job_config, dict):
+            try:
+                job_config = ScheduledJobConfig.model_validate(job_config)
+            except Exception as e:
+                logger.error(f"Failed to reconstruct job config from dict: {e}")
+                return
+
         logger.info(f"Executing job: {job_config.name} ({job_config.id})")
 
         if not self.job_queue:
