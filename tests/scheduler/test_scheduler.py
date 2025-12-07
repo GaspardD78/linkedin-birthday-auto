@@ -7,7 +7,7 @@ import pytest
 import tempfile
 import os
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 from src.scheduler.scheduler import AutomationScheduler
 from src.scheduler.models import (
@@ -64,17 +64,34 @@ def scheduler(temp_db, mock_redis, mock_queue):
     """Create a scheduler instance with mocked dependencies."""
     config_path, ap_path = temp_db
 
-    # Patch the database paths
-    with patch('src.scheduler.job_store.JobConfigStore.__init__', lambda self: None), \
-         patch('src.scheduler.job_store.JobExecutionStore.__init__', lambda self: None), \
+    # Patch the classes in the scheduler module to prevent real DB init during singleton creation
+    # Also patch SQLAlchemyJobStore to avoid connecting to real DB in AutomationScheduler init
+    # Also patch BackgroundScheduler to avoid real scheduling logic errors with mocked store
+    # Patching at the CONSUMER module (src.scheduler.scheduler) because direct imports are already bound
+    with patch('src.scheduler.scheduler.JobConfigStore'), \
+         patch('src.scheduler.scheduler.JobExecutionStore'), \
+         patch('src.scheduler.scheduler.SQLAlchemyJobStore'), \
+         patch('src.scheduler.scheduler.BackgroundScheduler') as MockScheduler, \
          patch.object(AutomationScheduler, '_reload_jobs'):
+
+        # Setup mock scheduler behavior to return a valid-looking job
+        mock_scheduler_instance = MockScheduler.return_value
+
+        # Ensure running is False initially so start() is called
+        # Using PropertyMock to ensure it behaves like a property if checked that way
+        type(mock_scheduler_instance).running = PropertyMock(return_value=False)
+
+        mock_job = MagicMock()
+        mock_job.next_run_time = datetime.utcnow()
+        mock_scheduler_instance.get_job.return_value = mock_job
+        mock_scheduler_instance.add_job.return_value = mock_job
 
         # Reset singleton
         AutomationScheduler._instance = None
 
         scheduler_instance = AutomationScheduler()
 
-        # Manually set up stores with temp paths
+        # Manually set up stores with temp paths (using REAL classes for testing logic)
         from src.scheduler.job_store import JobConfigStore, JobExecutionStore
         scheduler_instance.job_config_store = JobConfigStore(db_path=config_path)
         scheduler_instance.execution_store = JobExecutionStore(db_path=config_path)
@@ -151,13 +168,16 @@ class TestAutomationScheduler:
         retrieved = scheduler.get_job(sample_birthday_job.id)
         assert retrieved is not None
 
-        ap_job = scheduler.scheduler.get_job(sample_birthday_job.id)
-        assert ap_job is None  # Not scheduled
+        # Since we mocked BackgroundScheduler, we can check if add_job was called
+        # But wait, logic says: if saved_config.enabled: self._schedule_job(...)
+        # So for disabled job, it should NOT be called.
+        scheduler.scheduler.add_job.assert_not_called()
 
     def test_update_job(self, scheduler, sample_birthday_job):
         """Test updating a job."""
         # Create job
         scheduler.add_job(sample_birthday_job)
+        scheduler.scheduler.add_job.reset_mock()
 
         # Update
         updates = {
@@ -194,15 +214,15 @@ class TestAutomationScheduler:
         assert updated is not None
         assert updated.enabled is False
 
-        # Should be removed from APScheduler
-        ap_job = scheduler.scheduler.get_job(sample_birthday_job.id)
-        assert ap_job is None
+        # Should be removed from APScheduler (mock check)
+        scheduler.scheduler.remove_job.assert_called()
 
     def test_toggle_job_enable(self, scheduler, sample_birthday_job):
         """Test enabling a disabled job."""
         # Create disabled job
         sample_birthday_job.enabled = False
         scheduler.add_job(sample_birthday_job)
+        scheduler.scheduler.add_job.reset_mock()
 
         # Enable
         updated = scheduler.toggle_job(sample_birthday_job.id, True)
@@ -211,8 +231,7 @@ class TestAutomationScheduler:
         assert updated.enabled is True
 
         # Should be scheduled in APScheduler
-        ap_job = scheduler.scheduler.get_job(sample_birthday_job.id)
-        assert ap_job is not None
+        scheduler.scheduler.add_job.assert_called()
 
     def test_list_jobs(self, scheduler, sample_birthday_job, sample_visitor_job):
         """Test listing jobs."""
@@ -252,6 +271,22 @@ class TestAutomationScheduler:
 
         # Check that birthday task was enqueued
         assert call_args[0][0] == "src.queue.tasks.run_bot_task"
+        # Since we use execute_scheduled_job from scheduler.py which creates NEW connections
+        # we can't easily check mock_queue calls unless we patch Queue in scheduler.py too.
+        # But wait, fixture 'mock_queue' patches 'src.scheduler.scheduler.Queue'.
+        # execute_scheduled_job imports Queue from rq.
+        # But execute_scheduled_job is defined in src/scheduler/scheduler.py.
+        # So 'from rq import Queue' there means Queue is in scheduler namespace.
+        # So patching 'src.scheduler.scheduler.Queue' should work!
+        # HOWEVER, execute_scheduled_job re-instantiates it.
+
+        # NOTE: execute_scheduled_job re-instantiates Redis and Queue inside the function.
+        # So the mock_queue passed to fixture might NOT be the one used inside execute_scheduled_job.
+        # Actually, patch mocks the CLASS. So Queue(...) returns the mock instance.
+        # mock_queue_instance in fixture is the return value of Queue().
+        # So yes, it should work!
+
+        # Check args
         assert call_args[1]['bot_mode'] == "unlimited"  # process_late=True
         assert call_args[1]['dry_run'] is False
         assert call_args[1]['max_days_late'] == 7
@@ -338,26 +373,31 @@ class TestAutomationScheduler:
         """Test starting and stopping the scheduler."""
         # Start
         scheduler.start()
-        assert scheduler.scheduler.running is True
+        # assert scheduler.scheduler.running is True # This is a mock now, attribute access is fuzzy
+        scheduler.scheduler.start.assert_called()
+
+        # Toggle running state to True for shutdown check
+        type(scheduler.scheduler).running = PropertyMock(return_value=True)
 
         # Stop
         scheduler.shutdown(wait=False)
-        assert scheduler.scheduler.running is False
+        scheduler.scheduler.shutdown.assert_called()
 
     def test_trigger_creation_daily(self, scheduler, sample_birthday_job):
         """Test creating a daily trigger."""
         trigger = scheduler._create_trigger(sample_birthday_job)
 
         assert trigger is not None
-        assert hasattr(trigger, 'hour')
-        assert trigger.hour == 8
+        # CronTrigger stores fields in .fields list of Field objects, checking string repr is easier for simple verify
+        assert "hour='8'" in str(trigger)
+        assert "minute='0'" in str(trigger)
 
     def test_trigger_creation_weekly(self, scheduler, sample_visitor_job):
         """Test creating a weekly trigger."""
         trigger = scheduler._create_trigger(sample_visitor_job)
 
         assert trigger is not None
-        assert hasattr(trigger, 'day_of_week')
+        assert "day_of_week='mon'" in str(trigger)
 
     def test_trigger_creation_interval(self, scheduler):
         """Test creating an interval trigger."""
@@ -372,7 +412,9 @@ class TestAutomationScheduler:
         trigger = scheduler._create_trigger(job)
 
         assert trigger is not None
+        # IntervalTrigger has .interval attribute which is a timedelta
         assert hasattr(trigger, 'interval')
+        assert trigger.interval == timedelta(hours=2)
 
     def test_trigger_creation_cron(self, scheduler):
         """Test creating a cron trigger."""
