@@ -187,7 +187,14 @@ export function ScheduledJobsWidget() {
                     >
                       {job.bot_type === 'birthday' ? '🎂' : '👁️'}
                     </Badge>
-                    {getDryRunBadge(job)}
+                    {(() => {
+                      const badge = getDryRunBadge(job);
+                      return (
+                        <Badge variant={badge.variant} className="text-xs">
+                          {badge.emoji} {badge.text}
+                        </Badge>
+                      );
+                    })()}
                   </div>
                   <p className="text-xs text-slate-500 truncate">
                     {getBotModeDisplay(job)}
