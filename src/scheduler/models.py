@@ -100,7 +100,7 @@ class ScheduledJobConfig(BaseModel):
 
     class Config:
         """Pydantic config."""
-        use_enum_values = True
+        # use_enum_values = True  # Keep Enums as Enums, don't convert to strings
 
 
 class JobExecutionLog(BaseModel):
