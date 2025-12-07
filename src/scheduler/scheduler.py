@@ -296,10 +296,12 @@ class AutomationScheduler:
             return
 
         # Schedule the job
+        # We pass the job_id string instead of the config object or instance method
+        # to avoid pickling issues with the scheduler instance (which contains locks/sockets)
         self.scheduler.add_job(
-            func=self._execute_job,
+            func=execute_scheduled_job,
             trigger=trigger,
-            args=[job_config],
+            args=[job_config.id],
             id=job_config.id,
             name=job_config.name,
             replace_existing=True,
@@ -360,6 +362,20 @@ class AutomationScheduler:
 
         logger.error(f"Unknown schedule type: {schedule_type}")
         return None
+
+    def execute_job_by_id(self, job_id: str):
+        """
+        Execute a job by ID. Used by the static wrapper.
+
+        Args:
+            job_id: Job identifier
+        """
+        job_config = self.job_config_store.get(job_id)
+        if not job_config:
+            logger.error(f"Cannot execute missing job: {job_id}")
+            return
+
+        self._execute_job(job_config)
 
     def _execute_job(self, job_config: ScheduledJobConfig):
         """
@@ -485,3 +501,15 @@ class AutomationScheduler:
                     )
             except Exception as e:
                 logger.warning(f"Failed to update next_run_at for {event.job_id}: {e}")
+
+
+def execute_scheduled_job(job_id: str):
+    """
+    Static wrapper to execute a job.
+    This function is pickle-able and can be passed to APScheduler.
+
+    Args:
+        job_id: ID of the job to execute
+    """
+    scheduler = AutomationScheduler()
+    scheduler.execute_job_by_id(job_id)
