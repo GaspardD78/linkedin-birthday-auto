@@ -185,7 +185,7 @@ class VisitorBot(BaseLinkedInBot):
             return []
 
         profile_links = []
-        result_container_selector = 'div[data-view-name="people-search-result"]'
+        result_container_selector = self.selector_manager.get_combined_selector("visitor.search.result_container") or 'div[data-view-name="people-search-result"]'
 
         try:
             self.page.wait_for_selector(result_container_selector, timeout=20000)
@@ -199,11 +199,13 @@ class VisitorBot(BaseLinkedInBot):
 
             for container in containers:
                 # Stratégie Cascade pour trouver le lien
-                link_selectors = [
-                    'a[data-view-name="search-result-lockup-title"]',
-                    'a.app-aware-link[href*="/in/"]',
-                    'span.entity-result__title-text a'
-                ]
+                link_selectors = self.selector_manager.get_selectors("visitor.search.links")
+                if not link_selectors:
+                     link_selectors = [
+                        'a[data-view-name="search-result-lockup-title"]',
+                        'a.app-aware-link[href*="/in/"]',
+                        'span.entity-result__title-text a'
+                    ]
                 # Appel à la méthode de la classe parente
                 link_element = self._find_element_by_cascade(container, link_selectors)
 
@@ -251,7 +253,7 @@ class VisitorBot(BaseLinkedInBot):
 
             # 1. NOM & PRÉNOM
             try:
-                name_selectors = ["h1.text-heading-xlarge", "h1.inline", "div.ph5 h1", "h1[class*='heading']"]
+                name_selectors = self.selector_manager.get_selectors("visitor.profile.name") or ["h1.text-heading-xlarge"]
                 for selector in name_selectors:
                     name_element = self.page.locator(selector).first
                     if name_element.count() > 0:
@@ -270,7 +272,7 @@ class VisitorBot(BaseLinkedInBot):
 
             # 2. HEADLINE (Titre)
             try:
-                headline_selector = "div.text-body-medium"
+                headline_selector = self.selector_manager.get_combined_selector("visitor.profile.headline") or "div.text-body-medium"
                 headline_el = self.page.locator(headline_selector).first
                 if headline_el.count() > 0:
                     scraped_data["headline"] = headline_el.inner_text().strip()
@@ -278,7 +280,8 @@ class VisitorBot(BaseLinkedInBot):
 
             # 3. RÉSUMÉ (Summary/About)
             try:
-                about_section = self.page.locator('section:has-text("Infos"), section:has-text("About"), section:has-text("Résumé")').first
+                about_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.about")
+                about_section = self.page.locator(about_selector).first if about_selector else self.page.locator('section:has-text("Infos"), section:has-text("About")').first
                 if about_section.count() > 0:
                     # Click "Voir plus" si présent
                     see_more = about_section.locator('button.inline-show-more-text__button')
@@ -293,7 +296,8 @@ class VisitorBot(BaseLinkedInBot):
 
             # 4. COMPÉTENCES (Skills)
             try:
-                skills_section = self.page.locator('section:has-text("Compétences"), section:has-text("Skills")').first
+                skills_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.skills")
+                skills_section = self.page.locator(skills_selector).first if skills_selector else self.page.locator('section:has-text("Compétences")').first
                 if skills_section.count() > 0:
                     # On essaie de récupérer les compétences visibles sans ouvrir le modal (plus rapide/stealth)
                     skill_items = skills_section.locator('a[data-field="skill_card_skill_topic"], div[data-field="skill_card_skill_topic"], span.pv-skill-category-entity__name-text')
@@ -304,7 +308,8 @@ class VisitorBot(BaseLinkedInBot):
 
             # 5. CERTIFICATIONS
             try:
-                cert_section = self.page.locator('section:has-text("Licences et certifications"), section:has-text("Licenses & certifications")').first
+                cert_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.certifications")
+                cert_section = self.page.locator(cert_selector).first if cert_selector else self.page.locator('section:has-text("Licences et certifications")').first
                 if cert_section.count() > 0:
                     cert_items = cert_section.locator('div[class*="pvs-entity"]')
                     count = cert_items.count()
@@ -317,7 +322,8 @@ class VisitorBot(BaseLinkedInBot):
 
             # 6. EXPÉRIENCE (Années)
             try:
-                exp_section = self.page.locator('section:has-text("Expérience"), section:has-text("Experience")').first
+                exp_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.experience")
+                exp_section = self.page.locator(exp_selector).first if exp_selector else self.page.locator('section:has-text("Expérience")').first
                 if exp_section.count() > 0:
                     all_exps = exp_section.locator('div[class*="pvs-entity"]')
                     count = all_exps.count()

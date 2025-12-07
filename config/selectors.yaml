@@ -37,3 +37,23 @@ messaging:
   # Button to close the chat overlay
   close_overlay:
     - "button[data-control-name='overlay.close_conversation_window']"
+
+visitor:
+  search:
+    result_container: 'div[data-view-name="people-search-result"]'
+    links:
+      - 'a[data-view-name="search-result-lockup-title"]'
+      - 'a.app-aware-link[href*="/in/"]'
+      - 'span.entity-result__title-text a'
+  profile:
+    name:
+      - "h1.text-heading-xlarge"
+      - "h1.inline"
+      - "div.ph5 h1"
+      - "h1[class*='heading']"
+    headline: "div.text-body-medium"
+    sections:
+      about: 'section:has-text("Infos"), section:has-text("About"), section:has-text("Résumé")'
+      skills: 'section:has-text("Compétences"), section:has-text("Skills")'
+      certifications: 'section:has-text("Licences et certifications"), section:has-text("Licenses & certifications")'
+      experience: 'section:has-text("Expérience"), section:has-text("Experience")'
