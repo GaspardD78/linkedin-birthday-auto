@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from ..bots.birthday_bot import run_birthday_bot
 from ..bots.unlimited_bot import run_unlimited_bot
@@ -28,7 +28,9 @@ def run_bot_task(
         raise
 
 
-def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, Any]:
+def run_profile_visit_task(
+    dry_run: bool = False, limit: Optional[int] = None
+) -> dict[str, Any]:
     """
     Tâche pour la visite de profils (V2 Native).
 
@@ -37,7 +39,7 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, 
 
     Args:
         dry_run: Mode test sans visiter réellement les profils
-        limit: Nombre maximum de profils à visiter. Override la valeur de config.visitor.limits.profiles_per_run
+        limit: Nombre maximum de profils à visiter. Override la valeur de config.visitor.limits.profiles_per_run (Optionnel)
 
     Returns:
         Dict contenant les résultats de l'exécution
@@ -53,7 +55,7 @@ def run_profile_visit_task(dry_run: bool = False, limit: int = 10) -> dict[str, 
             config.dry_run = True
 
         # Logger si on override la limite de profils
-        if limit != config.visitor.limits.profiles_per_run:
+        if limit is not None and limit != config.visitor.limits.profiles_per_run:
             logger.info(
                 f"Overriding profiles limit: {config.visitor.limits.profiles_per_run} → {limit}"
             )

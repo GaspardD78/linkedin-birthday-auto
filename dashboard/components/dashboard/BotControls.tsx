@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import {
   getBotStatusDetailed,
   startBot,
@@ -28,6 +29,7 @@ export function BotControlsWidget() {
   const [status, setStatus] = useState<BotStatusDetailed | null>(null)
   const [loading, setLoading] = useState<string | null>(null) // 'birthday', 'visitor', 'stop-birthday', etc.
   const [dryRun, setDryRun] = useState<boolean>(true) // Default to dry-run for safety
+  const [visitorLimit, setVisitorLimit] = useState<string>("") // Empty string = use config default
   const { toast } = useToast()
 
   const refreshStatus = async () => {
@@ -66,9 +68,10 @@ export function BotControlsWidget() {
         // Mode Unlimited: Force le traitement des retards
         await startBot({ dryRun, processLate: true })
       } else if (type === 'visitor') {
-        // Mode Visiteur: Utilise STRICTEMENT la configuration du fichier config.yaml
-        // Pas de surcharge de limite ici.
-        await startVisitorBot({ dryRun })
+        // Mode Visiteur: Utilise la configuration du fichier config.yaml par défaut,
+        // ou la limite spécifiée par l'utilisateur.
+        const limit = visitorLimit ? parseInt(visitorLimit, 10) : undefined
+        await startVisitorBot({ dryRun, limit })
       }
 
       const mode = dryRun ? "test (dry-run)" : "production"
@@ -102,12 +105,14 @@ export function BotControlsWidget() {
     type,
     title,
     icon: Icon,
-    description
+    description,
+    showLimitInput = false
   }: {
     type: 'birthday' | 'visitor' | 'unlimited',
     title: string,
     icon: any,
-    description: string
+    description: string,
+    showLimitInput?: boolean
   }) => {
     // Mapping job_type 'birthday' to both Birthday and Unlimited widgets if they are just variations.
     // For now assuming 'birthday' covers both.
@@ -139,6 +144,23 @@ export function BotControlsWidget() {
         </div>
 
         <div className="flex items-center gap-2">
+          {showLimitInput && !running && (
+             <div className="flex items-center gap-2 mr-2">
+               <Label htmlFor="limit-input" className="text-xs text-muted-foreground whitespace-nowrap">
+                 Limite (opt.)
+               </Label>
+               <Input
+                 id="limit-input"
+                 type="number"
+                 placeholder="Défaut"
+                 className="w-20 h-8 text-xs bg-slate-950 border-slate-700"
+                 value={visitorLimit}
+                 onChange={(e) => setVisitorLimit(e.target.value)}
+                 min={1}
+               />
+             </div>
+          )}
+
           {running ? (
             <Button
               variant="destructive"
@@ -242,6 +264,7 @@ export function BotControlsWidget() {
           title="Bot Visiteur"
           icon={Users}
           description="Visite les profils selon config.yaml."
+          showLimitInput={true}
         />
 
         {status?.active_jobs.length === 0 && (

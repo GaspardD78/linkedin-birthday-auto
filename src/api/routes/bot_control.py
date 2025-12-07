@@ -33,7 +33,7 @@ class BirthdayConfig(BaseModel):
 
 class VisitorConfig(BaseModel):
     dry_run: bool = Field(default=True)
-    limit: int = Field(default=10)
+    limit: Optional[int] = Field(default=None)
 
 class StopRequest(BaseModel):
     job_type: Optional[str] = Field(None, description="Specific job type to stop (birthday, visit)")
