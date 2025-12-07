@@ -68,7 +68,7 @@ class Database:
     """
 
     # Version du schéma de BDD pour migrations futures
-    SCHEMA_VERSION = "2.1.0"
+    SCHEMA_VERSION = "2.2.0"
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
         """
@@ -293,11 +293,31 @@ class Database:
                     first_name TEXT,
                     last_name TEXT,
                     full_name TEXT,
+                    headline TEXT,
+                    summary TEXT,
                     relationship_level TEXT,
                     current_company TEXT,
                     education TEXT,
                     years_experience INTEGER,
+                    skills TEXT,
+                    certifications TEXT,
+                    fit_score REAL,
                     scraped_at TEXT NOT NULL
+                )
+            """
+            )
+
+            # Table campaigns
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS campaigns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    search_url TEXT,
+                    filters TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 )
             """
             )
@@ -366,6 +386,23 @@ class Database:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notification_logs_created_at ON notification_logs(created_at)"
             )
+
+            # Migration: Check columns for scraped_profiles
+            cursor.execute("PRAGMA table_info(scraped_profiles)")
+            columns = [info[1] for info in cursor.fetchall()]
+            new_columns = {
+                "headline": "TEXT",
+                "summary": "TEXT",
+                "skills": "TEXT",
+                "certifications": "TEXT",
+                "fit_score": "REAL"
+            }
+            for col, dtype in new_columns.items():
+                if col not in columns:
+                    try:
+                        cursor.execute(f"ALTER TABLE scraped_profiles ADD COLUMN {col} {dtype}")
+                    except Exception as e:
+                        logger.warning(f"Migration error for {col}: {e}")
 
             # Initialiser les sélecteurs par défaut
             self._init_default_selectors(cursor)
@@ -845,47 +882,46 @@ class Database:
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         full_name: Optional[str] = None,
+        headline: Optional[str] = None,
+        summary: Optional[str] = None,
         relationship_level: Optional[str] = None,
         current_company: Optional[str] = None,
         education: Optional[str] = None,
         years_experience: Optional[int] = None,
+        skills: Optional[list[str]] = None,
+        certifications: Optional[list[str]] = None,
+        fit_score: Optional[float] = None,
     ) -> int:
         """
         Enregistre ou met à jour (UPSERT) les données scrapées d'un profil.
-
-        Args:
-            profile_url: URL du profil (clé unique)
-            first_name: Prénom
-            last_name: Nom de famille
-            full_name: Nom complet
-            relationship_level: Niveau de relation (1er, 2e, 3e)
-            current_company: Entreprise actuelle
-            education: Formation/Diplôme
-            years_experience: Années d'expérience
-
-        Returns:
-            ID du profil enregistré
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
             scraped_at = datetime.now().isoformat()
+            skills_json = json.dumps(skills) if skills else None
+            certs_json = json.dumps(certifications) if certifications else None
 
             # UPSERT: INSERT OR REPLACE
             cursor.execute(
                 """
                 INSERT INTO scraped_profiles
-                (profile_url, first_name, last_name, full_name, relationship_level,
-                 current_company, education, years_experience, scraped_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
+                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(profile_url) DO UPDATE SET
                     first_name = excluded.first_name,
                     last_name = excluded.last_name,
                     full_name = excluded.full_name,
+                    headline = excluded.headline,
+                    summary = excluded.summary,
                     relationship_level = excluded.relationship_level,
                     current_company = excluded.current_company,
                     education = excluded.education,
                     years_experience = excluded.years_experience,
+                    skills = excluded.skills,
+                    certifications = excluded.certifications,
+                    fit_score = excluded.fit_score,
                     scraped_at = excluded.scraped_at
             """,
                 (
@@ -893,10 +929,15 @@ class Database:
                     first_name,
                     last_name,
                     full_name,
+                    headline,
+                    summary,
                     relationship_level,
                     current_company,
                     education,
                     years_experience,
+                    skills_json,
+                    certs_json,
+                    fit_score,
                     scraped_at,
                 ),
             )
@@ -1306,6 +1347,33 @@ class Database:
                 (limit,),
             )
 
+            return [dict(row) for row in cursor.fetchall()]
+
+    # ==================== CAMPAIGNS ====================
+
+    @retry_on_lock()
+    def create_campaign(self, name: str, search_url: str, filters: dict) -> int:
+        """Crée une nouvelle campagne de recherche"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            filters_json = json.dumps(filters)
+
+            cursor.execute(
+                """
+                INSERT INTO campaigns (name, search_url, filters, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'pending', ?, ?)
+            """,
+                (name, search_url, filters_json, now, now),
+            )
+            return cursor.lastrowid
+
+    @retry_on_lock()
+    def get_campaigns(self) -> list[dict]:
+        """Récupère toutes les campagnes"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
     # ==================== MAINTENANCE ====================

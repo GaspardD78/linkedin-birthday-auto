@@ -10,9 +10,12 @@ import time
 import re
 from typing import Any, Optional
 import urllib.parse
+import sys
+import argparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from ..core.base_bot import BaseLinkedInBot
 from ..core.database import get_database
+from ..config.config_manager import get_config
 from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 
@@ -215,34 +218,40 @@ class VisitorBot(BaseLinkedInBot):
         return list(set(profile_links))
 
     # ═══════════════════════════════════════════════════════════════
-    #  SCRAPING COMPLET (Restauré)
+    #  SCRAPING COMPLET (Amélioré & Scoring)
     # ═══════════════════════════════════════════════════════════════
 
     def _scrape_profile_data(self) -> dict[str, Any]:
         """
-        Scrape les données détaillées d'un profil LinkedIn.
-        Restauration de la logique complète (Education, Expérience, etc.).
+        Scrape les données détaillées d'un profil LinkedIn (Nom, Headline, Skills, Certs).
+        Implémente également le calcul du Fit Score.
 
         Returns:
-            Dictionnaire contenant les données extraites (Nom, Entreprise, etc.)
+            Dictionnaire enrichi avec 'fit_score', 'skills', 'certifications', etc.
         """
         scraped_data = {
             "full_name": "Unknown",
             "first_name": "Unknown",
             "last_name": "Unknown",
+            "headline": "",
+            "summary": "",
             "relationship_level": "Unknown",
             "current_company": "Unknown",
             "education": "Unknown",
-            "years_experience": None,
+            "years_experience": 0,
+            "skills": [],
+            "certifications": [],
+            "fit_score": 0.0,
             "profile_url": self.page.url.split("?")[0],
         }
 
         try:
-            # 1. NOM COMPLET
+            # 0. Scroll préliminaire pour déclencher le lazy-loading (Compétences, Infos)
+            self._smart_scroll_to_bottom()
+
+            # 1. NOM & PRÉNOM
             try:
-                name_selectors = [
-                    "h1.text-heading-xlarge", "h1.inline", "div.ph5 h1", "h1[class*='heading']"
-                ]
+                name_selectors = ["h1.text-heading-xlarge", "h1.inline", "div.ph5 h1", "h1[class*='heading']"]
                 for selector in name_selectors:
                     name_element = self.page.locator(selector).first
                     if name_element.count() > 0:
@@ -259,62 +268,153 @@ class VisitorBot(BaseLinkedInBot):
                             break
             except Exception: pass
 
-            # 2. NIVEAU DE RELATION
+            # 2. HEADLINE (Titre)
             try:
-                rel_element = self.page.locator("span.dist-value").first
-                if rel_element.count() > 0:
-                    scraped_data["relationship_level"] = rel_element.inner_text().strip()
+                headline_selector = "div.text-body-medium"
+                headline_el = self.page.locator(headline_selector).first
+                if headline_el.count() > 0:
+                    scraped_data["headline"] = headline_el.inner_text().strip()
             except Exception: pass
 
-            # 3. ENTREPRISE ACTUELLE
+            # 3. RÉSUMÉ (Summary/About)
             try:
-                company_selectors = ["div.text-body-medium", "div[class*='inline-show-more-text']"]
-                for selector in company_selectors:
-                    el = self.page.locator(selector).first
-                    if el.count() > 0:
-                        text = el.inner_text().strip()
-                        if text:
-                            scraped_data["current_company"] = text
-                            break
+                about_section = self.page.locator('section:has-text("Infos"), section:has-text("About"), section:has-text("Résumé")').first
+                if about_section.count() > 0:
+                    # Click "Voir plus" si présent
+                    see_more = about_section.locator('button.inline-show-more-text__button')
+                    if see_more.count() > 0:
+                        see_more.click(force=True)
+                        time.sleep(0.5)
+
+                    summary_text_el = about_section.locator('div.inline-show-more-text span[aria-hidden="true"]').first
+                    if summary_text_el.count() > 0:
+                        scraped_data["summary"] = summary_text_el.inner_text().strip()
             except Exception: pass
 
-            # 4. FORMATION (Education)
+            # 4. COMPÉTENCES (Skills)
             try:
-                # Recherche section Formation
-                education_section = self.page.locator('section:has-text("Formation"), section:has-text("Education")').first
-                if education_section.count() > 0:
-                    first_edu = education_section.locator('div[class*="pvs-entity"]').first
-                    if first_edu.count() > 0:
-                        # Tente de trouver le nom de l'école (souvent dans un span hidden ou visible)
-                        edu_text = first_edu.locator('span[aria-hidden="true"]').first.inner_text().strip()
-                        if edu_text:
-                            scraped_data["education"] = edu_text
+                skills_section = self.page.locator('section:has-text("Compétences"), section:has-text("Skills")').first
+                if skills_section.count() > 0:
+                    # On essaie de récupérer les compétences visibles sans ouvrir le modal (plus rapide/stealth)
+                    skill_items = skills_section.locator('a[data-field="skill_card_skill_topic"], div[data-field="skill_card_skill_topic"], span.pv-skill-category-entity__name-text')
+                    count = skill_items.count()
+                    for i in range(min(count, 5)): # Top 5 seulement
+                        scraped_data["skills"].append(skill_items.nth(i).inner_text().strip())
             except Exception: pass
 
-            # 5. ANNÉES D'EXPÉRIENCE
+            # 5. CERTIFICATIONS
+            try:
+                cert_section = self.page.locator('section:has-text("Licences et certifications"), section:has-text("Licenses & certifications")').first
+                if cert_section.count() > 0:
+                    cert_items = cert_section.locator('div[class*="pvs-entity"]')
+                    count = cert_items.count()
+                    for i in range(min(count, 3)): # Top 3
+                         # Nom de la certif
+                         cert_name_el = cert_items.nth(i).locator('span[aria-hidden="true"]').first
+                         if cert_name_el.count() > 0:
+                             scraped_data["certifications"].append(cert_name_el.inner_text().strip())
+            except Exception: pass
+
+            # 6. EXPÉRIENCE (Années)
             try:
                 exp_section = self.page.locator('section:has-text("Expérience"), section:has-text("Experience")').first
                 if exp_section.count() > 0:
                     all_exps = exp_section.locator('div[class*="pvs-entity"]')
                     count = all_exps.count()
                     if count > 0:
-                        # On regarde la dernière expérience pour trouver une date ancienne
                         last_exp = all_exps.nth(count - 1)
-                        date_spans = last_exp.locator('span[class*="date"]') # Souvent une classe contenant 'date' ou 't-14'
+                        date_spans = last_exp.locator('span[class*="date"], span:has-text(" - ")')
                         if date_spans.count() > 0:
                             date_text = date_spans.first.inner_text().strip()
-                            # Utilisation de RE (légitime ici)
                             years = re.findall(r"\b(19|20)\d{2}\b", date_text)
                             if years:
                                 start_year = int(years[0])
                                 current_year = datetime.now().year
                                 scraped_data["years_experience"] = max(0, current_year - start_year)
+
+                    # Entreprise actuelle (Première expérience de la liste)
+                    first_exp = all_exps.first
+                    company_name_el = first_exp.locator('span.t-14.t-normal span[aria-hidden="true"]').first
+                    if company_name_el.count() > 0:
+                         scraped_data["current_company"] = company_name_el.inner_text().split("·")[0].strip()
+
             except Exception: pass
+
+            # 7. CALCUL DU FIT SCORE
+            scraped_data["fit_score"] = self._calculate_fit_score(scraped_data)
 
         except Exception as e:
             logger.error(f"Global scraping error: {e}")
 
         return scraped_data
+
+    def _smart_scroll_to_bottom(self):
+        """Scroll progressif et aléatoire pour charger toute la page."""
+        try:
+            total_height = self.page.evaluate("document.body.scrollHeight")
+            viewport_height = self.page.viewport_size["height"]
+            current_scroll = 0
+
+            while current_scroll < total_height:
+                scroll_step = random.randint(300, 600)
+                current_scroll += scroll_step
+                self.page.evaluate(f"window.scrollTo(0, {current_scroll})")
+                time.sleep(random.uniform(0.3, 0.8))
+
+                # Parfois une petite pause pour "lire"
+                if random.random() < 0.2:
+                    time.sleep(random.uniform(1.0, 2.0))
+
+                # Recalculer la hauteur au cas où (lazy loading content added)
+                total_height = self.page.evaluate("document.body.scrollHeight")
+        except Exception: pass
+
+    def _calculate_fit_score(self, data: dict) -> float:
+        """
+        Calcule un score de pertinence (0-100) basé sur les données extraites.
+
+        Pondération :
+        - Compétences techniques (Keywords match) : 40 pts
+        - Expérience (années) : 20 pts
+        - Certifications clés : 20 pts
+        - Signal "Open to Work" / Headline : 20 pts
+        """
+        score = 0.0
+        target_keywords = self.config.visitor.keywords or []
+
+        # 1. Compétences & Headline (40 pts)
+        text_corpus = (str(data.get("skills", "")) + " " + data.get("headline", "") + " " + data.get("summary", "")).lower()
+        matches = 0
+        for kw in target_keywords:
+            # Simple count of occurrences isn't robust if unique keywords are few
+            # But let's stick to checking presence of each keyword
+            if kw.lower() in text_corpus:
+                matches += 1
+
+        # INCREASED SENSITIVITY: 20 pts per match, max 40
+        if matches > 0:
+            score += min(40, matches * 20)
+
+        # 2. Expérience (20 pts)
+        exp = data.get("years_experience", 0)
+        if exp:
+            if exp >= 5: score += 20
+            elif exp >= 3: score += 15
+            elif exp >= 1: score += 10
+
+        # 3. Certifications (20 pts)
+        certs = " ".join(data.get("certifications", [])).lower()
+        key_certs = ["azure", "aws", "gcp", "kubernetes", "docker", "terraform", "scrum", "pmp", "cka", "ckad"]
+        cert_matches = sum(1 for c in key_certs if c in certs)
+        if cert_matches > 0:
+            score += min(20, cert_matches * 10)
+
+        # 4. Signals (20 pts)
+        headline = data.get("headline", "").lower()
+        if "open to work" in headline or "recherche" in headline or "looking for" in headline or "available" in headline:
+            score += 20
+
+        return min(100.0, score)
 
     # ═══════════════════════════════════════════════════════════════
     #  HELPER METHODS (Restaurées & Nettoyées)
@@ -421,3 +521,37 @@ class VisitorBot(BaseLinkedInBot):
             "pages_scraped": ps,
             "duration_seconds": round(dur, 2)
         }
+
+
+if __name__ == "__main__":
+    # Point d'entrée pour l'exécution via subprocess (Dashboard)
+    parser = argparse.ArgumentParser(description="LinkedIn Visitor Bot")
+    parser.add_argument("--keywords", nargs="+", help="Mots-clés de recherche")
+    parser.add_argument("--location", help="Localisation (ex: Paris, France)")
+    parser.add_argument("--limit", type=int, help="Limite de profils à visiter")
+    parser.add_argument("--dry-run", action="store_true", help="Mode simulation")
+
+    args = parser.parse_args()
+
+    try:
+        # Chargement de la config de base
+        config = get_config()
+
+        # Surcharge avec les arguments CLI
+        if args.keywords:
+            config.visitor.keywords = args.keywords
+        if args.location:
+            config.visitor.location = args.location
+        if args.dry_run:
+            config.dry_run = True
+
+        profiles_limit = args.limit if args.limit else None
+
+        logger.info(f"Starting VisitorBot via CLI with keywords={config.visitor.keywords}, location={config.visitor.location}")
+
+        with VisitorBot(config=config, profiles_limit_override=profiles_limit) as bot:
+            bot.run()
+
+    except Exception as e:
+        logger.critical(f"Critical error in VisitorBot CLI execution: {e}", exc_info=True)
+        sys.exit(1)
