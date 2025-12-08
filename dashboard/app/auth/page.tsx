@@ -6,8 +6,10 @@ import { useDropzone } from "react-dropzone"
 import { uploadAuthState } from "@/lib/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { CheckCircle2, UploadCloud, FileJson, AlertTriangle, ExternalLink } from "lucide-react"
+import { CheckCircle2, UploadCloud, FileJson, AlertTriangle, ExternalLink, ArrowLeft } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 
 export default function AuthPage() {
   const router = useRouter()
@@ -59,11 +61,19 @@ export default function AuthPage() {
 
   return (
     <div className="container mx-auto max-w-2xl py-12 px-4">
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Connexion LinkedIn</h1>
-        <p className="text-muted-foreground">
-          Importez votre session active pour permettre au bot d'agir en votre nom.
-        </p>
+      <div className="mb-8">
+        <Link href="/">
+          <Button variant="ghost" className="mb-4 pl-0 hover:bg-transparent hover:text-primary">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Retour au Dashboard
+          </Button>
+        </Link>
+        <div className="text-center">
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Connexion LinkedIn</h1>
+          <p className="text-muted-foreground">
+            Importez votre session active pour permettre au bot d'agir en votre nom.
+          </p>
+        </div>
       </div>
 
       <Card className="border-2 border-dashed border-muted-foreground/25 shadow-lg bg-card/50 backdrop-blur">
