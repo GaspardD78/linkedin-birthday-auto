@@ -76,24 +76,13 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
 
         Workflow:
         1. Navigation vers la page anniversaires
-        2. Extraction et classification des contacts
+        2. Itération sur le flux de contacts (generator)
         3. Filtrage selon configuration (today + late jusqu'à max_days_late)
         4. Envoi des messages avec délais humanisés
         5. Enregistrement en base de données
 
         Returns:
-            Dict contenant les statistiques d'exécution :
-            {
-                'messages_sent': int,
-                'contacts_processed': int,
-                'birthdays_today': int,
-                'birthdays_late': int,
-                'errors': int,
-                'duration_seconds': float
-            }
-
-        Raises:
-            SessionExpiredError: Si la session LinkedIn a expiré
+            Dict contenant les statistiques d'exécution
         """
         start_time = time.time()
 
@@ -122,91 +111,65 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         if not self.check_login_status():
             return self._build_error_result("Login verification failed")
 
-        # Obtenir tous les contacts d'anniversaire
-        birthdays = self.get_birthday_contacts()
+        logger.info("🚀 Starting birthday stream processing...")
 
-        total_today = len(birthdays["today"])
-        total_late = len(birthdays["late"])
+        birthdays_today = 0
+        birthdays_late = 0
+        messages_ignored = 0
 
-        logger.info(f"📊 Found {total_today} birthdays today")
-        logger.info(f"📊 Found {total_late} late birthdays")
+        # Reset stats for this run
+        self.stats["messages_sent"] = 0
+        self.stats["contacts_processed"] = 0
+        self.stats["errors"] = 0
 
-        # Construire la liste des contacts à traiter
-        contacts_to_process = []
+        try:
+            for contact_data, locator in self.yield_birthday_contacts():
+                is_eligible = False
 
-        # Ajouter les anniversaires du jour
-        if self.config.birthday_filter.process_today:
-            for contact in birthdays["today"]:
-                contacts_to_process.append((contact, False, 0))
-            logger.info(f"✅ Will process {total_today} birthdays from today")
-        else:
-            logger.info(f"⏭️  Skipping {total_today} birthdays from today (disabled)")
+                # Stats collecting
+                if contact_data.birthday_type == "today":
+                    birthdays_today += 1
+                elif contact_data.birthday_type == "late":
+                    birthdays_late += 1
 
-        # Ajouter les anniversaires en retard
-        late_count = 0
-        if self.config.birthday_filter.process_late:
-            for contact, days_late in birthdays["late"]:
-                # Respecter max_days_late
-                if days_late <= self.config.birthday_filter.max_days_late:
-                    contacts_to_process.append((contact, True, days_late))
-                    late_count += 1
-            logger.info(
-                f"✅ Will process {late_count} late birthdays (up to {self.config.birthday_filter.max_days_late} days)"
-            )
-        else:
-            logger.info(f"⏭️  Skipping {total_late} late birthdays (disabled)")
+                # Filtering logic
+                if contact_data.birthday_type == "today":
+                    if self.config.birthday_filter.process_today:
+                        is_eligible = True
+                elif contact_data.birthday_type == "late":
+                    if self.config.birthday_filter.process_late:
+                        if contact_data.days_late <= self.config.birthday_filter.max_days_late:
+                            is_eligible = True
 
-        # Calculer les messages ignorés
-        messages_ignored_today = 0 if self.config.birthday_filter.process_today else total_today
-        messages_ignored_late = total_late - late_count
-        messages_ignored = messages_ignored_today + messages_ignored_late
+                if not is_eligible:
+                    messages_ignored += 1
+                    logger.info(f"⏭️  Skipping {contact_data.name} (Not eligible: {contact_data.birthday_type}, {contact_data.days_late} days)")
+                    continue
 
-        if messages_ignored > 0:
-            logger.info(f"⚠️  {messages_ignored} birthdays ignored (filters/limits)")
+                # Processing
+                try:
+                    logger.info(f"Processing contact: {contact_data.name} (Type: {contact_data.birthday_type})")
+                    success = self.process_birthday_contact(contact_data, locator=locator)
 
-        total_to_process = len(contacts_to_process)
+                    self.stats["contacts_processed"] += 1
 
-        if total_to_process == 0:
-            logger.info("ℹ️  No birthdays to process")
-            return self._build_result(
-                messages_sent=0,
-                contacts_processed=0,
-                birthdays_today=total_today,
-                birthdays_late=total_late,
-                messages_ignored=messages_ignored,
-                duration_seconds=time.time() - start_time,
-            )
+                    if success:
+                        self.stats["messages_sent"] += 1
 
-        logger.info("")
-        logger.info(f"🚀 Processing {total_to_process} total contacts...")
-        logger.info(f"⏱️  Estimated duration: {self._estimate_duration(total_to_process)}")
-        logger.info("")
+                        # Simulation d'activité humaine occasionnelle
+                        if random.random() < 0.3:
+                            self.simulate_human_activity()
 
-        # Traiter tous les contacts
-        for i, (contact, is_late, days_late) in enumerate(contacts_to_process, 1):
-            try:
-                logger.info(f"[{i}/{total_to_process}] Processing contact...")
-
-                # Envoyer le message
-                success = self.send_birthday_message(contact, is_late=is_late, days_late=days_late)
-
-                if success:
-                    self.stats["messages_sent"] += 1
-
-                    # Simulation d'activité humaine occasionnelle
-                    if random.random() < 0.3:
-                        self.simulate_human_activity()
-
-                    # Pause entre messages (sauf le dernier)
-                    if i < total_to_process:
+                        # Pause entre messages
                         self._wait_between_messages()
 
-                self.stats["contacts_processed"] += 1
+                except MessageSendError as e:
+                    logger.error(f"Failed to send message to {contact_data.name}: {e}")
+                    self.stats["errors"] += 1
 
-            except MessageSendError as e:
-                logger.error(f"Failed to send message: {e}")
-                self.stats["errors"] += 1
-                continue
+        except Exception as e:
+            logger.error(f"Critical error during stream processing: {e}", exc_info=True)
+            self.stats["errors"] += 1
 
         # Résumé final
         duration = time.time() - start_time
@@ -215,8 +178,9 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         logger.info("═" * 70)
         logger.info("✅ UnlimitedBirthdayBot execution completed")
         logger.info("═" * 70)
-        logger.info(f"Messages sent: {self.stats['messages_sent']}/{total_to_process}")
+        logger.info(f"Messages sent: {self.stats['messages_sent']}")
         logger.info(f"Contacts processed: {self.stats['contacts_processed']}")
+        logger.info(f"Birthdays detected: {birthdays_today} today, {birthdays_late} late")
         logger.info(f"Errors: {self.stats['errors']}")
         logger.info(f"Duration: {self._format_duration(duration)}")
         logger.info("═" * 70)
@@ -224,37 +188,11 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         return self._build_result(
             messages_sent=self.stats["messages_sent"],
             contacts_processed=self.stats["contacts_processed"],
-            birthdays_today=total_today,
-            birthdays_late=total_late,
+            birthdays_today=birthdays_today,
+            birthdays_late=birthdays_late,
             messages_ignored=messages_ignored,
             duration_seconds=duration,
         )
-
-    def _estimate_duration(self, contact_count: int) -> str:
-        """
-        Estime la durée totale d'exécution.
-
-        Args:
-            contact_count: Nombre de contacts à traiter
-
-        Returns:
-            String formatée (ex: "1h 30m")
-        """
-        avg_delay = (
-            self.config.delays.min_delay_seconds + self.config.delays.max_delay_seconds
-        ) / 2
-
-        if self.config.dry_run:
-            avg_delay = 3  # 3 secondes en dry-run
-
-        total_seconds = contact_count * avg_delay
-        hours = int(total_seconds // 3600)
-        minutes = int((total_seconds % 3600) // 60)
-
-        if hours > 0:
-            return f"{hours}h {minutes}m"
-        else:
-            return f"{minutes}m"
 
     def _format_duration(self, seconds: float) -> str:
         """

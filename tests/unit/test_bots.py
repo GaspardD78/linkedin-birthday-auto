@@ -89,8 +89,8 @@ class TestBirthdayBot:
             with pytest.raises(DailyLimitReachedError):
                 bot._check_limits()
 
-    def test_calculate_max_messages_respects_weekly_limit(self, mock_config):
-        """_calculate_max_messages_to_send doit respecter la limite hebdo."""
+    def test_calculate_max_allowed_messages_respects_weekly_limit(self, mock_config):
+        """_calculate_max_allowed_messages doit respecter la limite hebdo."""
         mock_config.database.enabled = True
         mock_config.messaging_limits.weekly_message_limit = 80
 
@@ -106,12 +106,12 @@ class TestBirthdayBot:
             bot = BirthdayBot(config=mock_config)
             bot.db = mock_db
 
-            # Avec 10 contacts, on ne devrait en traiter que 5 (80-75)
-            max_messages = bot._calculate_max_messages_to_send(contacts_count=10)
+            # Il reste 5 messages (80-75)
+            max_messages = bot._calculate_max_allowed_messages()
             assert max_messages == 5
 
-    def test_calculate_max_messages_respects_daily_limit(self, mock_config):
-        """_calculate_max_messages_to_send doit respecter la limite quotidienne."""
+    def test_calculate_max_allowed_messages_respects_daily_limit(self, mock_config):
+        """_calculate_max_allowed_messages doit respecter la limite quotidienne."""
         mock_config.database.enabled = True
         mock_config.messaging_limits.weekly_message_limit = 80
         mock_config.messaging_limits.daily_message_limit = 10
@@ -125,23 +125,22 @@ class TestBirthdayBot:
             mock_db.get_daily_message_count.return_value = 8
             mock_get_db.return_value = mock_db
 
+            # Il reste 2 messages (10-8)
             bot = BirthdayBot(config=mock_config)
             bot.db = mock_db
 
-            # Avec 10 contacts, on ne devrait en traiter que 2 (10-8)
-            max_messages = bot._calculate_max_messages_to_send(contacts_count=10)
+            max_messages = bot._calculate_max_allowed_messages()
             assert max_messages == 2
 
-    def test_calculate_max_messages_respects_per_run_limit(self, mock_config):
-        """_calculate_max_messages_to_send doit respecter max_messages_per_run."""
+    def test_calculate_max_allowed_messages_respects_per_run_limit(self, mock_config):
+        """_calculate_max_allowed_messages doit respecter max_messages_per_run."""
         mock_config.messaging_limits.max_messages_per_run = 5
         mock_config.database.enabled = False
 
         with patch("src.core.base_bot.BrowserManager"):
             bot = BirthdayBot(config=mock_config)
 
-            # Avec 10 contacts, on ne devrait en traiter que 5 (limite par run)
-            max_messages = bot._calculate_max_messages_to_send(contacts_count=10)
+            max_messages = bot._calculate_max_allowed_messages()
             assert max_messages == 5
 
     def test_build_result_structure(self, mock_config):
@@ -154,6 +153,7 @@ class TestBirthdayBot:
                 contacts_processed=5,
                 birthdays_today=5,
                 birthdays_late_ignored=3,
+                messages_ignored=2,
                 duration_seconds=120.5,
             )
 
@@ -163,6 +163,7 @@ class TestBirthdayBot:
             assert result["contacts_processed"] == 5
             assert result["birthdays_today"] == 5
             assert result["birthdays_late_ignored"] == 3
+            assert result["messages_ignored"] == 2
             assert result["duration_seconds"] == 120.5
             assert result["dry_run"] is True
             assert "timestamp" in result
@@ -203,20 +204,6 @@ class TestUnlimitedBirthdayBot:
             bot = UnlimitedBirthdayBot(config=mock_config)
             assert bot.config.bot_mode == "unlimited"
 
-    def test_estimate_duration_calculation(self, mock_config):
-        """_estimate_duration doit calculer correctement la durée."""
-        with patch("src.core.base_bot.BrowserManager"):
-            bot = UnlimitedBirthdayBot(config=mock_config)
-
-            # En dry-run, délai moyen = 3s
-            # 10 contacts * 3s = 30s = 0m
-            duration = bot._estimate_duration(10)
-            assert "0m" in duration or "30s" in duration
-
-            # 100 contacts * 3s = 300s = 5m
-            duration = bot._estimate_duration(100)
-            assert "5m" in duration
-
     def test_format_duration_with_hours(self, mock_config):
         """_format_duration doit formater avec heures/minutes/secondes."""
         with patch("src.core.base_bot.BrowserManager"):
@@ -250,6 +237,7 @@ class TestUnlimitedBirthdayBot:
                 contacts_processed=15,
                 birthdays_today=5,
                 birthdays_late=10,
+                messages_ignored=2,
                 duration_seconds=450.5,
             )
 
@@ -259,6 +247,7 @@ class TestUnlimitedBirthdayBot:
             assert result["contacts_processed"] == 15
             assert result["birthdays_today"] == 5
             assert result["birthdays_late"] == 10
+            assert result["messages_ignored"] == 2
             assert result["duration_seconds"] == 450.5
             assert result["dry_run"] is True
             assert "timestamp" in result
@@ -315,8 +304,3 @@ def clean_singletons():
     ConfigManager._instance = None
     yield
     ConfigManager._instance = None
-
-
-# Pour exécuter les tests :
-# pytest tests/unit/test_bots.py -v
-# pytest tests/unit/test_bots.py -v --cov=src.bots
