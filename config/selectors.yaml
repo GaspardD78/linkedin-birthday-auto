@@ -4,11 +4,14 @@
 
 login:
   indicators:
+    - "#global-nav"
+    - ".global-nav"
     - "img.global-nav__me-photo"
     - "button.global-nav__primary-link-me-menu-trigger"
     - "div.feed-identity-module"
     - "img[alt*='Photo']"
     - "#global-nav-typeahead"
+    - "input.search-global-typeahead__input"
 
 birthday:
   card:

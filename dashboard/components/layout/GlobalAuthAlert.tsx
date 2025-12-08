@@ -8,8 +8,10 @@ import Link from "next/link"
 export function GlobalAuthAlert() {
   const [show, setShow] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     const checkAuth = async () => {
       try {
         const health = await getSystemHealth()
@@ -31,7 +33,7 @@ export function GlobalAuthAlert() {
     return () => clearInterval(interval)
   }, [])
 
-  if (loading || !show) return null
+  if (!mounted || loading || !show) return null
 
   return (
     <div className="w-full bg-destructive/15 border-b border-destructive/20 p-2">
