@@ -32,30 +32,6 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
     Ce mode peut envoyer beaucoup de messages d'un coup.
     LinkedIn peut détecter un comportement anormal.
     Utilisez avec prudence et configurez des délais suffisants.
-
-    Configuration recommandée :
-    ```yaml
-    bot_mode: "unlimited"
-    birthday_filter:
-      process_today: true
-      process_late: true
-      max_days_late: 10
-    delays:
-      min_delay_seconds: 180  # 3 minutes minimum
-      max_delay_seconds: 420  # 7 minutes maximum
-    ```
-
-    Exemples:
-        >>> from src.bots.unlimited_bot import UnlimitedBirthdayBot
-        >>> from src.config import get_config
-        >>>
-        >>> config = get_config()
-        >>> config.bot_mode = "unlimited"
-        >>> config.birthday_filter.max_days_late = 10
-        >>>
-        >>> with UnlimitedBirthdayBot(config=config) as bot:
-        >>>     results = bot.run()
-        >>>     print(f"Messages envoyés : {results['messages_sent']}")
     """
 
     def __init__(self, *args, **kwargs):
@@ -73,16 +49,6 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
     def _run_internal(self) -> dict[str, Any]:
         """
         Exécute le bot pour envoyer des messages d'anniversaire (unlimited).
-
-        Workflow:
-        1. Navigation vers la page anniversaires
-        2. Itération sur le flux de contacts (generator)
-        3. Filtrage selon configuration (today + late jusqu'à max_days_late)
-        4. Envoi des messages avec délais humanisés
-        5. Enregistrement en base de données
-
-        Returns:
-            Dict contenant les statistiques d'exécution
         """
         start_time = time.time()
 
@@ -93,9 +59,6 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         logger.info(f"Process Today: {self.config.birthday_filter.process_today}")
         logger.info(f"Process Late: {self.config.birthday_filter.process_late}")
         logger.info(f"Max Days Late: {self.config.birthday_filter.max_days_late}")
-        logger.info(
-            f"Delays: {self.config.delays.min_delay_seconds}-{self.config.delays.max_delay_seconds}s"
-        )
         logger.info("⚠️  WARNING: NO weekly limit - could send many messages!")
         logger.info("═" * 70)
 
@@ -138,6 +101,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
                         is_eligible = True
                 elif contact_data.birthday_type == "late":
                     if self.config.birthday_filter.process_late:
+                        # Allow late birthdays up to configured max
                         if contact_data.days_late <= self.config.birthday_filter.max_days_late:
                             is_eligible = True
 
@@ -149,6 +113,8 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
                 # Processing
                 try:
                     logger.info(f"Processing contact: {contact_data.name} (Type: {contact_data.birthday_type})")
+
+                    # Use standard processing method (same as BirthdayBot)
                     success = self.process_birthday_contact(contact_data, locator=locator)
 
                     self.stats["contacts_processed"] += 1
@@ -160,7 +126,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
                         if random.random() < 0.3:
                             self.simulate_human_activity()
 
-                        # Pause entre messages
+                        # Pause entre messages (CRITICAL in unlimited mode)
                         self._wait_between_messages()
 
                 except MessageSendError as e:
@@ -195,15 +161,7 @@ class UnlimitedBirthdayBot(BaseLinkedInBot):
         )
 
     def _format_duration(self, seconds: float) -> str:
-        """
-        Formate une durée en secondes.
-
-        Args:
-            seconds: Durée en secondes
-
-        Returns:
-            String formatée (ex: "1h 30m 45s")
-        """
+        """Formate une durée en secondes."""
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
@@ -277,24 +235,6 @@ def run_unlimited_bot(
 ) -> dict[str, Any]:
     """
     Fonction helper pour exécuter l'UnlimitedBirthdayBot facilement.
-
-    Args:
-        config: Configuration (ou None pour config par défaut)
-        dry_run: Override du mode dry-run
-        max_days_late: Nombre maximum de jours de retard à traiter
-
-    Returns:
-        Résultats de l'exécution
-
-    Exemples:
-        >>> from src.bots.unlimited_bot import run_unlimited_bot
-        >>>
-        >>> # Mode dry-run avec max 7 jours de retard
-        >>> results = run_unlimited_bot(dry_run=True, max_days_late=7)
-        >>> print(f"Sent {results['messages_sent']} messages")
-        >>>
-        >>> # Mode production avec max 10 jours
-        >>> results = run_unlimited_bot(max_days_late=10)
     """
     from ..config.config_manager import get_config
 

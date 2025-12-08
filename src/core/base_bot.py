@@ -165,8 +165,52 @@ class BaseLinkedInBot(ABC):
             raise SessionExpiredError("Failed to verify login")
 
     # ═══════════════════════════════════════════════════════════════
-    #  STRATEGIE ANTI-FRAGILE (Sélecteurs & Dates)
+    #  STRATEGIE ANTI-FRAGILE (Sélecteurs & Dates & Clicks)
     # ═══════════════════════════════════════════════════════════════
+
+    def _smart_click(self, locator: Locator, timeout: int = 5000) -> bool:
+        """
+        Tente de cliquer sur un élément avec plusieurs stratégies de fallback.
+        1. Standard click
+        2. Force click (overlay)
+        3. JS click
+        4. Dispatch Event
+        """
+        try:
+            # Strategy 1: Standard Click
+            locator.click(timeout=timeout)
+            return True
+        except Exception as e1:
+            logger.debug(f"SmartClick: Standard click failed ({e1}). Trying force click...")
+            try:
+                # Strategy 2: Force Click
+                locator.click(timeout=timeout, force=True)
+                return True
+            except Exception as e2:
+                logger.debug(f"SmartClick: Force click failed ({e2}). Trying JS click...")
+                try:
+                    # Strategy 3: JS Click
+                    locator.evaluate("el => el.click()")
+                    return True
+                except Exception as e3:
+                     logger.debug(f"SmartClick: JS click failed ({e3}). Trying Dispatch Event...")
+                     try:
+                         # Strategy 4: Dispatch Event
+                         locator.evaluate("el => el.dispatchEvent(new Event('click', {bubbles: true}))")
+                         return True
+                     except Exception as e4:
+                         # All failed
+                         logger.warning(f"SmartClick: All strategies failed. Last error: {e4}")
+                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                         # Try to get selector hint
+                         try:
+                             hint = str(locator).replace("Locator@", "").strip()[:20]
+                         except:
+                             hint = "unknown"
+
+                         if self.browser_manager:
+                            self.browser_manager.take_screenshot(f"click_error_{timestamp}_{hint}.png")
+                         return False
 
     def _find_element_by_cascade(self, parent: Any, selectors: Union[List[str], str]) -> Optional[Any]:
         """
@@ -465,7 +509,8 @@ class BaseLinkedInBot(ABC):
                 logger.warning(f"⚠️ Attempt {attempt}/{max_retries} failed: {e}")
                 if attempt < max_retries:
                     logger.info("🩹 Self-healing: Closing all modals and retrying...")
-                    self.browser_manager.take_screenshot(f"error_retry_{attempt}.png")
+                    if self.browser_manager:
+                        self.browser_manager.take_screenshot(f"error_retry_{attempt}.png")
                     self._close_all_message_modals()
                     self.random_delay(2, 3)
                 else:
@@ -496,35 +541,26 @@ class BaseLinkedInBot(ABC):
             logger.warning("Configuration error: 'messaging.open_button' selector not found")
             return False
 
-        try:
-            # 1. Try generic click on first match
-            # Note: locator.first refers to the first matching element in DOM order.
-            # If the first element is hidden, click() waits for it to be visible.
-            # To handle cases where multiple buttons exist but only one is visible/correct,
-            # we try to narrow it down if the simple click fails.
-
-            # Simple attempt first
-            msg_btn_locator.first.click(timeout=3000)
-        except Exception:
-            # 2. Retry with Visibility Filter
-            # Sometimes there are hidden buttons (e.g. mobile vs desktop) matched by generic selectors.
+        clicked = False
+        # Try generic smart click on first match
+        if self._smart_click(msg_btn_locator.first, timeout=3000):
+             clicked = True
+        else:
+             # 2. Retry with Visibility Filter
             try:
                 logger.debug("First click failed, searching for visible button...")
-
-                # Note: We rely on manual iteration to find the visible one among matches
                 count = msg_btn_locator.count()
-                found = False
                 for i in range(count):
                     loc = msg_btn_locator.nth(i)
                     if loc.is_visible():
-                        loc.click(timeout=3000)
-                        found = True
-                        break
-                if not found:
-                     raise Exception("No visible button found")
-            except Exception:
-                logger.warning("Could not find/click 'Message' button (timeout)")
-                return False
+                        if self._smart_click(loc, timeout=3000):
+                            clicked = True
+                            break
+            except Exception: pass
+
+        if not clicked:
+             logger.warning("Could not find/click 'Message' button (timeout)")
+             return False
 
         # 2. Wait for Modal
         try:
@@ -555,6 +591,7 @@ class BaseLinkedInBot(ABC):
 
         # 4. Fill & Send
         try:
+            # We also use smart click here for consistency if needed, but fill is main action
             message_box.click()
             self.random_delay(0.5, 1)
             message_box.fill(message)
@@ -564,13 +601,12 @@ class BaseLinkedInBot(ABC):
         submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
 
         if submit_btn_locator:
-            try:
-                submit_btn_locator.last.click(timeout=5000)
+            if self._smart_click(submit_btn_locator.last, timeout=5000):
                 logger.info("✅ Message sent successfully")
                 MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
                 return True
-            except Exception as e:
-                 logger.warning(f"Send button click failed: {e}")
+            else:
+                 logger.warning("Send button click failed")
                  return False
         else:
             logger.warning("Send button selector not found")
@@ -584,7 +620,7 @@ class BaseLinkedInBot(ABC):
             if close_buttons:
                 for btn in close_buttons:
                     try:
-                        btn.click(timeout=2000)
+                        self._smart_click(btn, timeout=2000)
                         self.random_delay(0.2, 0.5)
                     except Exception: break
         except Exception: pass
