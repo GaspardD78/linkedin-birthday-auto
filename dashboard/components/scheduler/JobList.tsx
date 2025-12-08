@@ -178,7 +178,14 @@ export function JobList({ onCreateJob, onEditJob, refreshTrigger }: JobListProps
                     <Badge variant={job.bot_type === 'birthday' ? 'default' : 'secondary'}>
                       {job.bot_type === 'birthday' ? '🎂 Birthday' : '👁️ Visitor'}
                     </Badge>
-                    {getDryRunBadge(job)}
+                    {(() => {
+                      const badge = getDryRunBadge(job);
+                      return (
+                        <Badge variant={badge.variant} className="border-slate-600">
+                           {badge.emoji} {badge.text}
+                        </Badge>
+                      );
+                    })()}
                     {!job.enabled && (
                       <Badge variant="outline" className="border-slate-600 text-slate-400">
                         Désactivé
