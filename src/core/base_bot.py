@@ -142,27 +142,46 @@ class BaseLinkedInBot(ABC):
         if not self._check_connectivity():
             raise SessionExpiredError("No internet connectivity")
 
-        try:
-            # HARDWARE REALISM: Increased timeout to 60s for Pi4
-            self.page.goto("https://www.linkedin.com/feed/", timeout=60000, wait_until="domcontentloaded")
+        # Retry mechanism for Pi 4 stability
+        max_retries = 3
+        timeout = 90000  # 90s for Pi 4
 
-            # Use combined selector to wait for ANY login indicator
-            combined_selector = self.selector_manager.get_combined_selector("login.indicators")
+        for attempt in range(1, max_retries + 1):
             try:
-                self.page.wait_for_selector(combined_selector, timeout=60000)
-                logger.info(f"✅ Successfully logged in")
-                return True
-            except PlaywrightTimeoutError:
-                pass # Continue to check URL
+                # HARDWARE REALISM: Increased timeout to 90s for Pi4
+                logger.debug(f"Navigating to feed (Attempt {attempt}/{max_retries})...")
+                self.page.goto("https://www.linkedin.com/feed/", timeout=timeout, wait_until="domcontentloaded")
 
-            if "/feed" in self.page.url or "/mynetwork" in self.page.url:
-                 return True
+                # Use combined selector to wait for ANY login indicator
+                combined_selector = self.selector_manager.get_combined_selector("login.indicators")
+                try:
+                    self.page.wait_for_selector(combined_selector, timeout=45000)
+                    logger.info(f"✅ Successfully logged in")
+                    return True
+                except PlaywrightTimeoutError:
+                    pass # Continue to check URL
 
-            raise PlaywrightTimeoutError("No login indicators found")
+                if "/feed" in self.page.url or "/mynetwork" in self.page.url:
+                     return True
 
-        except PlaywrightTimeoutError:
-            self.browser_manager.take_screenshot("error_login_verification_failed.png")
-            raise SessionExpiredError("Failed to verify login")
+                if attempt < max_retries:
+                    logger.warning(f"Login indicators not found (Attempt {attempt}). Retrying...")
+                    time.sleep(5)
+                    continue
+
+                raise PlaywrightTimeoutError("No login indicators found")
+
+            except PlaywrightTimeoutError as e:
+                logger.warning(f"Login verification timed out (Attempt {attempt}/{max_retries}): {e}")
+                if attempt == max_retries:
+                    self.browser_manager.take_screenshot("error_login_verification_failed.png")
+                    raise SessionExpiredError(f"Failed to verify login after {max_retries} attempts")
+                time.sleep(5)
+            except Exception as e:
+                logger.error(f"Unexpected error during login verification: {e}")
+                raise SessionExpiredError(f"Login verification error: {e}")
+
+        return False
 
     # ═══════════════════════════════════════════════════════════════
     #  STRATEGIE ANTI-FRAGILE (Sélecteurs & Dates)
