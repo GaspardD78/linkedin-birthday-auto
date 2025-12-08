@@ -24,8 +24,29 @@ birthday:
 
 messaging:
   # Buttons to open the message modal/page from a profile or list
+  # Heuristic definition for robust detection
+  open_button_heuristic:
+    candidates: "button, a[role='button'], a.message-anywhere-button, a[href*='/messaging/compose']"
+    positive_keywords:
+      - "Message"
+      - "Envoyer"
+      - "Send"
+      - "Souhaiter"
+      - "Happy"
+      - "Say"
+    negative_keywords:
+      - "Premium"
+      - "Ad"
+      - "Promoted"
+    required_attributes: {}
+    weights:
+      text: 40
+      visible: 30
+      aria: 30
+    threshold: 65
+
+  # Fallback selectors (historical)
   open_button:
-    # Attributes / Semantic
     - '[data-control-name="message"]'
     - '[data-control-name="compose_message"]'
     - 'button[aria-label*="Message"]'
@@ -33,15 +54,11 @@ messaging:
     - 'button[aria-label*="Souhaiter"]'
     - 'button[aria-label*="Happy"]'
     - 'a[href*="/messaging/compose"]'
-    # Text-based selectors (Multilingual)
     - 'button:has-text("Message")'
     - 'button:has-text("Envoyer un message")'
     - 'button:has-text("Send message")'
     - 'button:has-text("Souhaiter")'
     - 'button:has-text("Je vous souhaite")'
-    - 'button:has-text("Happy")'
-    - 'button:has-text("Say")'
-    # Fallback Classes
     - '.artdeco-button--secondary'
 
   # The text area inside the message modal
@@ -50,6 +67,12 @@ messaging:
     - "div[role='textbox']"
 
   # The send button inside the message modal
+  send_button_heuristic:
+    candidates: "button[type='submit'], button.msg-form__send-button"
+    positive_keywords: ["Envoyer", "Send"]
+    weights: {text: 50, visible: 50}
+    threshold: 70
+
   send_button:
     - "button.msg-form__send-button"
     - "button[type='submit']"

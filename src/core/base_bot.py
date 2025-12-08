@@ -194,6 +194,8 @@ class BaseLinkedInBot(ABC):
         2. Force click (overlay)
         3. JS click
         4. Dispatch Event
+
+        Capture une capture d'écran en cas d'échec total et retourne False sans crasher.
         """
         try:
             # Strategy 1: Standard Click
@@ -221,14 +223,21 @@ class BaseLinkedInBot(ABC):
                          # All failed
                          logger.warning(f"SmartClick: All strategies failed. Last error: {e4}")
                          timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                         # Try to get selector hint
+
+                         # Safe hint extraction
                          try:
-                             hint = str(locator).replace("Locator@", "").strip()[:20]
-                         except:
                              hint = "unknown"
+                             # Try to get basic selector info safely
+                             # str(locator) usually gives 'Locator@selector'
+                             raw_str = str(locator)
+                             if "@" in raw_str:
+                                 hint = raw_str.split("@")[-1].strip().replace("/", "_").replace(":", "")[:30]
+                         except:
+                             pass
 
                          if self.browser_manager:
-                            self.browser_manager.take_screenshot(f"click_error_{timestamp}_{hint}.png")
+                            self.browser_manager.take_screenshot(f"smartclick_failed_{timestamp}_{hint}.png")
+
                          return False
 
     def _find_element_by_cascade(self, parent: Any, selectors: Union[List[str], str]) -> Optional[Any]:
@@ -299,14 +308,6 @@ class BaseLinkedInBot(ABC):
     def yield_birthday_contacts(self) -> Generator[Tuple[ContactData, Locator], None, None]:
         """
         Générateur "Process-As-You-Go" qui parcourt la liste des anniversaires.
-
-        Yields:
-            Tuple[ContactData, Locator]: Données extraites et Locator frais.
-
-        Avantages:
-        1. Evite de stocker des Locators périmés (stale).
-        2. Permet au bot de filtrer/agir élément par élément.
-        3. Gère le scroll automatiquement.
         """
         with self.tracer.start_as_current_span("yield_birthday_contacts"):
             logger.info("Navigating to birthdays page...")
@@ -383,12 +384,7 @@ class BaseLinkedInBot(ABC):
 
     def process_birthday_contact(self, data: ContactData, locator: Optional[Locator] = None) -> bool:
         """
-        Méthode robuste pour traiter un contact, capable de gérer les éléments périmés.
-
-        Stratégie:
-        1. Si un Locator est fourni et valide, l'utiliser (Fast Path).
-        2. Si Locator invalide/manquant, tenter de retrouver par nom dans le viewport.
-        3. Si échec, naviguer vers l'URL du profil (Robust Fallback).
+        Méthode robuste pour traiter un contact.
         """
         logger.info(f"Processing contact: {data.name}")
 
@@ -403,10 +399,8 @@ class BaseLinkedInBot(ABC):
                 logger.warning(f"Locator for {data.name} is stale/invalid. Trying fallback.")
 
         # Strategy 2: Re-acquire by text in current viewport
-        # Note: This only works if we haven't scrolled away too far
         try:
             logger.info("Attempting re-acquisition by text...")
-            # More specific locator strategies could be added here
             fallback_locator = self.page.locator(f"div[role='listitem']:has-text('{data.name}')").first
             if fallback_locator.count() > 0 and fallback_locator.is_visible():
                 self._safe_scroll_to_element(fallback_locator)
@@ -419,19 +413,8 @@ class BaseLinkedInBot(ABC):
             logger.info(f"Fallback: Navigating to profile URL {data.profile_url}")
             try:
                 self.page.goto(data.profile_url, timeout=60000, wait_until="domcontentloaded")
-                # On profile page, the "Message" button is different
-                # We need to adapt send_birthday_message or call a profile-specific method
-                # For now, let's try to reuse send_birthday_message logic which looks for 'messaging.open_button'
-                # But 'messaging.open_button' selectors might be list-specific.
-
-                # We need profile-specific selectors here.
-                # Assuming SelectorManager has them or we use generic text
-                msg_btn = self.page.locator("button:has-text('Message')").first
-                if msg_btn.is_visible():
-                     # Construct a temporary "element" that contains the button (the page body or a wrapper)
-                     # Actually send_birthday_message expects a container with the button.
-                     # If we pass page.locator("body"), it might work if the selector finds the button inside.
-                     return self.send_birthday_message(self.page.locator("body"), is_late=(data.birthday_type == "late"), days_late=data.days_late)
+                # Use find_element to leverage selector manager's heuristic if configured
+                return self.send_birthday_message(self.page.locator("body"), is_late=(data.birthday_type == "late"), days_late=data.days_late)
             except Exception as e:
                 logger.error(f"Failed profile navigation fallback: {e}")
 
@@ -439,11 +422,10 @@ class BaseLinkedInBot(ABC):
 
     def _extract_profile_url(self, element: Locator) -> Optional[str]:
         try:
-            # Look for the main link (often the name)
             link = element.locator("a[href*='/in/']").first
             if link.count() > 0:
                 url = link.get_attribute("href")
-                if url: return url.split("?")[0] # Clean URL
+                if url: return url.split("?")[0]
         except Exception:
             pass
         return None
@@ -487,11 +469,10 @@ class BaseLinkedInBot(ABC):
     def send_birthday_message(self, contact_element, is_late: bool = False, days_late: int = 0) -> bool:
         full_name = self.extract_contact_name(contact_element)
         if not full_name:
-            # Try getting name from page title if on profile page
             try:
                 title = self.page.title()
                 if "|" in title: full_name = title.split("|")[0].strip()
-                elif ")" in title: full_name = title.split(")")[1].strip() # "(1) Name | LinkedIn"
+                elif ")" in title: full_name = title.split(")")[1].strip()
             except: pass
 
         if not full_name:
@@ -545,16 +526,13 @@ class BaseLinkedInBot(ABC):
         logger.info(f"--- Processing birthday for {full_name} ---")
 
         # 1. Open Modal
-        # Try finding button in container
+        # Use find_element which now supports heuristics
         msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button")
 
-        # If not found, maybe we are on profile page and contact_element is body?
-        # Try generic profile button selector
         if not msg_btn_locator:
-            try:
-                 msg_btn_locator = self.page.locator("main button.message-anywhere-button, main button:has-text('Message')").first
-                 if not msg_btn_locator.count(): msg_btn_locator = None
-            except: pass
+            # Fallback for Profile Page (when contact_element is body or similar)
+            # We try to find the button anywhere in the page matching the heuristic
+             msg_btn_locator = self.selector_manager.find_element(self.page, "messaging.open_button")
 
         if not msg_btn_locator:
             logger.warning("Configuration error: 'messaging.open_button' selector not found")
@@ -617,6 +595,7 @@ class BaseLinkedInBot(ABC):
         except Exception as e:
             raise Exception(f"Failed to fill message box: {e}")
 
+        # Use heuristic for send button if configured
         submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
 
         if submit_btn_locator:
