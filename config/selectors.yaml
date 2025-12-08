@@ -13,6 +13,11 @@ login:
     - "#global-nav-typeahead"
     - "input.search-global-typeahead__input"
 
+global:
+  generic_buttons:
+    - "button.artdeco-button--primary"
+    - "button.artdeco-button--secondary"
+
 birthday:
   card:
     - "div[role='listitem']"
@@ -20,6 +25,7 @@ birthday:
 messaging:
   # Buttons to open the message modal/page from a profile or list
   open_button:
+    # Attributes / Semantic
     - '[data-control-name="message"]'
     - '[data-control-name="compose_message"]'
     - 'button[aria-label*="Message"]'
@@ -27,12 +33,15 @@ messaging:
     - 'button[aria-label*="Souhaiter"]'
     - 'button[aria-label*="Happy"]'
     - 'a[href*="/messaging/compose"]'
+    # Text-based selectors (Multilingual)
     - 'button:has-text("Message")'
-    - 'button:has-text("Envoyer")'
+    - 'button:has-text("Envoyer un message")'
+    - 'button:has-text("Send message")'
     - 'button:has-text("Souhaiter")'
     - 'button:has-text("Je vous souhaite")'
     - 'button:has-text("Happy")'
     - 'button:has-text("Say")'
+    # Fallback Classes
     - '.artdeco-button--secondary'
 
   # The text area inside the message modal
@@ -44,10 +53,14 @@ messaging:
   send_button:
     - "button.msg-form__send-button"
     - "button[type='submit']"
+    - 'button:has-text("Envoyer")'
+    - 'button:has-text("Send")'
 
   # Button to close the chat overlay
   close_overlay:
     - "button[data-control-name='overlay.close_conversation_window']"
+    - "button[aria-label='Close']"
+    - "button[aria-label='Fermer']"
 
 visitor:
   search:
