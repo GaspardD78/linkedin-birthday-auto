@@ -5,6 +5,7 @@ from ..bots.unlimited_bot import run_unlimited_bot
 from ..bots.visitor_bot import VisitorBot
 from ..config.config_manager import get_config
 from ..utils.logging import get_logger
+from ..utils.exceptions import InvalidAuthStateError
 
 logger = get_logger(__name__)
 
@@ -23,6 +24,11 @@ def run_bot_task(
             error_msg = f"Invalid bot_mode: {bot_mode}. Must be 'standard' or 'unlimited'."
             logger.error(error_msg)
             return {"success": False, "error": error_msg, "bot_type": "birthday"}
+    except InvalidAuthStateError:
+        # FIX: Handle missing authentication gracefully
+        error_msg = "Impossible de démarrer le bot : fichier d'authentification manquant. Veuillez vous connecter via le tableau de bord."
+        logger.error(f"task_auth_error: {error_msg}")
+        return {"success": False, "error": error_msg, "bot_type": "birthday"}
     except Exception as e:
         logger.error("task_failed", error=str(e), exc_info=True)
         raise
@@ -64,6 +70,11 @@ def run_profile_visit_task(
         with VisitorBot(config=config, profiles_limit_override=limit) as bot:
             return bot.run()
 
+    except InvalidAuthStateError:
+        # FIX: Handle missing authentication gracefully
+        error_msg = "Impossible de démarrer le bot : fichier d'authentification manquant. Veuillez vous connecter via le tableau de bord."
+        logger.error(f"task_auth_error: {error_msg}")
+        return {"success": False, "error": error_msg, "bot_type": "visitor"}
     except Exception as e:
         logger.error("task_failed", error=str(e), exc_info=True)
         return {"success": False, "error": str(e), "bot_type": "visitor"}
