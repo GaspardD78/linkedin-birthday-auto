@@ -1,7 +1,7 @@
 """FastAPI routes for automation scheduler."""
 
 from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 
 from src.api.security import verify_api_key
@@ -38,23 +38,22 @@ class CreateJobRequest(BaseModel):
     schedule_config: Dict[str, Any] = Field(..., description="Schedule configuration")
     bot_config: Dict[str, Any] = Field(..., description="Bot-specific configuration")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "Daily Birthday Messages",
-                "description": "Send birthday messages every day at 8am",
-                "bot_type": "birthday",
-                "enabled": True,
-                "schedule_type": "daily",
-                "schedule_config": {"hour": 8, "minute": 0},
-                "bot_config": {
-                    "dry_run": False,
-                    "process_late": True,
-                    "max_days_late": 7,
-                    "max_messages_per_run": 10
-                }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "name": "Daily Birthday Messages",
+            "description": "Send birthday messages every day at 8am",
+            "bot_type": "birthday",
+            "enabled": True,
+            "schedule_type": "daily",
+            "schedule_config": {"hour": 8, "minute": 0},
+            "bot_config": {
+                "dry_run": False,
+                "process_late": True,
+                "max_days_late": 7,
+                "max_messages_per_run": 10
             }
         }
+    })
 
 
 class UpdateJobRequest(BaseModel):
@@ -66,13 +65,12 @@ class UpdateJobRequest(BaseModel):
     schedule_config: Optional[Dict[str, Any]] = None
     bot_config: Optional[Dict[str, Any]] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "enabled": False,
-                "schedule_config": {"hour": 9, "minute": 30}
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "enabled": False,
+            "schedule_config": {"hour": 9, "minute": 30}
         }
+    })
 
 
 class ToggleJobRequest(BaseModel):
@@ -97,8 +95,7 @@ class JobResponse(BaseModel):
     last_run_error: Optional[str]
     next_run_at: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
