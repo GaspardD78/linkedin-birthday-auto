@@ -497,10 +497,34 @@ class BaseLinkedInBot(ABC):
             return False
 
         try:
-            msg_btn_locator.first.click(timeout=5000)
+            # 1. Try generic click on first match
+            # Note: locator.first refers to the first matching element in DOM order.
+            # If the first element is hidden, click() waits for it to be visible.
+            # To handle cases where multiple buttons exist but only one is visible/correct,
+            # we try to narrow it down if the simple click fails.
+
+            # Simple attempt first
+            msg_btn_locator.first.click(timeout=3000)
         except Exception:
-            logger.warning("Could not find/click 'Message' button (timeout)")
-            return False
+            # 2. Retry with Visibility Filter
+            # Sometimes there are hidden buttons (e.g. mobile vs desktop) matched by generic selectors.
+            try:
+                logger.debug("First click failed, searching for visible button...")
+
+                # Note: We rely on manual iteration to find the visible one among matches
+                count = msg_btn_locator.count()
+                found = False
+                for i in range(count):
+                    loc = msg_btn_locator.nth(i)
+                    if loc.is_visible():
+                        loc.click(timeout=3000)
+                        found = True
+                        break
+                if not found:
+                     raise Exception("No visible button found")
+            except Exception:
+                logger.warning("Could not find/click 'Message' button (timeout)")
+                return False
 
         # 2. Wait for Modal
         try:

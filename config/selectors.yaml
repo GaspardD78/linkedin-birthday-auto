@@ -24,18 +24,26 @@ messaging:
     - '[data-control-name="compose_message"]'
     - 'button[aria-label*="Message"]'
     - 'button[aria-label*="Envoyer"]'
+    - 'button[aria-label*="Souhaiter"]'
+    - 'button[aria-label*="Happy"]'
     - 'a[href*="/messaging/compose"]'
     - 'button:has-text("Message")'
     - 'button:has-text("Envoyer")'
+    - 'button:has-text("Souhaiter")'
+    - 'button:has-text("Je vous souhaite")'
+    - 'button:has-text("Happy")'
+    - 'button:has-text("Say")'
     - '.artdeco-button--secondary'
 
   # The text area inside the message modal
   modal_textarea:
     - "div.msg-form__contenteditable[role='textbox']"
+    - "div[role='textbox']"
 
   # The send button inside the message modal
   send_button:
     - "button.msg-form__send-button"
+    - "button[type='submit']"
 
   # Button to close the chat overlay
   close_overlay:
