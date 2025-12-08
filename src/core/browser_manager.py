@@ -196,7 +196,9 @@ class BrowserManager:
             try:
                 self.context.close()
             except Exception as e:
-                errors.append(f"Context close: {e}")
+                # Ignore "Target page, context or browser has been closed" as it means job done
+                if "Target page, context or browser has been closed" not in str(e):
+                    errors.append(f"Context close: {e}")
             finally:
                 self.context = None
 
