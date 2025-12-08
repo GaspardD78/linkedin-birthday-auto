@@ -33,7 +33,7 @@ class BirthdayConfig(BaseModel):
 
 class VisitorConfig(BaseModel):
     dry_run: bool = Field(default=True)
-    limit: Optional[int] = Field(default=None)
+    limit: Optional[int] = Field(default=None, ge=1, le=1000, description="Max profiles to visit (1-1000)")
 
 class StopRequest(BaseModel):
     job_type: Optional[str] = Field(None, description="Specific job type to stop (birthday, visit)")
@@ -99,6 +99,38 @@ async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
         queued_jobs=queued_jobs,
         worker_status=worker_status
     )
+
+@router.get("/jobs/{job_id}", response_model=JobStatus)
+async def get_single_job_status(job_id: str, authenticated: bool = Depends(verify_api_key)):
+    """Get status of a single job by ID (Replacement for legacy /jobs/{id})."""
+    if not redis_conn:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    try:
+        job = Job.fetch(job_id, connection=redis_conn)
+        job_type = job.meta.get('job_type', 'unknown')
+
+        # Determine status
+        status = job.get_status()
+        if status == 'started':
+            status = 'running'
+        elif status == 'queued':
+            status = 'queued'
+        elif status == 'finished':
+            status = 'completed'
+        elif status == 'failed':
+            status = 'failed'
+
+        return JobStatus(
+            id=job.id,
+            status=status,
+            type=job_type,
+            enqueued_at=job.enqueued_at.isoformat() if job.enqueued_at else "",
+            started_at=job.started_at.isoformat() if job.started_at else None
+        )
+    except Exception as e:
+        logger.warning(f"Job {job_id} not found: {e}")
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
 @router.post("/start/birthday")
 async def start_birthday_bot(config: BirthdayConfig, authenticated: bool = Depends(verify_api_key)):
