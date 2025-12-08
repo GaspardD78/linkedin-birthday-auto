@@ -1444,16 +1444,21 @@ class Database:
         # Get database size before vacuum
         db_size_before = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
 
-        try:
+        # Define internal function to apply decorator
+        @retry_on_lock()
+        def _execute_vacuum():
             # Pour VACUUM, on a besoin d'une connexion isolée (pas de transaction)
             # On ne peut pas utiliser get_connection() standard car il est dans un bloc transactionnel
-            conn = sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path, timeout=60.0)
             try:
                 conn.isolation_level = None
                 conn.execute("VACUUM")
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)") # Force WAL flush
             finally:
                 conn.close()
+
+        try:
+            _execute_vacuum()
 
             # Get database size after vacuum
             db_size_after = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0

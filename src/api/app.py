@@ -113,14 +113,6 @@ class BotExecutionResult(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# STOCKAGE DES JOBS EN COURS
-# ═══════════════════════════════════════════════════════════════════
-
-# Stockage simple en mémoire (dans une vraie app, utiliser Redis/DB)
-active_jobs: dict[str, dict[str, Any]] = {}
-
-
-# ═══════════════════════════════════════════════════════════════════
 # LIFECYCLE DE L'API
 # ═══════════════════════════════════════════════════════════════════
 
@@ -452,18 +444,6 @@ async def get_contacts(limit: Optional[int] = None, sort: str = "messages", auth
 # ═══════════════════════════════════════════════════════════════════
 
 
-@app.get("/jobs/{job_id}", tags=["Bot"])
-async def get_job_status(job_id: str, authenticated: bool = Depends(verify_api_key)):
-    """
-    Récupère le statut d'un job.
-
-    Args:
-        job_id: ID du job à consulter
-    """
-    if job_id not in active_jobs:
-        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
-
-    return active_jobs[job_id]
 
 
 @app.get("/logs", tags=["Logs"])
