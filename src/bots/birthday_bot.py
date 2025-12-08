@@ -1,8 +1,7 @@
 """
 Bot LinkedIn pour anniversaires avec limites (mode standard).
 
-Ce bot traite UNIQUEMENT les anniversaires du jour et respecte les limites
-hebdomadaires configurées pour éviter la détection LinkedIn.
+Ce bot traite les anniversaires en fonction de la configuration.
 """
 
 from datetime import datetime
@@ -23,7 +22,7 @@ logger = get_logger(__name__)
 
 class BirthdayBot(BaseLinkedInBot):
     """
-    Bot LinkedIn pour anniversaires en mode standard.
+    Bot LinkedIn pour anniversaires.
     """
 
     def __init__(self, *args, **kwargs):
@@ -36,7 +35,7 @@ class BirthdayBot(BaseLinkedInBot):
             "ignored_limit": 0
         }
 
-        logger.info("BirthdayBot initialized - Processing TODAY's birthdays only")
+        logger.info(f"BirthdayBot initialized (Mode: {self.config.bot_mode})")
 
     def run(self) -> dict[str, Any]:
         return super().run()
@@ -49,13 +48,14 @@ class BirthdayBot(BaseLinkedInBot):
         start_time = time.time()
 
         logger.info("═" * 70)
-        logger.info("🎂 Starting BirthdayBot (Standard Mode)")
+        logger.info(f"🎂 Starting BirthdayBot ({self.config.bot_mode})")
         logger.info("═" * 70)
         logger.info(
             "configuration",
             dry_run=self.config.dry_run,
             weekly_limit=self.config.messaging_limits.weekly_message_limit,
-            mode="TODAY's birthdays only",
+            process_today=self.config.birthday_filter.process_today,
+            process_late=self.config.birthday_filter.process_late,
         )
         logger.info("═" * 70)
 
@@ -76,20 +76,28 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info(f"✅ Budget for this run: {max_allowed} messages")
 
         # ITERATION DU FLUX (Generator Pattern)
-        # On parcourt les contacts un par un (Process-As-You-Go)
-        # Le générateur gère le scroll et l'extraction sûre
         for contact_data, contact_locator in self.yield_birthday_contacts():
 
             try:
+                should_process = False
+
                 if contact_data.birthday_type == "today":
                     self.run_stats["today_found"] += 1
+                    if self.config.birthday_filter.process_today:
+                        should_process = True
+                elif contact_data.birthday_type == "late":
+                    self.run_stats["late_found"] += 1
+                    if self.config.birthday_filter.process_late:
+                         if contact_data.days_late <= self.config.birthday_filter.max_days_late:
+                            should_process = True
+                         else:
+                            logger.debug(f"Skipping late contact (Too old: {contact_data.days_late} days)")
 
+                if should_process:
                     # Vérifier quota (FILTRE AVANT ACTION)
                     if self.run_stats["sent"] < max_allowed:
 
-                        # APPEL MÉTHODE ROBUSTE (Capable de gérer Locator OU Fallback URL)
-                        # On passe 'contact_locator' (le Locator du générateur)
-                        # S'il est valide, c'est instantané. Sinon, process_birthday_contact gère.
+                        # APPEL MÉTHODE ROBUSTE
                         success = self.process_birthday_contact(contact_data, locator=contact_locator)
 
                         if success:
@@ -104,11 +112,10 @@ class BirthdayBot(BaseLinkedInBot):
                             self.stats["errors"] += 1
                     else:
                         self.run_stats["ignored_limit"] += 1
-                        logger.debug("Limit reached for this run, ignoring remaining 'today' items.")
-
-                elif contact_data.birthday_type == "late":
-                    self.run_stats["late_found"] += 1
-                    # Standard mode ignores late
+                        logger.debug("Limit reached for this run, ignoring remaining items.")
+                else:
+                    # Not eligible based on config
+                    pass
 
             except Exception as e:
                 logger.error(f"Error in main loop for {contact_data.name}: {e}")
@@ -125,6 +132,7 @@ class BirthdayBot(BaseLinkedInBot):
         logger.info(
             "execution_stats",
             found_today=self.run_stats["today_found"],
+            found_late=self.run_stats["late_found"],
             sent=f"{self.run_stats['sent']}/{max_allowed}",
             ignored_limit=self.run_stats["ignored_limit"],
             duration=f"{duration:.1f}s",
@@ -135,7 +143,7 @@ class BirthdayBot(BaseLinkedInBot):
             messages_sent=self.run_stats["sent"],
             contacts_processed=self.stats["contacts_processed"],
             birthdays_today=self.run_stats["today_found"],
-            birthdays_late_ignored=self.run_stats["late_found"],
+            birthdays_late_ignored=0 if self.config.birthday_filter.process_late else self.run_stats["late_found"],
             messages_ignored=self.run_stats["ignored_limit"],
             duration_seconds=duration,
         )
@@ -190,7 +198,7 @@ class BirthdayBot(BaseLinkedInBot):
     def _build_result(self, messages_sent, contacts_processed, birthdays_today, birthdays_late_ignored, messages_ignored, duration_seconds) -> dict[str, Any]:
         return {
             "success": True,
-            "bot_mode": "standard",
+            "bot_mode": self.config.bot_mode,
             "messages_sent": messages_sent,
             "contacts_processed": contacts_processed,
             "birthdays_today": birthdays_today,
@@ -205,7 +213,7 @@ class BirthdayBot(BaseLinkedInBot):
     def _build_error_result(self, error_message: str) -> dict[str, Any]:
         return {
             "success": False,
-            "bot_mode": "standard",
+            "bot_mode": self.config.bot_mode,
             "error": error_message,
             "messages_sent": 0,
             "contacts_processed": 0,
@@ -217,5 +225,10 @@ def run_birthday_bot(config=None, dry_run: bool = False) -> dict[str, Any]:
     if config is None: config = get_config()
     config = config.model_copy(deep=True)
     if dry_run: config.dry_run = True
+    # Default for BirthdayBot is ONLY today
+    config.bot_mode = "standard"
+    config.birthday_filter.process_today = True
+    config.birthday_filter.process_late = False
+
     with BirthdayBot(config=config) as bot:
         return bot.run()
