@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from uuid import uuid4
 
 
@@ -98,9 +98,7 @@ class ScheduledJobConfig(BaseModel):
                 return VisitorBotConfig(**v)
         return v
 
-    class Config:
-        """Pydantic config."""
-        # use_enum_values = True  # Keep Enums as Enums, don't convert to strings
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class JobExecutionLog(BaseModel):
@@ -115,6 +113,4 @@ class JobExecutionLog(BaseModel):
     messages_sent: int = 0
     profiles_visited: int = 0
 
-    class Config:
-        """Pydantic config."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
