@@ -28,6 +28,159 @@ from src.scheduler.job_store import JobConfigStore, JobExecutionStore
 logger = logging.getLogger(__name__)
 
 
+def execute_scheduled_job_proxy(job_id: str, config_data: Dict[str, Any]):
+    """
+    Standalone proxy function to execute scheduled jobs.
+
+    This function is designed to be picklable by APScheduler and executed in a separate thread.
+    It re-acquires all necessary resources (DB connections, Redis) to avoid shared state issues.
+
+    Args:
+        job_id: The ID of the job to execute
+        config_data: The job configuration as a dictionary (serialized Pydantic model)
+    """
+    # Re-initialize logger for this thread context
+    local_logger = logging.getLogger(f"{__name__}.proxy")
+
+    try:
+        # 1. Reconstruct Pydantic model from dictionary
+        try:
+            job_config = ScheduledJobConfig.model_validate(config_data)
+        except Exception as e:
+            local_logger.error(f"Failed to reconstruct job config for job {job_id}: {e}")
+            return
+
+        local_logger.info(f"Executing job via proxy: {job_config.name} ({job_config.id})")
+
+        # 2. Re-acquire resources (fresh connections per execution)
+        # Job Stores (SQLite)
+        # Note: JobConfigStore/JobExecutionStore create new connections on each method call,
+        # so instantiating them here is safe and lightweight.
+        job_config_store = JobConfigStore()
+        execution_store = JobExecutionStore()
+
+        # Redis / RQ
+        redis_host = os.getenv("REDIS_HOST", "redis-bot")
+        redis_port = int(os.getenv("REDIS_PORT", 6379))
+
+        try:
+            redis_conn = Redis(host=redis_host, port=redis_port)
+            job_queue = Queue("linkedin-bot", connection=redis_conn)
+        except Exception as e:
+            local_logger.error(f"Failed to connect to Redis in proxy: {e}")
+            # Log failure to DB
+            execution_store.create(JobExecutionLog(
+                job_id=job_config.id,
+                started_at=datetime.utcnow(),
+                status="failed",
+                error=f"Redis connection failed: {str(e)}"
+            ))
+            return
+
+        # 3. Create execution log
+        execution_log = JobExecutionLog(
+            job_id=job_config.id,
+            started_at=datetime.utcnow(),
+            status="running"
+        )
+        execution_log = execution_store.create(execution_log)
+
+        # 4. Update job last_run status
+        job_config_store.update(
+            job_config.id,
+            {
+                "last_run_at": datetime.utcnow(),
+                "last_run_status": "running"
+            }
+        )
+
+        try:
+            # 5. Enqueue to RQ based on bot type
+            rq_job = None
+
+            if job_config.bot_type == BotType.BIRTHDAY:
+                bot_config = job_config.bot_config
+                # Type guard (though model_validate handles this)
+                if isinstance(bot_config, dict):
+                    bot_config = BirthdayBotConfig(**bot_config)
+
+                # Determine bot_mode and max_days_late
+                bot_mode = "unlimited" if bot_config.process_late else "standard"
+                max_days = bot_config.max_days_late if bot_config.process_late else 0
+                timeout = "180m" if bot_mode == "unlimited" else "30m"
+
+                rq_job = job_queue.enqueue(
+                    "src.queue.tasks.run_bot_task",
+                    bot_mode=bot_mode,
+                    dry_run=bot_config.dry_run,
+                    max_days_late=max_days,
+                    job_timeout=timeout,
+                    meta={'job_type': 'birthday', 'scheduled_job_id': job_config.id}
+                )
+
+                local_logger.info(f"Birthday bot enqueued: RQ job {rq_job.id}")
+
+            elif job_config.bot_type == BotType.VISITOR:
+                bot_config = job_config.bot_config
+                if isinstance(bot_config, dict):
+                    bot_config = VisitorBotConfig(**bot_config)
+
+                rq_job = job_queue.enqueue(
+                    "src.queue.tasks.run_profile_visit_task",
+                    dry_run=bot_config.dry_run,
+                    limit=bot_config.limit,
+                    job_timeout="45m",
+                    meta={'job_type': 'visit', 'scheduled_job_id': job_config.id}
+                )
+
+                local_logger.info(f"Visitor bot enqueued: RQ job {rq_job.id}")
+
+            # 6. Update execution log to queued
+            if rq_job:
+                execution_store.update(
+                    execution_log.id,
+                    {
+                        "status": "queued",
+                        "result": {"rq_job_id": rq_job.id}
+                    }
+                )
+
+                # Update job status
+                job_config_store.update(
+                    job_config.id,
+                    {
+                        "last_run_status": "queued"
+                    }
+                )
+            else:
+                raise ValueError(f"Failed to create RQ job for bot type: {job_config.bot_type}")
+
+        except Exception as e:
+            local_logger.error(f"Job execution logic failed: {e}", exc_info=True)
+
+            # Mark as failed
+            execution_store.update(
+                execution_log.id,
+                {
+                    "status": "failed",
+                    "finished_at": datetime.utcnow(),
+                    "error": str(e)
+                }
+            )
+
+            job_config_store.update(
+                job_config.id,
+                {
+                    "last_run_status": "failed",
+                    "last_run_error": str(e)
+                }
+            )
+
+    except Exception as outer_e:
+        # Catastrophic failure catch-all
+        local_logger.critical(f"Catastrophic error in job execution proxy: {outer_e}", exc_info=True)
+
+
 class AutomationScheduler:
     """
     Manages automated scheduling of bot executions.
@@ -68,12 +221,11 @@ class AutomationScheduler:
 
         try:
             self.redis_conn = Redis(host=redis_host, port=redis_port)
-            self.job_queue = Queue("linkedin-bot", connection=self.redis_conn)
+            # We keep a reference but don't rely on it for pickled jobs
             logger.info(f"Connected to Redis at {redis_host}:{redis_port}")
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}", exc_info=True)
             self.redis_conn = None
-            self.job_queue = None
 
         # APScheduler configuration
         jobstores = {
@@ -241,8 +393,9 @@ class AutomationScheduler:
             logger.error(f"Job not found: {job_id}")
             return False
 
-        # Execute directly (bypass scheduler)
-        self._execute_job(job_config)
+        # Execute directly via proxy (bypass scheduler)
+        # We must dump the model to dict here as well to match the proxy signature
+        execute_scheduled_job_proxy(job_config.id, job_config.model_dump())
         return True
 
     def get_job(self, job_id: str) -> Optional[ScheduledJobConfig]:
@@ -295,16 +448,15 @@ class AutomationScheduler:
             logger.error(f"Cannot create trigger for job {job_config.id}")
             return
 
-        # Schedule the job
-        # FIX: Convert job_config to dict to avoid pickling issues with Pydantic/Threads
-        # APScheduler uses pickle for serialization, and Pydantic v2 models or
-        # objects with thread locks can cause issues. Passing raw dict is safer.
+        # Prepare arguments for the proxy function.
+        # CRITICAL FIX: Convert Pydantic model to dict to avoid pickling issues
+        # and ensure thread safety by passing only primitives.
         job_config_dict = job_config.model_dump()
 
         self.scheduler.add_job(
-            func=self._execute_job,
+            func=execute_scheduled_job_proxy,  # Use standalone proxy function
             trigger=trigger,
-            args=[job_config_dict],
+            args=[job_config.id, job_config_dict],  # Pass primitives only
             id=job_config.id,
             name=job_config.name,
             replace_existing=True,
@@ -365,118 +517,6 @@ class AutomationScheduler:
 
         logger.error(f"Unknown schedule type: {schedule_type}")
         return None
-
-    def _execute_job(self, job_config: Union[ScheduledJobConfig, Dict[str, Any]]):
-        """
-        Execute a job by enqueuing it to RQ.
-
-        Args:
-            job_config: Job configuration (object or dict)
-        """
-        # FIX: Reconstruct model if dict is passed (from APScheduler serialization fix)
-        if isinstance(job_config, dict):
-            try:
-                job_config = ScheduledJobConfig.model_validate(job_config)
-            except Exception as e:
-                logger.error(f"Failed to reconstruct job config from dict: {e}")
-                return
-
-        logger.info(f"Executing job: {job_config.name} ({job_config.id})")
-
-        if not self.job_queue:
-            logger.error("RQ queue not available, cannot execute job")
-            return
-
-        # Create execution log
-        execution_log = JobExecutionLog(
-            job_id=job_config.id,
-            started_at=datetime.utcnow(),
-            status="running"
-        )
-        execution_log = self.execution_store.create(execution_log)
-
-        # Update job last_run
-        self.job_config_store.update(
-            job_config.id,
-            {
-                "last_run_at": datetime.utcnow(),
-                "last_run_status": "running"
-            }
-        )
-
-        try:
-            # Enqueue to RQ based on bot type
-            if job_config.bot_type == BotType.BIRTHDAY:
-                bot_config = job_config.bot_config
-                assert isinstance(bot_config, BirthdayBotConfig)
-
-                # Determine bot_mode and max_days_late
-                bot_mode = "unlimited" if bot_config.process_late else "standard"
-                max_days = bot_config.max_days_late if bot_config.process_late else 0
-                timeout = "180m" if bot_mode == "unlimited" else "30m"
-
-                rq_job = self.job_queue.enqueue(
-                    "src.queue.tasks.run_bot_task",
-                    bot_mode=bot_mode,
-                    dry_run=bot_config.dry_run,
-                    max_days_late=max_days,
-                    job_timeout=timeout,
-                    meta={'job_type': 'birthday', 'scheduled_job_id': job_config.id}
-                )
-
-                logger.info(f"Birthday bot enqueued: RQ job {rq_job.id}")
-
-            elif job_config.bot_type == BotType.VISITOR:
-                bot_config = job_config.bot_config
-                assert isinstance(bot_config, VisitorBotConfig)
-
-                rq_job = self.job_queue.enqueue(
-                    "src.queue.tasks.run_profile_visit_task",
-                    dry_run=bot_config.dry_run,
-                    limit=bot_config.limit,
-                    job_timeout="45m",
-                    meta={'job_type': 'visit', 'scheduled_job_id': job_config.id}
-                )
-
-                logger.info(f"Visitor bot enqueued: RQ job {rq_job.id}")
-
-            # Update execution log to queued
-            self.execution_store.update(
-                execution_log.id,
-                {
-                    "status": "queued",
-                    "result": {"rq_job_id": rq_job.id if rq_job else None}
-                }
-            )
-
-            # Update job status
-            self.job_config_store.update(
-                job_config.id,
-                {
-                    "last_run_status": "queued"
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"Job execution failed: {job_config.name}", exc_info=True)
-
-            # Mark as failed
-            self.execution_store.update(
-                execution_log.id,
-                {
-                    "status": "failed",
-                    "finished_at": datetime.utcnow(),
-                    "error": str(e)
-                }
-            )
-
-            self.job_config_store.update(
-                job_config.id,
-                {
-                    "last_run_status": "failed",
-                    "last_run_error": str(e)
-                }
-            )
 
     def _job_event_listener(self, event):
         """
