@@ -18,7 +18,7 @@ import os
 import sqlite3
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Counter
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class Database:
     """
 
     # Version du schéma de BDD pour migrations futures
-    SCHEMA_VERSION = "2.2.0"
+    SCHEMA_VERSION = "2.3.0"
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
         """
@@ -322,6 +322,22 @@ class Database:
             """
             )
 
+            # Table bot_executions
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bot_executions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bot_name TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT,
+                    items_processed INTEGER DEFAULT 0,
+                    items_ignored INTEGER DEFAULT 0,
+                    errors INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'running'
+                )
+            """
+            )
+
             # Table notification_settings
             cursor.execute(
                 """
@@ -385,6 +401,9 @@ class Database:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notification_logs_created_at ON notification_logs(created_at)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bot_executions_start_time ON bot_executions(start_time)"
             )
 
             # Migration: Check columns for scraped_profiles
@@ -1087,6 +1106,121 @@ class Database:
             logger.info(f"Exported {len(rows)} scraped profiles to {output_path}")
             return output_path
 
+    # ==================== BOT EXECUTIONS & VISITOR INSIGHTS ====================
+
+    @retry_on_lock()
+    def log_bot_execution(
+        self,
+        bot_name: str,
+        start_time: float,
+        items_processed: int,
+        items_ignored: int,
+        errors: int,
+        status: str = "success"
+    ) -> int:
+        """Enregistre une exécution de bot."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            end_time = datetime.now().isoformat()
+            start_iso = datetime.fromtimestamp(start_time).isoformat()
+
+            cursor.execute(
+                """
+                INSERT INTO bot_executions
+                (bot_name, start_time, end_time, items_processed, items_ignored, errors, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (bot_name, start_iso, end_time, items_processed, items_ignored, errors, status),
+            )
+            return cursor.lastrowid
+
+    @retry_on_lock()
+    def get_latest_execution_stats(self, bot_name: Optional[str] = None) -> dict:
+        """Récupère les stats de la dernière exécution."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            query = "SELECT * FROM bot_executions"
+            params = []
+
+            if bot_name:
+                query += " WHERE bot_name = ?"
+                params.append(bot_name)
+
+            query += " ORDER BY start_time DESC LIMIT 1"
+            cursor.execute(query, tuple(params))
+
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return {"items_processed": 0, "items_ignored": 0, "errors": 0}
+
+    @retry_on_lock()
+    def get_visitor_insights(self, days: int = 30) -> dict[str, Any]:
+        """
+        Récupère les métriques qualitatives du Visitor Bot.
+        - Avg Fit Score
+        - Top 5 Skills
+        - Funnel stats
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+
+            # 1. Avg Fit Score & Open To Work
+            cursor.execute(
+                """
+                SELECT
+                    AVG(fit_score) as avg_score,
+                    COUNT(*) as total_scraped,
+                    SUM(CASE WHEN fit_score > 70 THEN 1 ELSE 0 END) as qualified_profiles,
+                    SUM(CASE WHEN headline LIKE '%Open to Work%' OR headline LIKE '%recherche%' OR headline LIKE '%looking for%' THEN 1 ELSE 0 END) as open_to_work
+                FROM scraped_profiles
+                WHERE scraped_at >= ?
+            """,
+                (cutoff_date,),
+            )
+            stats = dict(cursor.fetchone())
+
+            # 2. Top Skills (Parsing JSON en Python - Optimisé)
+            cursor.execute(
+                """
+                SELECT skills FROM scraped_profiles
+                WHERE scraped_at >= ? AND skills IS NOT NULL
+                ORDER BY scraped_at DESC LIMIT 200
+            """,
+                (cutoff_date,)
+            )
+
+            skill_counter = Counter()
+            for row in cursor.fetchall():
+                try:
+                    skills_list = json.loads(row["skills"])
+                    if isinstance(skills_list, list):
+                        skill_counter.update(skills_list)
+                except: continue
+
+            top_skills = [{"name": s, "count": c} for s, c in skill_counter.most_common(5)]
+
+            # 3. Funnel Data (Requires data from different tables)
+            # Found (Search results estimate - hard to get precise, using visits attempted)
+            # Visited (profile_visits)
+            # Scraped (scraped_profiles)
+            # Qualified (fit_score > 70)
+
+            cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE visited_at >= ?", (cutoff_date,))
+            visits_count = cursor.fetchone()["count"]
+
+            return {
+                "avg_fit_score": round(stats["avg_score"] or 0, 1),
+                "open_to_work_count": stats["open_to_work"] or 0,
+                "top_skills": top_skills,
+                "funnel": {
+                    "visited": visits_count,
+                    "scraped": stats["total_scraped"] or 0,
+                    "qualified": stats["qualified_profiles"] or 0
+                }
+            }
+
     # ==================== STATISTICS ====================
 
     @retry_on_lock()
@@ -1182,6 +1316,7 @@ class Database:
             - wishes_sent_week: Messages envoyés cette semaine
             - profiles_visited_total: Total des profils visités (all time)
             - profiles_visited_today: Profils visités aujourd'hui
+            - profiles_ignored_today: Profils ignorés aujourd'hui (NEW)
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -1231,12 +1366,26 @@ class Database:
             cursor.execute("SELECT COUNT(*) as count FROM profile_visits")
             profiles_visited_total = cursor.fetchone()["count"]
 
+            # Profils ignorés (Basé sur la dernière exécution d'aujourd'hui)
+            # C'est une approximation, mais suffisante pour le dashboard
+            cursor.execute(
+                """
+                SELECT SUM(items_ignored) as count
+                FROM bot_executions
+                WHERE start_time >= ? AND bot_name = 'VisitorBot'
+                """,
+                (today_start,)
+            )
+            row = cursor.fetchone()
+            profiles_ignored_today = row["count"] if row and row["count"] else 0
+
             return {
                 "wishes_sent_total": wishes_sent_total,
                 "wishes_sent_today": wishes_sent_today,
                 "wishes_sent_week": wishes_sent_week,
                 "profiles_visited_total": profiles_visited_total,
                 "profiles_visited_today": profiles_visited_today,
+                "profiles_ignored_today": profiles_ignored_today
             }
 
     @retry_on_lock()
