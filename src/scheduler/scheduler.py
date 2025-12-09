@@ -14,6 +14,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MISSED
 from redis import Redis
 from rq import Queue
+import asyncio
 
 from src.scheduler.models import (
     ScheduledJobConfig,
@@ -381,6 +382,9 @@ class AutomationScheduler:
         """
         Execute a job immediately (outside of schedule).
 
+        This executes the job asynchronously in a thread pool to avoid blocking
+        the API event loop.
+
         Args:
             job_id: Job identifier
 
@@ -394,9 +398,28 @@ class AutomationScheduler:
             return False
 
         # Execute directly via proxy (bypass scheduler)
-        # We must dump the model to dict here as well to match the proxy signature
-        execute_scheduled_job_proxy(job_config.id, job_config.model_dump())
-        return True
+        # We execute this in a thread pool to avoid blocking the main thread,
+        # especially important when called from async API endpoints.
+        try:
+            # Check if we are in an async event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # Run in executor (default thread pool)
+                loop.run_in_executor(
+                    None,
+                    execute_scheduled_job_proxy,
+                    job_config.id,
+                    job_config.model_dump()
+                )
+            except RuntimeError:
+                # No event loop running (e.g. called from script or test)
+                # Run synchronously
+                execute_scheduled_job_proxy(job_config.id, job_config.model_dump())
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to queue immediate execution for {job_id}: {e}", exc_info=True)
+            return False
 
     def get_job(self, job_id: str) -> Optional[ScheduledJobConfig]:
         """

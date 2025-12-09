@@ -58,8 +58,23 @@ async function proxyToBackend(
       return new NextResponse(null, { status: 204 });
     }
 
-    // Parse response
-    const data = await response.json();
+    // Parse response robustly
+    const text = await response.text();
+    let data;
+
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.error(`❌ [SCHEDULER] Failed to parse backend response: ${text.substring(0, 100)}...`);
+      return NextResponse.json(
+        {
+          error: 'Invalid backend response',
+          detail: 'The backend returned a non-JSON response.',
+          raw_response: text.substring(0, 200)
+        },
+        { status: 502 }
+      );
+    }
 
     // Log errors
     if (!response.ok) {
@@ -112,7 +127,14 @@ export async function POST(
   { params }: { params: { path: string[] } }
 ) {
   const path = params.path.join('/');
-  const body = await request.json();
+
+  let body;
+  try {
+    const text = await request.text();
+    body = text ? JSON.parse(text) : undefined;
+  } catch (e) {
+    // Body is optional or empty
+  }
 
   console.log(`📝 [SCHEDULER] POST body:`, body);
 
