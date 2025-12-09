@@ -49,6 +49,17 @@ messaging:
       aria: 30
     threshold: 65
 
+  # AJOUT : Détection des boutons "Se connecter" pour échec rapide
+  connect_button_heuristic:
+    candidates: "button, span.artdeco-button__text"
+    positive_keywords:
+      - "Se connecter"
+      - "Connect"
+      - "Suivre"
+      - "Follow"
+    weights: {text: 100, visible: 50}
+    threshold: 80
+
   # Button to identify if we are not connected (Connect/Follow)
   connect_button:
     - "button[aria-label*='Connect']"

@@ -531,48 +531,29 @@ class BaseLinkedInBot(ABC):
 
         logger.info(f"--- Processing birthday for {full_name} ---")
 
-        # 1. Open Modal
-        # Use find_element which now supports heuristics
-        msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button")
+        # --- NOUVEAU BLOC ANTI-CRASH ---
+        # 1. Vérification prioritaire : Si c'est un bouton "Se connecter", on ignore immédiatement.
+        connect_btn = self.selector_manager.find_element(contact_element, "messaging.connect_button_heuristic")
+        if connect_btn and connect_btn.is_visible():
+            logger.warning(f"⚠️  Bouton 'Se connecter/Suivre' détecté pour {full_name}. Relation hors réseau ? -> SKIP")
+            return False
+        # -------------------------------
 
-        # Check for "Connect" button (Fail Fast)
-        connect_btn_locator = self.selector_manager.find_element(contact_element, "messaging.connect_button")
-        if connect_btn_locator:
-            try:
-                if connect_btn_locator.first.is_visible(timeout=1000):
-                    logger.info(f"🚫 Skipping {full_name} - 'Connect' button detected (not a 1st degree connection)")
-                    return False
-            except Exception:
-                pass
+        # 2. Recherche du bouton Message
+        msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button_heuristic")
+
+        # Fallback page globale
+        if not msg_btn_locator:
+            msg_btn_locator = self.selector_manager.find_element(self.page, "messaging.open_button_heuristic")
 
         if not msg_btn_locator:
-            # Fallback for Profile Page (when contact_element is body or similar)
-            # We try to find the button anywhere in the page matching the heuristic
-             msg_btn_locator = self.selector_manager.find_element(self.page, "messaging.open_button")
-
-        if not msg_btn_locator:
-            logger.warning("Configuration error: 'messaging.open_button' selector not found")
+            logger.warning("Bouton Message introuvable (Sélecteur non trouvé)")
             return False
 
-        clicked = False
-        # Try generic smart click on first match
-        if self._smart_click(msg_btn_locator.first, timeout=3000):
-             clicked = True
-        else:
-             # 2. Retry with Visibility Filter
-            try:
-                logger.debug("First click failed, searching for visible button...")
-                count = msg_btn_locator.count()
-                for i in range(count):
-                    loc = msg_btn_locator.nth(i)
-                    if loc.is_visible():
-                        if self._smart_click(loc, timeout=3000):
-                            clicked = True
-                            break
-            except Exception: pass
-
-        if not clicked:
-             logger.warning("Could not find/click 'Message' button (timeout)")
+        # 3. Clic avec Timeout réduit (5s au lieu de 30s/60s)
+        # Si on ne peut pas cliquer en 5s, on considère que c'est un échec et on passe.
+        if not self._smart_click(msg_btn_locator.first, timeout=5000):
+             logger.warning("Impossible de cliquer sur le bouton 'Message' (Timeout 5s ou masqué)")
              return False
 
         # 2. Wait for Modal
