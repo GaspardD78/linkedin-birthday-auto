@@ -102,6 +102,7 @@ class VisitorBot(BaseLinkedInBot):
         profiles_visited = 0
         profiles_attempted = 0
         profiles_failed = 0
+        profiles_ignored = 0 # NEW: Counter for ignored profiles
         pages_scraped = 0
 
         current_page = 1
@@ -123,6 +124,8 @@ class VisitorBot(BaseLinkedInBot):
                     break
 
                 if self._is_profile_already_visited(url):
+                    profiles_ignored += 1
+                    logger.debug(f"Skipping already visited profile: {url}")
                     continue
 
                 profile_name = self._extract_profile_name_from_url(url)
@@ -151,8 +154,23 @@ class VisitorBot(BaseLinkedInBot):
             self._delay_page_navigation()
 
         duration = time.time() - start_time
+
+        # Log execution stats to DB
+        if self.db:
+            try:
+                self.db.log_bot_execution(
+                    bot_name="VisitorBot",
+                    start_time=start_time,
+                    items_processed=profiles_visited,
+                    items_ignored=profiles_ignored,
+                    errors=profiles_failed,
+                    status="success"
+                )
+            except Exception as e:
+                logger.error(f"Failed to log execution stats: {e}")
+
         return self._build_result(
-            profiles_visited, profiles_attempted, profiles_failed, pages_scraped, duration
+            profiles_visited, profiles_attempted, profiles_failed, pages_scraped, duration, profiles_ignored
         )
 
     # ═══════════════════════════════════════════════════════════════
@@ -518,12 +536,13 @@ class VisitorBot(BaseLinkedInBot):
     def _random_delay_with_distribution(self, min_s, max_s):
         time.sleep(random.uniform(min_s, max_s))
 
-    def _build_result(self, pv, pa, pf, ps, dur):
+    def _build_result(self, pv, pa, pf, ps, dur, ignored=0):
         return {
             "success": True,
             "profiles_visited": pv,
             "profiles_attempted": pa,
             "profiles_failed": pf,
+            "profiles_ignored": ignored,
             "pages_scraped": ps,
             "duration_seconds": round(dur, 2)
         }

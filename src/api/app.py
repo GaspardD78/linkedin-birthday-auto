@@ -31,7 +31,7 @@ from ..utils.logging import get_logger
 from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
 import pickle
 from . import auth_routes  # Import the new auth router
-from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes  # Import the routers
+from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes, visitor_routes  # Import the routers
 from .security import verify_api_key
 
 logger = get_logger(__name__)
@@ -212,6 +212,9 @@ app.include_router(notifications.router)
 
 # Include the scheduler router
 app.include_router(scheduler_routes.router)
+
+# Include the visitor stats router
+app.include_router(visitor_routes.router)
 
 
 # Authentification importée de security.py
