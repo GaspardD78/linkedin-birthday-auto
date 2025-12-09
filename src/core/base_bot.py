@@ -202,6 +202,12 @@ class BaseLinkedInBot(ABC):
             locator.click(timeout=timeout)
             return True
         except Exception as e1:
+            # FAIL FAST: If element is not found (Timeout), do not retry with other strategies
+            # as they also require the element to exist.
+            if isinstance(e1, PlaywrightTimeoutError):
+                 logger.warning(f"SmartClick: Element not found (Timeout {timeout}ms). Aborting retries.")
+                 return False
+
             logger.debug(f"SmartClick: Standard click failed ({e1}). Trying force click...")
             try:
                 # Strategy 2: Force Click
@@ -211,13 +217,13 @@ class BaseLinkedInBot(ABC):
                 logger.debug(f"SmartClick: Force click failed ({e2}). Trying JS click...")
                 try:
                     # Strategy 3: JS Click
-                    locator.evaluate("el => el.click()")
+                    locator.evaluate("el => el.click()", timeout=timeout)
                     return True
                 except Exception as e3:
                      logger.debug(f"SmartClick: JS click failed ({e3}). Trying Dispatch Event...")
                      try:
                          # Strategy 4: Dispatch Event
-                         locator.evaluate("el => el.dispatchEvent(new Event('click', {bubbles: true}))")
+                         locator.evaluate("el => el.dispatchEvent(new Event('click', {bubbles: true}))", timeout=timeout)
                          return True
                      except Exception as e4:
                          # All failed
@@ -528,6 +534,16 @@ class BaseLinkedInBot(ABC):
         # 1. Open Modal
         # Use find_element which now supports heuristics
         msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button")
+
+        # Check for "Connect" button (Fail Fast)
+        connect_btn_locator = self.selector_manager.find_element(contact_element, "messaging.connect_button")
+        if connect_btn_locator:
+            try:
+                if connect_btn_locator.first.is_visible(timeout=1000):
+                    logger.info(f"🚫 Skipping {full_name} - 'Connect' button detected (not a 1st degree connection)")
+                    return False
+            except Exception:
+                pass
 
         if not msg_btn_locator:
             # Fallback for Profile Page (when contact_element is body or similar)

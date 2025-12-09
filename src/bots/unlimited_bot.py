@@ -7,6 +7,7 @@ Refactorisé pour hériter directement de BirthdayBot et garantir l'harmonisatio
 """
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from ..bots.birthday_bot import BirthdayBot
@@ -22,8 +23,7 @@ class UnlimitedBirthdayBot(BirthdayBot):
 
     Différences :
     1. _check_limits : Désactivé (passe toujours).
-    2. _run_internal : Configure les filtres pour accepter 'late' + 'today'.
-    3. logging : Adapté au mode illimité.
+    2. _build_result : Adapté pour rapporter 'late_processed' au lieu de 'late_ignored'.
     """
 
     def __init__(self, *args, **kwargs):
@@ -43,52 +43,46 @@ class UnlimitedBirthdayBot(BirthdayBot):
         """
         return self.config.messaging_limits.max_messages_per_run or 9999
 
-    def _run_internal(self) -> dict[str, Any]:
+    def _build_result(self, messages_sent, contacts_processed, birthdays_today, birthdays_late_ignored=0, messages_ignored=0, duration_seconds=0.0, **kwargs) -> dict[str, Any]:
         """
-        Wrapper autour de la logique standard, mais avec une configuration forcée.
+        Surcharge pour adapter le rapport de résultat (ex: birthdays_late au lieu de ignored).
+        Signature must match calling convention in BirthdayBot.
         """
-        # Force configuration for Unlimited Mode
-        # Note: We modify the instance config directly since it's a copy passed to __init__ usually
-        # But to be safe, we just rely on the fact that run_unlimited_bot sets these flags.
+        # Note: birthdays_late_ignored passed by base class is actually 'found' but ignored logic inside base class?
+        # In base class: `birthdays_late_ignored=0 if self.config.birthday_filter.process_late else self.run_stats["late_found"]`
+        # Since UnlimitedBot has process_late=True, base class passes 0 for ignored.
 
-        # However, BirthdayBot._run_internal logic filters 'late' items by default
-        # "Standard mode ignores late".
-        # We need to Override _run_internal logic?
-        # No, better to make BirthdayBot._run_internal smarter based on config.
+        # We handle both named args (test) and positional (base class)
 
-        # Check BirthdayBot._run_internal implementation in base class:
-        # It has: `if contact_data.birthday_type == "today": ... elif ... == "late": ...`
-        # And the "late" block says "Standard mode ignores late".
+        # Test sends: birthdays_late=10 (kwargs)
+        # Base sends: birthdays_late_ignored=0 (positional)
 
-        # So we MUST override _run_internal OR refactor BirthdayBot to respect config flags.
-        # Refactoring BirthdayBot is the "Harmonisation" way.
+        late_count = kwargs.get("birthdays_late", self.run_stats.get("late_found", 0))
 
-        # BUT, the prompt says "Refactorise le code pour que toute modification future sur BirthdayBot soit automatiquement répercutée".
-        # So I should PROBABLY modify BirthdayBot to be generic, and UnlimitedBot just configures it.
+        return {
+            "success": True,
+            "bot_mode": "unlimited",
+            "messages_sent": messages_sent,
+            "contacts_processed": contacts_processed,
+            "birthdays_today": birthdays_today,
+            "birthdays_late": late_count, # We report found late birthdays
+            "messages_ignored": messages_ignored,
+            "errors": self.stats.get("errors", 0),
+            "duration_seconds": round(duration_seconds, 2),
+            "dry_run": self.config.dry_run,
+            "timestamp": datetime.now().isoformat()
+        }
 
-        # However, I can't modify BirthdayBot easily in this single file write.
-        # I will rewrite UnlimitedBot to copy the logic structure BUT since I cannot change BirthdayBot in this turn (I can, but I am writing unlimited_bot.py now),
-        # I will implement a FULL override that looks exactly like BirthdayBot but handles the late logic,
-        # OR I will verify if I can just call super()._run_internal() if I patch BirthdayBot.
-
-        # Let's look at BirthdayBot again.
-        # It hardcodes: `if contact_data.birthday_type == "today": ... elif ... "late": # Standard mode ignores late`
-
-        # Strategy: I will rewrite BirthdayBot FIRST (in next step) to be generic,
-        # then UnlimitedBot will just be a configuration wrapper.
-        # But wait, I am in the "Overwrite file" step. I should probably do UnlimitedBot here assuming BirthdayBot WILL be fixed.
-        # actually I can write BirthdayBot in the next step.
-
-        # For now, let's write a version of UnlimitedBot that *would* work if BirthdayBot was generic,
-        # or just duplicate the loop properly (since currently they are divergent).
-
-        # Actually, the best way to harmonize is:
-        # 1. Update BirthdayBot to use `self.config.birthday_filter.process_late` to decide.
-        # 2. UnlimitedBot just sets those configs and `check_limits` pass.
-
-        # So I will write a minimal UnlimitedBot here that relies on the (to be updated) BirthdayBot.
-
-        return super()._run_internal()
+    def _format_duration(self, seconds: float) -> str:
+        """Helper for formatting duration (used in legacy or tests)."""
+        m, s = divmod(seconds, 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{int(h)}h {int(m)}m {int(s)}s"
+        elif m > 0:
+            return f"{int(m)}m {int(s)}s"
+        else:
+            return f"{int(s)}s"
 
 # Helper function stays similar
 def run_unlimited_bot(

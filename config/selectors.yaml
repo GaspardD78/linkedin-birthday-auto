@@ -38,12 +38,27 @@ messaging:
       - "Premium"
       - "Ad"
       - "Promoted"
+      - "Connect"
+      - "Se connecter"
+      - "Follow"
+      - "Suivre"
     required_attributes: {}
     weights:
       text: 40
       visible: 30
       aria: 30
     threshold: 65
+
+  # Button to identify if we are not connected (Connect/Follow)
+  connect_button:
+    - "button[aria-label*='Connect']"
+    - "button[aria-label*='Se connecter']"
+    - "button[aria-label*='Follow']"
+    - "button[aria-label*='Suivre']"
+    - "button:has-text('Se connecter')"
+    - "button:has-text('Connect')"
+    - "button:has-text('Suivre')"
+    - "button:has-text('Follow')"
 
   # Fallback selectors (historical)
   open_button:
