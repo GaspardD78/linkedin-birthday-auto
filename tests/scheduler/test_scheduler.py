@@ -17,6 +17,7 @@ from src.scheduler.models import (
     BirthdayBotConfig,
     VisitorBotConfig
 )
+from src.scheduler.job_store import JobConfigStore, JobExecutionStore
 
 
 @pytest.fixture
@@ -68,8 +69,17 @@ def scheduler(temp_db, mock_redis, mock_queue):
     # Also patch SQLAlchemyJobStore to avoid connecting to real DB in AutomationScheduler init
     # Also patch BackgroundScheduler to avoid real scheduling logic errors with mocked store
     # Patching at the CONSUMER module (src.scheduler.scheduler) because direct imports are already bound
-    with patch('src.scheduler.scheduler.JobConfigStore'), \
-         patch('src.scheduler.scheduler.JobExecutionStore'), \
+
+    # We need the proxy to use a real store connected to our temp DB
+    # So we define a side effect for the mocked JobConfigStore/JobExecutionStore classes
+    def create_temp_config_store(*args, **kwargs):
+        return JobConfigStore(db_path=config_path)
+
+    def create_temp_execution_store(*args, **kwargs):
+        return JobExecutionStore(db_path=config_path)
+
+    with patch('src.scheduler.scheduler.JobConfigStore', side_effect=create_temp_config_store), \
+         patch('src.scheduler.scheduler.JobExecutionStore', side_effect=create_temp_execution_store), \
          patch('src.scheduler.scheduler.SQLAlchemyJobStore'), \
          patch('src.scheduler.scheduler.BackgroundScheduler') as MockScheduler, \
          patch.object(AutomationScheduler, '_reload_jobs'):
@@ -92,7 +102,6 @@ def scheduler(temp_db, mock_redis, mock_queue):
         scheduler_instance = AutomationScheduler()
 
         # Manually set up stores with temp paths (using REAL classes for testing logic)
-        from src.scheduler.job_store import JobConfigStore, JobExecutionStore
         scheduler_instance.job_config_store = JobConfigStore(db_path=config_path)
         scheduler_instance.execution_store = JobExecutionStore(db_path=config_path)
 
@@ -271,20 +280,6 @@ class TestAutomationScheduler:
 
         # Check that birthday task was enqueued
         assert call_args[0][0] == "src.queue.tasks.run_bot_task"
-        # Since we use execute_scheduled_job from scheduler.py which creates NEW connections
-        # we can't easily check mock_queue calls unless we patch Queue in scheduler.py too.
-        # But wait, fixture 'mock_queue' patches 'src.scheduler.scheduler.Queue'.
-        # execute_scheduled_job imports Queue from rq.
-        # But execute_scheduled_job is defined in src/scheduler/scheduler.py.
-        # So 'from rq import Queue' there means Queue is in scheduler namespace.
-        # So patching 'src.scheduler.scheduler.Queue' should work!
-        # HOWEVER, execute_scheduled_job re-instantiates it.
-
-        # NOTE: execute_scheduled_job re-instantiates Redis and Queue inside the function.
-        # So the mock_queue passed to fixture might NOT be the one used inside execute_scheduled_job.
-        # Actually, patch mocks the CLASS. So Queue(...) returns the mock instance.
-        # mock_queue_instance in fixture is the return value of Queue().
-        # So yes, it should work!
 
         # Check args
         assert call_args[1]['bot_mode'] == "unlimited"  # process_late=True
