@@ -707,7 +707,7 @@ sudo mkdir -p /etc/nginx/sites-enabled
 NGINX_CONF="/etc/nginx/sites-available/linkedin-bot"
 print_info "Création du fichier de configuration Nginx..."
 
-sudo cp ./deployment/nginx/linkedin-bot.conf "$NGINX_CONF"
+sudo cp -f ./deployment/nginx/linkedin-bot.conf "$NGINX_CONF"
 
 # Remplacer le placeholder par le vrai domaine
 sudo sed -i "s/VOTRE_DOMAINE_ICI/$DOMAIN_NAME/g" "$NGINX_CONF"
@@ -862,7 +862,17 @@ Vous pouvez soit :
 
 EOF
 
-if ask_yes_no "Voulez-vous choisir un NOUVEAU mot de passe ?"; then
+# Vérification préliminaire du mot de passe
+AUTO_SECURE=false
+if [ -f "../.env" ]; then
+    CURRENT_CHECK=$(grep "^DASHBOARD_PASSWORD=" ../.env | cut -d '=' -f2- | sed "s/^['\"]//;s/['\"]$//")
+    if [[ ! "$CURRENT_CHECK" =~ ^\$2[aby]\$ ]]; then
+        print_info "⚠️  Mot de passe EN CLAIR détecté. Sécurisation automatique..."
+        AUTO_SECURE=true
+    fi
+fi
+
+if [ "$AUTO_SECURE" = false ] && ask_yes_no "Voulez-vous choisir un NOUVEAU mot de passe ?"; then
     echo ""
     read -s -p "Entrez votre nouveau mot de passe : " NEW_PASSWORD
     echo ""
@@ -941,6 +951,7 @@ else
     print_success "Mot de passe ajouté dans .env !"
 fi
 
+chmod 600 ../.env
 cd ..
 
 echo ""
@@ -1010,6 +1021,7 @@ else
     print_success "ALLOWED_ORIGINS ajouté !"
 fi
 
+chmod 600 .env
 print_step "Redémarrage de l'API..."
 
 if command -v docker &> /dev/null && docker compose version &> /dev/null; then
@@ -1079,6 +1091,23 @@ print_header "✅ VÉRIFICATIONS FINALES"
 
 echo ""
 print_step "Vérification de la configuration..."
+echo ""
+
+# Initialisation Base de données
+print_info "Vérification de la base de données..."
+if [ ! -d "data" ]; then
+    mkdir -p data
+    print_success "Dossier data/ créé"
+fi
+if [ ! -f "data/linkedin_bot.db" ]; then
+    touch data/linkedin_bot.db
+    chmod 664 data/linkedin_bot.db
+    print_success "Base de données data/linkedin_bot.db initialisée"
+elif [ -f "data/linkedin_bot.db" ]; then
+    # S'assurer que les permissions sont correctes si le fichier existe
+    chmod 664 data/linkedin_bot.db
+    print_success "Base de données existante détectée"
+fi
 echo ""
 
 # Test 1 : Backup
