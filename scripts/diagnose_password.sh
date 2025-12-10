@@ -59,7 +59,7 @@ echo ""
 echo -e "${BLUE}[4] Vérification format bcrypt${NC}"
 
 # Bcrypt commence toujours par $2a$, $2b$, ou $2y$
-if echo "$PASSWORD" | grep -q "^\$2[aby]\$"; then
+if echo "$PASSWORD" | grep -q '^\$2[aby]\$'; then
     echo -e "${GREEN}✓ Le mot de passe est au format bcrypt${NC}"
     echo "  Format détecté : $(echo $PASSWORD | cut -d'$' -f1-3)\$..."
 
@@ -84,7 +84,7 @@ echo ""
 echo -e "${BLUE}[5] Test avec la regex de verify_security.sh${NC}"
 
 # La regex exacte utilisée dans verify_security.sh ligne 591
-if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" .env; then
+if grep -q '^DASHBOARD_PASSWORD=\$2[aby]\$' .env; then
     echo -e "${GREEN}✓ La regex de verify_security.sh détecte le hash${NC}"
 else
     echo -e "${RED}✗ La regex de verify_security.sh NE détecte PAS le hash${NC}"
@@ -151,7 +151,7 @@ echo -e "${BLUE}${BOLD}  📋 RÉSUMÉ ET RECOMMANDATIONS${NC}"
 echo -e "${BLUE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-if echo "$PASSWORD" | grep -q "^\$2[aby]\$" && [ ${#PASSWORD} -eq 60 ]; then
+if echo "$PASSWORD" | grep -q '^\$2[aby]\$' && [ ${#PASSWORD} -eq 60 ]; then
     echo -e "${GREEN}${BOLD}✅ Votre mot de passe est correctement hashé !${NC}"
     echo ""
     echo "Si verify_security.sh échoue encore, c'est un bug du script de vérification."

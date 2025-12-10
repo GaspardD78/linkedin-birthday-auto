@@ -211,7 +211,7 @@ echo -e "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━�
 echo ""
 
 echo "Vérification avec la regex de verify_security.sh :"
-if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" .env; then
+if grep -q '^DASHBOARD_PASSWORD=\$2[aby]\$' .env; then
     echo -e "${GREEN}✓ La regex détecte correctement le hash${NC}"
 else
     echo -e "${YELLOW}⚠ La regex ne détecte pas le hash${NC}"
