@@ -88,13 +88,15 @@ messaging:
     - '.artdeco-button--secondary'
 
   # The text area inside the message modal
+  # UPDATED 2025: Uses robust role and contenteditable attributes
   modal_textarea:
+    - "div[role='textbox'][contenteditable='true']"
+    - ".msg-form__contenteditable"
     - "div.msg-form__contenteditable[role='textbox']"
-    - "div[role='textbox']"
 
   # The send button inside the message modal
   send_button_heuristic:
-    candidates: "button[type='submit'], button.msg-form__send-button"
+    candidates: "button[type='submit'], button.msg-form__send-button, button.artdeco-button--primary"
     positive_keywords: ["Envoyer", "Send"]
     weights: {text: 50, visible: 50}
     threshold: 70
