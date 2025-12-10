@@ -209,6 +209,45 @@ else
 fi
 
 echo ""
+
+###############################################################################
+# CORRECTIONS AUTOMATIQUES (Audit 2025)
+###############################################################################
+
+print_header "🛠️ CORRECTIONS AUTOMATIQUES DES FAILLES"
+
+echo ""
+print_info "Préparation des correctifs..."
+
+# S'assurer que bcryptjs est installé pour le script de correction
+if [ ! -d "dashboard/node_modules/bcryptjs" ]; then
+    print_info "Installation du module bcryptjs requis..."
+    if command -v npm &> /dev/null; then
+        (cd dashboard && npm install bcryptjs --silent)
+        print_success "Module bcryptjs installé"
+    fi
+fi
+
+echo ""
+print_info "Exécution du script de réparation automatique..."
+echo ""
+
+if [ -f "scripts/fix_security_issues.py" ]; then
+    chmod +x scripts/fix_security_issues.py
+
+    # Exécuter avec sudo pour Nginx et permissions
+    if sudo python3 scripts/fix_security_issues.py; then
+        echo ""
+        print_success "✓ Correctifs de sécurité appliqués !"
+    else
+        echo ""
+        print_error "✗ Une erreur est survenue lors des corrections."
+    fi
+else
+    print_error "Script scripts/fix_security_issues.py introuvable."
+fi
+
+echo ""
 press_enter
 
 ###############################################################################
