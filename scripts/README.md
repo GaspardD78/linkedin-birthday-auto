@@ -56,6 +56,39 @@ Ce dossier contient tous les scripts nécessaires pour déployer, vérifier, net
 
 ---
 
+### `fix_nginx_ratelimit.sh`
+
+**Script de correction rapide** pour l'erreur Nginx `invalid rate "rate=5r/15m"`.
+
+**Usage:**
+```bash
+./scripts/fix_nginx_ratelimit.sh
+```
+
+**Problème résolu:**
+- ❌ Erreur: `invalid rate "rate=5r/15m"` dans `/etc/nginx/conf.d/rate-limit-zones.conf`
+- ❌ Nginx ne démarre pas à cause d'une syntaxe de rate limiting invalide
+- ❌ Configuration Nginx échoue au test (`nginx -t`)
+
+**Ce qu'il fait:**
+1. Sauvegarde l'ancienne configuration
+2. Copie le fichier corrigé depuis `deployment/nginx/rate-limit-zones.conf`
+3. Teste la configuration Nginx
+4. Recharge Nginx si le test réussit
+
+**Note technique:**
+Nginx n'accepte que `r/s` (par seconde) ou `r/m` (par minute), pas `r/15m` (par 15 minutes).
+La zone de login passe de `rate=5r/15m` (invalide) à `rate=1r/m` avec `burst=5`, permettant ~5 tentatives par 5 minutes.
+
+**Quand l'utiliser:**
+- 🔧 Après l'erreur détectée par `verify_security.sh`
+- ⚙️ Si `fix_nginx.sh` échoue avec cette erreur spécifique
+- 🚨 Lorsque Nginx ne démarre pas à cause du rate limiting
+
+**Durée:** < 30 secondes
+
+---
+
 ### `verify_security.sh`
 
 **Script de vérification** qui teste 40+ points de sécurité et donne un score.
