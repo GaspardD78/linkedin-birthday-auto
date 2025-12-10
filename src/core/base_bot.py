@@ -652,6 +652,8 @@ class BaseLinkedInBot(ABC):
         if heuristic_send_btn:
             logger.info("⚡ Direct Heuristic Action: Clicking Send button immediately.")
             try:
+                # Scroll into view before clicking to avoid "element outside viewport" errors
+                self._safe_scroll_to_element(heuristic_send_btn)
                 heuristic_send_btn.click(timeout=5000)
                 logger.info("✅ Message sent successfully (Heuristic)")
                 MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
@@ -664,6 +666,8 @@ class BaseLinkedInBot(ABC):
         submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
 
         if submit_btn_locator:
+            # Scroll into view before clicking to avoid "element outside viewport" errors
+            self._safe_scroll_to_element(submit_btn_locator.last)
             if self._smart_click(submit_btn_locator.last, timeout=5000):
                 logger.info("✅ Message sent successfully")
                 MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
