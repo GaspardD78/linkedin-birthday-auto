@@ -2,7 +2,7 @@
 
 ###############################################################################
 # 🔍 Script de Vérification Sécurité - LinkedIn Birthday Bot
-# Version: 1.0
+# Version: 2.0 - Avec réparation automatique
 # Teste TOUTES les protections de sécurité installées
 ###############################################################################
 
@@ -21,6 +21,18 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 WARNING_TESTS=0
+FIXED_COUNT=0
+FAILED_FIX_COUNT=0
+
+# Mode de réparation
+FIX_MODE=false
+if [ "$1" = "--fix" ] || [ "$1" = "-f" ]; then
+    FIX_MODE=true
+fi
+
+# Tableaux pour stocker les problèmes à réparer
+declare -a ISSUES_TO_FIX
+declare -a FIX_FUNCTIONS
 
 # Fonction pour afficher des titres
 print_header() {
@@ -54,6 +66,11 @@ test_fail() {
     if [ -n "$1" ]; then
         echo -e "      ${RED}→ $1${NC}"
     fi
+    # Enregistrer le problème si une fonction de réparation est fournie
+    if [ -n "$2" ]; then
+        ISSUES_TO_FIX+=("$1")
+        FIX_FUNCTIONS+=("$2")
+    fi
 }
 
 # Fonction pour avertissement
@@ -63,6 +80,177 @@ test_warn() {
     if [ -n "$1" ]; then
         echo -e "      ${YELLOW}→ $1${NC}"
     fi
+    # Enregistrer le problème si une fonction de réparation est fournie
+    if [ -n "$2" ]; then
+        ISSUES_TO_FIX+=("$1")
+        FIX_FUNCTIONS+=("$2")
+    fi
+}
+
+###############################################################################
+# FONCTIONS DE RÉPARATION
+###############################################################################
+
+# Réparer la base de données manquante
+fix_database() {
+    echo -e "${BLUE}Création de la base de données...${NC}"
+    mkdir -p data
+    # Initialiser la base de données avec un script Python
+    python3 -c "
+import sqlite3
+conn = sqlite3.connect('data/linkedin_bot.db')
+cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        linkedin_url TEXT,
+        birthday TEXT,
+        last_message_date TEXT
+    )
+''')
+conn.commit()
+conn.close()
+print('Base de données créée avec succès')
+"
+    return $?
+}
+
+# Réparer Nginx non actif
+fix_nginx_inactive() {
+    echo -e "${BLUE}Démarrage de Nginx...${NC}"
+    sudo systemctl start nginx
+    if sudo systemctl is-active --quiet nginx; then
+        echo -e "${GREEN}Nginx démarré avec succès${NC}"
+        return 0
+    else
+        echo -e "${RED}Échec du démarrage de Nginx${NC}"
+        return 1
+    fi
+}
+
+# Réparer la configuration Nginx
+fix_nginx_config() {
+    echo -e "${BLUE}Vérification de la configuration Nginx...${NC}"
+    sudo nginx -t
+    echo ""
+    echo -e "${YELLOW}Rechargement de Nginx...${NC}"
+    sudo systemctl reload nginx
+    return $?
+}
+
+# Réparer le mot de passe en clair
+fix_password_hash() {
+    echo -e "${BLUE}Hashage du mot de passe...${NC}"
+    if [ ! -f ".env" ]; then
+        echo -e "${RED}Fichier .env manquant${NC}"
+        return 1
+    fi
+
+    # Créer un backup
+    cp .env ".env.backup.$(date +%Y%m%d_%H%M%S)"
+    echo -e "${GREEN}Backup créé${NC}"
+
+    # Lire le mot de passe actuel
+    CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" .env | cut -d'=' -f2-)
+
+    if [ -z "$CURRENT_PASSWORD" ]; then
+        echo -e "${RED}Aucun mot de passe trouvé dans .env${NC}"
+        return 1
+    fi
+
+    # Hasher le mot de passe
+    if [ -f "dashboard/scripts/hash_password.js" ]; then
+        cd dashboard
+        HASHED=$(echo "$CURRENT_PASSWORD" | node scripts/hash_password.js 2>/dev/null)
+        cd ..
+
+        if [ -n "$HASHED" ]; then
+            # Échapper les $ pour sed
+            ESCAPED_HASH=$(echo "$HASHED" | sed 's/\$/\\$/g')
+            sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$ESCAPED_HASH|" .env
+            echo -e "${GREEN}Mot de passe hashé avec succès${NC}"
+            return 0
+        else
+            echo -e "${RED}Échec du hashage${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Script de hashage introuvable${NC}"
+        return 1
+    fi
+}
+
+# Réparer les permissions .env
+fix_env_permissions() {
+    echo -e "${BLUE}Correction des permissions .env...${NC}"
+    chmod 600 .env
+    echo -e "${GREEN}Permissions mises à jour (600)${NC}"
+    return 0
+}
+
+# Réparer les security headers Nginx
+fix_security_headers() {
+    echo -e "${BLUE}Ajout des security headers dans Nginx...${NC}"
+
+    NGINX_CONF="/etc/nginx/sites-available/linkedin-bot"
+
+    if [ ! -f "$NGINX_CONF" ]; then
+        echo -e "${RED}Configuration Nginx introuvable${NC}"
+        return 1
+    fi
+
+    # Créer un backup
+    sudo cp "$NGINX_CONF" "$NGINX_CONF.backup.$(date +%Y%m%d_%H%M%S)"
+
+    # Vérifier si les headers sont déjà présents
+    if grep -q "X-Frame-Options" "$NGINX_CONF"; then
+        echo -e "${YELLOW}Headers déjà présents${NC}"
+        return 0
+    fi
+
+    # Ajouter les headers dans le bloc server
+    sudo sed -i '/server {/a\    # Security headers\n    add_header X-Frame-Options "DENY" always;\n    add_header X-Content-Type-Options "nosniff" always;\n    add_header X-Robots-Tag "noindex, nofollow" always;\n    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;' "$NGINX_CONF"
+
+    echo -e "${GREEN}Security headers ajoutés${NC}"
+
+    # Tester la configuration
+    if sudo nginx -t &> /dev/null; then
+        sudo systemctl reload nginx
+        echo -e "${GREEN}Nginx rechargé${NC}"
+        return 0
+    else
+        echo -e "${RED}Erreur de configuration Nginx${NC}"
+        sudo cp "$NGINX_CONF.backup.$(date +%Y%m%d_%H%M%S)" "$NGINX_CONF"
+        return 1
+    fi
+}
+
+# Réparer les meta tags robots
+fix_meta_robots() {
+    echo -e "${BLUE}Ajout des meta tags robots dans layout.tsx...${NC}"
+
+    LAYOUT_FILE="dashboard/app/layout.tsx"
+
+    if [ ! -f "$LAYOUT_FILE" ]; then
+        echo -e "${RED}Fichier layout.tsx introuvable${NC}"
+        return 1
+    fi
+
+    # Créer un backup
+    cp "$LAYOUT_FILE" "$LAYOUT_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+
+    # Vérifier si les meta tags sont déjà présents
+    if grep -q "robots:" "$LAYOUT_FILE"; then
+        echo -e "${YELLOW}Meta tags déjà présents${NC}"
+        return 0
+    fi
+
+    # Chercher la section metadata et ajouter robots
+    sed -i '/export const metadata.*{/a\  robots: {\n    index: false,\n    follow: false,\n    googleBot: {\n      index: false,\n      follow: false,\n    },\n  },' "$LAYOUT_FILE"
+
+    echo -e "${GREEN}Meta tags robots ajoutés${NC}"
+    return 0
 }
 
 clear
@@ -85,7 +273,16 @@ Ce script va tester TOUTES les protections de sécurité installées.
 
 EOF
 
-read -p "Appuyez sur Entrée pour commencer les tests..."
+if [ "$FIX_MODE" = true ]; then
+    echo -e "${GREEN}${BOLD}🔧 MODE RÉPARATION AUTOMATIQUE ACTIVÉ${NC}"
+    echo "Les problèmes détectés seront réparés automatiquement."
+    echo ""
+    read -p "Appuyez sur Entrée pour commencer..."
+else
+    echo "💡 Usage: $0 [--fix] pour réparer automatiquement les problèmes"
+    echo ""
+    read -p "Appuyez sur Entrée pour commencer les tests..."
+fi
 echo ""
 
 ###############################################################################
@@ -150,7 +347,7 @@ if [ -f "./data/linkedin_bot.db" ]; then
     SIZE=$(du -h ./data/linkedin_bot.db | awk '{print $1}')
     test_pass "Taille: $SIZE"
 else
-    test_fail "Base de données manquante: data/linkedin_bot.db"
+    test_fail "Base de données manquante: data/linkedin_bot.db" "fix_database"
 fi
 
 ###############################################################################
@@ -173,7 +370,7 @@ test_check "Nginx actif"
 if sudo systemctl is-active --quiet nginx; then
     test_pass "Service en cours d'exécution"
 else
-    test_fail "Démarrez avec: sudo systemctl start nginx"
+    test_fail "Démarrez avec: sudo systemctl start nginx" "fix_nginx_inactive"
 fi
 
 # Test 2.3 : Configuration Nginx
@@ -197,7 +394,7 @@ test_check "Configuration Nginx valide"
 if sudo nginx -t &> /dev/null; then
     test_pass "Syntaxe correcte"
 else
-    test_fail "Erreurs de configuration détectées"
+    test_fail "Erreurs de configuration détectées" "fix_nginx_config"
 fi
 
 # Test 2.6 : Certbot installé
@@ -251,7 +448,7 @@ else
     if curl -s -I "http://localhost" 2>/dev/null | grep -iq "X-Frame-Options"; then
         test_pass "Header présent"
     else
-        test_warn "Header manquant"
+        test_warn "Header manquant" "fix_security_headers"
     fi
 
     # Test 3.2 : X-Content-Type-Options
@@ -259,7 +456,7 @@ else
     if curl -s -I "http://localhost" 2>/dev/null | grep -iq "X-Content-Type-Options"; then
         test_pass "Header présent"
     else
-        test_warn "Header manquant"
+        test_warn "Header manquant" "fix_security_headers"
     fi
 
     # Test 3.3 : X-Robots-Tag
@@ -267,7 +464,7 @@ else
     if curl -s -I "http://localhost" 2>/dev/null | grep -iq "X-Robots-Tag"; then
         test_pass "Header présent"
     else
-        test_warn "Header manquant"
+        test_warn "Header manquant" "fix_security_headers"
     fi
 
     # Test 3.4 : Strict-Transport-Security
@@ -275,7 +472,7 @@ else
     if curl -s -I "http://localhost" 2>/dev/null | grep -iq "Strict-Transport-Security"; then
         test_pass "Header présent"
     else
-        test_warn "Header manquant (normal si pas de HTTPS)"
+        test_warn "Header manquant (normal si pas de HTTPS)" "fix_security_headers"
     fi
 fi
 
@@ -310,7 +507,7 @@ if [ -f ".env" ]; then
     else
         PASSWORD_VALUE=$(grep "^DASHBOARD_PASSWORD=" .env | cut -d'=' -f2-)
         if [ -n "$PASSWORD_VALUE" ]; then
-            test_fail "Mot de passe EN CLAIR - hashez avec: node dashboard/scripts/hash_password.js"
+            test_fail "Mot de passe EN CLAIR - hashez avec: node dashboard/scripts/hash_password.js" "fix_password_hash"
         else
             test_fail "Variable DASHBOARD_PASSWORD manquante dans .env"
         fi
@@ -387,7 +584,7 @@ if [ -f "dashboard/app/layout.tsx" ]; then
     if grep -q "robots:" dashboard/app/layout.tsx && grep -q "index: false" dashboard/app/layout.tsx; then
         test_pass "Meta tags noindex configurés"
     else
-        test_warn "Meta tags robots non trouvés ou incomplets"
+        test_warn "Meta tags robots non trouvés ou incomplets" "fix_meta_robots"
     fi
 else
     test_fail "Fichier manquant: dashboard/app/layout.tsx"
@@ -438,7 +635,7 @@ if [ -f ".env" ]; then
     if [ "$PERMS" = "600" ] || [ "$PERMS" = "644" ]; then
         test_pass "Permissions: $PERMS"
     else
-        test_warn "Permissions: $PERMS (recommandé: 600)"
+        test_warn "Permissions: $PERMS (recommandé: 600)" "fix_env_permissions"
     fi
 else
     test_fail "Fichier .env manquant"
@@ -566,13 +763,88 @@ if [ "$CRITICAL_FAILED" = true ]; then
     echo ""
 fi
 
+###############################################################################
+# SECTION RÉPARATION
+###############################################################################
+
+# Vérifier s'il y a des problèmes à réparer
+if [ ${#ISSUES_TO_FIX[@]} -gt 0 ]; then
+    echo ""
+    print_header "🔧 RÉPARATION AUTOMATIQUE"
+
+    # Dédupliquer les fonctions de réparation
+    declare -A UNIQUE_FIXES
+    for i in "${!FIX_FUNCTIONS[@]}"; do
+        UNIQUE_FIXES["${FIX_FUNCTIONS[$i]}"]="${ISSUES_TO_FIX[$i]}"
+    done
+
+    echo -e "${YELLOW}${BOLD}${#UNIQUE_FIXES[@]} problème(s) peuvent être réparés automatiquement${NC}"
+    echo ""
+
+    if [ "$FIX_MODE" = true ]; then
+        echo -e "${GREEN}Mode réparation automatique activé${NC}"
+        echo ""
+    else
+        echo "Voulez-vous réparer ces problèmes maintenant ?"
+        echo ""
+        read -p "Répondre (o/n) : " -n 1 -r
+        echo ""
+        if [[ ! $REPLY =~ ^[OoYy]$ ]]; then
+            echo -e "${YELLOW}Réparation annulée${NC}"
+            echo ""
+            echo "Pour réparer automatiquement, relancez avec: $0 --fix"
+            echo ""
+            exit 1
+        fi
+    fi
+
+    echo ""
+
+    # Exécuter chaque fonction de réparation unique
+    for fix_func in "${!UNIQUE_FIXES[@]}"; do
+        echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${BOLD}Réparation: ${UNIQUE_FIXES[$fix_func]}${NC}"
+        echo ""
+
+        if $fix_func; then
+            echo -e "${GREEN}✓ Réparation réussie${NC}"
+            FIXED_COUNT=$((FIXED_COUNT + 1))
+        else
+            echo -e "${RED}✗ Échec de la réparation${NC}"
+            FAILED_FIX_COUNT=$((FAILED_FIX_COUNT + 1))
+        fi
+        echo ""
+    done
+
+    print_header "📊 RÉSUMÉ DES RÉPARATIONS"
+    echo ""
+    echo -e "${GREEN}✓ Réparations réussies : $FIXED_COUNT${NC}"
+    echo -e "${RED}✗ Réparations échouées : $FAILED_FIX_COUNT${NC}"
+    echo ""
+
+    if [ $FIXED_COUNT -gt 0 ]; then
+        echo -e "${GREEN}${BOLD}🎉 Certains problèmes ont été corrigés !${NC}"
+        echo ""
+        echo "Relancez le script pour vérifier les corrections :"
+        echo "  ./scripts/verify_security.sh"
+        echo ""
+    fi
+
+    if [ $FAILED_FIX_COUNT -gt 0 ]; then
+        echo -e "${RED}${BOLD}⚠️  Certaines réparations ont échoué${NC}"
+        echo ""
+        echo "Vous devrez peut-être corriger manuellement ou consulter les logs."
+        echo ""
+    fi
+fi
+
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}${BOLD}  Vérification terminée${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
 # Code de sortie
-if [ "$FAILED_TESTS" -eq 0 ]; then
+if [ "$FAILED_TESTS" -eq 0 ] && [ "$FAILED_FIX_COUNT" -eq 0 ]; then
     exit 0
 else
     exit 1
