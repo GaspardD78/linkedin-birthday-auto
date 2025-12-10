@@ -1191,6 +1191,52 @@ fi
 echo ""
 
 ###############################################################################
+# VÉRIFICATION DE SÉCURITÉ COMPLÈTE
+###############################################################################
+
+print_header "🛡️ AUDIT DE SÉCURITÉ AUTOMATISÉ"
+
+print_info "Lancement du script de vérification complète (verify_security.sh)..."
+echo ""
+
+# Rendre exécutable le script de vérification
+chmod +x ./scripts/verify_security.sh
+
+# Exécuter la vérification et ignorer l'erreur d'arrêt (set +e temporaire)
+set +e
+./scripts/verify_security.sh
+VERIFY_EXIT_CODE=$?
+set -e
+
+echo ""
+if [ $VERIFY_EXIT_CODE -eq 0 ]; then
+    print_success "✨ L'audit de sécurité est PASSÉ avec succès !"
+else
+    print_error "⚠️  L'audit de sécurité a détecté des anomalies."
+
+    echo ""
+    print_info "Certaines vérifications ont échoué malgré l'installation."
+    print_info "Cela peut indiquer une corruption de l'environnement ou des fichiers manquants."
+    echo ""
+
+    if ask_yes_no "Voulez-vous lancer une RECONSTRUCTION complète de l'environnement (repair_deployment.sh) ?"; then
+        print_step "Lancement de la réparation..."
+        echo ""
+
+        if [ -f "./scripts/repair_deployment.sh" ]; then
+            chmod +x ./scripts/repair_deployment.sh
+            ./scripts/repair_deployment.sh
+        else
+            print_error "Script repair_deployment.sh introuvable."
+        fi
+    else
+        print_info "Vous pouvez relancer ce script ou corriger manuellement les erreurs."
+    fi
+fi
+
+echo ""
+
+###############################################################################
 # RÉSUMÉ FINAL
 ###############################################################################
 
