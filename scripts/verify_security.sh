@@ -247,13 +247,13 @@ fix_password_hash() {
 
     # Hasher le mot de passe
     if [ -f "dashboard/scripts/hash_password.js" ]; then
-        cd dashboard
-        HASHED=$(echo "$CURRENT_PASSWORD" | node scripts/hash_password.js 2>/dev/null)
-        cd ..
+        # Utiliser le mode --quiet pour obtenir uniquement le hash
+        HASHED=$(node dashboard/scripts/hash_password.js --quiet "$CURRENT_PASSWORD" 2>/dev/null)
 
         if [ -n "$HASHED" ]; then
-            # Échapper les $ pour sed
-            ESCAPED_HASH=$(echo "$HASHED" | sed 's/\$/\\$/g')
+            # Échapper les caractères spéciaux pour sed
+            # Échapper $ et /
+            ESCAPED_HASH=$(echo "$HASHED" | sed 's/[\$\/]/\\&/g')
             sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$ESCAPED_HASH|" .env
             echo -e "${GREEN}Mot de passe hashé avec succès${NC}"
             return 0
