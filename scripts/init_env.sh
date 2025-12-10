@@ -146,10 +146,11 @@ else
     HASHED_PASSWORD=$(node dashboard/scripts/hash_password.js --quiet "$DASHBOARD_PASSWORD" 2>/dev/null)
 
     if [ -n "$HASHED_PASSWORD" ]; then
-        # Échapper les caractères spéciaux pour sed
-        ESCAPED_HASH=$(echo "$HASHED_PASSWORD" | sed 's/[\$\/]/\\&/g')
+        # Le hash est déjà échappé pour Docker Compose ($$) par hash_password.js
+        # Échapper uniquement pour sed (doubler les backslashes si présents)
+        ESCAPED_HASH=$(echo "$HASHED_PASSWORD" | sed 's/\\/\\\\/g')
         sed -i "s|DASHBOARD_PASSWORD=CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT|DASHBOARD_PASSWORD=$ESCAPED_HASH|" .env
-        echo -e "${GREEN}✓ Mot de passe hashé avec bcrypt${NC}"
+        echo -e "${GREEN}✓ Mot de passe hashé avec bcrypt (échappé pour Docker Compose)${NC}"
     else
         echo -e "${RED}✗ Échec du hashage${NC}"
         sed -i "s|DASHBOARD_PASSWORD=CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT|DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD|" .env

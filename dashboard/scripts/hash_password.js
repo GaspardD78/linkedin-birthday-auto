@@ -16,6 +16,14 @@ const readline = require('readline');
 // Nombre de rounds bcrypt (10 = rapide, 12 = recommandé, 14 = très sécurisé)
 const SALT_ROUNDS = 12;
 
+/**
+ * Échappe les $ dans le hash bcrypt pour Docker Compose
+ * Docker Compose interprète $ comme des variables, il faut les doubler
+ */
+function escapeForDockerCompose(hash) {
+  return hash.replace(/\$/g, '$$$$');
+}
+
 async function hashPassword(password) {
   if (!password || password.trim() === '') {
     throw new Error('Le mot de passe ne peut pas être vide');
@@ -44,15 +52,21 @@ async function main() {
       const hash = await hashPassword(password);
 
       if (quietMode) {
-        // Mode silencieux: afficher uniquement le hash
-        console.log(hash);
+        // Mode silencieux: afficher uniquement le hash échappé pour Docker Compose
+        console.log(escapeForDockerCompose(hash));
       } else {
         // Mode verbose
+        const escapedHash = escapeForDockerCompose(hash);
+
         console.log('\n✅ Mot de passe hashé avec succès!\n');
         console.log('Copiez cette ligne dans votre fichier .env:');
         console.log('─────────────────────────────────────────────────');
-        console.log(`DASHBOARD_PASSWORD=${hash}`);
-        console.log('─────────────────────────────────────────────────\n');
+        console.log(`DASHBOARD_PASSWORD=${escapedHash}`);
+        console.log('─────────────────────────────────────────────────');
+        console.log('');
+        console.log('⚠️  IMPORTANT: Les $$ dans le hash sont nécessaires pour Docker Compose');
+        console.log('   Docker Compose interprète $ comme des variables, il faut les doubler');
+        console.log('');
         console.log('💡 Conseil: Utilisez un gestionnaire de mots de passe (1Password, Bitwarden, etc.)');
         console.log('');
       }
@@ -78,11 +92,17 @@ async function main() {
       // mais le terminal ne l'affichera pas si lancé correctement
       try {
         const hash = await hashPassword(password);
+        const escapedHash = escapeForDockerCompose(hash);
+
         console.log('\n✅ Mot de passe hashé avec succès!\n');
         console.log('Copiez cette ligne dans votre fichier .env:');
         console.log('─────────────────────────────────────────────────');
-        console.log(`DASHBOARD_PASSWORD=${hash}`);
-        console.log('─────────────────────────────────────────────────\n');
+        console.log(`DASHBOARD_PASSWORD=${escapedHash}`);
+        console.log('─────────────────────────────────────────────────');
+        console.log('');
+        console.log('⚠️  IMPORTANT: Les $$ dans le hash sont nécessaires pour Docker Compose');
+        console.log('   Docker Compose interprète $ comme des variables, il faut les doubler');
+        console.log('');
         console.log('💡 Conseil: Conservez votre mot de passe original dans un gestionnaire sécurisé');
         console.log('');
         rl.close();
