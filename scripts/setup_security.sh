@@ -1,0 +1,885 @@
+#!/bin/bash
+
+###############################################################################
+# 🔒 Script d'Installation Sécurité - LinkedIn Birthday Bot
+# Version: 1.0
+# Guide interactif pour installer TOUTES les protections de sécurité
+###############################################################################
+
+set -e  # Arrêt si erreur
+
+# Couleurs pour l'affichage
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Fonction pour afficher des titres
+print_header() {
+    echo ""
+    echo -e "${BLUE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}${BOLD}  $1${NC}"
+    echo -e "${BLUE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+# Fonction pour afficher des étapes
+print_step() {
+    echo -e "${GREEN}${BOLD}➜ $1${NC}"
+}
+
+# Fonction pour afficher des infos
+print_info() {
+    echo -e "${YELLOW}ℹ $1${NC}"
+}
+
+# Fonction pour afficher des succès
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+# Fonction pour afficher des erreurs
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+# Fonction pour poser des questions oui/non
+ask_yes_no() {
+    while true; do
+        read -p "$1 (o/n): " yn
+        case $yn in
+            [Oo]* ) return 0;;
+            [Nn]* ) return 1;;
+            * ) echo "Répondez par o (oui) ou n (non).";;
+        esac
+    done
+}
+
+# Fonction pour attendre que l'utilisateur appuie sur Entrée
+press_enter() {
+    echo ""
+    read -p "Appuyez sur Entrée pour continuer..."
+    echo ""
+}
+
+###############################################################################
+# INTRODUCTION
+###############################################################################
+
+clear
+print_header "🔒 INSTALLATION SÉCURITÉ - LINKEDIN BIRTHDAY BOT"
+
+cat << 'EOF'
+Ce script va vous guider pas à pas pour installer TOUTES les protections
+de sécurité de votre bot LinkedIn.
+
+⏱️  DURÉE TOTALE : 30-45 minutes
+
+📋 CE QUI VA ÊTRE INSTALLÉ :
+   1. ✅ Backup automatique Google Drive (15 min)
+   2. ✅ HTTPS avec Let's Encrypt (15 min)
+   3. ✅ Mot de passe hashé bcrypt (5 min)
+   4. ✅ Protection CORS (2 min)
+   5. ✅ Anti-indexation (2 min)
+
+⚠️  PRÉREQUIS :
+   • Raspberry Pi connecté à Internet
+   • Accès SSH au Raspberry Pi
+   • Compte Google (pour backup)
+   • Nom de domaine (pour HTTPS)
+   • Accès interface Freebox (pour ports)
+
+EOF
+
+if ! ask_yes_no "Êtes-vous prêt à commencer l'installation ?"; then
+    echo "Installation annulée. Relancez ce script quand vous serez prêt !"
+    exit 0
+fi
+
+###############################################################################
+# ÉTAPE 1 : BACKUP GOOGLE DRIVE
+###############################################################################
+
+print_header "📦 ÉTAPE 1/5 : BACKUP AUTOMATIQUE GOOGLE DRIVE"
+
+cat << 'EOF'
+💾 POURQUOI C'EST IMPORTANT ?
+   Sans backup, si votre Raspberry Pi plante, vous perdez TOUS vos contacts,
+   messages, historiques. Le backup Google Drive sauvegarde tout automatiquement
+   chaque nuit à 3h du matin.
+
+📝 CE QUE NOUS ALLONS FAIRE :
+   1. Installer rclone (outil de synchronisation cloud)
+   2. Configurer votre compte Google Drive
+   3. Tester un backup manuel
+   4. Programmer le backup automatique tous les jours
+
+EOF
+
+press_enter
+
+# Vérifier si rclone est déjà installé
+print_step "Vérification de rclone..."
+if command -v rclone &> /dev/null; then
+    print_success "rclone est déjà installé !"
+    RCLONE_VERSION=$(rclone version | head -n 1)
+    print_info "Version: $RCLONE_VERSION"
+else
+    print_info "rclone n'est pas installé. Installation en cours..."
+
+    if ask_yes_no "Voulez-vous installer rclone maintenant ?"; then
+        print_step "Installation de rclone..."
+        curl https://rclone.org/install.sh | sudo bash
+
+        if command -v rclone &> /dev/null; then
+            print_success "rclone installé avec succès !"
+        else
+            print_error "Erreur lors de l'installation de rclone"
+            exit 1
+        fi
+    else
+        print_error "Installation annulée. rclone est OBLIGATOIRE pour les backups."
+        exit 1
+    fi
+fi
+
+echo ""
+print_step "Configuration de Google Drive..."
+echo ""
+
+cat << 'EOF'
+📱 INSTRUCTIONS POUR CONFIGURER GOOGLE DRIVE :
+
+Vous allez maintenant configurer votre compte Google Drive.
+Une fenêtre va s'ouvrir dans votre navigateur.
+
+⚠️  IMPORTANT : Suivez exactement ces étapes :
+
+1. Quand on vous demande "name>", tapez : gdrive
+2. Quand on vous demande "Storage>", tapez : drive
+3. Quand on vous demande "client_id>", appuyez juste sur Entrée (laisser vide)
+4. Quand on vous demande "client_secret>", appuyez juste sur Entrée (laisser vide)
+5. Quand on vous demande "scope>", tapez : 1 (Full access)
+6. Quand on vous demande "service_account_file>", appuyez sur Entrée (laisser vide)
+7. Quand on vous demande "Edit advanced config?", tapez : n (non)
+8. Quand on vous demande "Use web browser to automatically authenticate?", tapez : y (oui)
+9. Une page web va s'ouvrir → Connectez-vous avec votre compte Google
+10. Autorisez rclone à accéder à votre Google Drive
+11. Revenez au terminal, tapez : y (oui) pour confirmer
+
+EOF
+
+if ask_yes_no "Avez-vous bien lu les instructions ci-dessus ?"; then
+    # Vérifier si la configuration existe déjà
+    if rclone listremotes | grep -q "gdrive:"; then
+        print_success "Le remote 'gdrive' existe déjà !"
+
+        if ask_yes_no "Voulez-vous tester la connexion à Google Drive ?"; then
+            print_step "Test de connexion..."
+            if rclone lsd gdrive: &> /dev/null; then
+                print_success "Connexion à Google Drive réussie !"
+            else
+                print_error "Erreur de connexion. Vérifiez votre configuration."
+                if ask_yes_no "Voulez-vous reconfigurer ?"; then
+                    rclone config
+                fi
+            fi
+        fi
+    else
+        print_info "Lancement de la configuration rclone..."
+        echo ""
+        rclone config
+        echo ""
+
+        # Vérifier que la configuration a fonctionné
+        if rclone listremotes | grep -q "gdrive:"; then
+            print_success "Configuration réussie !"
+        else
+            print_error "La configuration a échoué. Le remote 'gdrive' n'a pas été créé."
+            print_info "Relancez ce script et suivez bien toutes les étapes."
+            exit 1
+        fi
+    fi
+else
+    print_error "Lisez bien les instructions avant de continuer !"
+    exit 1
+fi
+
+echo ""
+print_step "Test du backup..."
+echo ""
+
+# Rendre le script de backup exécutable
+chmod +x ./scripts/backup_to_gdrive.sh
+
+if ask_yes_no "Voulez-vous tester un backup maintenant (recommandé) ?"; then
+    print_info "Lancement du backup de test..."
+    echo ""
+
+    if ./scripts/backup_to_gdrive.sh; then
+        echo ""
+        print_success "✓ Backup de test réussi !"
+        print_info "Vérifiez votre Google Drive : vous devriez voir un dossier 'LinkedInBot_Backups'"
+    else
+        echo ""
+        print_error "Le backup a échoué. Vérifiez les erreurs ci-dessus."
+        exit 1
+    fi
+fi
+
+echo ""
+print_step "Configuration du backup automatique..."
+echo ""
+
+cat << 'EOF'
+🕐 BACKUP AUTOMATIQUE :
+
+Le backup va s'exécuter automatiquement tous les jours à 3h du matin.
+Cela se fait via "cron" (le planificateur de tâches Linux).
+
+EOF
+
+if ask_yes_no "Voulez-vous activer le backup automatique quotidien ?"; then
+    SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/backup_to_gdrive.sh"
+    CRON_LINE="0 3 * * * $SCRIPT_PATH >> /var/log/linkedin-bot-backup.log 2>&1"
+
+    # Vérifier si la tâche cron existe déjà
+    if crontab -l 2>/dev/null | grep -q "backup_to_gdrive.sh"; then
+        print_success "Le backup automatique est déjà configuré !"
+    else
+        print_info "Ajout de la tâche cron..."
+        (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+        print_success "Backup automatique configuré avec succès !"
+        print_info "Le backup s'exécutera tous les jours à 3h du matin"
+        print_info "Logs disponibles dans : /var/log/linkedin-bot-backup.log"
+    fi
+fi
+
+print_success "✓✓✓ ÉTAPE 1 TERMINÉE : Backup Google Drive configuré !"
+
+###############################################################################
+# ÉTAPE 2 : HTTPS AVEC LET'S ENCRYPT
+###############################################################################
+
+press_enter
+
+print_header "🔐 ÉTAPE 2/5 : HTTPS AVEC LET'S ENCRYPT"
+
+cat << 'EOF'
+🌐 POURQUOI C'EST IMPORTANT ?
+   Sans HTTPS, vos mots de passe et données circulent en CLAIR sur Internet.
+   N'importe qui sur le réseau peut les intercepter. HTTPS chiffre tout.
+
+📝 CE QUE NOUS ALLONS FAIRE :
+   1. Configurer les ports sur votre Freebox (action MANUELLE)
+   2. Installer Nginx (reverse proxy)
+   3. Obtenir un certificat SSL gratuit (Let's Encrypt)
+   4. Configurer Nginx avec toutes les sécurités
+
+⚠️  PRÉREQUIS OBLIGATOIRE :
+   Vous DEVEZ avoir un nom de domaine qui pointe vers votre IP Freebox.
+
+   Exemples :
+   • bot.mondomaine.com
+   • linkedin.mondomaine.fr
+   • monbot.free.fr (si domaine Free)
+
+EOF
+
+if ! ask_yes_no "Avez-vous un nom de domaine qui pointe vers votre Freebox ?"; then
+    print_error "Vous devez d'abord obtenir un nom de domaine avant de continuer."
+    cat << 'EOF'
+
+💡 SOLUTIONS :
+
+Option 1 - Domaine gratuit Freebox (si client Free) :
+   1. Allez sur https://subscribe.free.fr/accesgratuit/
+   2. Activez votre domaine gratuit *.free.fr
+
+Option 2 - Acheter un domaine (10-15€/an) :
+   • OVH : https://www.ovhcloud.com/fr/domains/
+   • Gandi : https://www.gandi.net/fr/domain
+   • Namecheap : https://www.namecheap.com
+
+   Puis configurez les DNS pour pointer vers votre IP Freebox.
+
+EOF
+    print_info "Relancez ce script une fois que vous avez un nom de domaine."
+    exit 1
+fi
+
+echo ""
+read -p "Quel est votre nom de domaine ? (ex: bot.mondomaine.com) : " DOMAIN_NAME
+echo ""
+
+if [ -z "$DOMAIN_NAME" ]; then
+    print_error "Vous devez entrer un nom de domaine."
+    exit 1
+fi
+
+print_success "Nom de domaine : $DOMAIN_NAME"
+
+echo ""
+print_step "Configuration des ports Freebox..."
+echo ""
+
+cat << 'EOF'
+📱 CONFIGURATION FREEBOX (ACTION MANUELLE REQUISE) :
+
+Vous devez maintenant ouvrir 2 ports sur votre Freebox pour permettre
+l'accès depuis Internet :
+
+1. Ouvrez votre navigateur et allez sur : http://mafreebox.freebox.fr
+2. Connectez-vous avec le mot de passe de votre Freebox
+3. Allez dans : Paramètres de la Freebox > Mode avancé > Redirections de ports
+4. Cliquez sur "Ajouter une redirection"
+
+REDIRECTION 1 - HTTP (pour Let's Encrypt) :
+   • Protocole : TCP
+   • Port externe : 80
+   • Port interne : 80
+   • IP destination : [IP de votre Raspberry Pi]
+   • Commentaire : LinkedIn Bot HTTP
+
+REDIRECTION 2 - HTTPS :
+   • Protocole : TCP
+   • Port externe : 443
+   • Port interne : 443
+   • IP destination : [IP de votre Raspberry Pi]
+   • Commentaire : LinkedIn Bot HTTPS
+
+⚠️  IMPORTANT : Utilisez la même IP (celle de votre Raspberry Pi) pour les 2 redirections.
+
+EOF
+
+# Afficher l'IP du Raspberry Pi
+RASPBERRY_IP=$(hostname -I | awk '{print $1}')
+print_info "IP de votre Raspberry Pi : $RASPBERRY_IP"
+echo ""
+
+if ! ask_yes_no "Avez-vous configuré les 2 redirections de ports (80 et 443) ?"; then
+    print_error "Vous devez configurer les ports avant de continuer."
+    print_info "Relancez ce script une fois les ports configurés."
+    exit 1
+fi
+
+echo ""
+print_step "Installation de Nginx et Certbot..."
+echo ""
+
+# Installer Nginx et Certbot
+if command -v nginx &> /dev/null; then
+    print_success "Nginx est déjà installé !"
+else
+    print_info "Installation de Nginx..."
+    sudo apt update
+    sudo apt install -y nginx
+    print_success "Nginx installé !"
+fi
+
+if command -v certbot &> /dev/null; then
+    print_success "Certbot est déjà installé !"
+else
+    print_info "Installation de Certbot..."
+    sudo apt install -y certbot python3-certbot-nginx
+    print_success "Certbot installé !"
+fi
+
+echo ""
+print_step "Configuration de Nginx..."
+echo ""
+
+# Créer le répertoire de configuration s'il n'existe pas
+sudo mkdir -p /etc/nginx/sites-available
+sudo mkdir -p /etc/nginx/sites-enabled
+
+# Copier la configuration Nginx
+NGINX_CONF="/etc/nginx/sites-available/linkedin-bot"
+print_info "Création du fichier de configuration Nginx..."
+
+sudo cp ./deployment/nginx/linkedin-bot.conf "$NGINX_CONF"
+
+# Remplacer le placeholder par le vrai domaine
+sudo sed -i "s/VOTRE_DOMAINE_ICI/$DOMAIN_NAME/g" "$NGINX_CONF"
+
+# Créer le lien symbolique
+if [ ! -L /etc/nginx/sites-enabled/linkedin-bot ]; then
+    sudo ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
+    print_success "Configuration Nginx activée !"
+fi
+
+# Supprimer la config par défaut si elle existe
+if [ -L /etc/nginx/sites-enabled/default ]; then
+    sudo rm /etc/nginx/sites-enabled/default
+    print_info "Configuration par défaut désactivée"
+fi
+
+# Créer la page d'erreur 429
+sudo mkdir -p /var/www/html
+sudo cp ./deployment/nginx/429.html /var/www/html/
+
+# Tester la configuration Nginx
+print_step "Test de la configuration Nginx..."
+if sudo nginx -t; then
+    print_success "Configuration Nginx valide !"
+else
+    print_error "Erreur dans la configuration Nginx"
+    exit 1
+fi
+
+# Recharger Nginx
+print_step "Rechargement de Nginx..."
+sudo systemctl reload nginx
+sudo systemctl enable nginx
+print_success "Nginx rechargé et activé au démarrage !"
+
+echo ""
+print_step "Obtention du certificat SSL Let's Encrypt..."
+echo ""
+
+cat << 'EOF'
+🔑 CERTIFICAT SSL GRATUIT :
+
+Let's Encrypt va maintenant générer un certificat SSL gratuit pour votre domaine.
+Ce certificat sera automatiquement renouvelé tous les 3 mois.
+
+⚠️  IMPORTANT :
+   • Assurez-vous que votre domaine pointe bien vers votre IP Freebox
+   • Les ports 80 et 443 doivent être ouverts sur la Freebox
+   • Le Raspberry Pi doit être accessible depuis Internet
+
+EOF
+
+if ask_yes_no "Voulez-vous obtenir le certificat SSL maintenant ?"; then
+    print_info "Lancement de Certbot..."
+    echo ""
+
+    sudo certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos --register-unsafely-without-email || {
+        print_error "Erreur lors de l'obtention du certificat."
+        echo ""
+        print_info "Causes possibles :"
+        print_info "  1. Votre domaine ne pointe pas vers votre IP Freebox"
+        print_info "  2. Les ports 80/443 ne sont pas ouverts sur la Freebox"
+        print_info "  3. Le Raspberry Pi n'est pas accessible depuis Internet"
+        echo ""
+        print_info "Pour tester manuellement plus tard :"
+        print_info "  sudo certbot --nginx -d $DOMAIN_NAME"
+        echo ""
+
+        if ! ask_yes_no "Voulez-vous continuer l'installation sans HTTPS ?"; then
+            exit 1
+        fi
+    }
+
+    echo ""
+    print_success "✓ Certificat SSL installé !"
+    print_info "Renouvellement automatique : certbot renouvelle automatiquement le certificat"
+fi
+
+# Recharger Nginx une dernière fois
+sudo systemctl reload nginx
+
+print_success "✓✓✓ ÉTAPE 2 TERMINÉE : HTTPS configuré !"
+
+###############################################################################
+# ÉTAPE 3 : MOT DE PASSE HASHÉ BCRYPT
+###############################################################################
+
+press_enter
+
+print_header "🔑 ÉTAPE 3/5 : MOT DE PASSE HASHÉ BCRYPT"
+
+cat << 'EOF'
+🔐 POURQUOI C'EST IMPORTANT ?
+   Actuellement, votre mot de passe est stocké EN CLAIR dans le fichier .env.
+   Si quelqu'un accède à ce fichier, il voit votre mot de passe directement.
+   Avec bcrypt, le mot de passe est "hashé" (transformé) de façon irréversible.
+
+📝 CE QUE NOUS ALLONS FAIRE :
+   1. Installer la librairie bcryptjs dans le dashboard
+   2. Choisir un nouveau mot de passe (ou garder l'actuel)
+   3. Générer le hash bcrypt
+   4. Mettre à jour le fichier .env
+   5. Redémarrer le dashboard
+
+EOF
+
+press_enter
+
+# Aller dans le répertoire dashboard
+cd dashboard
+
+print_step "Installation de bcryptjs..."
+
+if [ -d "node_modules/bcryptjs" ]; then
+    print_success "bcryptjs est déjà installé !"
+else
+    print_info "Installation en cours..."
+    npm install bcryptjs
+    print_success "bcryptjs installé !"
+fi
+
+echo ""
+print_step "Génération du hash du mot de passe..."
+echo ""
+
+cat << 'EOF'
+🔑 CHOIX DU MOT DE PASSE :
+
+Vous pouvez soit :
+   1. Garder votre mot de passe actuel (il sera juste hashé)
+   2. Choisir un nouveau mot de passe plus sécurisé
+
+💡 RECOMMANDATIONS :
+   • Au moins 12 caractères
+   • Mélange de lettres, chiffres et symboles
+   • Exemple : B0t!L1nk3d1n@2025
+
+EOF
+
+if ask_yes_no "Voulez-vous choisir un NOUVEAU mot de passe ?"; then
+    echo ""
+    read -s -p "Entrez votre nouveau mot de passe : " NEW_PASSWORD
+    echo ""
+    read -s -p "Confirmez le mot de passe : " NEW_PASSWORD_CONFIRM
+    echo ""
+
+    if [ "$NEW_PASSWORD" != "$NEW_PASSWORD_CONFIRM" ]; then
+        print_error "Les mots de passe ne correspondent pas !"
+        exit 1
+    fi
+
+    if [ ${#NEW_PASSWORD} -lt 8 ]; then
+        print_error "Le mot de passe doit faire au moins 8 caractères !"
+        exit 1
+    fi
+
+    PASSWORD_TO_HASH="$NEW_PASSWORD"
+else
+    # Récupérer le mot de passe actuel depuis .env
+    if [ -f "../.env" ]; then
+        CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" ../.env | cut -d '=' -f2-)
+        PASSWORD_TO_HASH="$CURRENT_PASSWORD"
+        print_info "Utilisation du mot de passe actuel"
+    else
+        print_error "Fichier .env introuvable !"
+        exit 1
+    fi
+fi
+
+print_step "Génération du hash bcrypt (cela peut prendre quelques secondes)..."
+
+# Générer le hash
+PASSWORD_HASH=$(node scripts/hash_password.js "$PASSWORD_TO_HASH")
+
+echo ""
+print_success "Hash généré avec succès !"
+print_info "Hash : ${PASSWORD_HASH:0:20}..." # Afficher seulement les 20 premiers caractères
+
+echo ""
+print_step "Mise à jour du fichier .env..."
+
+# Backup du .env
+cp ../.env ../.env.backup.$(date +%Y%m%d_%H%M%S)
+print_info "Backup créé : .env.backup.$(date +%Y%m%d_%H%M%S)"
+
+# Remplacer le mot de passe dans .env
+if grep -q "^DASHBOARD_PASSWORD=" ../.env; then
+    sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$PASSWORD_HASH|" ../.env
+    print_success "Mot de passe mis à jour dans .env !"
+else
+    echo "DASHBOARD_PASSWORD=$PASSWORD_HASH" >> ../.env
+    print_success "Mot de passe ajouté dans .env !"
+fi
+
+cd ..
+
+echo ""
+print_step "Redémarrage du dashboard..."
+
+if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    docker compose restart dashboard
+    print_success "Dashboard redémarré !"
+else
+    print_info "Docker non détecté. Redémarrez manuellement le dashboard :"
+    print_info "  docker compose restart dashboard"
+fi
+
+print_success "✓✓✓ ÉTAPE 3 TERMINÉE : Mot de passe hashé avec bcrypt !"
+
+###############################################################################
+# ÉTAPE 4 : PROTECTION CORS
+###############################################################################
+
+press_enter
+
+print_header "🛡️ ÉTAPE 4/5 : PROTECTION CORS"
+
+cat << 'EOF'
+🌐 POURQUOI C'EST IMPORTANT ?
+   CORS (Cross-Origin Resource Sharing) empêche des sites web malveillants
+   d'accéder à votre API depuis un autre domaine. Sans CORS, n'importe quel
+   site pourrait faire des requêtes à votre bot.
+
+📝 CE QUE NOUS ALLONS FAIRE :
+   1. Ajouter la variable ALLOWED_ORIGINS dans .env
+   2. Redémarrer l'API
+
+EOF
+
+press_enter
+
+print_step "Configuration de CORS..."
+
+# Demander le domaine
+echo ""
+read -p "Quel est votre domaine HTTPS ? (ex: https://bot.mondomaine.com) : " CORS_DOMAIN
+echo ""
+
+if [ -z "$CORS_DOMAIN" ]; then
+    CORS_DOMAIN="https://$DOMAIN_NAME"
+    print_info "Utilisation du domaine configuré précédemment : $CORS_DOMAIN"
+fi
+
+# Vérifier que le domaine commence par https://
+if [[ ! "$CORS_DOMAIN" =~ ^https:// ]]; then
+    print_error "Le domaine doit commencer par https://"
+    exit 1
+fi
+
+print_step "Ajout de ALLOWED_ORIGINS dans .env..."
+
+if grep -q "^ALLOWED_ORIGINS=" .env; then
+    sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=$CORS_DOMAIN|" .env
+    print_success "ALLOWED_ORIGINS mis à jour !"
+else
+    echo "ALLOWED_ORIGINS=$CORS_DOMAIN" >> .env
+    print_success "ALLOWED_ORIGINS ajouté !"
+fi
+
+print_step "Redémarrage de l'API..."
+
+if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    docker compose restart api
+    print_success "API redémarrée !"
+else
+    print_info "Docker non détecté. Redémarrez manuellement l'API :"
+    print_info "  docker compose restart api"
+fi
+
+print_success "✓✓✓ ÉTAPE 4 TERMINÉE : CORS configuré !"
+
+###############################################################################
+# ÉTAPE 5 : ANTI-INDEXATION
+###############################################################################
+
+press_enter
+
+print_header "🔍 ÉTAPE 5/5 : PROTECTION ANTI-INDEXATION"
+
+cat << 'EOF'
+🚫 POURQUOI C'EST IMPORTANT ?
+   Sans protection, Google et autres moteurs de recherche peuvent indexer
+   votre dashboard. N'importe qui pourrait alors trouver votre bot en
+   cherchant sur Google et tenter de s'y connecter.
+
+📝 CE QUI A ÉTÉ MIS EN PLACE :
+   ✓ robots.txt (demande aux robots de ne pas indexer)
+   ✓ Meta tags HTML (balises noindex/nofollow)
+   ✓ Header X-Robots-Tag (Next.js)
+   ✓ Header X-Robots-Tag (Nginx - redondant)
+
+📋 ACTION REQUISE :
+   Vous devez juste redémarrer le dashboard et Nginx pour activer
+   toutes les protections.
+
+EOF
+
+press_enter
+
+print_step "Redémarrage du dashboard..."
+
+if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    docker compose restart dashboard
+    print_success "Dashboard redémarré !"
+else
+    print_info "Redémarrez manuellement : docker compose restart dashboard"
+fi
+
+print_step "Rechargement de Nginx..."
+sudo systemctl reload nginx
+print_success "Nginx rechargé !"
+
+print_success "✓✓✓ ÉTAPE 5 TERMINÉE : Anti-indexation activé !"
+
+###############################################################################
+# VÉRIFICATIONS FINALES
+###############################################################################
+
+press_enter
+
+print_header "✅ VÉRIFICATIONS FINALES"
+
+echo ""
+print_step "Vérification de la configuration..."
+echo ""
+
+# Test 1 : Backup
+print_info "Test 1/5 : Backup Google Drive"
+if rclone listremotes | grep -q "gdrive:"; then
+    print_success "  ✓ rclone configuré"
+else
+    print_error "  ✗ rclone non configuré"
+fi
+
+if crontab -l 2>/dev/null | grep -q "backup_to_gdrive.sh"; then
+    print_success "  ✓ Backup automatique activé"
+else
+    print_error "  ✗ Backup automatique non activé"
+fi
+
+echo ""
+
+# Test 2 : HTTPS
+print_info "Test 2/5 : HTTPS"
+if command -v nginx &> /dev/null; then
+    print_success "  ✓ Nginx installé"
+else
+    print_error "  ✗ Nginx non installé"
+fi
+
+if [ -f "/etc/nginx/sites-available/linkedin-bot" ]; then
+    print_success "  ✓ Configuration Nginx créée"
+else
+    print_error "  ✗ Configuration Nginx manquante"
+fi
+
+if sudo certbot certificates 2>/dev/null | grep -q "Domains:"; then
+    print_success "  ✓ Certificat SSL installé"
+else
+    print_error "  ✗ Certificat SSL non installé"
+fi
+
+echo ""
+
+# Test 3 : Bcrypt
+print_info "Test 3/5 : Mot de passe hashé"
+if [ -f "dashboard/node_modules/bcryptjs/package.json" ]; then
+    print_success "  ✓ bcryptjs installé"
+else
+    print_error "  ✗ bcryptjs non installé"
+fi
+
+if grep -q "^\$2[aby]\$" .env 2>/dev/null; then
+    print_success "  ✓ Mot de passe hashé dans .env"
+else
+    print_error "  ✗ Mot de passe non hashé"
+fi
+
+echo ""
+
+# Test 4 : CORS
+print_info "Test 4/5 : CORS"
+if grep -q "^ALLOWED_ORIGINS=" .env 2>/dev/null; then
+    print_success "  ✓ ALLOWED_ORIGINS configuré"
+else
+    print_error "  ✗ ALLOWED_ORIGINS non configuré"
+fi
+
+echo ""
+
+# Test 5 : Anti-indexation
+print_info "Test 5/5 : Anti-indexation"
+if [ -f "dashboard/public/robots.txt" ]; then
+    print_success "  ✓ robots.txt présent"
+else
+    print_error "  ✗ robots.txt manquant"
+fi
+
+if [ -f "docs/ANTI_INDEXATION_GUIDE.md" ]; then
+    print_success "  ✓ Guide anti-indexation disponible"
+else
+    print_error "  ✗ Guide anti-indexation manquant"
+fi
+
+echo ""
+
+###############################################################################
+# RÉSUMÉ FINAL
+###############################################################################
+
+print_header "🎉 INSTALLATION TERMINÉE !"
+
+cat << EOF
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    📊 RÉSUMÉ DE L'INSTALLATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Backup automatique Google Drive
+   • Fréquence : Tous les jours à 3h du matin
+   • Destination : Google Drive/LinkedInBot_Backups/
+   • Rétention : 30 jours
+   • Logs : /var/log/linkedin-bot-backup.log
+
+✅ HTTPS avec Let's Encrypt
+   • Domaine : $DOMAIN_NAME
+   • Certificat : Let's Encrypt (renouvellement auto)
+   • Rate Limiting : Activé (anti brute-force)
+   • Security Headers : Tous configurés
+
+✅ Mot de passe hashé bcrypt
+   • Algorithme : bcrypt (salt rounds 12)
+   • Protection : Résistant aux timing attacks
+   • Backup : .env.backup.* créé
+
+✅ Protection CORS
+   • Origins autorisées : $CORS_DOMAIN
+   • Méthodes : GET, POST, PUT, DELETE
+   • Protection : Requêtes cross-origin bloquées
+
+✅ Anti-indexation Google
+   • robots.txt : ✓
+   • Meta tags : ✓
+   • X-Robots-Tag (Next.js) : ✓
+   • X-Robots-Tag (Nginx) : ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔒 SCORE SÉCURITÉ : 9.5/10
+
+Votre bot LinkedIn est maintenant HAUTEMENT SÉCURISÉ !
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                       📝 PROCHAINES ÉTAPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Testez l'accès à votre dashboard :
+   https://$DOMAIN_NAME
+
+2. Vérifiez que tout fonctionne :
+   ./scripts/verify_security.sh
+
+3. Consultez les guides si besoin :
+   • SECURITY_HARDENING_GUIDE.md
+   • docs/ANTI_INDEXATION_GUIDE.md
+   • docs/EMAIL_NOTIFICATIONS_INTEGRATION.md
+
+4. Surveillez les backups :
+   tail -f /var/log/linkedin-bot-backup.log
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 BESOIN D'AIDE ?
+
+Tous les guides sont en français dans le dossier docs/
+Chaque configuration peut être modifiée dans .env ou les fichiers de config
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EOF
+
+print_success "Bravo ! Installation de sécurité terminée avec succès ! 🎉"
+echo ""

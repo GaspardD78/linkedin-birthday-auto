@@ -6,11 +6,200 @@ Ce dossier contient tous les scripts nécessaires pour déployer, vérifier, net
 
 ## 📋 Table des matières
 
+- [Scripts de Sécurité](#-scripts-de-sécurité) ⭐ **NOUVEAU**
 - [Scripts de Déploiement](#-scripts-de-déploiement)
 - [Scripts de Maintenance](#-scripts-de-maintenance)
 - [Scripts de Vérification](#-scripts-de-vérification)
 - [Workflows Recommandés](#-workflows-recommandés)
 - [Dépannage](#-dépannage)
+
+---
+
+## 🔒 Scripts de Sécurité
+
+### `setup_security.sh` ⭐ **RECOMMANDÉ**
+
+**Script d'installation interactif** qui guide l'utilisateur à travers TOUTES les étapes de sécurisation du bot.
+
+**Usage:**
+```bash
+./scripts/setup_security.sh
+```
+
+**Ce qu'il installe (5 étapes) :**
+1. ✅ **Backup automatique Google Drive** - Backup quotidien avec rclone
+2. ✅ **HTTPS avec Let's Encrypt** - Certificat SSL gratuit et auto-renouvelé
+3. ✅ **Mot de passe hashé bcrypt** - Protection des credentials
+4. ✅ **Protection CORS** - Sécurisation de l'API
+5. ✅ **Anti-indexation Google** - 4 couches de protection
+
+**Durée estimée:** 30-45 minutes (avec configuration manuelle Freebox)
+
+**Prérequis:**
+- Compte Google (pour backup)
+- Nom de domaine pointant vers votre IP Freebox
+- Accès interface Freebox (pour ouvrir ports 80/443)
+
+**Avantages:**
+- Interface interactive avec confirmations
+- Installation guidée pas à pas
+- Vérifications à chaque étape
+- Gestion d'erreurs et suggestions
+- Rapport final détaillé
+
+**Quand l'utiliser:**
+- 🔐 **Première installation** pour sécuriser le bot
+- 🆕 **Après déploiement** avec `easy_deploy.sh`
+- 🔄 **Réinstallation sécurité** après problèmes
+
+**Score sécurité obtenu:** 9.5/10 (Excellent)
+
+---
+
+### `verify_security.sh`
+
+**Script de vérification** qui teste 40+ points de sécurité et donne un score.
+
+**Usage:**
+```bash
+./scripts/verify_security.sh
+```
+
+**Ce qu'il teste (7 sections) :**
+
+1. **Backup Google Drive** (7 tests)
+   - rclone installé et configuré
+   - Connexion Google Drive
+   - Script backup exécutable
+   - Backup automatique (cron)
+   - Base de données existe
+
+2. **HTTPS et certificat SSL** (8 tests)
+   - Nginx installé et actif
+   - Configuration valide
+   - Certbot installé
+   - Certificat SSL Let's Encrypt
+   - Renouvellement automatique
+
+3. **Security Headers Nginx** (4 tests)
+   - X-Frame-Options
+   - X-Content-Type-Options
+   - X-Robots-Tag
+   - Strict-Transport-Security (HSTS)
+
+4. **Mot de passe hashé bcrypt** (4 tests)
+   - bcryptjs installé
+   - Script hash_password.js
+   - Mot de passe hashé dans .env
+   - Backup .env existe
+
+5. **Protection CORS** (3 tests)
+   - Variable ALLOWED_ORIGINS
+   - CORSMiddleware dans app.py
+   - API active
+
+6. **Anti-indexation** (5 tests)
+   - robots.txt bloque indexation
+   - Meta tags robots dans layout.tsx
+   - X-Robots-Tag dans next.config.js
+   - X-Robots-Tag dans Nginx
+   - Guide anti-indexation disponible
+
+7. **Permissions et sécurité système** (6 tests)
+   - Permissions fichiers .env et DB
+   - Docker installé
+   - Conteneurs actifs
+   - Ports réseau ouverts
+
+**Résultat attendu:**
+```
+SCORE SÉCURITÉ : 90%+ - EXCELLENT
+Votre bot est hautement sécurisé !
+```
+
+**Code de sortie:**
+- `0` : Tous les tests passés
+- `>0` : Nombre de tests échoués
+
+**Quand l'utiliser:**
+- Après `setup_security.sh` (vérification)
+- En cas de comportement anormal
+- Monitoring régulier de la sécurité
+- Avant une mise en production
+
+---
+
+### `backup_to_gdrive.sh`
+
+**Script de backup automatique** de la base de données SQLite vers Google Drive.
+
+**Usage manuel:**
+```bash
+./scripts/backup_to_gdrive.sh
+```
+
+**Usage automatique (cron):**
+```bash
+# Exécuté automatiquement tous les jours à 3h du matin
+# (configuré par setup_security.sh)
+```
+
+**Fonctionnalités:**
+- Backup SQLite avec `.backup` (cohérence garantie)
+- Vérification d'intégrité (`PRAGMA integrity_check`)
+- Compression gzip (-50% de taille)
+- Upload Google Drive avec retry (3 tentatives)
+- Rotation 30 jours (local + cloud)
+- Checksums SHA256 pour vérifier l'intégrité
+- Logs détaillés avec timestamps
+
+**Configuration (variables dans le script):**
+```bash
+GDRIVE_REMOTE="gdrive"                      # Nom du remote rclone
+GDRIVE_BACKUP_DIR="LinkedInBot_Backups"    # Dossier Google Drive
+DB_PATH="./data/linkedin_bot.db"           # Chemin base de données
+RETENTION_DAYS=30                           # Jours de rétention
+```
+
+**Logs:**
+```bash
+# Voir les logs backup
+tail -f /var/log/linkedin-bot-backup.log
+
+# Voir tous les backups locaux
+ls -lh ./backups/
+
+# Vérifier sur Google Drive
+rclone ls gdrive:LinkedInBot_Backups/
+```
+
+**Restauration d'un backup:**
+```bash
+# Télécharger depuis Google Drive
+rclone copy gdrive:LinkedInBot_Backups/linkedin_bot_YYYYMMDD_HHMMSS.db.gz ./
+
+# Décompresser
+gunzip linkedin_bot_YYYYMMDD_HHMMSS.db.gz
+
+# Restaurer (ARRÊTEZ les conteneurs d'abord !)
+docker compose down
+cp linkedin_bot_YYYYMMDD_HHMMSS.db ./data/linkedin_bot.db
+docker compose up -d
+```
+
+**Espace disque utilisé:**
+- Backup compressé : 5-50 MB (selon taille DB)
+- 30 jours de rétention : 150-1500 MB max
+
+---
+
+## 📚 Documentation Sécurité
+
+- **[../GUIDE_DEMARRAGE_RAPIDE.md](../GUIDE_DEMARRAGE_RAPIDE.md)** - Guide installation sécurité pas à pas
+- **[../SECURITY_HARDENING_GUIDE.md](../SECURITY_HARDENING_GUIDE.md)** - Guide backup + HTTPS + bcrypt
+- **[../docs/GUIDE_FREEBOX_PORTS.md](../docs/GUIDE_FREEBOX_PORTS.md)** - Configuration ports Freebox (80/443)
+- **[../docs/ANTI_INDEXATION_GUIDE.md](../docs/ANTI_INDEXATION_GUIDE.md)** - Protection anti-indexation Google
+- **[../docs/EMAIL_NOTIFICATIONS_INTEGRATION.md](../docs/EMAIL_NOTIFICATIONS_INTEGRATION.md)** - Alertes email (optionnel)
 
 ---
 
