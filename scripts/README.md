@@ -199,6 +199,7 @@ docker compose up -d
 - **[../SECURITY_HARDENING_GUIDE.md](../SECURITY_HARDENING_GUIDE.md)** - Guide backup + HTTPS + bcrypt
 - **[../docs/GUIDE_FREEBOX_PORTS.md](../docs/GUIDE_FREEBOX_PORTS.md)** - Configuration ports Freebox (80/443)
 - **[../docs/ANTI_INDEXATION_GUIDE.md](../docs/ANTI_INDEXATION_GUIDE.md)** - Protection anti-indexation Google
+- **[../docs/RCLONE_DOCKER_AUTH_GUIDE.md](../docs/RCLONE_DOCKER_AUTH_GUIDE.md)** - Résoudre problèmes authentification rclone dans Docker
 - **[../docs/EMAIL_NOTIFICATIONS_INTEGRATION.md](../docs/EMAIL_NOTIFICATIONS_INTEGRATION.md)** - Alertes email (optionnel)
 
 ---
@@ -500,6 +501,28 @@ docker compose -f docker-compose.pi4-standalone.yml restart
 ---
 
 ## 🆘 Dépannage
+
+### Problème d'authentification rclone dans Docker
+
+**Symptôme:** Erreur "Failed to open browser automatically (exec: "xdg-open": executable file not found in $PATH)" lors de la configuration rclone
+
+**Cause:** Environnement Docker/headless sans navigateur web disponible
+
+**Solution:**
+
+Le script `setup_security.sh` détecte maintenant automatiquement ce cas et affiche les instructions appropriées. Consultez le guide complet :
+
+```bash
+# Consultez le guide détaillé
+cat docs/RCLONE_DOCKER_AUTH_GUIDE.md
+```
+
+**Options rapides :**
+
+1. **Option recommandée** : Configurer rclone sur votre machine locale puis copier le fichier de config
+2. **Option alternative** : Utiliser l'authentification manuelle (copier/coller l'URL et le code)
+
+---
 
 ### Le déploiement échoue lors du build du Dashboard
 
