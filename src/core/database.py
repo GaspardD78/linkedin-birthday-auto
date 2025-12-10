@@ -416,9 +416,22 @@ class Database:
                 "certifications": "TEXT",
                 "fit_score": "REAL"
             }
+            # Whitelist stricte pour ALTER TABLE (sécurité SQL injection)
+            ALLOWED_COLUMNS = {"headline", "summary", "skills", "certifications", "fit_score"}
+            ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "BLOB"}
+
             for col, dtype in new_columns.items():
                 if col not in columns:
+                    # Validation stricte des identifiants (protection SQL injection)
+                    if col not in ALLOWED_COLUMNS:
+                        logger.error(f"SECURITY: Tentative d'ajout colonne non autorisée: {col}")
+                        continue
+                    if dtype not in ALLOWED_TYPES:
+                        logger.error(f"SECURITY: Type SQL non autorisé: {dtype}")
+                        continue
+
                     try:
+                        # Sécurisé car col et dtype sont validés contre whitelist
                         cursor.execute(f"ALTER TABLE scraped_profiles ADD COLUMN {col} {dtype}")
                     except Exception as e:
                         logger.warning(f"Migration error for {col}: {e}")
@@ -1560,10 +1573,25 @@ class Database:
             "linkedin_selectors": [],
         }
 
+        # Whitelist stricte des tables exportables (protection SQL injection)
+        ALLOWED_TABLES = {
+            "contacts",
+            "birthday_messages",
+            "profile_visits",
+            "errors",
+            "linkedin_selectors"
+        }
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
             for table in data.keys():
+                # Validation stricte du nom de table
+                if table not in ALLOWED_TABLES:
+                    logger.error(f"SECURITY: Tentative d'export table non autorisée: {table}")
+                    continue
+
+                # Sécurisé car table est validé contre whitelist
                 cursor.execute(f"SELECT * FROM {table}")
                 data[table] = [dict(row) for row in cursor.fetchall()]
 

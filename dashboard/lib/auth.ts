@@ -1,5 +1,6 @@
 import "server-only"; // Garantit que ce code ne s'exécute JAMAIS côté client
 import { SignJWT, jwtVerify } from "jose";
+import { compareSync } from "bcryptjs";
 
 // Lazy initialization to avoid failing during Next.js build time
 // The validation will only occur when these functions are actually called at runtime
@@ -35,8 +36,10 @@ export async function verifySession(token: string) {
 /**
  * Valide les credentials utilisateur de façon sécurisée (server-only).
  *
- * ⚠️ SÉCURITÉ: Ne jamais exposer DEFAULT_USER/DEFAULT_PASSWORD en exports !
- * Cette fonction est la SEULE API pour vérifier les credentials.
+ * ⚠️ SÉCURITÉ: Utilise bcrypt pour comparer les mots de passe de façon sécurisée.
+ * DASHBOARD_PASSWORD doit être un hash bcrypt (généré avec scripts/hash_password.js).
+ * Si le mot de passe n'est pas hashé (pas de $2a$ ou $2b$), il sera comparé en clair
+ * pour rétrocompatibilité, mais un warning sera loggé.
  *
  * @param username - Nom d'utilisateur fourni
  * @param password - Mot de passe fourni
@@ -51,6 +54,26 @@ export function validateUserCredentials(username: string, password: string): boo
     throw new Error('❌ [SECURITY] DASHBOARD_USER and DASHBOARD_PASSWORD environment variables are required but not set! Please configure them in your .env file.');
   }
 
-  // Validation avec comparaison stricte
-  return username === DEFAULT_USER && password === DEFAULT_PASSWORD;
+  // Vérifier username d'abord (évite timing attack sur password si username invalide)
+  if (username !== DEFAULT_USER) {
+    return false;
+  }
+
+  // Détection si le mot de passe est hashé avec bcrypt
+  const isPasswordHashed = DEFAULT_PASSWORD.startsWith('$2a$') || DEFAULT_PASSWORD.startsWith('$2b$');
+
+  if (isPasswordHashed) {
+    // Comparaison sécurisée avec bcrypt (constant-time)
+    try {
+      return compareSync(password, DEFAULT_PASSWORD);
+    } catch (error) {
+      console.error('❌ [SECURITY] Bcrypt comparison failed:', error);
+      return false;
+    }
+  } else {
+    // Fallback pour rétrocompatibilité (mot de passe en clair)
+    console.warn('⚠️  [SECURITY WARNING] DASHBOARD_PASSWORD is not bcrypt-hashed! Please hash it with: npm run hash-password');
+    console.warn('⚠️  Plain-text password comparison is INSECURE and deprecated.');
+    return password === DEFAULT_PASSWORD;
+  }
 }
