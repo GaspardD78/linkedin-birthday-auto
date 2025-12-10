@@ -94,6 +94,124 @@ de sécurité de votre bot LinkedIn.
 EOF
 
 ###############################################################################
+# VÉRIFICATION ET INSTALLATION DES DÉPENDANCES
+###############################################################################
+
+print_header "🔧 VÉRIFICATION DES DÉPENDANCES"
+
+echo ""
+print_info "Vérification des dépendances système requises..."
+echo ""
+
+DEPS_MISSING=false
+
+# Vérifier curl (nécessaire pour installer rclone)
+print_step "Vérification de curl..."
+if command -v curl &> /dev/null; then
+    print_success "✓ curl est installé"
+else
+    print_info "⏭ curl n'est pas installé - Installation requise"
+    DEPS_MISSING=true
+fi
+
+# Vérifier Node.js
+print_step "Vérification de Node.js..."
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node --version)
+    print_success "✓ Node.js est installé ($NODE_VERSION)"
+else
+    print_info "⏭ Node.js n'est pas installé - Installation requise"
+    DEPS_MISSING=true
+fi
+
+# Vérifier npm
+print_step "Vérification de npm..."
+if command -v npm &> /dev/null; then
+    NPM_VERSION=$(npm --version)
+    print_success "✓ npm est installé (v$NPM_VERSION)"
+else
+    print_info "⏭ npm n'est pas installé - Installation requise"
+    DEPS_MISSING=true
+fi
+
+echo ""
+
+# Si des dépendances manquent, proposer de les installer
+if [ "$DEPS_MISSING" = true ]; then
+    cat << 'EOF'
+
+⚠️  DÉPENDANCES MANQUANTES DÉTECTÉES
+
+Certaines dépendances système sont manquantes. Elles sont nécessaires pour
+l'installation des protections de sécurité.
+
+Ce script va maintenant installer automatiquement les dépendances manquantes.
+
+EOF
+
+    if ask_yes_no "Voulez-vous installer automatiquement les dépendances manquantes ?"; then
+        print_step "Installation des dépendances système..."
+        echo ""
+
+        # Mise à jour de la liste des paquets
+        print_info "Mise à jour de la liste des paquets..."
+        sudo apt update
+
+        # Installer curl si manquant
+        if ! command -v curl &> /dev/null; then
+            print_info "Installation de curl..."
+            sudo apt install -y curl
+            if command -v curl &> /dev/null; then
+                print_success "✓ curl installé avec succès"
+            else
+                print_error "✗ Erreur lors de l'installation de curl"
+                exit 1
+            fi
+        fi
+
+        # Installer Node.js et npm si manquants
+        if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+            print_info "Installation de Node.js et npm..."
+
+            # Vérifier la version Debian/Ubuntu pour choisir la bonne méthode
+            if command -v apt &> /dev/null; then
+                # Utiliser NodeSource pour avoir une version récente
+                print_info "Installation via NodeSource (version LTS)..."
+                curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+                sudo apt install -y nodejs
+            else
+                # Fallback sur la version par défaut du dépôt
+                sudo apt install -y nodejs npm
+            fi
+
+            if command -v node &> /dev/null && command -v npm &> /dev/null; then
+                NODE_VERSION=$(node --version)
+                NPM_VERSION=$(npm --version)
+                print_success "✓ Node.js $NODE_VERSION et npm v$NPM_VERSION installés avec succès"
+            else
+                print_error "✗ Erreur lors de l'installation de Node.js/npm"
+                exit 1
+            fi
+        fi
+
+        echo ""
+        print_success "✓ Toutes les dépendances système sont installées !"
+    else
+        print_error "Installation annulée. Les dépendances sont OBLIGATOIRES."
+        echo ""
+        print_info "Pour installer manuellement :"
+        print_info "  sudo apt update"
+        print_info "  sudo apt install -y curl nodejs npm"
+        exit 1
+    fi
+else
+    print_success "✓ Toutes les dépendances système sont déjà installées !"
+fi
+
+echo ""
+press_enter
+
+###############################################################################
 # DÉTECTION DE LA CONFIGURATION EXISTANTE
 ###############################################################################
 
