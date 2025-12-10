@@ -249,6 +249,37 @@ sudo chmod 644 /etc/nginx/sites-available/linkedin-bot
 sudo chmod 644 /var/www/html/429.html
 ```
 
+### Erreur: invalid rate "rate=5r/15m"
+
+Cette erreur se produit avec une ancienne version du fichier `rate-limit-zones.conf` qui utilise une syntaxe invalide pour Nginx.
+
+**Problème** : Nginx n'accepte que `r/s` (par seconde) ou `r/m` (par minute), pas `r/15m` (par 15 minutes).
+
+**Solution rapide** :
+
+```bash
+# Script de correction automatique
+./scripts/fix_nginx_ratelimit.sh
+```
+
+**Solution manuelle** :
+
+```bash
+# 1. Sauvegarder l'ancien fichier
+sudo cp /etc/nginx/conf.d/rate-limit-zones.conf /etc/nginx/conf.d/rate-limit-zones.conf.backup
+
+# 2. Copier le fichier corrigé depuis le projet
+sudo cp deployment/nginx/rate-limit-zones.conf /etc/nginx/conf.d/
+
+# 3. Tester la configuration
+sudo nginx -t
+
+# 4. Recharger Nginx
+sudo systemctl reload nginx
+```
+
+**Note technique** : La zone de login passe de `rate=5r/15m` (invalide) à `rate=1r/m` avec `burst=5`, permettant ~5 tentatives par 5 minutes. C'est la meilleure approximation possible avec les limitations de Nginx.
+
 ### Zones de rate limiting toujours manquantes
 
 Vérifiez manuellement :
