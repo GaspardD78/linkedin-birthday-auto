@@ -93,16 +93,138 @@ de sécurité de votre bot LinkedIn.
 
 EOF
 
-if ! ask_yes_no "Êtes-vous prêt à commencer l'installation ?"; then
-    echo "Installation annulée. Relancez ce script quand vous serez prêt !"
+###############################################################################
+# DÉTECTION DE LA CONFIGURATION EXISTANTE
+###############################################################################
+
+print_header "🔍 DÉTECTION DE LA CONFIGURATION EXISTANTE"
+
+echo ""
+print_info "Analyse de la configuration actuelle..."
+echo ""
+
+# Variables de statut
+BACKUP_DONE=false
+HTTPS_DONE=false
+BCRYPT_DONE=false
+CORS_DONE=false
+ANTIINDEX_DONE=false
+
+# Étape 1 : Backup Google Drive
+if command -v rclone &> /dev/null && rclone listremotes | grep -q "gdrive:" && crontab -l 2>/dev/null | grep -q "backup_to_gdrive.sh"; then
+    BACKUP_DONE=true
+    print_success "✓ Étape 1 : Backup Google Drive - Déjà configuré"
+else
+    print_info "⏭ Étape 1 : Backup Google Drive - À configurer"
+fi
+
+# Étape 2 : HTTPS avec Let's Encrypt
+if command -v nginx &> /dev/null && command -v certbot &> /dev/null && sudo certbot certificates 2>/dev/null | grep -q "Certificate Name:"; then
+    HTTPS_DONE=true
+    print_success "✓ Étape 2 : HTTPS avec Let's Encrypt - Déjà configuré"
+else
+    print_info "⏭ Étape 2 : HTTPS avec Let's Encrypt - À configurer"
+fi
+
+# Étape 3 : Mot de passe hashé bcrypt
+if [ -f "dashboard/node_modules/bcryptjs/package.json" ] && grep -q "^\$2[aby]\$" .env 2>/dev/null; then
+    BCRYPT_DONE=true
+    print_success "✓ Étape 3 : Mot de passe hashé bcrypt - Déjà configuré"
+else
+    print_info "⏭ Étape 3 : Mot de passe hashé bcrypt - À configurer"
+fi
+
+# Étape 4 : Protection CORS
+if grep -q "^ALLOWED_ORIGINS=" .env 2>/dev/null; then
+    CORS_DONE=true
+    print_success "✓ Étape 4 : Protection CORS - Déjà configuré"
+else
+    print_info "⏭ Étape 4 : Protection CORS - À configurer"
+fi
+
+# Étape 5 : Anti-indexation
+if [ -f "dashboard/public/robots.txt" ] && grep -q "Disallow: /" dashboard/public/robots.txt 2>/dev/null; then
+    ANTIINDEX_DONE=true
+    print_success "✓ Étape 5 : Anti-indexation Google - Déjà configuré"
+else
+    print_info "⏭ Étape 5 : Anti-indexation Google - À configurer"
+fi
+
+echo ""
+
+# Calculer combien d'étapes sont déjà faites
+COMPLETED=0
+[ "$BACKUP_DONE" = true ] && COMPLETED=$((COMPLETED + 1))
+[ "$HTTPS_DONE" = true ] && COMPLETED=$((COMPLETED + 1))
+[ "$BCRYPT_DONE" = true ] && COMPLETED=$((COMPLETED + 1))
+[ "$CORS_DONE" = true ] && COMPLETED=$((COMPLETED + 1))
+[ "$ANTIINDEX_DONE" = true ] && COMPLETED=$((COMPLETED + 1))
+
+print_info "📊 Progression : $COMPLETED/5 étapes complétées"
+echo ""
+
+# Si tout est fait, on arrête
+if [ $COMPLETED -eq 5 ]; then
+    print_success "🎉 Toutes les étapes de sécurité sont déjà configurées !"
+    echo ""
+    print_info "Pour vérifier la configuration, lancez : ./scripts/verify_security.sh"
     exit 0
+fi
+
+# Si certaines étapes sont faites, demander si on veut les refaire
+if [ $COMPLETED -gt 0 ]; then
+    cat << EOF
+
+${YELLOW}⚠️  Certaines étapes sont déjà configurées.${NC}
+
+Vous avez le choix :
+  ${GREEN}[1]${NC} Passer directement aux étapes non configurées (recommandé)
+  ${YELLOW}[2]${NC} Refaire toutes les étapes depuis le début
+  ${RED}[3]${NC} Quitter
+
+EOF
+
+    read -p "Votre choix (1/2/3) : " choice
+
+    case $choice in
+        1)
+            print_success "✓ Passage aux étapes non configurées"
+            SKIP_COMPLETED=true
+            ;;
+        2)
+            print_info "Redémarrage depuis le début"
+            SKIP_COMPLETED=false
+            BACKUP_DONE=false
+            HTTPS_DONE=false
+            BCRYPT_DONE=false
+            CORS_DONE=false
+            ANTIINDEX_DONE=false
+            ;;
+        3)
+            echo "Installation annulée."
+            exit 0
+            ;;
+        *)
+            print_error "Choix invalide. Annulation."
+            exit 1
+            ;;
+    esac
+else
+    SKIP_COMPLETED=false
+    if ! ask_yes_no "Êtes-vous prêt à commencer l'installation ?"; then
+        echo "Installation annulée. Relancez ce script quand vous serez prêt !"
+        exit 0
+    fi
 fi
 
 ###############################################################################
 # ÉTAPE 1 : BACKUP GOOGLE DRIVE
 ###############################################################################
 
-print_header "📦 ÉTAPE 1/5 : BACKUP AUTOMATIQUE GOOGLE DRIVE"
+if [ "$BACKUP_DONE" = true ] && [ "$SKIP_COMPLETED" = true ]; then
+    print_success "⏭️  ÉTAPE 1/5 : Backup Google Drive - Déjà configuré, passée"
+else
+    print_header "📦 ÉTAPE 1/5 : BACKUP AUTOMATIQUE GOOGLE DRIVE"
 
 cat << 'EOF'
 💾 POURQUOI C'EST IMPORTANT ?
@@ -323,14 +445,17 @@ if ask_yes_no "Voulez-vous activer le backup automatique quotidien ?"; then
 fi
 
 print_success "✓✓✓ ÉTAPE 1 TERMINÉE : Backup Google Drive configuré !"
+fi  # Fin de l'étape 1
 
 ###############################################################################
 # ÉTAPE 2 : HTTPS AVEC LET'S ENCRYPT
 ###############################################################################
 
-press_enter
-
-print_header "🔐 ÉTAPE 2/5 : HTTPS AVEC LET'S ENCRYPT"
+if [ "$HTTPS_DONE" = true ] && [ "$SKIP_COMPLETED" = true ]; then
+    print_success "⏭️  ÉTAPE 2/5 : HTTPS avec Let's Encrypt - Déjà configuré, passée"
+else
+    press_enter
+    print_header "🔐 ÉTAPE 2/5 : HTTPS AVEC LET'S ENCRYPT"
 
 cat << 'EOF'
 🌐 POURQUOI C'EST IMPORTANT ?
@@ -547,14 +672,17 @@ fi
 sudo systemctl reload nginx
 
 print_success "✓✓✓ ÉTAPE 2 TERMINÉE : HTTPS configuré !"
+fi  # Fin de l'étape 2
 
 ###############################################################################
 # ÉTAPE 3 : MOT DE PASSE HASHÉ BCRYPT
 ###############################################################################
 
-press_enter
-
-print_header "🔑 ÉTAPE 3/5 : MOT DE PASSE HASHÉ BCRYPT"
+if [ "$BCRYPT_DONE" = true ] && [ "$SKIP_COMPLETED" = true ]; then
+    print_success "⏭️  ÉTAPE 3/5 : Mot de passe hashé bcrypt - Déjà configuré, passée"
+else
+    press_enter
+    print_header "🔑 ÉTAPE 3/5 : MOT DE PASSE HASHÉ BCRYPT"
 
 cat << 'EOF'
 🔐 POURQUOI C'EST IMPORTANT ?
@@ -673,14 +801,17 @@ else
 fi
 
 print_success "✓✓✓ ÉTAPE 3 TERMINÉE : Mot de passe hashé avec bcrypt !"
+fi  # Fin de l'étape 3
 
 ###############################################################################
 # ÉTAPE 4 : PROTECTION CORS
 ###############################################################################
 
-press_enter
-
-print_header "🛡️ ÉTAPE 4/5 : PROTECTION CORS"
+if [ "$CORS_DONE" = true ] && [ "$SKIP_COMPLETED" = true ]; then
+    print_success "⏭️  ÉTAPE 4/5 : Protection CORS - Déjà configurée, passée"
+else
+    press_enter
+    print_header "🛡️ ÉTAPE 4/5 : PROTECTION CORS"
 
 cat << 'EOF'
 🌐 POURQUOI C'EST IMPORTANT ?
@@ -735,14 +866,17 @@ else
 fi
 
 print_success "✓✓✓ ÉTAPE 4 TERMINÉE : CORS configuré !"
+fi  # Fin de l'étape 4
 
 ###############################################################################
 # ÉTAPE 5 : ANTI-INDEXATION
 ###############################################################################
 
-press_enter
-
-print_header "🔍 ÉTAPE 5/5 : PROTECTION ANTI-INDEXATION"
+if [ "$ANTIINDEX_DONE" = true ] && [ "$SKIP_COMPLETED" = true ]; then
+    print_success "⏭️  ÉTAPE 5/5 : Anti-indexation Google - Déjà configurée, passée"
+else
+    press_enter
+    print_header "🔍 ÉTAPE 5/5 : PROTECTION ANTI-INDEXATION"
 
 cat << 'EOF'
 🚫 POURQUOI C'EST IMPORTANT ?
@@ -778,6 +912,7 @@ sudo systemctl reload nginx
 print_success "Nginx rechargé !"
 
 print_success "✓✓✓ ÉTAPE 5 TERMINÉE : Anti-indexation activé !"
+fi  # Fin de l'étape 5
 
 ###############################################################################
 # VÉRIFICATIONS FINALES
