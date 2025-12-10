@@ -149,7 +149,71 @@ echo ""
 print_step "Configuration de Google Drive..."
 echo ""
 
-cat << 'EOF'
+# Détecter si on est dans un environnement Docker/headless
+IN_DOCKER=false
+IN_HEADLESS=false
+
+if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+    IN_DOCKER=true
+fi
+
+if ! command -v xdg-open &> /dev/null && [ -z "$DISPLAY" ]; then
+    IN_HEADLESS=true
+fi
+
+if [ "$IN_DOCKER" = true ] || [ "$IN_HEADLESS" = true ]; then
+    cat << 'EOF'
+⚠️  ENVIRONNEMENT DÉTECTÉ : Docker / Sans Interface Graphique
+
+Vous êtes dans un environnement sans navigateur web disponible.
+Vous avez DEUX OPTIONS pour configurer rclone :
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTION 1 (RECOMMANDÉE) : Configuration sur une autre machine
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Sur votre ORDINATEUR LOCAL (avec navigateur) :
+   - Installez rclone : curl https://rclone.org/install.sh | sudo bash
+   - Lancez : rclone config
+   - Suivez les étapes pour configurer "gdrive"
+   - Une fois terminé, récupérez le fichier de config :
+     ~/.config/rclone/rclone.conf
+
+2. Sur votre RASPBERRY PI / SERVEUR :
+   - Créez le répertoire : mkdir -p ~/.config/rclone
+   - Copiez le fichier rclone.conf depuis votre ordinateur
+   - Par exemple via SCP :
+     scp ~/.config/rclone/rclone.conf pi@IP_RASPBERRY:~/.config/rclone/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTION 2 : Configuration avec authentification manuelle
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cette option nécessite de copier/coller une URL manuellement.
+
+ÉTAPES IMPORTANTES :
+1. name> → tapez : gdrive
+2. Storage> → tapez : drive
+3. client_id> → appuyez sur Entrée (laisser vide)
+4. client_secret> → appuyez sur Entrée (laisser vide)
+5. scope> → tapez : 1 (Full access)
+6. service_account_file> → appuyez sur Entrée (laisser vide)
+7. Edit advanced config? → tapez : n (non)
+8. Use web browser to automatically authenticate? → tapez : n (NON) ⚠️
+9. Use web browser on a remote headless machine? → tapez : n (NON)
+
+Ensuite, rclone va afficher une URL.
+COPIEZ cette URL et ouvrez-la dans le navigateur de votre ordinateur.
+Une fois l'authentification terminée, COPIEZ le code fourni et collez-le dans le terminal.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 Si vous rencontrez des problèmes, consultez le guide :
+   docs/RCLONE_DOCKER_AUTH_GUIDE.md
+
+EOF
+else
+    cat << 'EOF'
 📱 INSTRUCTIONS POUR CONFIGURER GOOGLE DRIVE :
 
 Vous allez maintenant configurer votre compte Google Drive.
@@ -170,6 +234,7 @@ Une fenêtre va s'ouvrir dans votre navigateur.
 11. Revenez au terminal, tapez : y (oui) pour confirmer
 
 EOF
+fi
 
 if ask_yes_no "Avez-vous bien lu les instructions ci-dessus ?"; then
     # Vérifier si la configuration existe déjà
