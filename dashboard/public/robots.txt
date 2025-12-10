@@ -1,0 +1,50 @@
+# ═══════════════════════════════════════════════════════════════════
+# robots.txt - LinkedIn Birthday Auto Bot Dashboard
+# Audit Sécurité 2025 - Protection Anti-Indexation
+# ═══════════════════════════════════════════════════════════════════
+#
+# Ce dashboard est PRIVÉ et ne doit JAMAIS être indexé par les moteurs
+# de recherche (Google, Bing, Yandex, etc.)
+#
+# ═══════════════════════════════════════════════════════════════════
+
+# Bloquer TOUS les robots (Google, Bing, Yandex, Baidu, etc.)
+User-agent: *
+Disallow: /
+
+# Bloquer explicitement les robots les plus courants
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Googlebot-Image
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Slurp
+Disallow: /
+
+User-agent: DuckDuckBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: YandexBot
+Disallow: /
+
+User-agent: Sogou
+Disallow: /
+
+User-agent: Exabot
+Disallow: /
+
+User-agent: facebot
+Disallow: /
+
+User-agent: ia_archiver
+Disallow: /
+
+# Pas de sitemap (ce n'est pas un site public)
+Sitemap: none
