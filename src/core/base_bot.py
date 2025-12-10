@@ -139,6 +139,12 @@ class BaseLinkedInBot(ABC):
 
     def check_login_status(self) -> bool:
         logger.info("Checking login status...")
+
+        # Verify browser is still alive before proceeding
+        if not self.page or not self.browser_manager or not self.browser_manager.browser:
+            logger.error("Browser not initialized or already closed")
+            raise SessionExpiredError("Browser not available")
+
         if not self._check_connectivity():
             raise SessionExpiredError("No internet connectivity")
 
@@ -150,6 +156,15 @@ class BaseLinkedInBot(ABC):
             try:
                 # HARDWARE REALISM: Increased timeout to 90s for Pi4
                 logger.debug(f"Navigating to feed (Attempt {attempt}/{max_retries})...")
+
+                # Check if page is still connected before navigating
+                try:
+                    # Try a simple operation to verify page is alive
+                    _ = self.page.url
+                except Exception as e:
+                    logger.error(f"Page is not accessible: {e}")
+                    raise SessionExpiredError(f"Browser page closed unexpectedly: {e}")
+
                 self.page.goto("https://www.linkedin.com/feed/", timeout=timeout, wait_until="domcontentloaded")
 
                 # Use combined selector to wait for ANY login indicator
@@ -174,10 +189,17 @@ class BaseLinkedInBot(ABC):
             except PlaywrightTimeoutError as e:
                 logger.warning(f"Login verification timed out (Attempt {attempt}/{max_retries}): {e}")
                 if attempt == max_retries:
-                    self.browser_manager.take_screenshot("error_login_verification_failed.png")
+                    if self.browser_manager:
+                        self.browser_manager.take_screenshot("error_login_verification_failed.png")
                     raise SessionExpiredError(f"Failed to verify login after {max_retries} attempts")
                 time.sleep(5)
             except Exception as e:
+                error_msg = str(e)
+                # Check if this is a browser crash/closure error
+                if "Target page, context or browser has been closed" in error_msg or "has been closed" in error_msg:
+                    logger.error(f"Browser crashed or closed unexpectedly during login verification: {e}")
+                    raise SessionExpiredError(f"Browser crashed during login verification: {e}")
+
                 logger.error(f"Unexpected error during login verification: {e}")
                 raise SessionExpiredError(f"Login verification error: {e}")
 
