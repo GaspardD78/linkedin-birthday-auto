@@ -245,7 +245,7 @@ else
 fi
 
 # Étape 3 : Mot de passe hashé bcrypt
-if [ -f "dashboard/node_modules/bcryptjs/package.json" ] && grep -q "^\$2[aby]\$" .env 2>/dev/null; then
+if [ -f "dashboard/node_modules/bcryptjs/package.json" ] && grep -qE "^DASHBOARD_PASSWORD=['\"]?\\\$2[aby]\\\$" .env 2>/dev/null; then
     BCRYPT_DONE=true
     print_success "✓ Étape 3 : Mot de passe hashé bcrypt - Déjà configuré"
 else
@@ -883,11 +883,23 @@ if ask_yes_no "Voulez-vous choisir un NOUVEAU mot de passe ?"; then
 else
     # Récupérer le mot de passe actuel depuis .env
     if [ -f "../.env" ]; then
-        CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" ../.env | cut -d '=' -f2-)
+        # Enlever les quotes si présentes et extraire le mot de passe
+        CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" ../.env | cut -d '=' -f2- | sed "s/^['\"]//;s/['\"]$//")
+
+        # Vérifier si c'est déjà un hash bcrypt
+        if [[ "$CURRENT_PASSWORD" =~ ^\$2[aby]\$ ]]; then
+            print_error "Le mot de passe est déjà un hash bcrypt !"
+            print_info "Si vous voulez changer de mot de passe, choisissez 'o' (oui) à la question précédente."
+            exit 1
+        fi
+
         PASSWORD_TO_HASH="$CURRENT_PASSWORD"
         print_info "Utilisation du mot de passe actuel"
     else
         print_error "Fichier .env introuvable !"
+        print_info "Créez d'abord le fichier .env à partir de l'exemple :"
+        print_info "  cp .env.pi4.example .env"
+        print_info "  nano .env  # puis modifiez les valeurs"
         exit 1
     fi
 fi
@@ -915,12 +927,15 @@ cp ../.env ../.env.backup.$(date +%Y%m%d_%H%M%S)
 print_info "Backup créé : .env.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Remplacer le mot de passe dans .env
+# IMPORTANT: Le hash bcrypt doit être entouré de quotes simples pour Docker Compose
+# Cela évite que les caractères $ soient interprétés comme des variables d'environnement
 if grep -q "^DASHBOARD_PASSWORD=" ../.env; then
-    # Utiliser awk pour éviter les problèmes avec les caractères spéciaux
-    awk -v hash="$PASSWORD_HASH" 'BEGIN {FS=OFS="="} /^DASHBOARD_PASSWORD=/ {$2=hash; print; next} {print}' ../.env > ../.env.tmp && mv ../.env.tmp ../.env
+    # Utiliser sed pour remplacer la ligne entière avec le hash entre quotes simples
+    # On échappe les barres obliques (/) dans le hash en utilisant un autre délimiteur (@)
+    sed -i "s@^DASHBOARD_PASSWORD=.*@DASHBOARD_PASSWORD='$PASSWORD_HASH'@" ../.env
     print_success "Mot de passe mis à jour dans .env !"
 else
-    echo "DASHBOARD_PASSWORD=$PASSWORD_HASH" >> ../.env
+    echo "DASHBOARD_PASSWORD='$PASSWORD_HASH'" >> ../.env
     print_success "Mot de passe ajouté dans .env !"
 fi
 
@@ -1110,7 +1125,7 @@ else
     print_error "  ✗ bcryptjs non installé"
 fi
 
-if grep -q "^\$2[aby]\$" .env 2>/dev/null; then
+if grep -qE "^DASHBOARD_PASSWORD=['\"]?\\\$2[aby]\\\$" .env 2>/dev/null; then
     print_success "  ✓ Mot de passe hashé dans .env"
 else
     print_error "  ✗ Mot de passe non hashé"
