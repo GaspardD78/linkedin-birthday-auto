@@ -200,7 +200,7 @@ nano .env
 # Remplacez DASHBOARD_PASSWORD= par le hash
 
 # Redémarrer dashboard
-docker compose restart dashboard
+docker compose up -d dashboard --force-recreate
 ```
 
 ### 4️⃣ Protection CORS (2 min)
@@ -219,7 +219,7 @@ docker compose restart api
 Les fichiers sont déjà créés ! Juste redémarrer :
 
 ```bash
-docker compose restart dashboard
+docker compose up -d dashboard --force-recreate
 sudo systemctl reload nginx
 ```
 

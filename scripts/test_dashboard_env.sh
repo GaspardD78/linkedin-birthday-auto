@@ -96,7 +96,7 @@ else
     echo ""
     echo -e "${YELLOW}⚠️  Le container n'a pas chargé le nouveau .env !${NC}"
     echo "   Vous devez redémarrer le container:"
-    echo "   docker compose -f docker-compose.pi4-standalone.yml restart dashboard"
+    echo "   docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate"
 fi
 echo ""
 
@@ -135,7 +135,7 @@ if [ "$LOCAL_PASSWORD" != "$CONTAINER_PASSWORD" ]; then
     echo ""
     echo "SOLUTION:"
     echo "  1. Redémarrez le container:"
-    echo "     ${YELLOW}docker compose -f docker-compose.pi4-standalone.yml restart dashboard${NC}"
+    echo "     ${YELLOW}docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate${NC}"
     echo ""
     echo "  2. Relancez ce script pour vérifier"
     echo ""
@@ -151,7 +151,7 @@ elif ! echo "$LOCAL_PASSWORD" | grep -q '^\$\$2[aby]\$\$'; then
     echo "  2. Copiez le résultat dans votre .env"
     echo ""
     echo "  3. Redémarrez le dashboard:"
-    echo "     ${YELLOW}docker compose -f docker-compose.pi4-standalone.yml restart dashboard${NC}"
+    echo "     ${YELLOW}docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate${NC}"
     echo ""
 else
     echo -e "${GREEN}${BOLD}✅ CONFIGURATION OK${NC}"

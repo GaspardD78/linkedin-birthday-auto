@@ -93,7 +93,9 @@ Ce script vérifie :
 
 **Solution** :
 ```bash
-docker compose -f docker-compose.pi4-standalone.yml restart dashboard
+# IMPORTANT: Utilisez --force-recreate, pas restart !
+# restart ne recharge pas les variables d'environnement du .env
+docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
 ```
 
 #### 2. "Identifiants incorrects"
@@ -111,7 +113,8 @@ docker compose -f docker-compose.pi4-standalone.yml restart dashboard
 node dashboard/scripts/hash_password.js "VotreMotDePasse"
 # Le script génère automatiquement avec $$
 # Copiez le hash dans .env
-# Redémarrez le dashboard
+# Recréez le dashboard pour recharger le .env
+docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
 ```
 
 #### 3. "Le mot de passe en clair ne fonctionne pas"
@@ -187,8 +190,11 @@ Le script `hash_password.js` génère automatiquement le hash avec les `$$` doub
 ## Commandes utiles
 
 ```bash
-# Redémarrer uniquement le dashboard
-docker compose -f docker-compose.pi4-standalone.yml restart dashboard
+# Recréer le dashboard (recharge le .env)
+docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
+
+# ⚠️  NE PAS utiliser restart (ne recharge pas le .env) :
+# docker compose restart dashboard  # ❌ INCORRECT
 
 # Voir les logs en temps réel
 docker compose -f docker-compose.pi4-standalone.yml logs -f dashboard

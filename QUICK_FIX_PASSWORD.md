@@ -80,10 +80,12 @@ Trouvez la ligne `DASHBOARD_PASSWORD=...` et remplacez-la par le hash généré.
 - Appuyez sur `Entrée` pour confirmer
 - Appuyez sur `Ctrl + X` pour quitter
 
-### Étape 4 : Redémarrer le dashboard
+### Étape 4 : Recréer le dashboard
 
 ```bash
-docker compose -f docker-compose.pi4-standalone.yml restart dashboard
+# IMPORTANT: --force-recreate est nécessaire pour recharger le .env
+# Un simple "restart" ne recharge PAS les variables d'environnement !
+docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
 ```
 
 ### Étape 5 : Vérifier les logs
@@ -128,10 +130,11 @@ Modifier la ligne :
 DASHBOARD_PASSWORD=$$2a$$12$$xyz123abc...
 ```
 
-### 3. Redémarrer
+### 3. Recréer le dashboard
 
 ```bash
-docker compose -f docker-compose.pi4-standalone.yml restart dashboard
+# --force-recreate recharge les variables du .env
+docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
 ```
 
 ### 4. Se connecter
@@ -141,7 +144,9 @@ docker compose -f docker-compose.pi4-standalone.yml restart dashboard
 
 ---
 
-## ❓ Pourquoi les `$$` ?
+## ❓ Questions fréquentes
+
+### Pourquoi les `$$` ?
 
 Docker Compose interprète les `$` dans les fichiers `.env` comme des variables d'environnement.
 
@@ -155,6 +160,26 @@ Docker Compose interprète les `$` dans les fichiers `.env` comme des variables 
 - Docker Compose voit : `$2a$12$abc...` (correct !)
 
 Le script `hash_password.js` fait ça automatiquement maintenant.
+
+### Pourquoi `--force-recreate` et pas `restart` ?
+
+Docker Compose charge les variables d'environnement **uniquement à la création du container**.
+
+**❌ INCORRECT** :
+```bash
+docker compose restart dashboard
+# Les variables du .env ne sont PAS rechargées
+```
+
+**✅ CORRECT** :
+```bash
+docker compose up -d dashboard --force-recreate
+# Le container est détruit et recréé avec le nouveau .env
+```
+
+**Explication** :
+- `restart` : Redémarre le processus dans le container existant (garde l'ancien .env)
+- `up -d --force-recreate` : Détruit et recrée le container (charge le nouveau .env)
 
 ---
 

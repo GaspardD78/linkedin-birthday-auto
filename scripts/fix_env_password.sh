@@ -138,8 +138,10 @@ interprète correctement le caractère $ comme un littéral.
 
 🔄 PROCHAINES ÉTAPES :
 
-1. Redémarrez le dashboard :
-   docker compose restart dashboard
+1. Recréez le dashboard (recharge le .env) :
+   docker compose -f docker-compose.pi4-standalone.yml up -d dashboard --force-recreate
+
+   ⚠️  IMPORTANT: restart ne recharge PAS le .env !
 
 2. Vérifiez qu'il n'y a plus de warnings :
    docker compose logs dashboard | grep -i warn
