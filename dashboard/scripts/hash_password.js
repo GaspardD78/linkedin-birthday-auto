@@ -33,20 +33,33 @@ async function hashPassword(password) {
 async function main() {
   const args = process.argv.slice(2);
 
-  if (args.length > 0) {
+  // Vérifier si mode silencieux (pour automatisation)
+  const quietMode = args.includes('--quiet') || args.includes('-q');
+  const passwordArg = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
+
+  if (passwordArg) {
     // Mode avec argument
-    const password = args[0];
+    const password = passwordArg;
     try {
       const hash = await hashPassword(password);
-      console.log('\n✅ Mot de passe hashé avec succès!\n');
-      console.log('Copiez cette ligne dans votre fichier .env:');
-      console.log('─────────────────────────────────────────────────');
-      console.log(`DASHBOARD_PASSWORD=${hash}`);
-      console.log('─────────────────────────────────────────────────\n');
-      console.log('💡 Conseil: Utilisez un gestionnaire de mots de passe (1Password, Bitwarden, etc.)');
-      console.log('');
+
+      if (quietMode) {
+        // Mode silencieux: afficher uniquement le hash
+        console.log(hash);
+      } else {
+        // Mode verbose
+        console.log('\n✅ Mot de passe hashé avec succès!\n');
+        console.log('Copiez cette ligne dans votre fichier .env:');
+        console.log('─────────────────────────────────────────────────');
+        console.log(`DASHBOARD_PASSWORD=${hash}`);
+        console.log('─────────────────────────────────────────────────\n');
+        console.log('💡 Conseil: Utilisez un gestionnaire de mots de passe (1Password, Bitwarden, etc.)');
+        console.log('');
+      }
     } catch (error) {
-      console.error('❌ Erreur:', error.message);
+      if (!quietMode) {
+        console.error('❌ Erreur:', error.message);
+      }
       process.exit(1);
     }
   } else {
