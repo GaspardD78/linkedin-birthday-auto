@@ -593,6 +593,12 @@ sudo cp ./deployment/nginx/linkedin-bot.conf "$NGINX_CONF"
 
 # Remplacer le placeholder par le vrai domaine
 sudo sed -i "s/VOTRE_DOMAINE_ICI/$DOMAIN_NAME/g" "$NGINX_CONF"
+sudo sed -i "s/YOUR_DOMAIN.COM/$DOMAIN_NAME/g" "$NGINX_CONF"
+
+# Copier la configuration de rate limiting
+print_info "Installation de la configuration rate limiting..."
+sudo cp ./deployment/nginx/rate-limit-zones.conf /etc/nginx/conf.d/
+print_success "Rate limiting configuré !"
 
 # Créer le lien symbolique
 if [ ! -L /etc/nginx/sites-enabled/linkedin-bot ]; then
@@ -710,7 +716,7 @@ if [ -d "node_modules/bcryptjs" ]; then
     print_success "bcryptjs est déjà installé !"
 else
     print_info "Installation en cours..."
-    npm install bcryptjs
+    /opt/node22/bin/npm install bcryptjs
     print_success "bcryptjs installé !"
 fi
 
@@ -765,7 +771,7 @@ fi
 print_step "Génération du hash bcrypt (cela peut prendre quelques secondes)..."
 
 # Générer le hash
-PASSWORD_HASH=$(node scripts/hash_password.js "$PASSWORD_TO_HASH")
+PASSWORD_HASH=$(/opt/node22/bin/node scripts/hash_password.js "$PASSWORD_TO_HASH")
 
 echo ""
 print_success "Hash généré avec succès !"
