@@ -145,27 +145,40 @@ class BaseLinkedInBot(ABC):
             logger.error("Browser not initialized or already closed")
             raise SessionExpiredError("Browser not available")
 
-        if not self._check_connectivity():
-            raise SessionExpiredError("No internet connectivity")
+        # Check if browser context is still valid
+        try:
+            if not self.browser_manager.context or not self.browser_manager.browser.is_connected():
+                logger.error("Browser context or connection lost")
+                raise SessionExpiredError("Browser connection lost")
+        except Exception as e:
+            logger.error(f"Browser connection check failed: {e}")
+            raise SessionExpiredError(f"Browser not accessible: {e}")
 
         # Retry mechanism for Pi 4 stability
         max_retries = 3
-        timeout = 90000  # 90s for Pi 4
+        timeout = 120000  # Increased to 120s for better stability
 
         for attempt in range(1, max_retries + 1):
             try:
-                # HARDWARE REALISM: Increased timeout to 90s for Pi4
+                # HARDWARE REALISM: Increased timeout to 120s for Pi4
                 logger.debug(f"Navigating to feed (Attempt {attempt}/{max_retries})...")
 
                 # Check if page is still connected before navigating
                 try:
                     # Try a simple operation to verify page is alive
-                    _ = self.page.url
+                    current_url = self.page.url
+                    logger.debug(f"Current page URL: {current_url}")
                 except Exception as e:
                     logger.error(f"Page is not accessible: {e}")
                     raise SessionExpiredError(f"Browser page closed unexpectedly: {e}")
 
-                self.page.goto("https://www.linkedin.com/feed/", timeout=timeout, wait_until="domcontentloaded")
+                logger.debug("Attempting navigation to LinkedIn feed...")
+                # Use 'commit' instead of 'domcontentloaded' for better stability on slow systems
+                # 'commit' is faster as it doesn't wait for DOM parsing, just network commit
+                self.page.goto("https://www.linkedin.com/feed/", timeout=timeout, wait_until="commit")
+                logger.debug("Navigation committed, waiting for page to stabilize...")
+                # Give the page a moment to settle after commit
+                time.sleep(2)
 
                 # Use combined selector to wait for ANY login indicator
                 combined_selector = self.selector_manager.get_combined_selector("login.indicators")
@@ -198,9 +211,20 @@ class BaseLinkedInBot(ABC):
                 # Check if this is a browser crash/closure error
                 if "Target page, context or browser has been closed" in error_msg or "has been closed" in error_msg:
                     logger.error(f"Browser crashed or closed unexpectedly during login verification: {e}")
+
+                    # Try to diagnose the issue
+                    try:
+                        if self.browser_manager and self.browser_manager.browser:
+                            is_connected = self.browser_manager.browser.is_connected()
+                            logger.error(f"Browser is_connected status: {is_connected}")
+                        else:
+                            logger.error("Browser manager or browser is None")
+                    except Exception as diag_e:
+                        logger.error(f"Failed to diagnose browser state: {diag_e}")
+
                     raise SessionExpiredError(f"Browser crashed during login verification: {e}")
 
-                logger.error(f"Unexpected error during login verification: {e}")
+                logger.error(f"Unexpected error during login verification: {e}", exc_info=True)
                 raise SessionExpiredError(f"Login verification error: {e}")
 
         return False

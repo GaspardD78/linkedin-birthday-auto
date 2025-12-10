@@ -93,13 +93,14 @@ class BrowserManager:
                 "--disable-default-apps",
                 "--no-first-run",
                 "--memory-pressure-off",
-                "--renderer-process-limit=1",
-                "--max-old-space-size=512",  # Limite heap V8 à 512MB
+                "--renderer-process-limit=2",  # Increased from 1 to 2 for better stability
+                "--max-old-space-size=1024",  # Increased from 512MB to 1024MB to prevent crashes
                 "--disable-features=AudioServiceOutOfProcess",  # Prevent audio process spawn
                 "--disable-background-timer-throttling",  # Prevent tab suspension issues
                 "--disable-backgrounding-occluded-windows",
                 "--disable-breakpad",  # Disable crash reporter (saves memory)
                 "--disable-component-extensions-with-background-pages",
+                "--js-flags=--max-old-space-size=1024",  # Ensure V8 has enough memory
             ]
 
             # Custom args from config
@@ -118,7 +119,7 @@ class BrowserManager:
                 headless=self.config.headless,
                 args=launch_args,
                 slow_mo=slow_mo,
-                timeout=60000, # Increased launch timeout
+                timeout=120000, # Increased launch timeout to 120s for Pi4 stability
                 proxy=proxy_config,
             )
 
@@ -159,9 +160,11 @@ class BrowserManager:
 
             # Timeout par défaut pour la page (HARDWARE REALISM)
             # Fix: Use constant or safe access as 'timeout' is not in BrowserConfig
-            timeout = getattr(self.config, "timeout", 60000)
+            # Increased default timeouts for Pi4 stability
+            timeout = getattr(self.config, "timeout", 120000)  # Increased from 60s to 120s
             self.page.set_default_timeout(timeout)
             self.page.set_default_navigation_timeout(timeout)
+            logger.debug(f"Page timeouts set to {timeout}ms")
 
             logger.info("Browser session created successfully")
             return self.browser, self.context, self.page
