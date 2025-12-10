@@ -897,7 +897,7 @@ print_step "Génération du hash bcrypt (cela peut prendre quelques secondes)...
 # Générer le hash
 # Utiliser node depuis le PATH au lieu d'un chemin codé en dur
 if command -v node &> /dev/null; then
-    PASSWORD_HASH=$(node scripts/hash_password.js "$PASSWORD_TO_HASH")
+    PASSWORD_HASH=$(node scripts/hash_password.js "$PASSWORD_TO_HASH" --quiet)
 else
     print_error "node n'est pas disponible. Installez Node.js d'abord."
     exit 1
@@ -916,7 +916,8 @@ print_info "Backup créé : .env.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Remplacer le mot de passe dans .env
 if grep -q "^DASHBOARD_PASSWORD=" ../.env; then
-    sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$PASSWORD_HASH|" ../.env
+    # Utiliser awk pour éviter les problèmes avec les caractères spéciaux
+    awk -v hash="$PASSWORD_HASH" 'BEGIN {FS=OFS="="} /^DASHBOARD_PASSWORD=/ {$2=hash; print; next} {print}' ../.env > ../.env.tmp && mv ../.env.tmp ../.env
     print_success "Mot de passe mis à jour dans .env !"
 else
     echo "DASHBOARD_PASSWORD=$PASSWORD_HASH" >> ../.env
@@ -984,7 +985,8 @@ fi
 print_step "Ajout de ALLOWED_ORIGINS dans .env..."
 
 if grep -q "^ALLOWED_ORIGINS=" .env; then
-    sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=$CORS_DOMAIN|" .env
+    # Utiliser awk pour éviter les problèmes avec les caractères spéciaux
+    awk -v domain="$CORS_DOMAIN" 'BEGIN {FS=OFS="="} /^ALLOWED_ORIGINS=/ {$2=domain; print; next} {print}' .env > .env.tmp && mv .env.tmp .env
     print_success "ALLOWED_ORIGINS mis à jour !"
 else
     echo "ALLOWED_ORIGINS=$CORS_DOMAIN" >> .env
