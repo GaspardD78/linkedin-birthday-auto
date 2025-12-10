@@ -50,17 +50,18 @@ auth:
   auth_fallback_path:
 
 # ═══════════════════════════════════════════════════════════════════
-# LIMITES D'ENVOI DE MESSAGES - Conservateur pour Pi 4
+# LIMITES D'ENVOI DE MESSAGES - Optimisé (Audit Sécurité 2025)
 # ═══════════════════════════════════════════════════════════════════
 messaging_limits:
-  # Limite par exécution pour éviter surcharge Pi 4
-  max_messages_per_run: 10
+  # Limite par exécution (augmentée prudemment)
+  max_messages_per_run: 15
 
-  # Limite hebdomadaire réduite (IP résidentielle Freebox)
-  weekly_message_limit: 50
+  # Limite hebdomadaire augmentée à 100 (compromis sécurité/efficacité)
+  # Justification: IP résidentielle Freebox + délais anti-détection excellents
+  weekly_message_limit: 100
 
-  # Limite quotidienne pour répartir la charge
-  daily_message_limit: 10
+  # Limite quotidienne ajustée (100/7 ≈ 14/jour)
+  daily_message_limit: 15
 
 # ═══════════════════════════════════════════════════════════════════
 # PLANIFICATION
