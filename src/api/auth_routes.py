@@ -513,15 +513,28 @@ async def verify_2fa_code(request: Verify2FARequest):
 async def upload_auth_file(file: UploadFile = File(...)):
     """
     Allows uploading an auth_state.json file directly as a fallback.
+
+    Security: Limite la taille du fichier à 1MB pour éviter DoS.
     """
+    # Validation extension
     if not file.filename.endswith(".json"):
         raise HTTPException(
             status_code=400, detail="Invalid file type. Please upload a .json file."
         )
 
+    # Validation taille (protection DoS - Audit Sécurité 2025)
+    MAX_FILE_SIZE = 1024 * 1024  # 1 MB (largement suffisant pour auth_state.json)
+
     logger.info(f"Receiving uploaded auth file: {file.filename}")
     try:
-        content = await file.read()
+        # Lire le contenu avec limite de taille
+        content = await file.read(MAX_FILE_SIZE + 1)  # +1 pour détecter dépassement
+
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE / 1024 / 1024:.1f} MB."
+            )
         # The content might be inside a "cookies" key or be the list itself
         parsed_json = json.loads(content)
 

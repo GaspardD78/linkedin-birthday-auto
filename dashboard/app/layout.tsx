@@ -11,6 +11,25 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'LinkedIn Bot Dashboard',
   description: 'Control center for LinkedIn Automation on Raspberry Pi',
+  // 🔒 SECURITY: Empêcher l'indexation par les moteurs de recherche
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'none',
+      'max-snippet': -1,
+    },
+  },
+  // Pas de référencement
+  alternates: {},
+  // Pas de Open Graph (partage réseaux sociaux)
+  openGraph: undefined,
+  twitter: undefined,
 };
 
 export default function RootLayout({

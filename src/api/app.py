@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 import aiofiles
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
@@ -178,6 +179,27 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# ═══════════════════════════════════════════════════════════════════
+# CORS MIDDLEWARE (Audit Sécurité 2025)
+# Protection contre attaques cross-origin
+# ═══════════════════════════════════════════════════════════════════
+
+# Liste des origines autorisées (RESTRICTIF)
+# En production, limiter au dashboard uniquement
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
+# Ajouter CORS restrictif
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,  # Uniquement le dashboard
+    allow_credentials=True,  # Autoriser cookies/auth
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Méthodes autorisées
+    allow_headers=["X-API-Key", "Content-Type", "Authorization"],  # Headers autorisés
+    max_age=600,  # Cache preflight 10 minutes
+)
+
+logger.info(f"CORS configured with allowed origins: {ALLOWED_ORIGINS}")
 
 # Instrument the app with OpenTelemetry BEFORE adding routes/middleware
 # This must be done before the app starts serving requests
