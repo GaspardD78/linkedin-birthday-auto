@@ -83,16 +83,15 @@ if [[ ! "$PASSWORD_VALUE" =~ ^\$2[aby]\$ ]] && [[ ! "$PASSWORD_VALUE" =~ ^[\'\"]
     exit 1
 fi
 
-# Vérifier si le hash est déjà entre quotes
-if [[ "$PASSWORD_VALUE" =~ ^[\'\"] ]]; then
-    print_success "Le hash bcrypt est déjà correctement formaté avec des quotes"
+# Vérifier si le hash est déjà échappé ($$ au lieu de $)
+if [[ "$PASSWORD_VALUE" =~ \$\$2[aby]\$\$ ]]; then
+    print_success "Le hash bcrypt est déjà correctement échappé ($$)"
     echo ""
     print_info "Pas de modification nécessaire !"
     exit 0
 fi
 
-# Le hash n'est pas entre quotes, on doit le corriger
-print_info "Le hash bcrypt n'est pas protégé par des quotes"
+print_info "Le hash bcrypt doit être échappé ($ -> $$) pour Docker Compose"
 echo ""
 
 # Créer un backup
@@ -100,17 +99,17 @@ BACKUP_FILE=".env.backup.$(date +%Y%m%d_%H%M%S)"
 cp .env "$BACKUP_FILE"
 print_success "Backup créé : $BACKUP_FILE"
 
-# Corriger le hash en ajoutant des quotes simples
-# On utilise sed avec @ comme délimiteur pour éviter les conflits avec /
-sed -i "s@^DASHBOARD_PASSWORD=\$@DASHBOARD_PASSWORD='\$@" .env
-sed -i "s@^\(DASHBOARD_PASSWORD='[^']*\)\$@\1'@" .env
+# Nettoyer le hash (enlever les quotes existantes pour repartir proprement)
+CLEAN_HASH=$(echo "$PASSWORD_VALUE" | sed "s/^['\"]//;s/['\"]$//")
 
-# Méthode alternative plus robuste
-# Extraire le hash et le réécrire avec quotes
-HASH_VALUE="$PASSWORD_VALUE"
-sed -i "s@^DASHBOARD_PASSWORD=.*@DASHBOARD_PASSWORD='$HASH_VALUE'@" .env
+# Échapper les $ ($ -> $$)
+ESCAPED_HASH="${CLEAN_HASH//$/\$\$}"
 
-print_success "Hash bcrypt corrigé !"
+# Remplacer dans le fichier
+# On utilise sed avec @ comme délimiteur
+sed -i "s@^DASHBOARD_PASSWORD=.*@DASHBOARD_PASSWORD='$ESCAPED_HASH'@" .env
+
+print_success "Hash bcrypt corrigé et échappé !"
 
 # Vérifier le résultat
 NEW_LINE=$(grep "^DASHBOARD_PASSWORD=" .env)
@@ -125,15 +124,15 @@ cat << 'EOF'
 📝 MODIFICATION EFFECTUÉE :
 
 Avant :
-   DASHBOARD_PASSWORD=$2a$12$abcd1234...
+   DASHBOARD_PASSWORD='$2a$12$...'
 
 Après :
-   DASHBOARD_PASSWORD='$2a$12$abcd1234...'
-                      ↑                  ↑
-                   Quotes simples ajoutées
+   DASHBOARD_PASSWORD='$$2a$$12$$...'
+                       ↑↑   ↑↑
+                   Dollars doublés
 
-Les quotes simples empêchent Docker Compose d'interpréter les $
-comme des variables d'environnement.
+Les doubles dollars ($$) sont nécessaires pour que Docker Compose
+interprète correctement le caractère $ comme un littéral.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
