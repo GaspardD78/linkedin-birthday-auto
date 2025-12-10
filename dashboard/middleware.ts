@@ -1,40 +1,38 @@
-import { NextRequest, NextResponse } from "next/server";
-import { verifySession } from "@/lib/auth";
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  // Get session cookie
-  const session = request.cookies.get("session")?.value;
+export default auth((req) => {
+  const isLoggedIn = !!req.auth;
+  const { pathname } = req.nextUrl;
 
-  // Verify session
-  const payload = session ? await verifySession(session) : null;
+  // Allow access to login page and static assets
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/system") ||
+    pathname === "/favicon.ico"
+  ) {
+    return NextResponse.next();
+  }
 
-  // Protected routes logic
-  if (!payload) {
-    const loginUrl = new URL("/login", request.url);
-    // Redirect to login if trying to access protected route
+  // Redirect to login if not authenticated
+  if (!isLoggedIn) {
+    const loginUrl = new URL("/login", req.url);
     return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes are handled separately)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - login (login page)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
-
-    /*
-     * Match API routes, but EXCLUDE:
-     * - auth/* (login, logout, etc.)
-     * - system/* (health checks, etc.)
-     */
-    "/api/((?!auth|system).*)",
+    "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };
