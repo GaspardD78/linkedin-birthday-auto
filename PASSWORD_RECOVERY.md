@@ -102,10 +102,14 @@ docker compose -f docker-compose.pi4-standalone.yml restart dashboard
 - ✅ Utilisez le mot de passe **en clair**, pas le hash du `.env`
 - ✅ Vérifiez qu'il n'y a pas d'espaces avant/après le mot de passe
 - ✅ Vérifiez le nom d'utilisateur (défaut : `admin`)
+- ✅ **Vérifiez que le hash contient `$$` et non `$`** dans le `.env`
 
-**Solution** : Régénérez le hash :
+**Problème fréquent** : Si vous avez copié un hash avec des `$` simples au lieu de `$$`, Docker Compose interprétera les `$` comme des variables vides.
+
+**Solution** : Régénérez le hash avec le script :
 ```bash
 node dashboard/scripts/hash_password.js "VotreMotDePasse"
+# Le script génère automatiquement avec $$
 # Copiez le hash dans .env
 # Redémarrez le dashboard
 ```
@@ -156,15 +160,27 @@ DASHBOARD_PASSWORD=$2a$12$...  # Hash bcrypt, PAS le mot de passe en clair
 
 ## Format bcrypt
 
-Un hash bcrypt valide ressemble à :
+Un hash bcrypt valide dans le fichier `.env` ressemble à :
 ```
-$2a$12$qLt6w0u7xkKbJB19gLP3r.E8DtHyNsuslKPOBtvHnl7f4apyR539W
+$$2a$$12$$qLt6w0u7xkKbJB19gLP3r.E8DtHyNsuslKPOBtvHnl7f4apyR539W
 ```
 
-Structure :
-- `$2a$` ou `$2b$` : Version de l'algorithme
+⚠️ **Important** : Notez les `$$` (double dollar) au lieu de `$` !
+
+### Pourquoi les `$$` ?
+
+Docker Compose interprète les `$` comme des variables d'environnement. Pour utiliser un `$` littéral dans un fichier `.env`, il faut le doubler : `$$`.
+
+**Exemple** :
+- Hash bcrypt original : `$2a$12$abc...`
+- Dans `.env` pour Docker Compose : `$$2a$$12$$abc...`
+
+Le script `hash_password.js` génère automatiquement le hash avec les `$$` doublés.
+
+### Structure du hash :
+- `$$2a$$` ou `$$2b$$` : Version de l'algorithme (échappée pour Docker)
 - `12` : Nombre de rounds (12 = recommandé, équilibre sécurité/performance)
-- Le reste : Salt + hash (60 caractères au total)
+- Le reste : Salt + hash (60 caractères au total avec les `$` doublés)
 
 ---
 
