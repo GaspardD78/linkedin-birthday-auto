@@ -180,15 +180,15 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - shared-data:/app/data
-    # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (+300MB avec flags Chromium single-process)
+    # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:
       resources:
         limits:
           cpus: '1.5'
-          memory: 1200M  # Augmenté de 900M→1200M (+300MB pour single-process)
+          memory: 1200M  # Stable multi-process mode with renderer-process-limit=1
         reservations:
           cpus: '0.5'
-          memory: 512M  # Augmenté de 450M→512M
+          memory: 512M
     memswap_limit: 1400M  # Permet 200MB swap en cas de pic
     logging:
       driver: json-file
