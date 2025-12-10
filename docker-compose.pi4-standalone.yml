@@ -185,11 +185,11 @@ services:
       resources:
         limits:
           cpus: '1.5'
-          memory: 1200M  # Stable multi-process mode with renderer-process-limit=1
+          memory: 1800M  # Increased to support 1024MB browser heap + Python/Playwright overhead
         reservations:
           cpus: '0.5'
           memory: 512M
-    memswap_limit: 1400M  # Permet 200MB swap en cas de pic
+    memswap_limit: 2000M  # Increased swap limit to match new memory requirements
     logging:
       driver: json-file
       options:
