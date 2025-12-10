@@ -37,12 +37,21 @@ Le script peut réparer automatiquement les problèmes suivants :
 - **Réparation** : Crée le répertoire `data/` et initialise une base SQLite vide avec la table `contacts`
 
 ### 2. Nginx non actif
-- **Problème** : Le service Nginx n'est pas démarré
-- **Réparation** : Démarre Nginx avec `sudo systemctl start nginx`
+- **Problème** : Le service Nginx n'est pas démarré, ou pas installé, ou mal configuré
+- **Réparation** :
+  - Vérifie l'installation de Nginx
+  - Vérifie la présence des zones de rate limiting
+  - Teste la configuration
+  - Démarre Nginx avec `sudo systemctl start nginx`
+  - Si des erreurs critiques sont détectées, suggère d'utiliser `./scripts/fix_nginx.sh`
 
 ### 3. Configuration Nginx invalide
-- **Problème** : La configuration Nginx contient des erreurs
-- **Réparation** : Affiche les erreurs détectées et recharge Nginx
+- **Problème** : La configuration Nginx contient des erreurs (notamment zones de rate limiting manquantes)
+- **Réparation** :
+  - Diagnostique les erreurs de configuration
+  - Vérifie la présence des zones de rate limiting
+  - Suggère d'utiliser `./scripts/fix_nginx.sh` pour une réparation complète
+  - Recharge Nginx si la configuration devient valide
 
 ### 4. Mot de passe en clair
 - **Problème** : Le mot de passe dans `.env` n'est pas hashé avec bcrypt
@@ -172,6 +181,16 @@ cd /path/to/linkedin-birthday-auto
 3. Vérifiez les permissions de vos fichiers
 4. Consultez les backups créés en cas de problème
 
+### Problèmes Nginx spécifiques
+
+Si les réparations Nginx échouent :
+
+1. **Nginx pas installé** : Le script suggère d'utiliser `./scripts/fix_nginx.sh`
+2. **Zones de rate limiting manquantes** : Utilisez `./scripts/fix_nginx.sh` pour une installation complète
+3. **Erreur "limit_req_zone not allowed here"** : C'est un problème de configuration, utilisez `./scripts/fix_nginx.sh`
+
+Consultez le guide complet : `docs/FIX_NGINX_GUIDE.md`
+
 ### Le score ne s'améliore pas
 
 Certains problèmes nécessitent une intervention manuelle :
@@ -185,6 +204,7 @@ Consultez le guide `SECURITY_SETUP_GUIDE.md` pour ces étapes.
 ## 📚 Ressources complémentaires
 
 - **Installation complète** : `./scripts/setup_security.sh`
+- **Réparation Nginx** : `./scripts/fix_nginx.sh` (voir `docs/FIX_NGINX_GUIDE.md`)
 - **Guide de sécurité** : `docs/SECURITY_SETUP_GUIDE.md`
 - **Guide anti-indexation** : `docs/ANTI_INDEXATION_GUIDE.md`
 

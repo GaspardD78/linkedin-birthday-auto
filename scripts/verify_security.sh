@@ -118,25 +118,111 @@ print('Base de données créée avec succès')
 
 # Réparer Nginx non actif
 fix_nginx_inactive() {
+    echo -e "${BLUE}Vérification de Nginx...${NC}"
+
+    # Vérifier si nginx est installé
+    if ! command -v nginx &> /dev/null; then
+        echo -e "${RED}Nginx n'est pas installé${NC}"
+        echo -e "${YELLOW}Pour installer et configurer Nginx automatiquement:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Vérifier si la configuration existe
+    if [ ! -f "/etc/nginx/sites-available/linkedin-bot" ]; then
+        echo -e "${RED}Configuration linkedin-bot manquante${NC}"
+        echo -e "${YELLOW}Pour installer la configuration complète:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Vérifier les zones de rate limiting
+    if ! sudo grep -q "limit_req_zone" /etc/nginx/conf.d/rate-limit-zones.conf 2>/dev/null && \
+       ! sudo grep -q "limit_req_zone" /etc/nginx/nginx.conf 2>/dev/null; then
+        echo -e "${YELLOW}Zones de rate limiting manquantes${NC}"
+        echo -e "${YELLOW}Pour configurer automatiquement:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Tester la configuration
+    if ! sudo nginx -t &> /dev/null; then
+        echo -e "${RED}Erreurs dans la configuration Nginx${NC}"
+        echo -e "${YELLOW}Détails des erreurs:${NC}"
+        sudo nginx -t
+        echo ""
+        echo -e "${YELLOW}Pour réparer la configuration:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Démarrer nginx
     echo -e "${BLUE}Démarrage de Nginx...${NC}"
     sudo systemctl start nginx
+
     if sudo systemctl is-active --quiet nginx; then
         echo -e "${GREEN}Nginx démarré avec succès${NC}"
         return 0
     else
         echo -e "${RED}Échec du démarrage de Nginx${NC}"
+        echo -e "${YELLOW}Consultez les logs: sudo journalctl -xeu nginx${NC}"
         return 1
     fi
 }
 
 # Réparer la configuration Nginx
 fix_nginx_config() {
-    echo -e "${BLUE}Vérification de la configuration Nginx...${NC}"
+    echo -e "${BLUE}Diagnostic de la configuration Nginx...${NC}"
+    echo ""
+
+    # Vérifier si nginx est installé
+    if ! command -v nginx &> /dev/null; then
+        echo -e "${RED}Nginx n'est pas installé${NC}"
+        echo -e "${YELLOW}Pour installer et configurer Nginx automatiquement:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Afficher les erreurs de configuration
+    echo -e "${YELLOW}Détails des erreurs:${NC}"
     sudo nginx -t
     echo ""
-    echo -e "${YELLOW}Rechargement de Nginx...${NC}"
-    sudo systemctl reload nginx
-    return $?
+
+    # Vérifier les zones de rate limiting
+    if ! sudo grep -q "limit_req_zone" /etc/nginx/conf.d/rate-limit-zones.conf 2>/dev/null && \
+       ! sudo grep -q "limit_req_zone" /etc/nginx/nginx.conf 2>/dev/null; then
+        echo -e "${RED}Problème détecté: zones de rate limiting manquantes${NC}"
+        echo -e "${YELLOW}Pour réparer automatiquement:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
+
+    # Si la config est maintenant valide, recharger
+    if sudo nginx -t &> /dev/null; then
+        echo -e "${GREEN}Configuration valide${NC}"
+        if sudo systemctl is-active --quiet nginx; then
+            echo -e "${BLUE}Rechargement de Nginx...${NC}"
+            sudo systemctl reload nginx
+            echo -e "${GREEN}✓ Nginx rechargé${NC}"
+            return 0
+        else
+            echo -e "${BLUE}Démarrage de Nginx...${NC}"
+            sudo systemctl start nginx
+            return $?
+        fi
+    else
+        echo -e "${RED}La configuration contient toujours des erreurs${NC}"
+        echo -e "${YELLOW}Correction manuelle requise ou utilisez:${NC}"
+        echo -e "  ./scripts/fix_nginx.sh"
+        echo ""
+        return 1
+    fi
 }
 
 # Réparer le mot de passe en clair
