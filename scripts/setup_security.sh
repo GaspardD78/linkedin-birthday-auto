@@ -593,6 +593,12 @@ sudo cp ./deployment/nginx/linkedin-bot.conf "$NGINX_CONF"
 
 # Remplacer le placeholder par le vrai domaine
 sudo sed -i "s/VOTRE_DOMAINE_ICI/$DOMAIN_NAME/g" "$NGINX_CONF"
+sudo sed -i "s/YOUR_DOMAIN.COM/$DOMAIN_NAME/g" "$NGINX_CONF"
+
+# Copier la configuration de rate limiting
+print_info "Installation de la configuration rate limiting..."
+sudo cp ./deployment/nginx/rate-limit-zones.conf /etc/nginx/conf.d/
+print_success "Rate limiting configuré !"
 
 # Créer le lien symbolique
 if [ ! -L /etc/nginx/sites-enabled/linkedin-bot ]; then
