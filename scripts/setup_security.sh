@@ -710,7 +710,7 @@ if [ -d "node_modules/bcryptjs" ]; then
     print_success "bcryptjs est déjà installé !"
 else
     print_info "Installation en cours..."
-    npm install bcryptjs
+    /opt/node22/bin/npm install bcryptjs
     print_success "bcryptjs installé !"
 fi
 
@@ -765,7 +765,7 @@ fi
 print_step "Génération du hash bcrypt (cela peut prendre quelques secondes)..."
 
 # Générer le hash
-PASSWORD_HASH=$(node scripts/hash_password.js "$PASSWORD_TO_HASH")
+PASSWORD_HASH=$(/opt/node22/bin/node scripts/hash_password.js "$PASSWORD_TO_HASH")
 
 echo ""
 print_success "Hash généré avec succès !"
