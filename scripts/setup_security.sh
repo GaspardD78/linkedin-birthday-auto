@@ -927,15 +927,17 @@ cp ../.env ../.env.backup.$(date +%Y%m%d_%H%M%S)
 print_info "Backup créé : .env.backup.$(date +%Y%m%d_%H%M%S)"
 
 # Remplacer le mot de passe dans .env
-# IMPORTANT: Le hash bcrypt doit être entouré de quotes simples pour Docker Compose
-# Cela évite que les caractères $ soient interprétés comme des variables d'environnement
+# IMPORTANT: Le hash bcrypt doit être échappé ($ -> $$) pour Docker Compose
+# Les quotes simples ne suffisent pas toujours selon la version de Docker Compose
+PASSWORD_HASH_ESCAPED="${PASSWORD_HASH//$/\$\$}"
+
 if grep -q "^DASHBOARD_PASSWORD=" ../.env; then
-    # Utiliser sed pour remplacer la ligne entière avec le hash entre quotes simples
+    # Utiliser sed pour remplacer la ligne entière avec le hash échappé et entre quotes simples
     # On échappe les barres obliques (/) dans le hash en utilisant un autre délimiteur (@)
-    sed -i "s@^DASHBOARD_PASSWORD=.*@DASHBOARD_PASSWORD='$PASSWORD_HASH'@" ../.env
+    sed -i "s@^DASHBOARD_PASSWORD=.*@DASHBOARD_PASSWORD='$PASSWORD_HASH_ESCAPED'@" ../.env
     print_success "Mot de passe mis à jour dans .env !"
 else
-    echo "DASHBOARD_PASSWORD='$PASSWORD_HASH'" >> ../.env
+    echo "DASHBOARD_PASSWORD='$PASSWORD_HASH_ESCAPED'" >> ../.env
     print_success "Mot de passe ajouté dans .env !"
 fi
 
