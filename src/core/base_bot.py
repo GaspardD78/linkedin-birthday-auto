@@ -556,17 +556,25 @@ class BaseLinkedInBot(ABC):
              logger.warning("Impossible de cliquer sur le bouton 'Message' (Timeout 5s ou masqué)")
              return False
 
-        # 2. Wait for Modal
+        # 2. Wait for Modal Container (New 2025 Architecture)
+        # We wait for the DIALOG or OVERLAY explicitly before finding the textarea.
         try:
+            # "div[role='dialog']" is the standard accessibility container for modals
+            # ".msg-overlay-conversation-bubble" is the LinkedIn specific class
+            modal_container_selector = "div[role='dialog'], aside.msg-overlay-conversation-bubble, .msg-overlay-list-bubble"
+            self.page.wait_for_selector(modal_container_selector, state="visible", timeout=20000)
+
+            # Additional safety: Wait specifically for the contenteditable area to be interactive
             box_selector = self.selector_manager.get_combined_selector("messaging.modal_textarea")
-            self.page.wait_for_selector(box_selector, state="visible", timeout=20000)
+            self.page.wait_for_selector(box_selector, state="visible", timeout=10000)
         except Exception:
-            logger.error("Message modal not found (timeout)")
+            logger.error("Message modal/textarea not found (timeout). Check selectors.")
             return False
 
-        # Get the textarea
+        # Get the textarea using the updated selector
         message_box_locator = self.selector_manager.find_element(self.page, "messaging.modal_textarea")
         if message_box_locator:
+             # Use the LAST one because multiple chat bubbles might exist (we want the active one)
              message_box = message_box_locator.last
         else:
              return False
@@ -585,20 +593,35 @@ class BaseLinkedInBot(ABC):
 
         # 4. Fill & Send
         try:
-            # We also use smart click here for consistency if needed, but fill is main action
-            message_box.click()
-            self.random_delay(0.5, 1)
+            # Use fill directly on the robust selector
             message_box.fill(message)
+            self.random_delay(0.5, 1)
         except Exception as e:
             raise Exception(f"Failed to fill message box: {e}")
 
-        # Use heuristic for send button if configured
+        # 5. Send Button: DIRECT HEURISTIC ACTION (Bypass)
+        # Try heuristic FIRST and use the handle DIRECTLY if high confidence.
+        heuristic_send_btn = self.selector_manager.find_heuristic(self.page, "messaging.send_button_heuristic")
+
+        if heuristic_send_btn:
+            logger.info("⚡ Direct Heuristic Action: Clicking Send button immediately.")
+            try:
+                heuristic_send_btn.click(timeout=5000)
+                logger.info("✅ Message sent successfully (Heuristic)")
+                MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
+                self._close_all_message_modals()
+                return True
+            except Exception as e:
+                logger.warning(f"Heuristic click failed: {e}. Falling back to standard selectors.")
+
+        # Fallback: Standard Selectors
         submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
 
         if submit_btn_locator:
             if self._smart_click(submit_btn_locator.last, timeout=5000):
                 logger.info("✅ Message sent successfully")
                 MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
+                self._close_all_message_modals()
                 return True
             else:
                  logger.warning("Send button click failed")
