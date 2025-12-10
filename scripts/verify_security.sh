@@ -588,7 +588,7 @@ fi
 # Test 4.3 : Mot de passe hashé dans .env
 test_check "Mot de passe hashé dans .env"
 if [ -f ".env" ]; then
-    if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" .env; then
+    if grep -q '^DASHBOARD_PASSWORD=\$2[aby]\$' .env; then
         test_pass "Mot de passe hashé avec bcrypt"
     else
         PASSWORD_VALUE=$(grep "^DASHBOARD_PASSWORD=" .env | cut -d'=' -f2-)
@@ -835,7 +835,7 @@ CRITICAL_FAILED=false
 if ! command -v rclone &> /dev/null; then
     CRITICAL_FAILED=true
 fi
-if ! grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" .env 2>/dev/null; then
+if ! grep -q '^DASHBOARD_PASSWORD=\$2[aby]\$' .env 2>/dev/null; then
     CRITICAL_FAILED=true
 fi
 
