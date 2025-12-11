@@ -58,6 +58,7 @@ class VisitorBot(BaseLinkedInBot):
             if profiles_limit_override is not None
             else self.config.visitor.limits.profiles_per_run
         )
+        self.campaign_id = campaign_id
 
         logger.info(
             "VisitorBot initialized",
