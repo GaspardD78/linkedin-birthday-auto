@@ -11,11 +11,13 @@ import {
   History,
   LogOut,
   UserX,
-  Target
+  Target,
+  Users
 } from "lucide-react"
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Tableau de Bord", description: "Pilotage & monitoring" },
+  { href: "/crm", icon: Users, label: "CRM", description: "Historique relations" },
   { href: "/sourcing", icon: Target, label: "Sourcing", description: "Recherche & export profils" },
   { href: "/history", icon: History, label: "Historique", description: "Détails des exécutions" },
   { href: "/blacklist", icon: UserX, label: "Blacklist", description: "Contacts exclus" },
