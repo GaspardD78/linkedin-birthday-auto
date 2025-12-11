@@ -32,7 +32,7 @@ from ..utils.logging import get_logger
 from ..utils.data_files import initialize_data_files  # 🚀 Refactored: no more duplication
 import pickle
 from . import auth_routes  # Import the new auth router
-from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes, visitor_routes, campaign_routes, blacklist, sourcing, crm  # Import the routers
+from .routes import deployment, bot_control, debug_routes, automation_control, notifications, scheduler_routes, visitor_routes, campaign_routes, blacklist, sourcing, crm, nurturing  # Import the routers
 from .security import verify_api_key
 
 logger = get_logger(__name__)
@@ -247,6 +247,9 @@ app.include_router(sourcing.router)
 
 # Include the CRM router
 app.include_router(crm.router)
+
+# Include the Nurturing router
+app.include_router(nurturing.router)
 
 
 # Authentification importée de security.py
