@@ -132,3 +132,27 @@ visitor:
       skills: 'section:has-text("Compétences"), section:has-text("Skills")'
       certifications: 'section:has-text("Licences et certifications"), section:has-text("Licenses & certifications")'
       experience: 'section:has-text("Expérience"), section:has-text("Experience")'
+
+invitation_manager:
+  list_item:
+    - "li.invitation-card"
+    - "div.invitation-card"
+    - "li.artdeco-list__item"  # Generic fallback
+
+  time_element:
+    - "time"
+    - "span.time-badge"
+    - ".invitation-card__action-container span.t-black--light" # Heuristic: text often next to buttons
+
+  withdraw_button:
+    - "button[aria-label*='Retirer']"
+    - "button[aria-label*='Withdraw']"
+    - "button:has-text('Retirer')"
+    - "button:has-text('Withdraw')"
+
+  modal:
+    container: "div[role='dialog']"
+    confirm_button:
+      - "div[role='dialog'] button.artdeco-button--primary"
+      - "div[role='dialog'] button:has-text('Retirer')"
+      - "div[role='dialog'] button:has-text('Withdraw')"
