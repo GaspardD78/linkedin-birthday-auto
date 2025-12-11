@@ -444,10 +444,26 @@ class Database:
                 "skills": "TEXT",
                 "certifications": "TEXT",
                 "fit_score": "REAL",
-                "campaign_id": "INTEGER"
+                "campaign_id": "INTEGER",
+                # New columns for enhanced recruiter tool
+                "location": "TEXT",
+                "languages": "TEXT",  # JSON array
+                "work_history": "TEXT",  # JSON array of positions
+                "connection_degree": "TEXT",  # 1st, 2nd, 3rd
+                "school": "TEXT",
+                "degree": "TEXT",
+                "job_title": "TEXT",  # Extracted current job title
+                "seniority_level": "TEXT",  # Entry, Mid-Senior, Director, etc.
+                "endorsements_count": "INTEGER",
+                "profile_picture_url": "TEXT",
+                "open_to_work": "INTEGER",  # Boolean: 1 if open to work detected
             }
             # Whitelist stricte pour ALTER TABLE (sécurité SQL injection)
-            ALLOWED_COLUMNS = {"headline", "summary", "skills", "certifications", "fit_score", "campaign_id"}
+            ALLOWED_COLUMNS = {
+                "headline", "summary", "skills", "certifications", "fit_score", "campaign_id",
+                "location", "languages", "work_history", "connection_degree", "school", "degree",
+                "job_title", "seniority_level", "endorsements_count", "profile_picture_url", "open_to_work"
+            }
             ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "BLOB"}
 
             for col, dtype in new_columns.items():
@@ -984,9 +1000,22 @@ class Database:
         certifications: Optional[list[str]] = None,
         fit_score: Optional[float] = None,
         campaign_id: Optional[int] = None,
+        # Enhanced recruiter fields
+        location: Optional[str] = None,
+        languages: Optional[list[str]] = None,
+        work_history: Optional[list[dict]] = None,
+        connection_degree: Optional[str] = None,
+        school: Optional[str] = None,
+        degree: Optional[str] = None,
+        job_title: Optional[str] = None,
+        seniority_level: Optional[str] = None,
+        endorsements_count: Optional[int] = None,
+        profile_picture_url: Optional[str] = None,
+        open_to_work: Optional[bool] = None,
     ) -> int:
         """
         Enregistre ou met à jour (UPSERT) les données scrapées d'un profil.
+        Inclut toutes les données enrichies pour les recruteurs.
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -994,14 +1023,18 @@ class Database:
             scraped_at = datetime.now().isoformat()
             skills_json = json.dumps(skills) if skills else None
             certs_json = json.dumps(certifications) if certifications else None
+            languages_json = json.dumps(languages) if languages else None
+            work_history_json = json.dumps(work_history) if work_history else None
+            open_to_work_int = 1 if open_to_work else (0 if open_to_work is False else None)
 
-            # UPSERT: INSERT OR REPLACE
-            # Note: campaign_id n'est mis à jour que s'il est fourni
+            # UPSERT: INSERT OR REPLACE avec toutes les colonnes enrichies
             sql = """
                 INSERT INTO scraped_profiles
                 (profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
-                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at, campaign_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at, campaign_id,
+                 location, languages, work_history, connection_degree, school, degree, job_title, seniority_level,
+                 endorsements_count, profile_picture_url, open_to_work)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(profile_url) DO UPDATE SET
                     first_name = excluded.first_name,
                     last_name = excluded.last_name,
@@ -1015,12 +1048,25 @@ class Database:
                     skills = excluded.skills,
                     certifications = excluded.certifications,
                     fit_score = excluded.fit_score,
-                    scraped_at = excluded.scraped_at
+                    scraped_at = excluded.scraped_at,
+                    location = excluded.location,
+                    languages = excluded.languages,
+                    work_history = excluded.work_history,
+                    connection_degree = excluded.connection_degree,
+                    school = excluded.school,
+                    degree = excluded.degree,
+                    job_title = excluded.job_title,
+                    seniority_level = excluded.seniority_level,
+                    endorsements_count = excluded.endorsements_count,
+                    profile_picture_url = excluded.profile_picture_url,
+                    open_to_work = excluded.open_to_work
             """
 
             params = [
                 profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
-                current_company, education, years_experience, skills_json, certs_json, fit_score, scraped_at, campaign_id
+                current_company, education, years_experience, skills_json, certs_json, fit_score, scraped_at, campaign_id,
+                location, languages_json, work_history_json, connection_degree, school, degree, job_title, seniority_level,
+                endorsements_count, profile_picture_url, open_to_work_int
             ]
 
             if campaign_id is not None:

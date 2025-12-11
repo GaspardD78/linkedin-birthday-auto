@@ -1,10 +1,19 @@
 """
-Bot LinkedIn pour la visite automatique de profils.
+Bot LinkedIn pour la visite automatique de profils et le sourcing recruteur.
 
-Ce bot effectue des recherches basées sur des mots-clés et une localisation,
-puis visite les profils trouvés pour simuler de l'activité et générer des vues en retour.
+Ce bot effectue des recherches avancées basées sur des mots-clés, filtres booléens,
+localisation et critères de séniorité, puis visite les profils trouvés pour
+simuler de l'activité et enrichir la base de données candidats.
+
+Fonctionnalités recruteur:
+- Recherche booléenne avancée (AND, OR, NOT, parenthèses)
+- Filtres par titre de poste, entreprise, niveau hiérarchique
+- Scraping enrichi (compétences complètes, historique, langues)
+- Détection "Open to Work"
+- Export CSV avec colonnes personnalisables
 """
 from datetime import datetime
+import json
 import random
 import time
 import re
@@ -20,6 +29,25 @@ from ..utils.exceptions import LinkedInBotError
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Mapping LinkedIn seniority levels to URL parameter values
+SENIORITY_LEVEL_MAP = {
+    "entry": "1",
+    "associate": "2",
+    "mid-senior": "3",
+    "director": "4",
+    "vp": "5",
+    "cxo": "6",
+    "executive": "6",
+}
+
+# Mapping connection degrees to LinkedIn network parameter
+NETWORK_DEGREE_MAP = {
+    "1st": "F",
+    "2nd": "S",
+    "3rd": "O",
+    "3rd+": "O",
+}
 
 class VisitorBot(BaseLinkedInBot):
     """
@@ -174,12 +202,149 @@ class VisitorBot(BaseLinkedInBot):
         )
 
     # ═══════════════════════════════════════════════════════════════
-    #  RECHERCHE (Améliorée avec Cascade)
+    #  RECHERCHE AVANCÉE (Filtres Booléens + LinkedIn Filters)
     # ═══════════════════════════════════════════════════════════════
+
+    def _build_boolean_keywords(self) -> str:
+        """
+        Construit une chaîne de recherche booléenne à partir des mots-clés.
+
+        Supporte:
+        - AND implicite entre mots simples
+        - OR explicite avec |
+        - NOT avec -
+        - Groupes avec parenthèses
+        - Phrases exactes avec guillemets
+
+        Exemple: ["DevOps", "AWS|Azure", "-junior", '"Site Reliability"']
+        Donne: DevOps AND (AWS OR Azure) NOT junior "Site Reliability"
+        """
+        keywords = self.config.visitor.keywords or []
+        filters = self.config.visitor.search_filters
+
+        parts = []
+
+        for kw in keywords:
+            kw = kw.strip()
+            if not kw:
+                continue
+
+            # Déjà une phrase entre guillemets
+            if kw.startswith('"') and kw.endswith('"'):
+                parts.append(kw)
+            # Opérateur OR (pipe)
+            elif '|' in kw:
+                or_terms = [t.strip() for t in kw.split('|') if t.strip()]
+                if or_terms:
+                    parts.append(f"({' OR '.join(or_terms)})")
+            # Exclusion (NOT)
+            elif kw.startswith('-'):
+                excluded = kw[1:].strip()
+                if excluded:
+                    parts.append(f'NOT "{excluded}"')
+            # Mot simple
+            else:
+                parts.append(kw)
+
+        # Ajouter les exclusions depuis les filtres
+        if filters and filters.keywords_exclude:
+            for excl in filters.keywords_exclude:
+                if excl.strip():
+                    parts.append(f'NOT "{excl.strip()}"')
+
+        return " ".join(parts)
+
+    def _build_advanced_search_url(self, page_number: int = 1) -> str:
+        """
+        Construit l'URL de recherche LinkedIn avec tous les filtres avancés.
+
+        Paramètres LinkedIn supportés:
+        - keywords: Recherche booléenne
+        - geoUrn: Location (via texte libre si pas d'URN)
+        - titleFreeText: Titre de poste
+        - network: Degré de connexion [F=1st, S=2nd, O=3rd+]
+        - seniorityIncluded: Niveaux hiérarchiques [1-6]
+        - profileLanguage: Langues du profil
+        """
+        filters = self.config.visitor.search_filters
+
+        # Base keywords avec opérateurs booléens
+        keyword_str = self._build_boolean_keywords()
+
+        # Ajouter les titres recherchés aux keywords si présents
+        if filters and filters.title:
+            title_query = " OR ".join(f'"{t}"' for t in filters.title if t.strip())
+            if title_query and keyword_str:
+                keyword_str = f"({keyword_str}) AND ({title_query})"
+            elif title_query:
+                keyword_str = title_query
+
+        # Construction de l'URL de base
+        params = {
+            "keywords": keyword_str,
+            "origin": "FACETED_SEARCH",
+            "page": str(page_number),
+        }
+
+        # Location (texte libre - LinkedIn fait le matching)
+        if self.config.visitor.location:
+            # Pour la location, on l'ajoute via geoUrn si possible, sinon via keywords
+            params["geoUrn"] = f'["{urllib.parse.quote(self.config.visitor.location)}"]'
+
+        # Filtres de titre (titleFreeText)
+        if filters and filters.title:
+            # LinkedIn accepte titleFreeText pour filtrage additionnel
+            params["titleFreeText"] = filters.title[0] if len(filters.title) == 1 else filters.title[0]
+
+        # Séniorité (niveaux hiérarchiques)
+        if filters and filters.seniority_level:
+            seniority_values = []
+            for level in filters.seniority_level:
+                level_key = level.lower().strip()
+                if level_key in SENIORITY_LEVEL_MAP:
+                    seniority_values.append(SENIORITY_LEVEL_MAP[level_key])
+            if seniority_values:
+                params["seniorityIncluded"] = f"[{','.join(seniority_values)}]"
+
+        # Langues du profil
+        if filters and filters.languages:
+            lang_codes = []
+            # Mapping de noms vers codes ISO
+            lang_map = {
+                "français": "fr", "french": "fr",
+                "anglais": "en", "english": "en",
+                "espagnol": "es", "spanish": "es",
+                "allemand": "de", "german": "de",
+                "italien": "it", "italian": "it",
+                "portugais": "pt", "portuguese": "pt",
+                "chinois": "zh", "chinese": "zh",
+                "japonais": "ja", "japanese": "ja",
+                "arabe": "ar", "arabic": "ar",
+            }
+            for lang in filters.languages:
+                lang_lower = lang.lower().strip()
+                if len(lang_lower) == 2:  # Déjà un code ISO
+                    lang_codes.append(lang_lower)
+                elif lang_lower in lang_map:
+                    lang_codes.append(lang_map[lang_lower])
+            if lang_codes:
+                params["profileLanguage"] = f"[{','.join(f'\"{c}\"' for c in lang_codes)}]"
+
+        # Construction de l'URL finale
+        base_url = "https://www.linkedin.com/search/results/people/?"
+        query_parts = []
+        for key, value in params.items():
+            if value:
+                query_parts.append(f"{key}={urllib.parse.quote(str(value), safe='[]\"')}")
+
+        search_url = base_url + "&".join(query_parts)
+
+        logger.info(f"Built advanced search URL: {search_url[:200]}...")
+        return search_url
 
     def _search_profiles(self, page_number: int = 1) -> list[str]:
         """
-        Effectue une recherche LinkedIn et retourne les URLs de profils.
+        Effectue une recherche LinkedIn avancée et retourne les URLs de profils.
 
         Args:
             page_number: Numéro de la page de résultats à scraper.
@@ -187,19 +352,14 @@ class VisitorBot(BaseLinkedInBot):
         Returns:
             Liste des URLs de profils trouvées.
         """
-        keyword_str = " ".join(self.config.visitor.keywords)
-        search_url = (
-            f"https://www.linkedin.com/search/results/people/"
-            f"?keywords={urllib.parse.quote(keyword_str)}"
-            f"&location={urllib.parse.quote(self.config.visitor.location)}"
-            f"&origin=GLOBAL_SEARCH_HEADER"
-            f"&page={page_number}"
-        )
+        # Utilise la construction d'URL avancée
+        search_url = self._build_advanced_search_url(page_number)
 
         try:
             self.page.goto(search_url, timeout=60000)
             self._random_delay_generic()
         except PlaywrightTimeoutError:
+            logger.warning(f"Timeout loading search page {page_number}")
             return []
 
         profile_links = []
@@ -208,34 +368,39 @@ class VisitorBot(BaseLinkedInBot):
         try:
             self.page.wait_for_selector(result_container_selector, timeout=20000)
 
-            # Scroll simple pour charger (lazy loading)
-            for _ in range(3):
-                self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                time.sleep(1)
+            # Scroll progressif pour charger (lazy loading)
+            for i in range(4):
+                self.page.evaluate(f"window.scrollTo(0, document.body.scrollHeight * {(i+1)/4})")
+                time.sleep(random.uniform(0.8, 1.5))
 
             containers = self.page.query_selector_all(result_container_selector)
+            logger.info(f"Found {len(containers)} profile containers on page {page_number}")
 
             for container in containers:
                 # Stratégie Cascade pour trouver le lien
                 link_selectors = self.selector_manager.get_selectors("visitor.search.links")
                 if not link_selectors:
-                     link_selectors = [
+                    link_selectors = [
                         'a[data-view-name="search-result-lockup-title"]',
                         'a.app-aware-link[href*="/in/"]',
-                        'span.entity-result__title-text a'
+                        'span.entity-result__title-text a',
+                        'a[href*="/in/"]'  # Fallback générique
                     ]
-                # Appel à la méthode de la classe parente
+
                 link_element = self._find_element_by_cascade(container, link_selectors)
 
                 if link_element:
                     href = link_element.get_attribute("href")
                     if href and "/in/" in href:
-                        profile_links.append(href.split("?")[0])
+                        clean_url = href.split("?")[0]
+                        profile_links.append(clean_url)
 
         except Exception as e:
             logger.warning(f"Search extraction warning: {e}", exc_info=True)
 
-        return list(set(profile_links))
+        unique_profiles = list(set(profile_links))
+        logger.info(f"Extracted {len(unique_profiles)} unique profiles from page {page_number}")
+        return unique_profiles
 
     # ═══════════════════════════════════════════════════════════════
     #  SCRAPING COMPLET (Amélioré & Scoring)
@@ -243,134 +408,516 @@ class VisitorBot(BaseLinkedInBot):
 
     def _scrape_profile_data(self) -> dict[str, Any]:
         """
-        Scrape les données détaillées d'un profil LinkedIn (Nom, Headline, Skills, Certs).
-        Implémente également le calcul du Fit Score.
+        Scrape complet des données d'un profil LinkedIn pour le sourcing recruteur.
+
+        Données extraites:
+        - Identité: nom, prénom, headline
+        - Localisation: ville, pays
+        - Expérience: historique complet (titre, entreprise, durée)
+        - Formation: école, diplôme
+        - Compétences: TOUTES les skills (pas de limite)
+        - Certifications: toutes les certifications
+        - Langues: langues parlées
+        - Signaux: Open to Work, degré de connexion
+        - Score: Fit Score calculé
 
         Returns:
-            Dictionnaire enrichi avec 'fit_score', 'skills', 'certifications', etc.
+            Dictionnaire enrichi avec toutes les données du profil.
         """
         scraped_data = {
+            # Identité de base
             "full_name": "Unknown",
             "first_name": "Unknown",
             "last_name": "Unknown",
             "headline": "",
             "summary": "",
-            "relationship_level": "Unknown",
-            "current_company": "Unknown",
-            "education": "Unknown",
-            "years_experience": 0,
-            "skills": [],
-            "certifications": [],
-            "fit_score": 0.0,
             "profile_url": self.page.url.split("?")[0],
+
+            # Localisation
+            "location": None,
+
+            # Expérience
+            "current_company": "Unknown",
+            "job_title": None,
+            "years_experience": 0,
+            "work_history": [],  # Liste de dict: {title, company, start_date, end_date, duration}
+
+            # Formation
+            "school": None,
+            "degree": None,
+            "education": "Unknown",
+
+            # Compétences & Certifications
+            "skills": [],  # TOUTES les compétences
+            "certifications": [],
+            "endorsements_count": 0,
+
+            # Langues
+            "languages": [],
+
+            # Signaux recruteur
+            "open_to_work": False,
+            "connection_degree": None,  # "1st", "2nd", "3rd+"
+            "profile_picture_url": None,
+
+            # Scoring
+            "fit_score": 0.0,
+            "seniority_level": None,
         }
 
         try:
-            # 0. Scroll préliminaire pour déclencher le lazy-loading (Compétences, Infos)
+            # 0. Scroll préliminaire pour déclencher le lazy-loading
             self._smart_scroll_to_bottom()
 
             # 1. NOM & PRÉNOM
-            try:
-                name_selectors = self.selector_manager.get_selectors("visitor.profile.name") or ["h1.text-heading-xlarge"]
-                for selector in name_selectors:
-                    name_element = self.page.locator(selector).first
-                    if name_element.count() > 0:
-                        full_name = name_element.inner_text(timeout=5000).strip()
-                        if full_name:
-                            scraped_data["full_name"] = full_name
-                            parts = full_name.split()
-                            if len(parts) >= 2:
-                                scraped_data["first_name"] = parts[0]
-                                scraped_data["last_name"] = " ".join(parts[1:])
-                            elif len(parts) == 1:
-                                scraped_data["first_name"] = parts[0]
-                                scraped_data["last_name"] = ""
-                            break
-            except Exception: pass
+            self._scrape_name(scraped_data)
 
-            # 2. HEADLINE (Titre)
-            try:
-                headline_selector = self.selector_manager.get_combined_selector("visitor.profile.headline") or "div.text-body-medium"
-                headline_el = self.page.locator(headline_selector).first
-                if headline_el.count() > 0:
-                    scraped_data["headline"] = headline_el.inner_text().strip()
-            except Exception: pass
+            # 2. HEADLINE (Titre actuel)
+            self._scrape_headline(scraped_data)
 
-            # 3. RÉSUMÉ (Summary/About)
-            try:
-                about_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.about")
-                about_section = self.page.locator(about_selector).first if about_selector else self.page.locator('section:has-text("Infos"), section:has-text("About")').first
-                if about_section.count() > 0:
-                    # Click "Voir plus" si présent
-                    see_more = about_section.locator('button.inline-show-more-text__button')
-                    if see_more.count() > 0:
-                        see_more.click(force=True)
-                        time.sleep(0.5)
+            # 3. LOCALISATION
+            self._scrape_location(scraped_data)
 
-                    summary_text_el = about_section.locator('div.inline-show-more-text span[aria-hidden="true"]').first
-                    if summary_text_el.count() > 0:
-                        scraped_data["summary"] = summary_text_el.inner_text().strip()
-            except Exception: pass
+            # 4. OPEN TO WORK BADGE
+            self._scrape_open_to_work(scraped_data)
 
-            # 4. COMPÉTENCES (Skills)
-            try:
-                skills_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.skills")
-                skills_section = self.page.locator(skills_selector).first if skills_selector else self.page.locator('section:has-text("Compétences")').first
-                if skills_section.count() > 0:
-                    # On essaie de récupérer les compétences visibles sans ouvrir le modal (plus rapide/stealth)
-                    skill_items = skills_section.locator('a[data-field="skill_card_skill_topic"], div[data-field="skill_card_skill_topic"], span.pv-skill-category-entity__name-text')
-                    count = skill_items.count()
-                    for i in range(min(count, 5)): # Top 5 seulement
-                        scraped_data["skills"].append(skill_items.nth(i).inner_text().strip())
-            except Exception: pass
+            # 5. DEGRÉ DE CONNEXION
+            self._scrape_connection_degree(scraped_data)
 
-            # 5. CERTIFICATIONS
-            try:
-                cert_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.certifications")
-                cert_section = self.page.locator(cert_selector).first if cert_selector else self.page.locator('section:has-text("Licences et certifications")').first
-                if cert_section.count() > 0:
-                    cert_items = cert_section.locator('div[class*="pvs-entity"]')
-                    count = cert_items.count()
-                    for i in range(min(count, 3)): # Top 3
-                         # Nom de la certif
-                         cert_name_el = cert_items.nth(i).locator('span[aria-hidden="true"]').first
-                         if cert_name_el.count() > 0:
-                             scraped_data["certifications"].append(cert_name_el.inner_text().strip())
-            except Exception: pass
+            # 6. PHOTO DE PROFIL
+            self._scrape_profile_picture(scraped_data)
 
-            # 6. EXPÉRIENCE (Années)
-            try:
-                exp_selector = self.selector_manager.get_combined_selector("visitor.profile.sections.experience")
-                exp_section = self.page.locator(exp_selector).first if exp_selector else self.page.locator('section:has-text("Expérience")').first
-                if exp_section.count() > 0:
-                    all_exps = exp_section.locator('div[class*="pvs-entity"]')
-                    count = all_exps.count()
-                    if count > 0:
-                        last_exp = all_exps.nth(count - 1)
-                        date_spans = last_exp.locator('span[class*="date"], span:has-text(" - ")')
-                        if date_spans.count() > 0:
-                            date_text = date_spans.first.inner_text().strip()
-                            years = re.findall(r"\b(19|20)\d{2}\b", date_text)
-                            if years:
-                                start_year = int(years[0])
-                                current_year = datetime.now().year
-                                scraped_data["years_experience"] = max(0, current_year - start_year)
+            # 7. RÉSUMÉ (About)
+            self._scrape_summary(scraped_data)
 
-                    # Entreprise actuelle (Première expérience de la liste)
-                    first_exp = all_exps.first
-                    company_name_el = first_exp.locator('span.t-14.t-normal span[aria-hidden="true"]').first
-                    if company_name_el.count() > 0:
-                         scraped_data["current_company"] = company_name_el.inner_text().split("·")[0].strip()
+            # 8. EXPÉRIENCE COMPLÈTE (Work History)
+            self._scrape_experience_full(scraped_data)
 
-            except Exception: pass
+            # 9. FORMATION (Education)
+            self._scrape_education(scraped_data)
 
-            # 7. CALCUL DU FIT SCORE
+            # 10. COMPÉTENCES COMPLÈTES
+            self._scrape_skills_full(scraped_data)
+
+            # 11. CERTIFICATIONS
+            self._scrape_certifications(scraped_data)
+
+            # 12. LANGUES
+            self._scrape_languages(scraped_data)
+
+            # 13. CALCUL DU FIT SCORE ENRICHI
             scraped_data["fit_score"] = self._calculate_fit_score(scraped_data)
 
+            # 14. DÉDUCTION DU NIVEAU DE SÉNIORITÉ
+            scraped_data["seniority_level"] = self._infer_seniority_level(scraped_data)
+
         except Exception as e:
-            logger.error(f"Global scraping error: {e}")
+            logger.error(f"Global scraping error: {e}", exc_info=True)
 
         return scraped_data
+
+    def _scrape_name(self, data: dict) -> None:
+        """Extrait le nom complet du profil."""
+        try:
+            name_selectors = self.selector_manager.get_selectors("visitor.profile.name") or [
+                "h1.text-heading-xlarge",
+                "h1[data-anonymize='person-name']",
+                ".pv-top-card h1"
+            ]
+            for selector in name_selectors:
+                name_element = self.page.locator(selector).first
+                if name_element.count() > 0:
+                    full_name = name_element.inner_text(timeout=5000).strip()
+                    if full_name:
+                        data["full_name"] = full_name
+                        parts = full_name.split()
+                        if len(parts) >= 2:
+                            data["first_name"] = parts[0]
+                            data["last_name"] = " ".join(parts[1:])
+                        elif len(parts) == 1:
+                            data["first_name"] = parts[0]
+                            data["last_name"] = ""
+                        break
+        except Exception:
+            pass
+
+    def _scrape_headline(self, data: dict) -> None:
+        """Extrait le titre/headline du profil."""
+        try:
+            headline_selectors = [
+                "div.text-body-medium.break-words",
+                "div.text-body-medium",
+                ".pv-top-card--list .text-body-medium"
+            ]
+            for selector in headline_selectors:
+                headline_el = self.page.locator(selector).first
+                if headline_el.count() > 0:
+                    headline = headline_el.inner_text().strip()
+                    if headline:
+                        data["headline"] = headline
+                        # Extraire le job title depuis le headline
+                        # Format courant: "Job Title at Company" ou "Job Title | Company"
+                        if " at " in headline:
+                            data["job_title"] = headline.split(" at ")[0].strip()
+                        elif " chez " in headline.lower():
+                            data["job_title"] = headline.lower().split(" chez ")[0].strip()
+                        elif " | " in headline:
+                            data["job_title"] = headline.split(" | ")[0].strip()
+                        break
+        except Exception:
+            pass
+
+    def _scrape_location(self, data: dict) -> None:
+        """Extrait la localisation du profil."""
+        try:
+            location_selectors = [
+                "span.text-body-small.inline.t-black--light.break-words",
+                ".pv-top-card--list-bullet .text-body-small",
+                "span[class*='t-black--light']"
+            ]
+            for selector in location_selectors:
+                loc_el = self.page.locator(selector).first
+                if loc_el.count() > 0:
+                    location = loc_el.inner_text().strip()
+                    # Filtrer les valeurs qui ne sont pas des locations
+                    if location and not location.startswith("·") and "connexion" not in location.lower():
+                        data["location"] = location
+                        break
+        except Exception:
+            pass
+
+    def _scrape_open_to_work(self, data: dict) -> None:
+        """Détecte le badge 'Open to Work'."""
+        try:
+            # Badge visible sur la photo ou dans le profil
+            otw_selectors = [
+                "div[class*='open-to-work']",
+                "span:has-text('Open to work')",
+                "span:has-text('En recherche')",
+                ".pv-top-card-profile-picture__container .live-video-hero-image--is-open-to-work",
+                "[data-test-open-to-work-badge]"
+            ]
+            for selector in otw_selectors:
+                if self.page.locator(selector).count() > 0:
+                    data["open_to_work"] = True
+                    break
+
+            # Aussi vérifier dans le headline
+            if not data["open_to_work"]:
+                headline = data.get("headline", "").lower()
+                if any(kw in headline for kw in ["open to work", "en recherche", "looking for", "recherche active", "#opentowork"]):
+                    data["open_to_work"] = True
+        except Exception:
+            pass
+
+    def _scrape_connection_degree(self, data: dict) -> None:
+        """Extrait le degré de connexion (1st, 2nd, 3rd+)."""
+        try:
+            degree_selectors = [
+                "span.dist-value",
+                "span[class*='distance-badge']",
+                ".pv-top-card--list span.pvs-inline-entity-button__text"
+            ]
+            for selector in degree_selectors:
+                degree_el = self.page.locator(selector).first
+                if degree_el.count() > 0:
+                    degree_text = degree_el.inner_text().strip().lower()
+                    if "1" in degree_text:
+                        data["connection_degree"] = "1st"
+                    elif "2" in degree_text:
+                        data["connection_degree"] = "2nd"
+                    elif "3" in degree_text:
+                        data["connection_degree"] = "3rd+"
+                    break
+        except Exception:
+            pass
+
+    def _scrape_profile_picture(self, data: dict) -> None:
+        """Extrait l'URL de la photo de profil."""
+        try:
+            img_selectors = [
+                "img.pv-top-card-profile-picture__image",
+                ".pv-top-card-profile-picture img",
+                "img[data-anonymous='person-image']"
+            ]
+            for selector in img_selectors:
+                img_el = self.page.locator(selector).first
+                if img_el.count() > 0:
+                    src = img_el.get_attribute("src")
+                    if src and "data:image" not in src:  # Ignorer les placeholders base64
+                        data["profile_picture_url"] = src
+                        break
+        except Exception:
+            pass
+
+    def _scrape_summary(self, data: dict) -> None:
+        """Extrait le résumé/About du profil."""
+        try:
+            about_section = self.page.locator('section:has-text("Infos"), section:has-text("About")').first
+            if about_section.count() > 0:
+                # Cliquer sur "Voir plus" si présent
+                see_more = about_section.locator('button.inline-show-more-text__button')
+                if see_more.count() > 0:
+                    try:
+                        see_more.click(force=True)
+                        time.sleep(0.5)
+                    except Exception:
+                        pass
+
+                summary_el = about_section.locator('div.inline-show-more-text span[aria-hidden="true"]').first
+                if summary_el.count() > 0:
+                    data["summary"] = summary_el.inner_text().strip()
+        except Exception:
+            pass
+
+    def _scrape_experience_full(self, data: dict) -> None:
+        """Extrait l'historique complet des expériences professionnelles."""
+        try:
+            exp_section = self.page.locator('section:has-text("Expérience"), section:has-text("Experience")').first
+            if exp_section.count() == 0:
+                return
+
+            work_history = []
+            all_exps = exp_section.locator('li.pvs-list__paged-list-item, div[class*="pvs-entity"]')
+            count = all_exps.count()
+
+            for i in range(min(count, 10)):  # Max 10 expériences
+                try:
+                    exp_item = all_exps.nth(i)
+                    exp_data = {}
+
+                    # Titre du poste
+                    title_el = exp_item.locator('span[aria-hidden="true"]').first
+                    if title_el.count() > 0:
+                        exp_data["title"] = title_el.inner_text().strip()
+
+                    # Entreprise
+                    company_el = exp_item.locator('span.t-14.t-normal span[aria-hidden="true"]').first
+                    if company_el.count() > 0:
+                        company_text = company_el.inner_text().strip()
+                        # Format: "Company · Type d'emploi" ou juste "Company"
+                        exp_data["company"] = company_text.split("·")[0].strip()
+
+                    # Dates
+                    date_el = exp_item.locator('span.pvs-entity__caption-wrapper, span.t-14.t-normal.t-black--light').first
+                    if date_el.count() > 0:
+                        date_text = date_el.inner_text().strip()
+                        exp_data["duration_text"] = date_text
+
+                        # Parser les années
+                        years = re.findall(r"\b(19|20)\d{2}\b", date_text)
+                        if years:
+                            exp_data["start_year"] = int(years[0])
+                            if len(years) > 1:
+                                exp_data["end_year"] = int(years[1])
+                            elif "présent" in date_text.lower() or "present" in date_text.lower():
+                                exp_data["end_year"] = datetime.now().year
+
+                    if exp_data.get("title") or exp_data.get("company"):
+                        work_history.append(exp_data)
+
+                        # Première expérience = current company
+                        if i == 0:
+                            data["current_company"] = exp_data.get("company", "Unknown")
+                            if not data["job_title"]:
+                                data["job_title"] = exp_data.get("title")
+
+                except Exception:
+                    continue
+
+            data["work_history"] = work_history
+
+            # Calculer les années d'expérience totales
+            if work_history:
+                earliest_year = None
+                for exp in work_history:
+                    if "start_year" in exp:
+                        if earliest_year is None or exp["start_year"] < earliest_year:
+                            earliest_year = exp["start_year"]
+                if earliest_year:
+                    data["years_experience"] = max(0, datetime.now().year - earliest_year)
+
+        except Exception:
+            pass
+
+    def _scrape_education(self, data: dict) -> None:
+        """Extrait les informations de formation."""
+        try:
+            edu_section = self.page.locator('section:has-text("Formation"), section:has-text("Education")').first
+            if edu_section.count() == 0:
+                return
+
+            edu_items = edu_section.locator('li.pvs-list__paged-list-item, div[class*="pvs-entity"]')
+            if edu_items.count() > 0:
+                first_edu = edu_items.first
+
+                # Nom de l'école
+                school_el = first_edu.locator('span[aria-hidden="true"]').first
+                if school_el.count() > 0:
+                    data["school"] = school_el.inner_text().strip()
+                    data["education"] = data["school"]
+
+                # Diplôme
+                degree_el = first_edu.locator('span.t-14.t-normal span[aria-hidden="true"]').first
+                if degree_el.count() > 0:
+                    data["degree"] = degree_el.inner_text().strip()
+                    if data["school"]:
+                        data["education"] = f"{data['degree']} - {data['school']}"
+
+        except Exception:
+            pass
+
+    def _scrape_skills_full(self, data: dict) -> None:
+        """Extrait TOUTES les compétences (pas de limite)."""
+        try:
+            skills_section = self.page.locator('section:has-text("Compétences"), section:has-text("Skills")').first
+            if skills_section.count() == 0:
+                return
+
+            all_skills = []
+            total_endorsements = 0
+
+            # Sélecteurs multiples pour les skills
+            skill_selectors = [
+                'a[data-field="skill_card_skill_topic"]',
+                'div[data-field="skill_card_skill_topic"]',
+                'span.pv-skill-category-entity__name-text',
+                '.pvs-list__item--line-separated span[aria-hidden="true"]'
+            ]
+
+            for selector in skill_selectors:
+                skill_items = skills_section.locator(selector)
+                count = skill_items.count()
+
+                for i in range(min(count, 50)):  # Max 50 skills
+                    try:
+                        skill_text = skill_items.nth(i).inner_text().strip()
+                        if skill_text and skill_text not in all_skills:
+                            # Éviter les doublons et les textes parasites
+                            if len(skill_text) < 100 and not skill_text.isdigit():
+                                all_skills.append(skill_text)
+                    except Exception:
+                        continue
+
+                if all_skills:
+                    break  # On a trouvé des skills, on arrête
+
+            # Compter les endorsements si disponibles
+            try:
+                endorsement_els = skills_section.locator('span.pvs-skill-category-entity__top-skills-endorsement-count')
+                for i in range(endorsement_els.count()):
+                    try:
+                        count_text = endorsement_els.nth(i).inner_text().strip()
+                        count = int(re.sub(r'[^\d]', '', count_text) or 0)
+                        total_endorsements += count
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+            data["skills"] = all_skills
+            data["endorsements_count"] = total_endorsements
+
+        except Exception:
+            pass
+
+    def _scrape_certifications(self, data: dict) -> None:
+        """Extrait toutes les certifications."""
+        try:
+            cert_section = self.page.locator('section:has-text("Licences et certifications"), section:has-text("Licenses & certifications")').first
+            if cert_section.count() == 0:
+                return
+
+            certifications = []
+            cert_items = cert_section.locator('li.pvs-list__paged-list-item, div[class*="pvs-entity"]')
+            count = cert_items.count()
+
+            for i in range(min(count, 20)):  # Max 20 certifications
+                try:
+                    cert_item = cert_items.nth(i)
+                    cert_name_el = cert_item.locator('span[aria-hidden="true"]').first
+                    if cert_name_el.count() > 0:
+                        cert_name = cert_name_el.inner_text().strip()
+                        if cert_name and cert_name not in certifications:
+                            certifications.append(cert_name)
+                except Exception:
+                    continue
+
+            data["certifications"] = certifications
+
+        except Exception:
+            pass
+
+    def _scrape_languages(self, data: dict) -> None:
+        """Extrait les langues parlées."""
+        try:
+            lang_section = self.page.locator('section:has-text("Langues"), section:has-text("Languages")').first
+            if lang_section.count() == 0:
+                return
+
+            languages = []
+            lang_items = lang_section.locator('li.pvs-list__paged-list-item, div[class*="pvs-entity"]')
+            count = lang_items.count()
+
+            for i in range(min(count, 10)):  # Max 10 langues
+                try:
+                    lang_item = lang_items.nth(i)
+                    lang_name_el = lang_item.locator('span[aria-hidden="true"]').first
+                    if lang_name_el.count() > 0:
+                        lang_name = lang_name_el.inner_text().strip()
+                        if lang_name and lang_name not in languages:
+                            languages.append(lang_name)
+                except Exception:
+                    continue
+
+            data["languages"] = languages
+
+        except Exception:
+            pass
+
+    def _infer_seniority_level(self, data: dict) -> Optional[str]:
+        """Déduit le niveau de séniorité à partir des données."""
+        headline = (data.get("headline") or "").lower()
+        job_title = (data.get("job_title") or "").lower()
+        years = data.get("years_experience", 0)
+
+        combined = f"{headline} {job_title}"
+
+        # C-Level
+        if any(term in combined for term in ["ceo", "cto", "cfo", "coo", "chief", "founder", "co-founder", "président", "directeur général"]):
+            return "CXO"
+
+        # VP Level
+        if any(term in combined for term in ["vice president", "vp ", "svp", "evp"]):
+            return "VP"
+
+        # Director Level
+        if any(term in combined for term in ["director", "directeur", "head of"]):
+            return "Director"
+
+        # Senior/Lead
+        if any(term in combined for term in ["senior", "lead", "principal", "staff", "architect"]):
+            return "Mid-Senior"
+
+        # Manager
+        if "manager" in combined or "responsable" in combined:
+            return "Mid-Senior"
+
+        # Junior/Entry
+        if any(term in combined for term in ["junior", "intern", "stagiaire", "apprenti", "entry"]):
+            return "Entry"
+
+        # Déduction par années d'expérience
+        if years >= 15:
+            return "Director"
+        elif years >= 8:
+            return "Mid-Senior"
+        elif years >= 3:
+            return "Associate"
+        elif years >= 0:
+            return "Entry"
+
+        return None
 
     def _smart_scroll_to_bottom(self):
         """Scroll progressif et aléatoire pour charger toute la page."""
@@ -397,46 +944,100 @@ class VisitorBot(BaseLinkedInBot):
         """
         Calcule un score de pertinence (0-100) basé sur les données extraites.
 
-        Pondération :
-        - Compétences techniques (Keywords match) : 40 pts
-        - Expérience (années) : 20 pts
-        - Certifications clés : 20 pts
-        - Signal "Open to Work" / Headline : 20 pts
+        Pondération enrichie pour le sourcing recruteur:
+        - Compétences techniques (Keywords match) : 35 pts
+        - Expérience (années + critères min/max) : 20 pts
+        - Certifications clés : 15 pts
+        - Signal "Open to Work" : 15 pts
+        - Langues (si critère) : 10 pts
+        - Localisation (si match) : 5 pts
         """
         score = 0.0
         target_keywords = self.config.visitor.keywords or []
+        filters = self.config.visitor.search_filters
 
-        # 1. Compétences & Headline (40 pts)
-        text_corpus = (str(data.get("skills", "")) + " " + data.get("headline", "") + " " + data.get("summary", "")).lower()
-        matches = 0
+        # 1. COMPÉTENCES & CONTENU (35 pts)
+        skills_list = data.get("skills", [])
+        skills_text = " ".join(skills_list).lower() if isinstance(skills_list, list) else str(skills_list).lower()
+        text_corpus = f"{skills_text} {data.get('headline', '')} {data.get('summary', '')} {data.get('job_title', '')}".lower()
+
+        # Compter les matches de keywords (nettoyer les opérateurs booléens)
+        clean_keywords = []
         for kw in target_keywords:
-            # Simple count of occurrences isn't robust if unique keywords are few
-            # But let's stick to checking presence of each keyword
-            if kw.lower() in text_corpus:
-                matches += 1
+            kw = kw.strip()
+            if kw.startswith('-'):
+                continue  # Ignorer les exclusions
+            if '|' in kw:
+                clean_keywords.extend([t.strip() for t in kw.split('|')])
+            elif kw.startswith('"') and kw.endswith('"'):
+                clean_keywords.append(kw[1:-1])
+            else:
+                clean_keywords.append(kw)
 
-        # INCREASED SENSITIVITY: 20 pts per match, max 40
-        if matches > 0:
-            score += min(40, matches * 20)
+        matches = sum(1 for kw in clean_keywords if kw.lower() in text_corpus)
+        if matches > 0 and len(clean_keywords) > 0:
+            match_ratio = matches / len(clean_keywords)
+            score += min(35, match_ratio * 45)  # Bonus pour ratio élevé
 
-        # 2. Expérience (20 pts)
+        # 2. EXPÉRIENCE (20 pts)
         exp = data.get("years_experience", 0)
-        if exp:
-            if exp >= 5: score += 20
-            elif exp >= 3: score += 15
-            elif exp >= 1: score += 10
+        exp_min = filters.years_experience_min if filters else None
+        exp_max = filters.years_experience_max if filters else None
 
-        # 3. Certifications (20 pts)
+        if exp:
+            # Score de base par années
+            if exp >= 10:
+                score += 15
+            elif exp >= 5:
+                score += 12
+            elif exp >= 3:
+                score += 8
+            elif exp >= 1:
+                score += 5
+
+            # Bonus si dans la fourchette demandée
+            in_range = True
+            if exp_min and exp < exp_min:
+                in_range = False
+            if exp_max and exp > exp_max:
+                in_range = False
+            if in_range and (exp_min or exp_max):
+                score += 5
+
+        # 3. CERTIFICATIONS (15 pts)
         certs = " ".join(data.get("certifications", [])).lower()
-        key_certs = ["azure", "aws", "gcp", "kubernetes", "docker", "terraform", "scrum", "pmp", "cka", "ckad"]
+        key_certs = [
+            "azure", "aws", "gcp", "kubernetes", "docker", "terraform",
+            "scrum", "pmp", "cka", "ckad", "itil", "prince2", "safe",
+            "cissp", "ccna", "ccnp", "comptia", "pmi", "agile"
+        ]
         cert_matches = sum(1 for c in key_certs if c in certs)
         if cert_matches > 0:
-            score += min(20, cert_matches * 10)
+            score += min(15, cert_matches * 5)
 
-        # 4. Signals (20 pts)
-        headline = data.get("headline", "").lower()
-        if "open to work" in headline or "recherche" in headline or "looking for" in headline or "available" in headline:
-            score += 20
+        # 4. OPEN TO WORK (15 pts)
+        if data.get("open_to_work"):
+            score += 15
+        else:
+            # Vérification texte (fallback)
+            headline = data.get("headline", "").lower()
+            if any(kw in headline for kw in ["open to work", "en recherche", "looking for", "available", "#opentowork"]):
+                score += 15
+
+        # 5. LANGUES (10 pts)
+        if filters and filters.languages:
+            profile_langs = [l.lower() for l in data.get("languages", [])]
+            required_langs = [l.lower() for l in filters.languages]
+            lang_matches = sum(1 for rl in required_langs if any(rl in pl or pl in rl for pl in profile_langs))
+            if lang_matches > 0:
+                score += min(10, lang_matches * 5)
+
+        # 6. LOCALISATION (5 pts)
+        if self.config.visitor.location:
+            profile_location = (data.get("location") or "").lower()
+            target_location = self.config.visitor.location.lower()
+            if target_location in profile_location or profile_location in target_location:
+                score += 5
 
         return min(100.0, score)
 
@@ -497,17 +1098,90 @@ class VisitorBot(BaseLinkedInBot):
             except Exception as e:
                 logger.error(f"DB Error: {e}")
 
-    def _save_scraped_profile_data(self, data):
-        """Sauvegarde les données scrapées."""
-        if self.db:
-            try:
-                # Add campaign_id context if available
-                if self.campaign_id:
-                    data["campaign_id"] = self.campaign_id
+    def _save_scraped_profile_data(self, data: dict) -> None:
+        """
+        Sauvegarde les données scrapées enrichies vers la base de données.
 
-                self.db.save_scraped_profile(**data)
-            except Exception as e:
-                logger.error(f"Failed to save profile data: {e}")
+        Mapping complet des champs extraits vers les colonnes DB.
+        """
+        if not self.db:
+            return
+
+        try:
+            # Ajouter le campaign_id si disponible
+            campaign_id = self.campaign_id if hasattr(self, 'campaign_id') else None
+
+            # Convertir les listes en JSON strings pour stockage
+            skills_json = json.dumps(data.get("skills", []), ensure_ascii=False) if data.get("skills") else None
+            certifications_json = json.dumps(data.get("certifications", []), ensure_ascii=False) if data.get("certifications") else None
+            languages_json = json.dumps(data.get("languages", []), ensure_ascii=False) if data.get("languages") else None
+            work_history_json = json.dumps(data.get("work_history", []), ensure_ascii=False) if data.get("work_history") else None
+
+            # Appel à la méthode DB avec tous les champs
+            self.db.save_scraped_profile(
+                # Identité
+                profile_url=data.get("profile_url"),
+                full_name=data.get("full_name"),
+                first_name=data.get("first_name"),
+                last_name=data.get("last_name"),
+                headline=data.get("headline"),
+                summary=data.get("summary"),
+
+                # Expérience
+                current_company=data.get("current_company"),
+                years_experience=data.get("years_experience"),
+
+                # Formation (legacy field)
+                education=data.get("education"),
+
+                # Compétences & Certifications (JSON)
+                skills=skills_json,
+                certifications=certifications_json,
+
+                # Score
+                fit_score=data.get("fit_score"),
+
+                # Campaign
+                campaign_id=campaign_id,
+
+                # ── Nouveaux champs enrichis ──
+
+                # Localisation
+                location=data.get("location"),
+
+                # Langues (JSON)
+                languages=languages_json,
+
+                # Historique professionnel (JSON)
+                work_history=work_history_json,
+
+                # Connexion
+                connection_degree=data.get("connection_degree"),
+
+                # Formation détaillée
+                school=data.get("school"),
+                degree=data.get("degree"),
+
+                # Titre extrait
+                job_title=data.get("job_title"),
+
+                # Séniorité
+                seniority_level=data.get("seniority_level"),
+
+                # Endorsements
+                endorsements_count=data.get("endorsements_count"),
+
+                # Photo
+                profile_picture_url=data.get("profile_picture_url"),
+
+                # Open to Work
+                open_to_work=data.get("open_to_work"),
+            )
+
+            logger.debug(f"Saved enriched profile data for {data.get('full_name', 'Unknown')}")
+
+        except Exception as e:
+            logger.error(f"Failed to save profile data: {e}", exc_info=True)
 
     def _extract_profile_name_from_url(self, url: str) -> str:
         """Extrait le nom du profil depuis l'URL (fallback)."""
