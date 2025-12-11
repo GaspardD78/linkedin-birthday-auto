@@ -9,12 +9,20 @@ import {
   Terminal,
   KeyRound,
   History,
-  LogOut
+  LogOut,
+  UserX,
+  Target,
+  Users,
+  Bell
 } from "lucide-react"
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Tableau de Bord", description: "Pilotage & monitoring" },
+  { href: "/crm", icon: Users, label: "CRM", description: "Historique relations" },
+  { href: "/sourcing", icon: Target, label: "Sourcing", description: "Recherche & export profils" },
+  { href: "/nurturing", icon: Bell, label: "Nurturing", description: "Segments & alertes" },
   { href: "/history", icon: History, label: "Historique", description: "Détails des exécutions" },
+  { href: "/blacklist", icon: UserX, label: "Blacklist", description: "Contacts exclus" },
   { href: "/logs", icon: Terminal, label: "Logs", description: "Console en temps réel" },
   { href: "/auth", icon: KeyRound, label: "Authentification", description: "Cookies LinkedIn" },
   { href: "/settings", icon: Settings, label: "Paramètres", description: "Configuration" },
