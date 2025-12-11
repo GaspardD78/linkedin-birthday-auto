@@ -287,3 +287,35 @@ export interface WorkersStatusResponse {
 export async function getWorkersStatus(): Promise<WorkersStatusResponse> {
   return get('/api/automation/workers/status')
 }
+
+// --- Campaign API ---
+
+export interface Campaign {
+  id: number;
+  name: string;
+  search_url: string;
+  filters: Record<string, any>;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  sent?: number; // Optional stats
+  replied?: number;
+}
+
+export async function getCampaigns(): Promise<Campaign[]> {
+  return get('/api/campaigns/');
+}
+
+export async function createCampaign(data: { name: string; filters: Record<string, any>; search_url?: string }) {
+  return post('/api/campaigns/', data);
+}
+
+export async function startCampaign(id: number) {
+  return post(`/api/campaigns/${id}/start`, {});
+}
+
+export async function deleteCampaign(id: number) {
+  const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Delete failed');
+  return res.json();
+}

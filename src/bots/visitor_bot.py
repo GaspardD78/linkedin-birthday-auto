@@ -38,7 +38,7 @@ class VisitorBot(BaseLinkedInBot):
         >>>     bot.run()
     """
 
-    def __init__(self, config=None, profiles_limit_override: Optional[int] = None, *args, **kwargs):
+    def __init__(self, config=None, profiles_limit_override: Optional[int] = None, campaign_id: Optional[int] = None, *args, **kwargs):
         """
         Initialise le VisitorBot.
 
@@ -501,8 +501,13 @@ class VisitorBot(BaseLinkedInBot):
         """Sauvegarde les données scrapées."""
         if self.db:
             try:
+                # Add campaign_id context if available
+                if self.campaign_id:
+                    data["campaign_id"] = self.campaign_id
+
                 self.db.save_scraped_profile(**data)
-            except Exception: pass
+            except Exception as e:
+                logger.error(f"Failed to save profile data: {e}")
 
     def _extract_profile_name_from_url(self, url: str) -> str:
         """Extrait le nom du profil depuis l'URL (fallback)."""
@@ -554,6 +559,7 @@ if __name__ == "__main__":
     parser.add_argument("--keywords", nargs="+", help="Mots-clés de recherche")
     parser.add_argument("--location", help="Localisation (ex: Paris, France)")
     parser.add_argument("--limit", type=int, help="Limite de profils à visiter")
+    parser.add_argument("--campaign-id", type=int, help="ID de la campagne (optionnel)")
     parser.add_argument("--dry-run", action="store_true", help="Mode simulation")
 
     args = parser.parse_args()
@@ -571,10 +577,11 @@ if __name__ == "__main__":
             config.dry_run = True
 
         profiles_limit = args.limit if args.limit else None
+        campaign_id = args.campaign_id
 
-        logger.info(f"Starting VisitorBot via CLI with keywords={config.visitor.keywords}, location={config.visitor.location}")
+        logger.info(f"Starting VisitorBot via CLI with keywords={config.visitor.keywords}, location={config.visitor.location}, campaign_id={campaign_id}")
 
-        with VisitorBot(config=config, profiles_limit_override=profiles_limit) as bot:
+        with VisitorBot(config=config, profiles_limit_override=profiles_limit, campaign_id=campaign_id) as bot:
             bot.run()
 
     except Exception as e:
