@@ -237,60 +237,61 @@ class BaseLinkedInBot(ABC):
         """
         Tente de cliquer sur un élément avec plusieurs stratégies de fallback.
         1. Standard click
-        2. Force click (overlay)
-        3. JS click
+        2. Force click (bypass viewport/overlay checks)
+        3. JS click (works even if element is outside viewport)
         4. Dispatch Event
 
         Capture une capture d'écran en cas d'échec total et retourne False sans crasher.
         """
+        error_msg = ""
+
         try:
             # Strategy 1: Standard Click
             locator.click(timeout=timeout)
             return True
         except Exception as e1:
-            # FAIL FAST: If element is not found (Timeout), do not retry with other strategies
-            # as they also require the element to exist.
-            if isinstance(e1, PlaywrightTimeoutError):
-                 logger.warning(f"SmartClick: Element not found (Timeout {timeout}ms). Aborting retries.")
-                 return False
-
+            error_msg = str(e1)
             logger.debug(f"SmartClick: Standard click failed ({e1}). Trying force click...")
+
+        try:
+            # Strategy 2: Force Click (bypasses actionability checks including viewport)
+            locator.click(timeout=timeout, force=True)
+            return True
+        except Exception as e2:
+            logger.debug(f"SmartClick: Force click failed ({e2}). Trying JS click...")
+
+        try:
+            # Strategy 3: JS Click (works even if element is outside viewport)
+            # This is the most reliable for elements in scrollable containers
+            locator.evaluate("el => el.click()")
+            return True
+        except Exception as e3:
+            logger.debug(f"SmartClick: JS click failed ({e3}). Trying Dispatch Event...")
+
+        try:
+            # Strategy 4: Dispatch Event (most compatible with various frameworks)
+            locator.evaluate("el => el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))")
+            return True
+        except Exception as e4:
+            # All failed
+            logger.warning(f"SmartClick: All strategies failed. Last error: {e4}")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            # Safe hint extraction
             try:
-                # Strategy 2: Force Click
-                locator.click(timeout=timeout, force=True)
-                return True
-            except Exception as e2:
-                logger.debug(f"SmartClick: Force click failed ({e2}). Trying JS click...")
-                try:
-                    # Strategy 3: JS Click
-                    locator.evaluate("el => el.click()", timeout=timeout)
-                    return True
-                except Exception as e3:
-                     logger.debug(f"SmartClick: JS click failed ({e3}). Trying Dispatch Event...")
-                     try:
-                         # Strategy 4: Dispatch Event
-                         locator.evaluate("el => el.dispatchEvent(new Event('click', {bubbles: true}))", timeout=timeout)
-                         return True
-                     except Exception as e4:
-                         # All failed
-                         logger.warning(f"SmartClick: All strategies failed. Last error: {e4}")
-                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                hint = "unknown"
+                # Try to get basic selector info safely
+                # str(locator) usually gives 'Locator@selector'
+                raw_str = str(locator)
+                if "@" in raw_str:
+                    hint = raw_str.split("@")[-1].strip().replace("/", "_").replace(":", "")[:30]
+            except:
+                pass
 
-                         # Safe hint extraction
-                         try:
-                             hint = "unknown"
-                             # Try to get basic selector info safely
-                             # str(locator) usually gives 'Locator@selector'
-                             raw_str = str(locator)
-                             if "@" in raw_str:
-                                 hint = raw_str.split("@")[-1].strip().replace("/", "_").replace(":", "")[:30]
-                         except:
-                             pass
+            if self.browser_manager:
+                self.browser_manager.take_screenshot(f"smartclick_failed_{timestamp}_{hint}.png")
 
-                         if self.browser_manager:
-                            self.browser_manager.take_screenshot(f"smartclick_failed_{timestamp}_{hint}.png")
-
-                         return False
+            return False
 
     def _find_element_by_cascade(self, parent: Any, selectors: Union[List[str], str]) -> Optional[Any]:
         """
@@ -348,14 +349,41 @@ class BaseLinkedInBot(ABC):
     def _safe_scroll_to_element(self, element: Locator):
         """
         Scroll l'élément au centre du viewport pour éviter l'occlusion par le Header (Sticky).
-        Utilise evaluate() pour un alignement précis 'center'.
+        Pour les éléments dans des modals scrollables (comme la messagerie LinkedIn),
+        scroll aussi le conteneur parent du modal.
         """
         try:
-            element.evaluate("el => el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' })")
+            # First, try to scroll within the modal container if element is inside one
+            # This handles LinkedIn's messaging modal which has its own scroll context
+            element.evaluate("""el => {
+                // Find scrollable parent container (modal, overlay, etc.)
+                let parent = el.parentElement;
+                while (parent) {
+                    const style = window.getComputedStyle(parent);
+                    const isScrollable = style.overflow === 'auto' || style.overflow === 'scroll' ||
+                                        style.overflowY === 'auto' || style.overflowY === 'scroll';
+                    if (isScrollable && parent.scrollHeight > parent.clientHeight) {
+                        // Scroll element into view within the scrollable container
+                        const rect = el.getBoundingClientRect();
+                        const parentRect = parent.getBoundingClientRect();
+                        const scrollNeeded = rect.bottom - parentRect.bottom + 50; // 50px margin
+                        if (scrollNeeded > 0) {
+                            parent.scrollTop += scrollNeeded;
+                        }
+                        break;
+                    }
+                    parent = parent.parentElement;
+                }
+                // Then scroll element into main viewport
+                el.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
+            }""")
             time.sleep(0.3)
         except Exception as e:
             logger.debug(f"Safe scroll fallback: {e}")
-            element.scroll_into_view_if_needed()
+            try:
+                element.scroll_into_view_if_needed()
+            except Exception:
+                pass
 
     def yield_birthday_contacts(self) -> Generator[Tuple[ContactData, Locator], None, None]:
         """
@@ -651,16 +679,16 @@ class BaseLinkedInBot(ABC):
 
         if heuristic_send_btn:
             logger.info("⚡ Direct Heuristic Action: Clicking Send button immediately.")
-            try:
-                # Scroll into view before clicking to avoid "element outside viewport" errors
-                self._safe_scroll_to_element(heuristic_send_btn)
-                heuristic_send_btn.click(timeout=5000)
+            # Scroll into view before clicking to avoid "element outside viewport" errors
+            self._safe_scroll_to_element(heuristic_send_btn)
+            # Use _smart_click for robust click with fallbacks (force, JS click, dispatch event)
+            if self._smart_click(heuristic_send_btn, timeout=5000):
                 logger.info("✅ Message sent successfully (Heuristic)")
                 MESSAGES_SENT_TOTAL.labels(status="success", type="late" if is_late else "today").inc()
                 self._close_all_message_modals()
                 return True
-            except Exception as e:
-                logger.warning(f"Heuristic click failed: {e}. Falling back to standard selectors.")
+            else:
+                logger.warning("Heuristic click failed. Falling back to standard selectors.")
 
         # Fallback: Standard Selectors
         submit_btn_locator = self.selector_manager.find_element(self.page, "messaging.send_button")
