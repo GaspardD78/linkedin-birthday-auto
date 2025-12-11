@@ -24,7 +24,8 @@ import {
   Infinity as InfinityIcon,
   AlertTriangle,
   Settings as SettingsIcon,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -194,9 +195,10 @@ export function BotControlPanel() {
                 onClick={() => handleStop(type === 'unlimited' ? 'birthday' : type, activeJobId)}
                 disabled={loading === stopKey}
                 className="flex-1"
+                aria-label={`Arrêter ${title}`}
               >
                 {loading === stopKey ? (
-                  <span className="animate-spin mr-2">⏳</span>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Square className="h-4 w-4 mr-2 fill-current" />
                 )}
@@ -210,9 +212,10 @@ export function BotControlPanel() {
                   onClick={() => handleStart(type)}
                   disabled={!!loading || (status?.worker_status === 'working')}
                   className={`flex-1 ${colorClasses.button}`}
+                  aria-label={`Démarrer ${title}`}
                 >
                   {loading === type ? (
-                    <span className="animate-spin mr-2">⏳</span>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Play className="h-4 w-4 mr-2 fill-current" />
                   )}
@@ -223,6 +226,7 @@ export function BotControlPanel() {
                     variant="outline"
                     size="sm"
                     className="border-slate-700 hover:bg-slate-800"
+                    aria-label={`Paramètres ${title}`}
                   >
                     <SettingsIcon className="h-4 w-4" />
                   </Button>
@@ -243,7 +247,7 @@ export function BotControlPanel() {
           Pilotage des Bots
         </CardTitle>
         <CardDescription>
-          Contrôle centralisé de tous les processus d'automatisation
+          Contrôle centralisé de tous les processus d&apos;automatisation
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -315,7 +319,7 @@ export function BotControlPanel() {
         {/* Status Footer */}
         {status?.active_jobs && status.active_jobs.length > 0 ? (
           <div className="text-center text-sm text-emerald-400 pt-2 border-t border-slate-800">
-            ✓ {status.active_jobs.length} job{status.active_jobs.length > 1 ? 's' : ''} en cours d'exécution
+            ✓ {status.active_jobs.length} job{status.active_jobs.length > 1 ? 's' : ''} en cours d&apos;exécution
           </div>
         ) : (
           <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-800">

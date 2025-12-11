@@ -21,7 +21,8 @@ import {
   Gift,
   Users,
   Infinity as InfinityIcon,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -119,6 +120,7 @@ export function BotControlsWidget() {
     const running = isRunning(type === 'unlimited' ? 'birthday' : type)
     const activeJobId = getJobId(type === 'unlimited' ? 'birthday' : type)
     const stopKey = `stop-${type}`
+    const limitInputId = `limit-input-${type}`
 
     return (
       <div className="flex items-center justify-between p-4 border rounded-lg bg-card/50 hover:bg-card/80 transition-colors">
@@ -146,11 +148,11 @@ export function BotControlsWidget() {
         <div className="flex items-center gap-2">
           {showLimitInput && !running && (
              <div className="flex items-center gap-2 mr-2">
-               <Label htmlFor="limit-input" className="text-xs text-muted-foreground whitespace-nowrap">
+               <Label htmlFor={limitInputId} className="text-xs text-muted-foreground whitespace-nowrap">
                  Limite (opt.)
                </Label>
                <Input
-                 id="limit-input"
+                 id={limitInputId}
                  type="number"
                  placeholder="Défaut"
                  className="w-20 h-8 text-xs bg-slate-950 border-slate-700"
@@ -167,9 +169,10 @@ export function BotControlsWidget() {
               size="sm"
               onClick={() => handleStop(type === 'unlimited' ? 'birthday' : type, activeJobId)}
               disabled={loading === stopKey}
+              aria-label={`Arrêt d'urgence ${title}`}
             >
               {loading === stopKey ? (
-                <span className="animate-spin mr-2">⏳</span>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Square className="h-4 w-4 mr-2 fill-current" />
               )}
@@ -181,9 +184,10 @@ export function BotControlsWidget() {
               size="sm"
               onClick={() => handleStart(type)}
               disabled={!!loading || (status?.worker_status === 'working')}
+              aria-label={`Démarrer ${title}`}
             >
               {loading === type ? (
-                 <span className="animate-spin mr-2">⏳</span>
+                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                  <Play className="h-4 w-4 mr-2 fill-current" />
               )}
@@ -203,7 +207,7 @@ export function BotControlsWidget() {
           Pilotage des Bots
         </CardTitle>
         <CardDescription>
-          Contrôle granulaire des processus d'automatisation
+          Contrôle granulaire des processus d&apos;automatisation
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
