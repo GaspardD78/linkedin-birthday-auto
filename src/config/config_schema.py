@@ -312,6 +312,44 @@ class VisitorRetryConfig(BaseModel):
     )
 
 
+class SearchFiltersConfig(BaseModel):
+    """Configuration des filtres avancés de recherche LinkedIn (mode recruteur)."""
+
+    model_config = ConfigDict(frozen=False)
+
+    # Filtres de base
+    keywords_exclude: list[str] = Field(default_factory=list, description="Mots-clés à exclure")
+
+    # Filtres avancés LinkedIn
+    current_company: list[str] = Field(default_factory=list, description="Entreprises actuelles")
+    past_company: list[str] = Field(default_factory=list, description="Entreprises passées")
+    school: list[str] = Field(default_factory=list, description="Écoles/Universités")
+    industry: list[str] = Field(default_factory=list, description="Secteurs d'activité")
+
+    # Niveau hiérarchique (LinkedIn: 1=Entry, 2=Associate, 3=Mid-Senior, 4=Director, 5=VP, 6=CXO)
+    seniority_level: list[str] = Field(
+        default_factory=list,
+        description="Niveaux hiérarchiques (Entry, Associate, Mid-Senior, Director, VP, CXO)"
+    )
+
+    # Type de poste
+    title: list[str] = Field(default_factory=list, description="Titres de postes recherchés")
+    title_exclude: list[str] = Field(default_factory=list, description="Titres à exclure")
+
+    # Filtres de disponibilité
+    open_to_work_only: bool = Field(default=False, description="Uniquement les profils 'Open to Work'")
+
+    # Score minimum
+    min_fit_score: float = Field(default=0.0, ge=0, le=100, description="Score de pertinence minimum")
+
+    # Langues
+    languages: list[str] = Field(default_factory=list, description="Langues parlées")
+
+    # Années d'expérience
+    years_experience_min: Optional[int] = Field(default=None, ge=0, le=50, description="Années d'expérience minimum")
+    years_experience_max: Optional[int] = Field(default=None, ge=0, le=50, description="Années d'expérience maximum")
+
+
 class VisitorConfig(BaseModel):
     """Configuration complète pour la visite de profils LinkedIn."""
 
@@ -327,6 +365,9 @@ class VisitorConfig(BaseModel):
     limits: VisitorLimitsConfig = Field(default_factory=VisitorLimitsConfig)
     delays: VisitorDelaysConfig = Field(default_factory=VisitorDelaysConfig)
     retry: VisitorRetryConfig = Field(default_factory=VisitorRetryConfig)
+
+    # Filtres avancés (mode recruteur)
+    search_filters: SearchFiltersConfig = Field(default_factory=SearchFiltersConfig)
 
     @field_validator("keywords")
     @classmethod

@@ -10,11 +10,13 @@ import {
   KeyRound,
   History,
   LogOut,
-  UserX
+  UserX,
+  Target
 } from "lucide-react"
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Tableau de Bord", description: "Pilotage & monitoring" },
+  { href: "/sourcing", icon: Target, label: "Sourcing", description: "Recherche & export profils" },
   { href: "/history", icon: History, label: "Historique", description: "Détails des exécutions" },
   { href: "/blacklist", icon: UserX, label: "Blacklist", description: "Contacts exclus" },
   { href: "/logs", icon: Terminal, label: "Logs", description: "Console en temps réel" },
