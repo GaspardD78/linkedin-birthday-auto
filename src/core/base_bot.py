@@ -26,11 +26,25 @@ from ..monitoring.metrics import BIRTHDAYS_PROCESSED, MESSAGES_SENT_TOTAL
 from ..monitoring.prometheus import PrometheusClient
 from ..utils.exceptions import (
     SessionExpiredError,
+    AccountRestrictedError,
+    CaptchaRequiredError,
+    LinkedInBotError,
+    is_critical_error,
 )
 from ..utils.logging import get_logger
 from ..utils.date_parser import DateParsingService
 
 logger = get_logger(__name__)
+
+# Import conditionnel pour éviter les erreurs d'import circulaire
+def _get_notification_service(db_path: str = "/app/data/linkedin.db"):
+    """Lazy import du service de notification pour éviter import circulaire."""
+    try:
+        from ..services.notification_sync import get_sync_notification_service
+        return get_sync_notification_service(db_path)
+    except Exception as e:
+        logger.debug(f"Notification service not available: {e}")
+        return None
 
 @dataclass
 class ContactData:
@@ -66,6 +80,9 @@ class BaseLinkedInBot(ABC):
         self.birthday_messages: list[str] = []
         self.late_birthday_messages: list[str] = []
 
+        # Database reference (initialized by child classes)
+        self.db = None
+
         # Stats d'exécution
         self.stats = {
             "messages_sent": 0,
@@ -75,11 +92,23 @@ class BaseLinkedInBot(ABC):
             "end_time": None,
         }
 
+        # Service de notification (initialisé en lazy)
+        self._notification_service = None
+        self._critical_error_occurred = False
+        self._critical_error_message = None
+
         logger.info(
             f"{self.__class__.__name__} initialized",
             mode=self.config.bot_mode,
             dry_run=self.config.dry_run,
         )
+
+    def _get_notifier(self):
+        """Retourne le service de notification (lazy init)."""
+        if self._notification_service is None:
+            db_path = self.config.database.db_path if self.config.database.enabled else "/app/data/linkedin.db"
+            self._notification_service = _get_notification_service(db_path)
+        return self._notification_service
 
     # ═══════════════════════════════════════════════════════════════
     # MÉTHODES ABSTRAITES
@@ -102,6 +131,12 @@ class BaseLinkedInBot(ABC):
     def setup(self) -> None:
         logger.info("Setting up bot...")
         self.stats["start_time"] = datetime.now().isoformat()
+
+        # Notification de démarrage
+        notifier = self._get_notifier()
+        if notifier:
+            notifier.notify_bot_start()
+
         self._load_messages()
         self.auth_manager = AuthManager(config=self.config.auth)
         auth_path = self.auth_manager.prepare_auth_state()
@@ -126,7 +161,58 @@ class BaseLinkedInBot(ABC):
             self.auth_manager.cleanup(keep_file=keep_file)
         if self.prometheus_client:
             self.prometheus_client.write_metrics()
+
+        # Notifications de fin d'exécution
+        notifier = self._get_notifier()
+        if notifier:
+            if self._critical_error_occurred:
+                # Erreur critique détectée pendant l'exécution
+                notifier.notify_error(
+                    self._critical_error_message or "Une erreur critique s'est produite",
+                    f"Bot: {self.__class__.__name__}, Errors: {self.stats['errors']}"
+                )
+            elif self.stats["errors"] == 0 and self.stats["messages_sent"] > 0:
+                # Succès complet
+                notifier.notify_success(self.stats["messages_sent"])
+
+            # Notification d'arrêt
+            notifier.notify_bot_stop()
+
         logger.info("✅ Bot teardown completed")
+
+    def _handle_critical_error(self, error: Exception, context: str = "") -> None:
+        """
+        Gère une erreur critique et envoie une notification immédiate.
+
+        Args:
+            error: L'exception qui s'est produite
+            context: Contexte additionnel sur l'erreur
+        """
+        self._critical_error_occurred = True
+        error_type = type(error).__name__
+
+        # Déterminer le type d'erreur pour le message
+        if isinstance(error, SessionExpiredError):
+            self._critical_error_message = "Session LinkedIn expirée - Reconnexion requise"
+            notifier = self._get_notifier()
+            if notifier:
+                notifier.notify_cookies_expiry()
+        elif isinstance(error, AccountRestrictedError):
+            self._critical_error_message = "Compte LinkedIn restreint - Vérification manuelle requise"
+            notifier = self._get_notifier()
+            if notifier:
+                notifier.notify_linkedin_blocked("Compte restreint")
+        elif isinstance(error, CaptchaRequiredError):
+            self._critical_error_message = "Captcha requis par LinkedIn - Vérification manuelle requise"
+            notifier = self._get_notifier()
+            if notifier:
+                notifier.notify_linkedin_blocked("Captcha requis")
+        else:
+            self._critical_error_message = f"{error_type}: {str(error)}"
+            if context:
+                self._critical_error_message += f" ({context})"
+
+        logger.error(f"Critical error handled: {self._critical_error_message}")
 
     def _check_connectivity(self) -> bool:
         try:
@@ -546,6 +632,25 @@ class BaseLinkedInBot(ABC):
             logger.warning(f"Could not check contact history: {e}")
             return False
 
+    def _is_blacklisted(self, contact_name: str, profile_url: Optional[str] = None) -> bool:
+        """
+        Vérifie si un contact est dans la blacklist.
+
+        Args:
+            contact_name: Nom du contact à vérifier
+            profile_url: URL du profil LinkedIn (optionnel)
+
+        Returns:
+            True si le contact est blacklisté
+        """
+        if not self.db:
+            return False
+        try:
+            return self.db.is_blacklisted(contact_name, profile_url)
+        except Exception as e:
+            logger.warning(f"Could not check blacklist: {e}")
+            return False
+
     def send_birthday_message(self, contact_element, is_late: bool = False, days_late: int = 0) -> bool:
         full_name = self.extract_contact_name(contact_element)
         if not full_name:
@@ -557,6 +662,11 @@ class BaseLinkedInBot(ABC):
 
         if not full_name:
             logger.warning("Could not extract name from contact element/page")
+            return False
+
+        # Vérification blacklist
+        if self._is_blacklisted(full_name):
+            logger.info(f"🚫 Skipping {full_name} - contact is blacklisted")
             return False
 
         if self._was_contacted_today(full_name):

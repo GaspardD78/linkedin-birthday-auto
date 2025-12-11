@@ -375,6 +375,21 @@ class Database:
             """
             )
 
+            # Table blacklist - Contacts exclus des envois automatiques
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS blacklist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    contact_name TEXT NOT NULL,
+                    linkedin_url TEXT,
+                    reason TEXT,
+                    added_at TEXT NOT NULL,
+                    added_by TEXT DEFAULT 'user',
+                    is_active BOOLEAN DEFAULT 1
+                )
+            """
+            )
+
             # Index pour améliorer les performances
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)"
@@ -409,6 +424,15 @@ class Database:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_bot_executions_start_time ON bot_executions(start_time)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_blacklist_contact_name ON blacklist(contact_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_blacklist_linkedin_url ON blacklist(linkedin_url)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_blacklist_is_active ON blacklist(is_active)"
             )
 
             # Migration: Check columns for scraped_profiles
@@ -1751,6 +1775,209 @@ class Database:
         else:
             logger.debug("Auto-vacuum skipped: not needed")
             return None
+
+    # ==================== BLACKLIST ====================
+
+    @retry_on_lock()
+    def add_to_blacklist(
+        self,
+        contact_name: str,
+        linkedin_url: Optional[str] = None,
+        reason: Optional[str] = None,
+        added_by: str = "user"
+    ) -> int:
+        """
+        Ajoute un contact à la blacklist.
+
+        Args:
+            contact_name: Nom du contact à bloquer
+            linkedin_url: URL du profil LinkedIn (optionnel)
+            reason: Raison du blocage (optionnel)
+            added_by: Qui a ajouté (user, system, import)
+
+        Returns:
+            ID de l'entrée créée
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+
+            # Vérifier si déjà dans la blacklist
+            cursor.execute(
+                """
+                SELECT id FROM blacklist
+                WHERE contact_name = ? OR (linkedin_url IS NOT NULL AND linkedin_url = ?)
+                """,
+                (contact_name, linkedin_url)
+            )
+            existing = cursor.fetchone()
+
+            if existing:
+                # Réactiver si désactivé
+                cursor.execute(
+                    "UPDATE blacklist SET is_active = 1, reason = ?, added_at = ? WHERE id = ?",
+                    (reason, now, existing["id"])
+                )
+                logger.info(f"Blacklist entry reactivated for: {contact_name}")
+                return existing["id"]
+
+            cursor.execute(
+                """
+                INSERT INTO blacklist (contact_name, linkedin_url, reason, added_at, added_by, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (contact_name, linkedin_url, reason, now, added_by)
+            )
+            logger.info(f"Contact added to blacklist: {contact_name}")
+            return cursor.lastrowid
+
+    @retry_on_lock()
+    def remove_from_blacklist(self, blacklist_id: int) -> bool:
+        """
+        Supprime (désactive) une entrée de la blacklist.
+
+        Args:
+            blacklist_id: ID de l'entrée à supprimer
+
+        Returns:
+            True si supprimé avec succès
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE blacklist SET is_active = 0 WHERE id = ?",
+                (blacklist_id,)
+            )
+            success = cursor.rowcount > 0
+            if success:
+                logger.info(f"Blacklist entry {blacklist_id} deactivated")
+            return success
+
+    @retry_on_lock()
+    def is_blacklisted(self, contact_name: str, linkedin_url: Optional[str] = None) -> bool:
+        """
+        Vérifie si un contact est dans la blacklist.
+
+        Args:
+            contact_name: Nom du contact à vérifier
+            linkedin_url: URL du profil LinkedIn (optionnel, pour vérification supplémentaire)
+
+        Returns:
+            True si le contact est blacklisté
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Vérification par nom (case-insensitive) ou URL
+            if linkedin_url:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM blacklist
+                    WHERE is_active = 1 AND (
+                        LOWER(contact_name) = LOWER(?)
+                        OR (linkedin_url IS NOT NULL AND linkedin_url = ?)
+                    )
+                    """,
+                    (contact_name, linkedin_url)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM blacklist
+                    WHERE is_active = 1 AND LOWER(contact_name) = LOWER(?)
+                    """,
+                    (contact_name,)
+                )
+
+            return cursor.fetchone()["count"] > 0
+
+    @retry_on_lock()
+    def get_blacklist(self, include_inactive: bool = False) -> list[dict]:
+        """
+        Récupère la liste complète des contacts blacklistés.
+
+        Args:
+            include_inactive: Inclure les entrées désactivées
+
+        Returns:
+            Liste des entrées de la blacklist
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            if include_inactive:
+                cursor.execute(
+                    """
+                    SELECT id, contact_name, linkedin_url, reason, added_at, added_by, is_active
+                    FROM blacklist
+                    ORDER BY added_at DESC
+                    """
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, contact_name, linkedin_url, reason, added_at, added_by, is_active
+                    FROM blacklist
+                    WHERE is_active = 1
+                    ORDER BY added_at DESC
+                    """
+                )
+
+            return [dict(row) for row in cursor.fetchall()]
+
+    @retry_on_lock()
+    def get_blacklist_count(self) -> int:
+        """Retourne le nombre de contacts blacklistés actifs."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM blacklist WHERE is_active = 1")
+            return cursor.fetchone()["count"]
+
+    @retry_on_lock()
+    def update_blacklist_entry(
+        self,
+        blacklist_id: int,
+        contact_name: Optional[str] = None,
+        linkedin_url: Optional[str] = None,
+        reason: Optional[str] = None
+    ) -> bool:
+        """
+        Met à jour une entrée de la blacklist.
+
+        Args:
+            blacklist_id: ID de l'entrée à modifier
+            contact_name: Nouveau nom (optionnel)
+            linkedin_url: Nouvelle URL (optionnel)
+            reason: Nouvelle raison (optionnel)
+
+        Returns:
+            True si mis à jour avec succès
+        """
+        updates = []
+        params = []
+
+        if contact_name is not None:
+            updates.append("contact_name = ?")
+            params.append(contact_name)
+        if linkedin_url is not None:
+            updates.append("linkedin_url = ?")
+            params.append(linkedin_url)
+        if reason is not None:
+            updates.append("reason = ?")
+            params.append(reason)
+
+        if not updates:
+            return False
+
+        params.append(blacklist_id)
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"UPDATE blacklist SET {', '.join(updates)} WHERE id = ?",
+                tuple(params)
+            )
+            return cursor.rowcount > 0
 
 
 # Fonction utilitaire pour obtenir l'instance de base de données (thread-safe)
