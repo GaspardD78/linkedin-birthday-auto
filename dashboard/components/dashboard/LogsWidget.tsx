@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Terminal, RefreshCw, Plug, Download, Copy, Filter, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { getLogs } from "../../lib/api"
 
 type LogLevel = 'ALL' | 'ERROR' | 'WARNING' | 'INFO' | 'SUCCESS' | 'DEBUG'
@@ -47,38 +47,21 @@ export function LogsWidget() {
     }
   }
 
-  const parseLogLine = (line: string): ParsedLog => {
-    // Regex pour extraire: [timestamp] [level] message
-    const match = line.match(/\[([\d\-\s:]+)\]\s*\[(\w+)\]\s*(.+)/)
-    if (match) {
-      return {
-        timestamp: match[1].trim(),
-        level: match[2].toUpperCase(),
-        message: match[3].trim(),
-        rawLine: line
-      }
-    }
-    // Si pas de match, retourner une ligne simple
-    return {
-      timestamp: '',
-      level: 'INFO',
-      message: line,
-      rawLine: line
-    }
-  }
-
   const fetchLogs = async () => {
     setLoading(true)
     try {
       const logEntries = await getLogs()
-      const logContent = logEntries.map(log => `[${log.timestamp}] [${log.level}] ${log.message}`).join('\n');
-      setLogs(logContent)
 
-      // Parser les logs
-      const parsed = logContent.split('\n')
-        .filter(line => line.trim())
-        .map(parseLogLine)
+      // Optimization: Transform directly from API objects instead of serializing/deserializing
+      const parsed = logEntries.map(log => ({
+        timestamp: log.timestamp,
+        level: (log.level || 'INFO').toUpperCase(), // Ensure level is uppercase for color mapping
+        message: log.message,
+        rawLine: `[${log.timestamp}] [${log.level}] ${log.message}`
+      }))
+
       setParsedLogs(parsed)
+      setLogs(parsed.map(p => p.rawLine).join('\n'))
     } catch (error) {
       console.error("Failed to fetch logs", error)
       setLogs("❌ Error loading logs... Vérifiez que le bot est démarré.")
@@ -103,10 +86,10 @@ export function LogsWidget() {
     URL.revokeObjectURL(url)
   }
 
-  const getFilteredLogs = (): ParsedLog[] => {
+  const filteredLogs = useMemo(() => {
     if (filterLevel === 'ALL') return parsedLogs
     return parsedLogs.filter(log => log.level === filterLevel)
-  }
+  }, [parsedLogs, filterLevel])
 
   const getLevelColor = (level: string): string => {
     switch (level) {
@@ -130,8 +113,8 @@ export function LogsWidget() {
     }
   }
 
-  const getLevelStats = () => {
-    const stats = {
+  const stats = useMemo(() => {
+    const counts = {
       ERROR: 0,
       WARNING: 0,
       INFO: 0,
@@ -140,12 +123,12 @@ export function LogsWidget() {
     }
     parsedLogs.forEach(log => {
       const level = log.level === 'WARN' ? 'WARNING' : log.level
-      if (level in stats) {
-        stats[level as keyof typeof stats]++
+      if (level in counts) {
+        counts[level as keyof typeof counts]++
       }
     })
-    return stats
-  }
+    return counts
+  }, [parsedLogs])
 
   useEffect(() => {
     checkLogsStatus()
@@ -159,9 +142,6 @@ export function LogsWidget() {
       clearInterval(statusInterval)
     }
   }, [])
-
-  const stats = getLevelStats()
-  const filteredLogs = getFilteredLogs()
 
   return (
     <Card className="bg-slate-900 border-slate-800 h-full flex flex-col">
