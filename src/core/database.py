@@ -289,6 +289,7 @@ class Database:
                 """
                 CREATE TABLE IF NOT EXISTS scraped_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    campaign_id INTEGER,
                     profile_url TEXT UNIQUE NOT NULL,
                     first_name TEXT,
                     last_name TEXT,
@@ -302,7 +303,8 @@ class Database:
                     skills TEXT,
                     certifications TEXT,
                     fit_score REAL,
-                    scraped_at TEXT NOT NULL
+                    scraped_at TEXT NOT NULL,
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns (id)
                 )
             """
             )
@@ -414,10 +416,11 @@ class Database:
                 "summary": "TEXT",
                 "skills": "TEXT",
                 "certifications": "TEXT",
-                "fit_score": "REAL"
+                "fit_score": "REAL",
+                "campaign_id": "INTEGER"
             }
             # Whitelist stricte pour ALTER TABLE (sécurité SQL injection)
-            ALLOWED_COLUMNS = {"headline", "summary", "skills", "certifications", "fit_score"}
+            ALLOWED_COLUMNS = {"headline", "summary", "skills", "certifications", "fit_score", "campaign_id"}
             ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "BLOB"}
 
             for col, dtype in new_columns.items():
@@ -923,6 +926,7 @@ class Database:
         skills: Optional[list[str]] = None,
         certifications: Optional[list[str]] = None,
         fit_score: Optional[float] = None,
+        campaign_id: Optional[int] = None,
     ) -> int:
         """
         Enregistre ou met à jour (UPSERT) les données scrapées d'un profil.
@@ -935,12 +939,12 @@ class Database:
             certs_json = json.dumps(certifications) if certifications else None
 
             # UPSERT: INSERT OR REPLACE
-            cursor.execute(
-                """
+            # Note: campaign_id n'est mis à jour que s'il est fourni
+            sql = """
                 INSERT INTO scraped_profiles
                 (profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
-                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at, campaign_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(profile_url) DO UPDATE SET
                     first_name = excluded.first_name,
                     last_name = excluded.last_name,
@@ -955,24 +959,17 @@ class Database:
                     certifications = excluded.certifications,
                     fit_score = excluded.fit_score,
                     scraped_at = excluded.scraped_at
-            """,
-                (
-                    profile_url,
-                    first_name,
-                    last_name,
-                    full_name,
-                    headline,
-                    summary,
-                    relationship_level,
-                    current_company,
-                    education,
-                    years_experience,
-                    skills_json,
-                    certs_json,
-                    fit_score,
-                    scraped_at,
-                ),
-            )
+            """
+
+            params = [
+                profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
+                current_company, education, years_experience, skills_json, certs_json, fit_score, scraped_at, campaign_id
+            ]
+
+            if campaign_id is not None:
+                sql += ", campaign_id = excluded.campaign_id"
+
+            cursor.execute(sql, params)
 
             return cursor.lastrowid
 

@@ -40,6 +40,7 @@ import secrets
 from pathlib import Path
 import sys
 from typing import Optional
+from logging.handlers import RotatingFileHandler
 
 # Ajouter le répertoire src au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
@@ -61,10 +62,16 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
 
     handlers = [logging.StreamHandler()]
 
+    # Use RotatingFileHandler to prevent SD card saturation
+    # 10MB per file, max 3 files = 30MB total
     if log_file:
-        handlers.append(logging.FileHandler(log_file))
+        handlers.append(RotatingFileHandler(
+            log_file, maxBytes=10*1024*1024, backupCount=3
+        ))
     else:
-        handlers.append(logging.FileHandler("logs/linkedin_bot.log"))
+        handlers.append(RotatingFileHandler(
+            "logs/linkedin_bot.log", maxBytes=10*1024*1024, backupCount=3
+        ))
 
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
@@ -129,7 +136,9 @@ def ensure_api_key() -> None:
             logger.warning("🛑 SECURITY ALERT: NEW API KEY GENERATED")
             logger.warning("═" * 60)
             logger.warning(f"New API_KEY has been written to {env_path.absolute()}")
-            logger.warning(f"KEY: {new_key}")
+            # Mask the key in logs (show first 8 and last 4 chars)
+            masked_key = f"{new_key[:8]}...{new_key[-4:]}"
+            logger.warning(f"KEY: {masked_key}")
             logger.warning("👉 Please update your Dashboard configuration or .env file with this key.")
             logger.warning("═" * 60)
 

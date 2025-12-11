@@ -78,3 +78,40 @@ def run_profile_visit_task(
     except Exception as e:
         logger.error("task_failed", error=str(e), exc_info=True)
         return {"success": False, "error": str(e), "bot_type": "visitor"}
+
+
+def run_visitor_task(
+    keywords: list[str],
+    location: str,
+    limit: int = 10,
+    campaign_id: int = None,
+    dry_run: bool = False
+) -> dict[str, Any]:
+    """
+    Task to run the VisitorBot for a specific campaign.
+    Wraps the VisitorBot with campaign context.
+    """
+    logger.info("task_start", type="visitor_campaign", campaign_id=campaign_id)
+    try:
+        config = get_config()
+
+        # Override config with campaign parameters
+        config.visitor.keywords = keywords
+        config.visitor.location = location
+        if dry_run:
+            config.dry_run = True
+
+        with VisitorBot(
+            config=config,
+            profiles_limit_override=limit,
+            campaign_id=campaign_id
+        ) as bot:
+            return bot.run()
+
+    except InvalidAuthStateError:
+        error_msg = "Authentication missing. Please login via Dashboard."
+        logger.error(f"task_auth_error: {error_msg}")
+        return {"success": False, "error": error_msg}
+    except Exception as e:
+        logger.error("task_failed", error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
