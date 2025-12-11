@@ -614,14 +614,12 @@ class BaseLinkedInBot(ABC):
         # -------------------------------
 
         # 2. Recherche du bouton Message
+        # IMPORTANT: La recherche doit être strictement scopée à l'élément contact (card)
+        # pour éviter de cliquer sur le bouton d'un autre contact (ce qui causerait une erreur de destinataire).
         msg_btn_locator = self.selector_manager.find_element(contact_element, "messaging.open_button_heuristic")
 
-        # Fallback page globale
         if not msg_btn_locator:
-            msg_btn_locator = self.selector_manager.find_element(self.page, "messaging.open_button_heuristic")
-
-        if not msg_btn_locator:
-            logger.warning("Bouton Message introuvable (Sélecteur non trouvé)")
+            logger.warning("Bouton Message introuvable DANS LA CARTE (Sélecteur non trouvé). Abandon pour éviter erreur de personne.")
             return False
 
         # 3. Clic avec Timeout réduit (5s au lieu de 30s/60s)
@@ -653,7 +651,38 @@ class BaseLinkedInBot(ABC):
         else:
              return False
 
-        # 3. Message Selection
+        # 3. VERIFICATION ULTIME : Le nom dans le modal correspond-il ?
+        # C'est la protection finale contre le bug "Christelle -> Benjamin"
+        try:
+            # Sélecteur pour le titre du modal (ex: "Nouveau message pour Benjamin")
+            # LinkedIn utilise souvent: h2#message-overlay-title-... ou .msg-overlay-bubble-header__title
+            modal_header_locator = self.page.locator(".msg-overlay-bubble-header__title, h2[id*='message-overlay-title'], .msg-entity-lockup__entity-title").last
+
+            if modal_header_locator.is_visible(timeout=3000):
+                modal_name = modal_header_locator.inner_text().strip()
+
+                # Normalisation pour comparaison (minuscule, sans accents)
+                def normalize(s):
+                    return s.lower().replace('é', 'e').replace('è', 'e').split()[0] # Comparaison sur le prénom
+
+                target_first = normalize(full_name)
+                modal_first = normalize(modal_name)
+
+                # On vérifie si le prénom cible est dans le titre du modal
+                if target_first not in modal_name.lower().replace('é', 'e').replace('è', 'e'):
+                     logger.error(f"⛔ SECURITY BLOCK: Name mismatch! Target: '{full_name}' vs Modal: '{modal_name}'. Aborting to prevent error.")
+                     self._close_all_message_modals()
+                     return False
+                else:
+                    logger.info(f"✅ Recipient verified: '{modal_name}' matches '{full_name}'")
+            else:
+                 logger.debug("⚠️ Modal header not found/visible, skipping name verification (risky but proceeding)")
+
+        except Exception as e:
+            logger.warning(f"Name verification failed (non-blocking): {e}")
+
+
+        # 4. Message Selection
         message_list = self.late_birthday_messages if is_late else self.birthday_messages
         if not message_list:
             logger.warning("No messages loaded")
@@ -665,7 +694,7 @@ class BaseLinkedInBot(ABC):
             logger.info(f"[DRY RUN] Would send: '{message}'")
             return True
 
-        # 4. Fill & Send
+        # 5. Fill & Send
         try:
             # Use fill directly on the robust selector
             message_box.fill(message)
