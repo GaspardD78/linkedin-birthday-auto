@@ -393,6 +393,9 @@ class Database:
             )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)")
             cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_contacts_created_at ON contacts(created_at)"
+            )
+            cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_url ON scraped_profiles(profile_url)"
             )
             cursor.execute(
@@ -685,13 +688,28 @@ class Database:
             if date is None:
                 date = datetime.now().date().isoformat()
 
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count FROM birthday_messages
-                WHERE DATE(sent_at) = ?
-            """,
-                (date,),
-            )
+            # Optimization: Use range search instead of DATE() function to use index
+            try:
+                # date is expected to be YYYY-MM-DD
+                date_obj = datetime.strptime(date, "%Y-%m-%d")
+                next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM birthday_messages
+                    WHERE sent_at >= ? AND sent_at < ?
+                    """,
+                    (date, next_day),
+                )
+            except ValueError:
+                # Fallback for non-standard date formats
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM birthday_messages
+                    WHERE DATE(sent_at) = ?
+                    """,
+                    (date,),
+                )
 
             return cursor.fetchone()["count"]
 
@@ -757,13 +775,28 @@ class Database:
             if date is None:
                 date = datetime.now().date().isoformat()
 
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count FROM profile_visits
-                WHERE DATE(visited_at) = ?
-            """,
-                (date,),
-            )
+            # Optimization: Use range search instead of DATE() function to use index
+            try:
+                # date is expected to be YYYY-MM-DD
+                date_obj = datetime.strptime(date, "%Y-%m-%d")
+                next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM profile_visits
+                    WHERE visited_at >= ? AND visited_at < ?
+                    """,
+                    (date, next_day),
+                )
+            except ValueError:
+                # Fallback for non-standard date formats
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) as count FROM profile_visits
+                    WHERE DATE(visited_at) = ?
+                    """,
+                    (date,),
+                )
 
             return cursor.fetchone()["count"]
 
@@ -1420,7 +1453,7 @@ class Database:
                     COUNT(*) as messages_count,
                     SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END) as late_messages
                 FROM birthday_messages
-                WHERE DATE(sent_at) >= ?
+                WHERE sent_at >= ?
                 GROUP BY DATE(sent_at)
                 ORDER BY date DESC
             """,
@@ -1435,7 +1468,7 @@ class Database:
                     DATE(visited_at) as date,
                     COUNT(*) as visits_count
                 FROM profile_visits
-                WHERE DATE(visited_at) >= ?
+                WHERE visited_at >= ?
                 GROUP BY DATE(visited_at)
                 ORDER BY date DESC
             """,
@@ -1450,7 +1483,7 @@ class Database:
                     DATE(created_at) as date,
                     COUNT(*) as contacts_count
                 FROM contacts
-                WHERE DATE(created_at) >= ?
+                WHERE created_at >= ?
                 GROUP BY DATE(created_at)
                 ORDER BY date DESC
             """,
