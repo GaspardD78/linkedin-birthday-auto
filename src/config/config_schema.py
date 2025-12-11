@@ -350,6 +350,16 @@ class SearchFiltersConfig(BaseModel):
     years_experience_max: Optional[int] = Field(default=None, ge=0, le=50, description="Années d'expérience maximum")
 
 
+class InvitationManagerConfig(BaseModel):
+    """Configuration du nettoyage des invitations."""
+
+    model_config = ConfigDict(frozen=False)
+
+    enabled: bool = Field(default=False, description="Activer le nettoyage automatique")
+    threshold_months: int = Field(default=3, ge=1, le=24, description="Seuil d'ancienneté en mois")
+    max_withdrawals_per_run: int = Field(default=30, ge=1, le=100, description="Max retraits par exécution")
+
+
 class VisitorConfig(BaseModel):
     """Configuration complète pour la visite de profils LinkedIn."""
 
@@ -401,6 +411,7 @@ class LinkedInBotConfig(BaseModel):
     delays: DelaysConfig = Field(default_factory=DelaysConfig)
     messages: MessagesConfig = Field(default_factory=MessagesConfig)
     birthday_filter: BirthdayFilterConfig = Field(default_factory=BirthdayFilterConfig)
+    invitation_manager: InvitationManagerConfig = Field(default_factory=InvitationManagerConfig)
     visitor: VisitorConfig = Field(default_factory=VisitorConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     debug: DebugConfig = Field(default_factory=DebugConfig)

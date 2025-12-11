@@ -66,6 +66,40 @@ class DateParsingService:
     }
 
     @classmethod
+    def parse_elapsed_days(cls, text: str) -> Optional[int]:
+        """
+        Parses text like "2 weeks ago" or "il y a 2 mois" and returns days.
+        Used for Invitation Manager to detect stale requests.
+        """
+        if not text:
+            return None
+        text = text.lower().strip()
+
+        # 1. English patterns
+        # "2 weeks ago", "1 month ago", "3 days ago"
+        en_match = re.search(r"(\d+)\s*(day|week|month|year)s?\s*ago", text)
+        if en_match:
+            val = int(en_match.group(1))
+            unit = en_match.group(2)
+            if "day" in unit: return val
+            if "week" in unit: return val * 7
+            if "month" in unit: return val * 30
+            if "year" in unit: return val * 365
+
+        # 2. French patterns
+        # "il y a 2 semaines", "il y a 1 mois", "il y a 3 jours"
+        fr_match = re.search(r"il y a\s*(\d+)\s*(jour|semaine|mois|an|année)s?", text)
+        if fr_match:
+            val = int(fr_match.group(1))
+            unit = fr_match.group(2)
+            if "jour" in unit: return val
+            if "semaine" in unit: return val * 7
+            if "mois" in unit: return val * 30
+            if "an" in unit: return val * 365
+
+        return None
+
+    @classmethod
     @lru_cache(maxsize=256)  # 🚀 Cache les 256 dernières conversions
     def parse_days_diff(cls, text: str, locale: str = 'en') -> Optional[int]:
         """
