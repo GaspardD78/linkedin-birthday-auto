@@ -1,7 +1,14 @@
 """
-API Router pour le Sourcing Recruteur - Gestion des profils scrapés et exports.
+API Router pour le Sourcing Recruteur - Gestion des campagnes, profils et exports.
+
+Workflow Recruteur:
+1. Créer une fiche de poste (JobDescription)
+2. Configurer une campagne de recherche (Campaign)
+3. Lancer la recherche automatisée (VisitorBot)
+4. Consulter et filtrer les profils trouvés
+5. Exporter les candidats qualifiés (CSV)
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -9,6 +16,8 @@ from datetime import datetime
 import csv
 import io
 import json
+import subprocess
+import sys
 
 from src.core.database import get_database
 from src.config.config_manager import get_config
@@ -24,6 +33,7 @@ logger = get_logger(__name__)
 # ═══════════════════════════════════════════════════════════════
 
 class ProfileResponse(BaseModel):
+    """Profil candidat enrichi avec toutes les données scrapées."""
     id: int
     profile_url: str
     first_name: Optional[str] = None
@@ -39,8 +49,18 @@ class ProfileResponse(BaseModel):
     fit_score: Optional[float] = None
     scraped_at: str
     campaign_id: Optional[int] = None
+    # Champs enrichis
     location: Optional[str] = None
     languages: Optional[List[str]] = None
+    work_history: Optional[List[Dict[str, Any]]] = None
+    connection_degree: Optional[str] = None
+    school: Optional[str] = None
+    degree: Optional[str] = None
+    job_title: Optional[str] = None
+    seniority_level: Optional[str] = None
+    endorsements_count: Optional[int] = None
+    profile_picture_url: Optional[str] = None
+    open_to_work: Optional[bool] = None
 
 
 class ProfileListResponse(BaseModel):
@@ -91,6 +111,499 @@ class SearchTemplateResponse(BaseModel):
     filters: Dict[str, Any]
     created_at: str
     updated_at: str
+
+
+# ═══════════════════════════════════════════════════════════════
+# MODÈLES CAMPAGNES (Fiche de poste → Recherche)
+# ═══════════════════════════════════════════════════════════════
+
+class JobDescriptionCreate(BaseModel):
+    """Fiche de poste pour définir une recherche."""
+    title: str = Field(..., description="Titre du poste (ex: DevOps Engineer)")
+    description: Optional[str] = Field(None, description="Description du poste")
+    # Critères de recherche
+    keywords: List[str] = Field(..., description="Mots-clés booléens (ex: ['DevOps', 'AWS|Azure', '-junior'])")
+    location: str = Field("France", description="Localisation de recherche")
+    # Filtres avancés
+    title_filters: Optional[List[str]] = Field(None, description="Titres de poste recherchés")
+    keywords_exclude: Optional[List[str]] = Field(None, description="Mots-clés à exclure")
+    seniority_level: Optional[List[str]] = Field(None, description="Niveaux: Entry, Associate, Mid-Senior, Director, VP, CXO")
+    languages: Optional[List[str]] = Field(None, description="Langues requises")
+    years_experience_min: Optional[int] = Field(None, ge=0, le=50)
+    years_experience_max: Optional[int] = Field(None, ge=0, le=50)
+    # Paramètres de campagne
+    profiles_target: int = Field(50, ge=1, le=500, description="Nombre de profils cibles")
+
+
+class CampaignCreate(BaseModel):
+    """Création d'une campagne de sourcing."""
+    name: str = Field(..., description="Nom de la campagne")
+    job_description: JobDescriptionCreate
+    auto_start: bool = Field(False, description="Démarrer automatiquement après création")
+
+
+class CampaignResponse(BaseModel):
+    """Réponse détaillée d'une campagne."""
+    id: int
+    name: str
+    status: str  # pending, running, completed, failed
+    job_title: str
+    keywords: List[str]
+    location: str
+    profiles_target: int
+    profiles_found: int
+    created_at: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+    filters: Dict[str, Any]
+
+
+class CampaignStartRequest(BaseModel):
+    """Paramètres pour démarrer une campagne."""
+    profiles_limit: Optional[int] = Field(None, ge=1, le=500, description="Override limite de profils")
+    dry_run: bool = Field(False, description="Mode simulation (pas de visite)")
+
+
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINTS - CAMPAGNES
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/campaigns", response_model=CampaignResponse)
+async def create_campaign(
+    campaign: CampaignCreate,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Crée une nouvelle campagne de sourcing à partir d'une fiche de poste.
+
+    Workflow:
+    1. Reçoit la fiche de poste avec critères
+    2. Crée la campagne en base
+    3. Optionnellement démarre la recherche en background
+    """
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        job = campaign.job_description
+
+        # Préparer les filtres JSON
+        filters = {
+            "title_filters": job.title_filters or [],
+            "keywords_exclude": job.keywords_exclude or [],
+            "seniority_level": job.seniority_level or [],
+            "languages": job.languages or [],
+            "years_experience_min": job.years_experience_min,
+            "years_experience_max": job.years_experience_max,
+        }
+
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Créer la campagne
+            cursor.execute("""
+                INSERT INTO sourcing_campaigns
+                (name, job_title, job_description, keywords, location, filters, profiles_target, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                campaign.name,
+                job.title,
+                job.description,
+                json.dumps(job.keywords, ensure_ascii=False),
+                job.location,
+                json.dumps(filters, ensure_ascii=False),
+                job.profiles_target,
+                "pending",
+                datetime.now().isoformat()
+            ))
+            conn.commit()
+            campaign_id = cursor.lastrowid
+
+            # Si auto_start, lancer en background
+            if campaign.auto_start:
+                background_tasks.add_task(
+                    _run_campaign_task,
+                    campaign_id,
+                    job.keywords,
+                    job.location,
+                    filters,
+                    job.profiles_target
+                )
+
+            return CampaignResponse(
+                id=campaign_id,
+                name=campaign.name,
+                status="running" if campaign.auto_start else "pending",
+                job_title=job.title,
+                keywords=job.keywords,
+                location=job.location,
+                profiles_target=job.profiles_target,
+                profiles_found=0,
+                created_at=datetime.now().isoformat(),
+                started_at=datetime.now().isoformat() if campaign.auto_start else None,
+                completed_at=None,
+                filters=filters
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to create campaign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/campaigns", response_model=List[CampaignResponse])
+async def list_campaigns(
+    status: Optional[str] = Query(None, description="Filtrer par statut"),
+    limit: int = Query(20, ge=1, le=100),
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Liste toutes les campagnes de sourcing."""
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # S'assurer que la table existe
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sourcing_campaigns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    job_title TEXT,
+                    job_description TEXT,
+                    keywords TEXT,
+                    location TEXT,
+                    filters TEXT,
+                    profiles_target INTEGER DEFAULT 50,
+                    profiles_found INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT
+                )
+            """)
+            conn.commit()
+
+            query = "SELECT * FROM sourcing_campaigns"
+            params = []
+            if status:
+                query += " WHERE status = ?"
+                params.append(status)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
+            campaigns = []
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                campaigns.append(CampaignResponse(
+                    id=row_dict["id"],
+                    name=row_dict["name"],
+                    status=row_dict["status"],
+                    job_title=row_dict.get("job_title", ""),
+                    keywords=json.loads(row_dict.get("keywords", "[]")),
+                    location=row_dict.get("location", ""),
+                    profiles_target=row_dict.get("profiles_target", 50),
+                    profiles_found=row_dict.get("profiles_found", 0),
+                    created_at=row_dict.get("created_at", ""),
+                    started_at=row_dict.get("started_at"),
+                    completed_at=row_dict.get("completed_at"),
+                    filters=json.loads(row_dict.get("filters", "{}"))
+                ))
+
+            return campaigns
+
+    except Exception as e:
+        logger.error(f"Failed to list campaigns: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/campaigns/{campaign_id}", response_model=CampaignResponse)
+async def get_campaign(
+    campaign_id: int,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Récupère les détails d'une campagne."""
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM sourcing_campaigns WHERE id = ?", (campaign_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                raise HTTPException(status_code=404, detail="Campaign not found")
+
+            row_dict = dict(row)
+
+            # Compter les profils trouvés
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM scraped_profiles WHERE campaign_id = ?",
+                (campaign_id,)
+            )
+            profiles_found = cursor.fetchone()["count"]
+
+            return CampaignResponse(
+                id=row_dict["id"],
+                name=row_dict["name"],
+                status=row_dict["status"],
+                job_title=row_dict.get("job_title", ""),
+                keywords=json.loads(row_dict.get("keywords", "[]")),
+                location=row_dict.get("location", ""),
+                profiles_target=row_dict.get("profiles_target", 50),
+                profiles_found=profiles_found,
+                created_at=row_dict.get("created_at", ""),
+                started_at=row_dict.get("started_at"),
+                completed_at=row_dict.get("completed_at"),
+                filters=json.loads(row_dict.get("filters", "{}"))
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get campaign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/campaigns/{campaign_id}/start")
+async def start_campaign(
+    campaign_id: int,
+    request: CampaignStartRequest,
+    background_tasks: BackgroundTasks,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """
+    Démarre une campagne de sourcing.
+
+    Lance le VisitorBot en background avec les filtres de la campagne.
+    """
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM sourcing_campaigns WHERE id = ?", (campaign_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                raise HTTPException(status_code=404, detail="Campaign not found")
+
+            row_dict = dict(row)
+
+            if row_dict["status"] == "running":
+                raise HTTPException(status_code=400, detail="Campaign is already running")
+
+            # Mettre à jour le statut
+            cursor.execute("""
+                UPDATE sourcing_campaigns
+                SET status = 'running', started_at = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(), campaign_id))
+            conn.commit()
+
+            # Parser les données
+            keywords = json.loads(row_dict.get("keywords", "[]"))
+            location = row_dict.get("location", "France")
+            filters = json.loads(row_dict.get("filters", "{}"))
+            profiles_limit = request.profiles_limit or row_dict.get("profiles_target", 50)
+
+            # Lancer en background
+            background_tasks.add_task(
+                _run_campaign_task,
+                campaign_id,
+                keywords,
+                location,
+                filters,
+                profiles_limit,
+                request.dry_run
+            )
+
+            return {
+                "message": "Campaign started",
+                "campaign_id": campaign_id,
+                "status": "running",
+                "profiles_limit": profiles_limit,
+                "dry_run": request.dry_run
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start campaign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/campaigns/{campaign_id}/stop")
+async def stop_campaign(
+    campaign_id: int,
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Arrête une campagne en cours (marque comme completed)."""
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE sourcing_campaigns
+                SET status = 'completed', completed_at = ?
+                WHERE id = ? AND status = 'running'
+            """, (datetime.now().isoformat(), campaign_id))
+            conn.commit()
+
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=400, detail="Campaign not running or not found")
+
+            return {"message": "Campaign stopped", "campaign_id": campaign_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stop campaign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(
+    campaign_id: int,
+    delete_profiles: bool = Query(False, description="Supprimer aussi les profils associés"),
+    authenticated: bool = Depends(verify_api_key)
+):
+    """Supprime une campagne."""
+    config = get_config()
+    if not config.database.enabled:
+        raise HTTPException(status_code=503, detail="Database not enabled")
+
+    try:
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Vérifier que la campagne existe
+            cursor.execute("SELECT id FROM sourcing_campaigns WHERE id = ?", (campaign_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Campaign not found")
+
+            # Supprimer les profils si demandé
+            if delete_profiles:
+                cursor.execute("DELETE FROM scraped_profiles WHERE campaign_id = ?", (campaign_id,))
+
+            # Supprimer la campagne
+            cursor.execute("DELETE FROM sourcing_campaigns WHERE id = ?", (campaign_id,))
+            conn.commit()
+
+            return {"message": "Campaign deleted", "campaign_id": campaign_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete campaign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════
+# FONCTION BACKGROUND - EXÉCUTION CAMPAGNE
+# ═══════════════════════════════════════════════════════════════
+
+def _run_campaign_task(
+    campaign_id: int,
+    keywords: List[str],
+    location: str,
+    filters: Dict[str, Any],
+    profiles_limit: int,
+    dry_run: bool = False
+):
+    """
+    Tâche background pour exécuter une campagne de sourcing.
+
+    Lance le VisitorBot via subprocess avec les paramètres de la campagne.
+    """
+    try:
+        logger.info(f"Starting campaign {campaign_id} with keywords={keywords}, location={location}")
+
+        # Construire la commande
+        cmd = [
+            sys.executable,
+            "-m", "src.bots.visitor_bot",
+            "--keywords", *keywords,
+            "--location", location,
+            "--limit", str(profiles_limit),
+            "--campaign-id", str(campaign_id),
+        ]
+
+        if dry_run:
+            cmd.append("--dry-run")
+
+        # Exécuter le bot
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600  # 1 heure max
+        )
+
+        # Mettre à jour le statut
+        config = get_config()
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Compter les profils trouvés
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM scraped_profiles WHERE campaign_id = ?",
+                (campaign_id,)
+            )
+            profiles_found = cursor.fetchone()["count"]
+
+            status = "completed" if result.returncode == 0 else "failed"
+            cursor.execute("""
+                UPDATE sourcing_campaigns
+                SET status = ?, completed_at = ?, profiles_found = ?
+                WHERE id = ?
+            """, (status, datetime.now().isoformat(), profiles_found, campaign_id))
+            conn.commit()
+
+        logger.info(f"Campaign {campaign_id} finished with status={status}, profiles={profiles_found}")
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"Campaign {campaign_id} timed out")
+        _update_campaign_status(campaign_id, "failed")
+    except Exception as e:
+        logger.error(f"Campaign {campaign_id} failed: {e}", exc_info=True)
+        _update_campaign_status(campaign_id, "failed")
+
+
+def _update_campaign_status(campaign_id: int, status: str):
+    """Met à jour le statut d'une campagne."""
+    try:
+        config = get_config()
+        db = get_database(config.database.db_path)
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE sourcing_campaigns
+                SET status = ?, completed_at = ?
+                WHERE id = ?
+            """, (status, datetime.now().isoformat(), campaign_id))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to update campaign status: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -515,28 +1028,27 @@ def _get_filtered_profiles(
 
 
 def _row_to_profile(row: dict) -> dict:
-    """Convertit une row DB en ProfileResponse."""
-    # Parser les JSON
-    skills = None
-    if row.get("skills"):
-        try:
-            skills = json.loads(row["skills"])
-        except:
-            skills = []
+    """Convertit une row DB en ProfileResponse avec tous les champs enrichis."""
 
-    certifications = None
-    if row.get("certifications"):
+    def safe_json_parse(value, default=None):
+        """Parse JSON de manière sécurisée."""
+        if not value:
+            return default
         try:
-            certifications = json.loads(row["certifications"])
-        except:
-            certifications = []
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return default
 
-    languages = None
-    if row.get("languages"):
-        try:
-            languages = json.loads(row["languages"])
-        except:
-            languages = []
+    # Parser les champs JSON
+    skills = safe_json_parse(row.get("skills"), [])
+    certifications = safe_json_parse(row.get("certifications"), [])
+    languages = safe_json_parse(row.get("languages"), [])
+    work_history = safe_json_parse(row.get("work_history"), [])
+
+    # Convertir open_to_work en boolean
+    open_to_work = None
+    if row.get("open_to_work") is not None:
+        open_to_work = bool(row.get("open_to_work"))
 
     return {
         "id": row["id"],
@@ -554,6 +1066,16 @@ def _row_to_profile(row: dict) -> dict:
         "fit_score": row.get("fit_score"),
         "scraped_at": row.get("scraped_at", ""),
         "campaign_id": row.get("campaign_id"),
+        # Champs enrichis
         "location": row.get("location"),
-        "languages": languages
+        "languages": languages,
+        "work_history": work_history,
+        "connection_degree": row.get("connection_degree"),
+        "school": row.get("school"),
+        "degree": row.get("degree"),
+        "job_title": row.get("job_title"),
+        "seniority_level": row.get("seniority_level"),
+        "endorsements_count": row.get("endorsements_count"),
+        "profile_picture_url": row.get("profile_picture_url"),
+        "open_to_work": open_to_work,
     }
