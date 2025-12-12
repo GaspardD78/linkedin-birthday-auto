@@ -32,9 +32,12 @@ class NotificationService:
         self.db = db
         self._smtp_config: Optional[Dict[str, Any]] = None
 
-    def get_settings(self) -> Dict[str, Any]:
+    def get_settings(self, mask_password: bool = False) -> Dict[str, Any]:
         """
         Récupère les paramètres de notification depuis la base de données.
+
+        Args:
+            mask_password: Si True, masque le mot de passe SMTP avec '****'
 
         Returns:
             Dictionnaire avec les paramètres de notification
@@ -45,6 +48,11 @@ class NotificationService:
             row = cursor.fetchone()
 
             if row:
+                # Récupérer le mot de passe et le masquer si nécessaire
+                smtp_password = row["smtp_password"] if "smtp_password" in row.keys() else None
+                if mask_password and smtp_password:
+                    smtp_password = "****"
+
                 return {
                     "email_enabled": bool(row["email_enabled"]),
                     "email_address": row["email_address"],
@@ -53,6 +61,12 @@ class NotificationService:
                     "notify_on_bot_start": bool(row["notify_on_bot_start"]),
                     "notify_on_bot_stop": bool(row["notify_on_bot_stop"]),
                     "notify_on_cookies_expiry": bool(row["notify_on_cookies_expiry"]),
+                    "smtp_host": row["smtp_host"] if "smtp_host" in row.keys() else None,
+                    "smtp_port": row["smtp_port"] if "smtp_port" in row.keys() else None,
+                    "smtp_user": row["smtp_user"] if "smtp_user" in row.keys() else None,
+                    "smtp_password": smtp_password,
+                    "smtp_use_tls": bool(row["smtp_use_tls"]) if "smtp_use_tls" in row.keys() and row["smtp_use_tls"] is not None else True,
+                    "smtp_from_email": row["smtp_from_email"] if "smtp_from_email" in row.keys() else None,
                 }
 
         # Retourner les valeurs par défaut si aucune configuration n'existe
@@ -64,6 +78,12 @@ class NotificationService:
             "notify_on_bot_start": False,
             "notify_on_bot_stop": False,
             "notify_on_cookies_expiry": True,
+            "smtp_host": None,
+            "smtp_port": None,
+            "smtp_user": None,
+            "smtp_password": None,
+            "smtp_use_tls": True,
+            "smtp_from_email": None,
         }
 
     def update_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -77,6 +97,13 @@ class NotificationService:
             Dictionnaire avec les paramètres mis à jour
         """
         now = datetime.now().isoformat()
+
+        # Si le mot de passe est masqué (****), ne pas le mettre à jour
+        smtp_password = settings.get("smtp_password")
+        if smtp_password == "****":
+            # Récupérer le mot de passe actuel de la DB
+            current_settings = self.get_settings(mask_password=False)
+            smtp_password = current_settings.get("smtp_password")
 
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
@@ -97,6 +124,12 @@ class NotificationService:
                         notify_on_bot_start = ?,
                         notify_on_bot_stop = ?,
                         notify_on_cookies_expiry = ?,
+                        smtp_host = ?,
+                        smtp_port = ?,
+                        smtp_user = ?,
+                        smtp_password = ?,
+                        smtp_use_tls = ?,
+                        smtp_from_email = ?,
                         updated_at = ?
                     WHERE id = ?
                     """,
@@ -108,6 +141,12 @@ class NotificationService:
                         settings.get("notify_on_bot_start", False),
                         settings.get("notify_on_bot_stop", False),
                         settings.get("notify_on_cookies_expiry", True),
+                        settings.get("smtp_host"),
+                        settings.get("smtp_port"),
+                        settings.get("smtp_user"),
+                        smtp_password,
+                        settings.get("smtp_use_tls", True),
+                        settings.get("smtp_from_email"),
                         now,
                         existing["id"],
                     ),
@@ -119,9 +158,10 @@ class NotificationService:
                     INSERT INTO notification_settings (
                         email_enabled, email_address, notify_on_error, notify_on_success,
                         notify_on_bot_start, notify_on_bot_stop, notify_on_cookies_expiry,
+                        smtp_host, smtp_port, smtp_user, smtp_password, smtp_use_tls, smtp_from_email,
                         created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         settings.get("email_enabled", False),
@@ -131,28 +171,73 @@ class NotificationService:
                         settings.get("notify_on_bot_start", False),
                         settings.get("notify_on_bot_stop", False),
                         settings.get("notify_on_cookies_expiry", True),
+                        settings.get("smtp_host"),
+                        settings.get("smtp_port"),
+                        settings.get("smtp_user"),
+                        smtp_password,
+                        settings.get("smtp_use_tls", True),
+                        settings.get("smtp_from_email"),
                         now,
                         now,
                     ),
                 )
 
-        return self.get_settings()
+        # Invalidate cached SMTP config
+        self._smtp_config = None
+
+        return self.get_settings(mask_password=True)
 
     def _load_smtp_config(self) -> Dict[str, Any]:
         """
-        Charge la configuration SMTP depuis les variables d'environnement.
+        Charge la configuration SMTP depuis la base de données, avec fallback sur les variables d'environnement.
+
+        La priorité est donnée aux valeurs de la base de données. Si une valeur est nulle/vide
+        dans la DB, on utilise la valeur de la variable d'environnement correspondante.
 
         Returns:
             Dictionnaire avec la configuration SMTP
         """
-        return {
-            "host": os.getenv("SMTP_HOST", "smtp.gmail.com"),
-            "port": int(os.getenv("SMTP_PORT", "587")),
-            "username": os.getenv("SMTP_USER"),
-            "password": os.getenv("SMTP_PASSWORD"),
-            "use_tls": os.getenv("SMTP_USE_TLS", "true").lower() == "true",
-            "from_email": os.getenv("SMTP_FROM_EMAIL"),
+        # Récupérer les paramètres de la base de données
+        db_settings = self.get_settings(mask_password=False)
+
+        # Récupérer les valeurs depuis la DB, avec fallback sur les variables d'environnement
+        host = db_settings.get("smtp_host") or os.getenv("SMTP_HOST", "smtp.gmail.com")
+
+        # Pour le port, gérer le cas où la valeur DB est None ou 0
+        db_port = db_settings.get("smtp_port")
+        if db_port:
+            port = int(db_port)
+        else:
+            port = int(os.getenv("SMTP_PORT", "587"))
+
+        username = db_settings.get("smtp_user") or os.getenv("SMTP_USER")
+        password = db_settings.get("smtp_password") or os.getenv("SMTP_PASSWORD")
+
+        # Pour use_tls, la valeur DB a priorité si elle est explicitement définie
+        db_use_tls = db_settings.get("smtp_use_tls")
+        if db_use_tls is not None:
+            use_tls = bool(db_use_tls)
+        else:
+            use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+
+        from_email = db_settings.get("smtp_from_email") or os.getenv("SMTP_FROM_EMAIL")
+
+        config = {
+            "host": host,
+            "port": port,
+            "username": username,
+            "password": password,
+            "use_tls": use_tls,
+            "from_email": from_email,
         }
+
+        # Log configuration (sans le mot de passe)
+        logger.debug(
+            f"SMTP config loaded: host={config['host']}, port={config['port']}, "
+            f"user={config['username']}, use_tls={config['use_tls']}, from={config['from_email']}"
+        )
+
+        return config
 
     def _validate_smtp_config(self, config: Dict[str, Any]) -> bool:
         """
