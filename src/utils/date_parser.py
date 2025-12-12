@@ -14,6 +14,8 @@ class DateParsingService:
     # 🚀 Pre-compiled regex patterns (compiled ONCE at module load)
     _COMPILED_PATTERNS = {}
     _DAYS_AGO_PATTERN = re.compile(r"(\d+)\s*(?:days?|jours?)", re.IGNORECASE)
+    _ELAPSED_EN_PATTERN = re.compile(r"(\d+)\s*(day|week|month|year)s?\s*ago", re.IGNORECASE)
+    _ELAPSED_FR_PATTERN = re.compile(r"il y a\s*(\d+)\s*(jour|semaine|mois|an|année)s?", re.IGNORECASE)
 
     # Configuration per locale
     LOCALE_CONFIG: Dict[str, Any] = {
@@ -77,7 +79,7 @@ class DateParsingService:
 
         # 1. English patterns
         # "2 weeks ago", "1 month ago", "3 days ago"
-        en_match = re.search(r"(\d+)\s*(day|week|month|year)s?\s*ago", text)
+        en_match = cls._ELAPSED_EN_PATTERN.search(text)
         if en_match:
             val = int(en_match.group(1))
             unit = en_match.group(2)
@@ -88,7 +90,7 @@ class DateParsingService:
 
         # 2. French patterns
         # "il y a 2 semaines", "il y a 1 mois", "il y a 3 jours"
-        fr_match = re.search(r"il y a\s*(\d+)\s*(jour|semaine|mois|an|année)s?", text)
+        fr_match = cls._ELAPSED_FR_PATTERN.search(text)
         if fr_match:
             val = int(fr_match.group(1))
             unit = fr_match.group(2)
