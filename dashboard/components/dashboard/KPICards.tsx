@@ -125,7 +125,7 @@ export function KPICards() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-6">
           <div className="flex items-center gap-2 text-red-400">
-            <AlertCircle className="h-5 w-5" />
+            <AlertCircle className="h-5 w-5" aria-hidden="true" />
             <p className="text-sm">{error}</p>
           </div>
         </CardContent>
@@ -135,7 +135,12 @@ export function KPICards() {
 
   if (!stats) {
     return (
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+        role="status"
+        aria-label="Chargement des indicateurs clés"
+        aria-busy="true"
+      >
         {Array(4).fill(0).map((_, index) => (
           <Card key={index} className="bg-slate-900 border-slate-800 overflow-hidden">
             <CardContent className="p-6">
@@ -193,7 +198,7 @@ export function KPICards() {
   ]
 
   return (
-    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" aria-label="Indicateurs clés de performance">
       {kpiCards.map((kpi, index) => {
         const colors = colorClasses[kpi.colorKey]
         return (
@@ -208,7 +213,7 @@ export function KPICards() {
 
               {/* Icon Background Decoration */}
               <div className={`absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity`}>
-                <kpi.icon className="h-32 w-32" />
+                <kpi.icon className="h-32 w-32" aria-hidden="true" />
               </div>
 
               {/* Content */}
@@ -216,11 +221,11 @@ export function KPICards() {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                   <div className={`p-2 rounded-lg ${colors.iconBg} border ${colors.iconBorder}`}>
-                    <kpi.icon className={`h-5 w-5 ${colors.iconColor}`} />
+                    <kpi.icon className={`h-5 w-5 ${colors.iconColor}`} aria-hidden="true" />
                   </div>
                 {kpi.trend && (
                   <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${kpi.trend.positive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                    <TrendingUp className={`h-3 w-3 ${!kpi.trend.positive && 'rotate-180'}`} />
+                    <TrendingUp className={`h-3 w-3 ${!kpi.trend.positive && 'rotate-180'}`} aria-hidden="true" />
                     <span className="font-semibold">{kpi.trend.value}</span>
                   </div>
                 )}
@@ -257,7 +262,7 @@ export function KPICards() {
 
           {/* Icon Background Decoration */}
           <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-            <AlertCircle className="h-32 w-32" />
+            <AlertCircle className="h-32 w-32" aria-hidden="true" />
           </div>
 
           {/* Content */}
@@ -265,7 +270,7 @@ export function KPICards() {
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className={`p-2 rounded-lg ${errorCount > 0 ? 'bg-red-500/10 border border-red-500/20' : 'bg-slate-800 border border-slate-700'}`}>
-                <AlertCircle className={`h-5 w-5 ${errorCount > 0 ? 'text-red-400' : 'text-slate-400'}`} />
+                <AlertCircle className={`h-5 w-5 ${errorCount > 0 ? 'text-red-400' : 'text-slate-400'}`} aria-hidden="true" />
               </div>
               {errorCount === 0 && (
                 <div className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400">
