@@ -116,8 +116,9 @@ services:
     - PYTHONPATH=/app
     - LOG_LEVEL=INFO
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Clé API pour sécuriser les appels internes
-    - API_KEY=${API_KEY:-internal_secret_key}
+      # Clé API pour sécuriser les appels internes (OBLIGATOIRE)
+      # Générer avec: python -c "import secrets; print(secrets.token_hex(32))"
+    - API_KEY=${API_KEY:?API_KEY must be set in .env file}
       # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
       # Nom du service pour séparer les logs
@@ -146,8 +147,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 90s
     networks:
     - linkedin-network
 
@@ -244,7 +245,7 @@ services:
 
       # Configuration Bot (pour Proxy API)
     - BOT_API_URL=http://api:8000
-    - BOT_API_KEY=${API_KEY:-internal_secret_key}
+    - BOT_API_KEY=${API_KEY:?API_KEY must be set in .env file}
 
       # Configuration Authentification Dashboard (REQUIS)
     - JWT_SECRET=${JWT_SECRET}
