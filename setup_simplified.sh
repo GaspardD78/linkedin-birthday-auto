@@ -615,7 +615,548 @@ EOF
     echo "  • Arrêter:           docker compose -f $COMPOSE_FILE down"
     echo ""
 
-    log_success "Installation complète! Consultez $LOG_FILE pour les détails."
+    log_success "Installation de base complète!"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE 7 : HASHAGE BCRYPT DU MOT DE PASSE
+# ═══════════════════════════════════════════════════════════════════════════
+step_7_bcrypt_password() {
+    log_step "7" "HASHAGE BCRYPT DU MOT DE PASSE"
+
+    cat << 'EOF'
+🔐 POURQUOI C'EST IMPORTANT ?
+   Le mot de passe en clair dans .env peut être lu par quiconque accède au fichier.
+   Avec bcrypt, le mot de passe est hashé de façon irréversible.
+
+EOF
+
+    # Vérifier si le mot de passe est déjà hashé
+    local current_pass=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+
+    if [[ "$current_pass" =~ ^\$2[aby]\$ ]]; then
+        log_success "Mot de passe déjà hashé avec bcrypt"
+        return 0
+    fi
+
+    # Vérifier si Node.js est disponible
+    if ! command -v node &>/dev/null; then
+        log_warning "Node.js non disponible - hashage bcrypt ignoré"
+        log_info "Pour hasher plus tard: cd dashboard && npm install bcryptjs && node scripts/hash_password.js"
+        return 0
+    fi
+
+    # Vérifier si bcryptjs est installé
+    if [[ ! -d "dashboard/node_modules/bcryptjs" ]]; then
+        log_info "Installation de bcryptjs..."
+        (cd dashboard && npm install bcryptjs --silent 2>/dev/null) || {
+            log_warning "Impossible d'installer bcryptjs"
+            return 0
+        }
+    fi
+
+    # Vérifier si le script de hashage existe
+    if [[ ! -f "dashboard/scripts/hash_password.js" ]]; then
+        log_warning "Script hash_password.js non trouvé"
+        return 0
+    fi
+
+    log_info "Hashage du mot de passe avec bcrypt..."
+
+    # Générer le hash
+    local password_hash
+    password_hash=$(cd dashboard && node scripts/hash_password.js "$current_pass" --quiet 2>/dev/null) || {
+        log_warning "Échec du hashage bcrypt"
+        return 0
+    }
+
+    if [[ -z "$password_hash" || ! "$password_hash" =~ ^\$2 ]]; then
+        log_warning "Hash invalide généré"
+        return 0
+    fi
+
+    # Backup et mise à jour
+    cp "$ENV_FILE" "${ENV_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+
+    # Échapper le hash pour Docker Compose ($ -> $$)
+    local escaped_hash="${password_hash//$/\$\$}"
+
+    sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD='$escaped_hash'|" "$ENV_FILE"
+
+    log_success "Mot de passe hashé avec bcrypt"
+    log_debug "Hash: ${password_hash:0:20}..."
+
+    # Redémarrer le dashboard pour appliquer
+    log_info "Redémarrage du dashboard..."
+    docker compose -f "$COMPOSE_FILE" restart dashboard 2>&1 | tee -a "$LOG_FILE" || true
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE 8 : PROTECTION CORS
+# ═══════════════════════════════════════════════════════════════════════════
+step_8_cors_protection() {
+    log_step "8" "PROTECTION CORS"
+
+    cat << 'EOF'
+🛡️ POURQUOI C'EST IMPORTANT ?
+   CORS empêche des sites malveillants d'accéder à votre API.
+   Sans CORS, n'importe quel site pourrait faire des requêtes à votre bot.
+
+EOF
+
+    # Vérifier si ALLOWED_ORIGINS est déjà configuré
+    if grep -q "^ALLOWED_ORIGINS=" "$ENV_FILE" 2>/dev/null; then
+        local current_origins=$(grep "^ALLOWED_ORIGINS=" "$ENV_FILE" | cut -d'=' -f2-)
+        if [[ -n "$current_origins" && "$current_origins" != "http://localhost:3000" ]]; then
+            log_success "CORS déjà configuré: $current_origins"
+            return 0
+        fi
+    fi
+
+    # Récupérer l'IP locale
+    local local_ip=$(hostname -I | awk '{print $1}')
+    local dashboard_port=$(grep -E "^DASHBOARD_PORT=" "$ENV_FILE" | cut -d'=' -f2 || echo "3000")
+    dashboard_port="${dashboard_port:-3000}"
+
+    echo -e -n "${CYAN}❓${NC} Domaine pour CORS (ex: https://monbot.com) [http://${local_ip}:${dashboard_port}]: "
+    read -r cors_domain
+    cors_domain="${cors_domain:-http://${local_ip}:${dashboard_port}}"
+
+    # Mettre à jour .env
+    if grep -q "^ALLOWED_ORIGINS=" "$ENV_FILE"; then
+        sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=$cors_domain|" "$ENV_FILE"
+    else
+        echo "ALLOWED_ORIGINS=$cors_domain" >> "$ENV_FILE"
+    fi
+
+    log_success "CORS configuré: $cors_domain"
+
+    # Redémarrer l'API
+    log_info "Redémarrage de l'API..."
+    docker compose -f "$COMPOSE_FILE" restart api 2>&1 | tee -a "$LOG_FILE" || true
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE 9 : ANTI-INDEXATION
+# ═══════════════════════════════════════════════════════════════════════════
+step_9_anti_indexation() {
+    log_step "9" "ANTI-INDEXATION GOOGLE"
+
+    cat << 'EOF'
+🚫 POURQUOI C'EST IMPORTANT ?
+   Sans protection, Google peut indexer votre dashboard.
+   N'importe qui pourrait trouver votre bot en cherchant sur Google.
+
+EOF
+
+    # Créer robots.txt si absent
+    local robots_file="dashboard/public/robots.txt"
+
+    if [[ -f "$robots_file" ]] && grep -q "Disallow: /" "$robots_file"; then
+        log_success "robots.txt déjà configuré"
+    else
+        mkdir -p "dashboard/public"
+        cat > "$robots_file" << 'ROBOTS'
+# LinkedIn Birthday Bot - Anti-indexation
+User-agent: *
+Disallow: /
+Disallow: /api/
+Disallow: /login
+Disallow: /dashboard
+
+# Block all known bots
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Slurp
+Disallow: /
+
+User-agent: DuckDuckBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: YandexBot
+Disallow: /
+ROBOTS
+        log_success "robots.txt créé"
+    fi
+
+    # Vérifier les headers X-Robots-Tag dans next.config.js
+    if [[ -f "dashboard/next.config.js" ]]; then
+        if grep -q "X-Robots-Tag" "dashboard/next.config.js"; then
+            log_success "Headers X-Robots-Tag déjà configurés dans Next.js"
+        else
+            log_info "Ajout recommandé: headers X-Robots-Tag dans next.config.js"
+        fi
+    fi
+
+    log_success "Anti-indexation configurée"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE 10 : HTTPS AVEC LET'S ENCRYPT (OPTIONNEL)
+# ═══════════════════════════════════════════════════════════════════════════
+step_10_https_letsencrypt() {
+    log_step "10" "HTTPS AVEC LET'S ENCRYPT"
+
+    cat << 'EOF'
+🔐 POURQUOI C'EST IMPORTANT ?
+   Sans HTTPS, vos mots de passe circulent en CLAIR sur Internet.
+   HTTPS chiffre toutes les communications.
+
+⚠️  PRÉREQUIS :
+   • Nom de domaine pointant vers votre IP publique
+   • Ports 80 et 443 ouverts sur votre box/routeur
+   • Accès root/sudo
+
+EOF
+
+    if ! ask_continue "Configurer HTTPS avec Let's Encrypt ?"; then
+        log_info "Configuration HTTPS ignorée"
+        return 0
+    fi
+
+    # Vérifier si Nginx est installé
+    if ! command -v nginx &>/dev/null; then
+        log_info "Installation de Nginx..."
+        sudo apt update && sudo apt install -y nginx || {
+            log_error "Impossible d'installer Nginx"
+            return 1
+        }
+    fi
+    log_success "Nginx installé"
+
+    # Vérifier si Certbot est installé
+    if ! command -v certbot &>/dev/null; then
+        log_info "Installation de Certbot..."
+        sudo apt install -y certbot python3-certbot-nginx || {
+            log_error "Impossible d'installer Certbot"
+            return 1
+        }
+    fi
+    log_success "Certbot installé"
+
+    # Demander le nom de domaine
+    echo -e -n "${CYAN}❓${NC} Votre nom de domaine (ex: bot.exemple.com): "
+    read -r domain_name
+
+    if [[ -z "$domain_name" ]]; then
+        log_error "Nom de domaine requis"
+        return 1
+    fi
+
+    # Créer la configuration Nginx
+    log_info "Configuration de Nginx pour $domain_name..."
+
+    local nginx_conf="/etc/nginx/sites-available/linkedin-bot"
+    sudo tee "$nginx_conf" > /dev/null << NGINX
+# LinkedIn Birthday Bot - Nginx Configuration
+# Generated by setup_simplified.sh
+
+server {
+    listen 80;
+    server_name $domain_name;
+
+    # Redirect HTTP to HTTPS
+    location / {
+        return 301 https://\$server_name\$request_uri;
+    }
+
+    # Let's Encrypt challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name $domain_name;
+
+    # SSL will be configured by Certbot
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Dashboard (Next.js)
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    # API
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+NGINX
+
+    # Activer le site
+    sudo ln -sf "$nginx_conf" /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+    # Tester la configuration
+    if ! sudo nginx -t; then
+        log_error "Configuration Nginx invalide"
+        return 1
+    fi
+
+    sudo systemctl reload nginx
+    log_success "Nginx configuré"
+
+    # Obtenir le certificat SSL
+    log_info "Obtention du certificat SSL (Let's Encrypt)..."
+    log_info "Assurez-vous que le port 80 est accessible depuis Internet"
+
+    if sudo certbot --nginx -d "$domain_name" --non-interactive --agree-tos --register-unsafely-without-email; then
+        log_success "Certificat SSL installé!"
+        log_info "Accès sécurisé: https://$domain_name"
+
+        # Mettre à jour ALLOWED_ORIGINS
+        sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://$domain_name|" "$ENV_FILE"
+        docker compose -f "$COMPOSE_FILE" restart api 2>&1 | tee -a "$LOG_FILE" || true
+    else
+        log_error "Échec de l'obtention du certificat"
+        log_info "Vérifiez que:"
+        log_info "  1. Le domaine $domain_name pointe vers votre IP"
+        log_info "  2. Le port 80 est ouvert sur votre box"
+        log_info "  3. Réessayez: sudo certbot --nginx -d $domain_name"
+        return 1
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE 11 : BACKUP GOOGLE DRIVE (OPTIONNEL)
+# ═══════════════════════════════════════════════════════════════════════════
+step_11_gdrive_backup() {
+    log_step "11" "BACKUP AUTOMATIQUE GOOGLE DRIVE"
+
+    cat << 'EOF'
+💾 POURQUOI C'EST IMPORTANT ?
+   Sans backup, si votre serveur plante, vous perdez TOUT.
+   Le backup Google Drive sauvegarde automatiquement chaque nuit.
+
+⚠️  PRÉREQUIS :
+   • Compte Google
+   • Possibilité d'ouvrir un navigateur (ou configuration headless)
+
+EOF
+
+    if ! ask_continue "Configurer le backup Google Drive ?"; then
+        log_info "Configuration backup ignorée"
+        return 0
+    fi
+
+    # Vérifier si rclone est installé
+    if ! command -v rclone &>/dev/null; then
+        log_info "Installation de rclone..."
+        curl https://rclone.org/install.sh | sudo bash || {
+            log_error "Impossible d'installer rclone"
+            return 1
+        }
+    fi
+    log_success "rclone installé"
+
+    # Vérifier si Google Drive est déjà configuré
+    if rclone listremotes 2>/dev/null | grep -q "gdrive:"; then
+        log_success "Google Drive déjà configuré dans rclone"
+
+        if ask_continue "Tester la connexion Google Drive ?"; then
+            if rclone lsd gdrive: &>/dev/null; then
+                log_success "Connexion Google Drive OK"
+            else
+                log_warning "Connexion échouée - reconfigurez avec: rclone config"
+            fi
+        fi
+    else
+        log_info "Configuration de Google Drive..."
+        cat << 'INSTRUCTIONS'
+
+📱 INSTRUCTIONS RCLONE :
+   1. Tapez: gdrive (comme nom)
+   2. Tapez: drive (comme storage)
+   3. Appuyez Entrée pour client_id et client_secret (vide)
+   4. Tapez: 1 pour scope (Full access)
+   5. Appuyez Entrée pour service_account_file (vide)
+   6. Tapez: n pour advanced config
+   7. Tapez: y pour auto authenticate (si navigateur disponible)
+   8. Autorisez dans le navigateur
+   9. Tapez: n pour team drive
+   10. Tapez: y pour confirmer
+
+INSTRUCTIONS
+
+        if ask_continue "Lancer la configuration rclone maintenant ?"; then
+            rclone config
+
+            if rclone listremotes | grep -q "gdrive:"; then
+                log_success "Google Drive configuré!"
+            else
+                log_warning "Configuration incomplète"
+                return 1
+            fi
+        fi
+    fi
+
+    # Vérifier le script de backup
+    local backup_script="scripts/backup_to_gdrive.sh"
+
+    if [[ ! -f "$backup_script" ]]; then
+        log_info "Création du script de backup..."
+        mkdir -p scripts
+        cat > "$backup_script" << 'BACKUP'
+#!/bin/bash
+# Backup LinkedIn Bot vers Google Drive
+
+set -e
+
+BACKUP_DIR="LinkedInBot_Backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_NAME="backup_${DATE}"
+
+echo "[$(date)] Démarrage du backup..."
+
+# Créer le dossier distant si nécessaire
+rclone mkdir "gdrive:${BACKUP_DIR}" 2>/dev/null || true
+
+# Backup des données
+rclone copy ./data "gdrive:${BACKUP_DIR}/${BACKUP_NAME}/data" --progress
+rclone copy ./config "gdrive:${BACKUP_DIR}/${BACKUP_NAME}/config" --progress
+rclone copy ./.env "gdrive:${BACKUP_DIR}/${BACKUP_NAME}/" --progress 2>/dev/null || true
+
+# Nettoyer les backups > 30 jours
+rclone delete "gdrive:${BACKUP_DIR}" --min-age 30d 2>/dev/null || true
+
+echo "[$(date)] Backup terminé: ${BACKUP_NAME}"
+BACKUP
+        chmod +x "$backup_script"
+        log_success "Script de backup créé"
+    fi
+
+    # Tester le backup
+    if ask_continue "Tester le backup maintenant ?"; then
+        log_info "Exécution du backup de test..."
+        if bash "$backup_script"; then
+            log_success "Backup de test réussi!"
+        else
+            log_warning "Backup échoué - vérifiez la configuration rclone"
+        fi
+    fi
+
+    # Configurer le cron
+    log_info "Configuration du backup automatique (cron)..."
+
+    local cron_line="0 3 * * * $(pwd)/$backup_script >> /var/log/linkedin-bot-backup.log 2>&1"
+
+    if crontab -l 2>/dev/null | grep -q "backup_to_gdrive.sh"; then
+        log_success "Backup automatique déjà configuré"
+    else
+        if ask_continue "Activer le backup automatique quotidien (3h du matin) ?"; then
+            (crontab -l 2>/dev/null; echo "$cron_line") | crontab -
+            log_success "Backup automatique configuré"
+            log_info "Logs: /var/log/linkedin-bot-backup.log"
+        fi
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ÉTAPE FINALE : RÉSUMÉ SÉCURITÉ
+# ═══════════════════════════════════════════════════════════════════════════
+step_final_security_summary() {
+    log_step "✓" "RÉSUMÉ DE SÉCURITÉ"
+
+    echo ""
+    log_info "Vérification de la configuration sécurité..."
+    echo ""
+
+    local score=0
+    local max_score=6
+
+    # 1. API_KEY
+    local api_key=$(grep -E "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+    if [[ ${#api_key} -ge 32 && "$api_key" != "internal_secret_key"* ]]; then
+        echo -e "  ${GREEN}✓${NC} API_KEY sécurisée"
+        ((score++))
+    else
+        echo -e "  ${RED}✗${NC} API_KEY non sécurisée"
+    fi
+
+    # 2. JWT_SECRET
+    local jwt=$(grep -E "^JWT_SECRET=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+    if [[ ${#jwt} -ge 32 ]]; then
+        echo -e "  ${GREEN}✓${NC} JWT_SECRET sécurisé"
+        ((score++))
+    else
+        echo -e "  ${RED}✗${NC} JWT_SECRET non sécurisé"
+    fi
+
+    # 3. Password hashé
+    local pass=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+    if [[ "$pass" =~ ^\$2 ]]; then
+        echo -e "  ${GREEN}✓${NC} Mot de passe hashé (bcrypt)"
+        ((score++))
+    else
+        echo -e "  ${YELLOW}~${NC} Mot de passe en clair"
+    fi
+
+    # 4. CORS
+    local cors=$(grep -E "^ALLOWED_ORIGINS=" "$ENV_FILE" | cut -d'=' -f2-)
+    if [[ -n "$cors" && "$cors" != "http://localhost:3000" ]]; then
+        echo -e "  ${GREEN}✓${NC} CORS configuré: $cors"
+        ((score++))
+    else
+        echo -e "  ${YELLOW}~${NC} CORS par défaut (localhost)"
+    fi
+
+    # 5. robots.txt
+    if [[ -f "dashboard/public/robots.txt" ]] && grep -q "Disallow: /" "dashboard/public/robots.txt"; then
+        echo -e "  ${GREEN}✓${NC} Anti-indexation (robots.txt)"
+        ((score++))
+    else
+        echo -e "  ${YELLOW}~${NC} Anti-indexation non configurée"
+    fi
+
+    # 6. HTTPS
+    if command -v certbot &>/dev/null && sudo certbot certificates 2>/dev/null | grep -q "Certificate Name:"; then
+        echo -e "  ${GREEN}✓${NC} HTTPS (Let's Encrypt)"
+        ((score++))
+    else
+        echo -e "  ${YELLOW}~${NC} HTTPS non configuré"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Score sécurité: ${score}/${max_score}${NC}"
+
+    if [[ $score -ge 5 ]]; then
+        echo -e "${GREEN}🔒 Excellent! Configuration très sécurisée.${NC}"
+    elif [[ $score -ge 3 ]]; then
+        echo -e "${YELLOW}🔓 Correct. Quelques améliorations possibles.${NC}"
+    else
+        echo -e "${RED}⚠️  Attention! Configuration à améliorer.${NC}"
+    fi
+
+    echo ""
+    log_success "Consultez $LOG_FILE pour les détails complets."
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -634,6 +1175,9 @@ main() {
         exit 0
     fi
 
+    # ─────────────────────────────────────────────────────────────────────
+    # PHASE 1: Installation de base
+    # ─────────────────────────────────────────────────────────────────────
     step_0_init
     step_1_prerequisites
     step_2_security_config
@@ -648,6 +1192,72 @@ main() {
     step_4_pull_images
     step_5_start_services
     step_6_validate
+
+    # ─────────────────────────────────────────────────────────────────────
+    # PHASE 2: Sécurisation avancée (optionnel)
+    # ─────────────────────────────────────────────────────────────────────
+    echo ""
+    echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${MAGENTA}${BOLD}  PHASE 2 : SÉCURISATION AVANCÉE (Optionnel)${NC}"
+    echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    cat << 'EOF'
+La sécurisation avancée comprend :
+  • Hashage bcrypt du mot de passe
+  • Protection CORS
+  • Anti-indexation Google
+  • HTTPS avec Let's Encrypt
+  • Backup automatique Google Drive
+
+EOF
+
+    if ask_continue "Continuer avec la sécurisation avancée ?"; then
+        step_7_bcrypt_password
+        step_8_cors_protection
+        step_9_anti_indexation
+
+        if ask_continue "Configurer HTTPS (nécessite un nom de domaine) ?"; then
+            step_10_https_letsencrypt
+        fi
+
+        if ask_continue "Configurer le backup Google Drive ?"; then
+            step_11_gdrive_backup
+        fi
+
+        step_final_security_summary
+    else
+        log_info "Sécurisation avancée ignorée"
+        log_info "Pour la configurer plus tard: ./scripts/setup_security.sh"
+    fi
+
+    # ─────────────────────────────────────────────────────────────────────
+    # FIN
+    # ─────────────────────────────────────────────────────────────────────
+    echo ""
+    echo -e "${GREEN}${BOLD}"
+    cat << EOF
+╔══════════════════════════════════════════════════════════════════════════╗
+║                                                                          ║
+║                    🎉 INSTALLATION COMPLÈTE                              ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+EOF
+    echo -e "${NC}"
+
+    local local_ip=$(hostname -I | awk '{print $1}')
+    local dashboard_port=$(grep -E "^DASHBOARD_PORT=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "3000")
+
+    echo -e "📍 ${BOLD}Dashboard:${NC}      http://${local_ip}:${dashboard_port:-3000}"
+    echo -e "📄 ${BOLD}Logs setup:${NC}     $LOG_FILE"
+    echo -e "🔐 ${BOLD}Credentials:${NC}    Fichier .env"
+    echo ""
+    echo -e "${BOLD}Commandes utiles:${NC}"
+    echo "  • Logs:        docker compose -f $COMPOSE_FILE logs -f"
+    echo "  • Status:      docker compose -f $COMPOSE_FILE ps"
+    echo "  • Redémarrer:  docker compose -f $COMPOSE_FILE restart"
+    echo "  • Arrêter:     docker compose -f $COMPOSE_FILE down"
+    echo ""
 }
 
 # Lancer le script
