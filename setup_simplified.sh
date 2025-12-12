@@ -964,102 +964,39 @@ step_4_pull_images() {
     )
 
     log_info "Téléchargement de ${#images[@]} images (peut prendre 5-15 minutes sur RPI4)..."
-    echo ""
 
-    local total=${#images[@]}
-    local current=0
     local failed=0
+    local img_num=0
 
-    for image in "${images[@]}"; do
-        ((current++))
+    # Image 1: Redis
+    img_num=1
+    log_info "[$img_num/3] Téléchargement de redis:7-alpine..."
+    if docker pull redis:7-alpine 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "[$img_num/3] redis:7-alpine téléchargé"
+    else
+        log_error "[$img_num/3] Échec redis:7-alpine"
+        failed=$((failed + 1))
+    fi
 
-        # Afficher progression
-        echo -n "  "
-        show_progress "$current" "$total"
-        echo " $image"
+    # Image 2: Bot
+    img_num=2
+    log_info "[$img_num/3] Téléchargement de linkedin-birthday-auto-bot..."
+    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "[$img_num/3] linkedin-birthday-auto-bot téléchargé"
+    else
+        log_error "[$img_num/3] Échec linkedin-birthday-auto-bot"
+        failed=$((failed + 1))
+    fi
 
-        # Télécharger avec affichage du statut
-        log_debug "Pull de $image..."
-        echo -n "    Téléchargement en cours..."
-
-        local pull_success=false
-        local attempts=0
-        local max_attempts=3
-        local pull_output=""
-        local pull_error=""
-
-        while [[ $attempts -lt $max_attempts ]]; do
-            ((attempts++))
-
-            # Capturer stdout et stderr séparément
-            pull_output=$(docker pull "$image" 2>&1)
-            local exit_code=$?
-
-            echo "$pull_output" >> "$LOG_FILE"
-
-            if [[ $exit_code -eq 0 ]]; then
-                pull_success=true
-                break
-            fi
-
-            # Sauvegarder l'erreur pour affichage
-            pull_error="$pull_output"
-
-            if [[ $attempts -lt $max_attempts ]]; then
-                echo ""
-                log_warning "    Tentative $attempts/$max_attempts échouée, retry dans 5s..."
-                log_debug "    Erreur: $(echo "$pull_error" | tail -1)"
-                sleep 5
-                echo -n "    Nouvelle tentative..."
-            fi
-        done
-
-        if [[ "$pull_success" == "true" ]]; then
-            echo -e " ${GREEN}✓ OK${NC}"
-            # Afficher la taille de l'image téléchargée
-            local img_size=$(docker images --format "{{.Size}}" "$image" 2>/dev/null | head -1)
-            [[ -n "$img_size" ]] && log_debug "    Taille: $img_size"
-        else
-            echo -e " ${RED}✗ ÉCHEC${NC}"
-            ((failed++))
-            log_error "Échec du pull de $image après $max_attempts tentatives"
-
-            # Afficher les détails de l'erreur
-            echo ""
-            echo -e "    ${RED}━━━ Détails de l'erreur ━━━${NC}"
-            echo "$pull_error" | while IFS= read -r line; do
-                echo -e "    ${DIM}$line${NC}"
-            done
-            echo -e "    ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo ""
-
-            # Diagnostics supplémentaires
-            log_info "    Diagnostics:"
-
-            # Vérifier la connectivité réseau
-            if ! ping -c 1 -W 3 ghcr.io &>/dev/null 2>&1; then
-                log_error "    → Impossible de joindre ghcr.io (problème réseau?)"
-            fi
-
-            # Vérifier l'espace disque
-            local disk_avail=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
-            if [[ "$disk_avail" -lt 2 ]]; then
-                log_error "    → Espace disque insuffisant: ${disk_avail}GB disponible"
-            fi
-
-            # Vérifier la mémoire
-            local mem_avail=$(free -m | awk '/^Mem:/{print $7}')
-            if [[ "$mem_avail" -lt 200 ]]; then
-                log_error "    → Mémoire faible: ${mem_avail}MB disponible"
-            fi
-
-            # Suggérer des solutions
-            log_info "    Solutions possibles:"
-            log_info "    1. Vérifiez votre connexion internet"
-            log_info "    2. Essayez: docker pull $image"
-            log_info "    3. Nettoyez: docker system prune -a"
-        fi
-    done
+    # Image 3: Dashboard
+    img_num=3
+    log_info "[$img_num/3] Téléchargement de linkedin-birthday-auto-dashboard..."
+    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "[$img_num/3] linkedin-birthday-auto-dashboard téléchargé"
+    else
+        log_error "[$img_num/3] Échec linkedin-birthday-auto-dashboard"
+        failed=$((failed + 1))
+    fi
 
     echo ""
 
