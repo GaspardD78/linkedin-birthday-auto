@@ -105,11 +105,7 @@ services:
   # API (Pont entre Dashboard et Worker)
   # ========================================
   api:
-    # Build locally to include latest fixes (remove 'build' and uncomment 'image' to use GHCR)
-    build:
-      context: .
-      dockerfile: Dockerfile.multiarch
-    # image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
+    image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
     # Enable privileged mode to allow systemctl commands
@@ -159,11 +155,7 @@ services:
   # BOT WORKER (RQ Worker avec Playwright)
   # ========================================
   bot-worker:
-    # Build locally to include latest fixes (remove 'build' and uncomment 'image' to use GHCR)
-    build:
-      context: .
-      dockerfile: Dockerfile.multiarch
-    # image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
+    image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-worker
     command: python -m src.queue.worker
     depends_on:

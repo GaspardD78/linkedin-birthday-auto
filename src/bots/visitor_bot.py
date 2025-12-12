@@ -329,7 +329,8 @@ class VisitorBot(BaseLinkedInBot):
                 elif lang_lower in lang_map:
                     lang_codes.append(lang_map[lang_lower])
             if lang_codes:
-                params["profileLanguage"] = f"[{','.join(f'\"{c}\"' for c in lang_codes)}]"
+                quoted_codes = ",".join(f'"{c}"' for c in lang_codes)
+                params["profileLanguage"] = f"[{quoted_codes}]"
 
         # Construction de l'URL finale
         base_url = "https://www.linkedin.com/search/results/people/?"
