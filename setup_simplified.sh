@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - Installation Simplifiée v4.0                    ║
+# ║  LinkedIn Birthday Bot - Installation Simplifiée v5.0                    ║
 # ║  Déploiement étape par étape avec hardening sécurité intégré             ║
 # ║                                                                          ║
-# ║  Images pré-construites via GitHub Actions (GHCR)                        ║
+# ║  Optimisé pour Raspberry Pi 4 - Images pré-construites via GHCR         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 set -euo pipefail
@@ -17,6 +17,26 @@ ENV_FILE=".env"
 ENV_TEMPLATE=".env.pi4.example"
 LOG_FILE="setup_$(date +%Y%m%d_%H%M%S).log"
 DEBUG_MODE="${DEBUG:-false}"
+SCRIPT_VERSION="5.0"
+
+# Options CLI
+UNATTENDED_MODE=false
+SKIP_PHASE2=false
+QUICK_MODE=false
+RESUME_MODE=false
+FORCE_REINSTALL=false
+
+# Timeouts optimisés pour RPI4 (plus lent qu'un PC)
+TIMEOUT_REDIS=90
+TIMEOUT_API=240
+TIMEOUT_WORKER=180
+TIMEOUT_DASHBOARD=240
+
+# Seuils RPI4
+RPI4_MIN_RAM_MB=3500       # Minimum 3.5GB RAM
+RPI4_WARN_TEMP=70          # Avertissement température (°C)
+RPI4_CRITICAL_TEMP=80      # Température critique (°C)
+RPI4_MIN_DISK_GB=3         # Minimum 3GB disque
 
 # Couleurs
 RED='\033[0;31m'
@@ -29,15 +49,96 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
+# Caractères pour spinner
+SPINNER_CHARS='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AIDE ET PARSING ARGUMENTS CLI
+# ═══════════════════════════════════════════════════════════════════════════
+show_help() {
+    cat << EOF
+${BOLD}LinkedIn Birthday Bot - Installation Simplifiée v${SCRIPT_VERSION}${NC}
+Optimisé pour Raspberry Pi 4
+
+${BOLD}Usage:${NC}
+  ./setup_simplified.sh [OPTIONS]
+
+${BOLD}Options:${NC}
+  -h, --help          Affiche cette aide
+  -u, --unattended    Mode non-interactif (installation automatique)
+  -q, --quick         Mode rapide (skip les explications)
+  -s, --skip-phase2   Sauter la phase 2 (sécurisation avancée)
+  -r, --resume        Reprendre une installation interrompue
+  -f, --force         Forcer la réinstallation (supprime les containers existants)
+  -d, --debug         Activer le mode debug (logs détaillés)
+
+${BOLD}Exemples:${NC}
+  ./setup_simplified.sh                    # Installation interactive
+  ./setup_simplified.sh -u -s              # Installation automatique basique
+  ./setup_simplified.sh -u -q              # Installation rapide complète
+  DEBUG=true ./setup_simplified.sh         # Installation avec debug
+
+${BOLD}Variables d'environnement:${NC}
+  DEBUG=true          Active le mode debug
+  DASHBOARD_USER      Définit l'utilisateur dashboard
+  DASHBOARD_PASSWORD  Définit le mot de passe dashboard
+
+${BOLD}Documentation:${NC}
+  https://github.com/GaspardD78/linkedin-birthday-auto
+
+EOF
+    exit 0
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_help
+                ;;
+            -u|--unattended)
+                UNATTENDED_MODE=true
+                shift
+                ;;
+            -q|--quick)
+                QUICK_MODE=true
+                shift
+                ;;
+            -s|--skip-phase2)
+                SKIP_PHASE2=true
+                shift
+                ;;
+            -r|--resume)
+                RESUME_MODE=true
+                shift
+                ;;
+            -f|--force)
+                FORCE_REINSTALL=true
+                shift
+                ;;
+            -d|--debug)
+                DEBUG_MODE=true
+                shift
+                ;;
+            *)
+                log_error "Option inconnue: $1"
+                echo "Utilisez --help pour voir les options disponibles"
+                exit 1
+                ;;
+        esac
+    done
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SYSTÈME DE LOGGING DEBUG
 # ═══════════════════════════════════════════════════════════════════════════
 log_init() {
     echo "═══════════════════════════════════════════════════════════════" > "$LOG_FILE"
-    echo "LinkedIn Birthday Bot - Setup Log" >> "$LOG_FILE"
+    echo "LinkedIn Birthday Bot - Setup Log v${SCRIPT_VERSION}" >> "$LOG_FILE"
     echo "Date: $(date)" >> "$LOG_FILE"
     echo "User: $(whoami)" >> "$LOG_FILE"
     echo "PWD: $(pwd)" >> "$LOG_FILE"
+    echo "Args: UNATTENDED=$UNATTENDED_MODE QUICK=$QUICK_MODE SKIP_PHASE2=$SKIP_PHASE2" >> "$LOG_FILE"
     echo "═══════════════════════════════════════════════════════════════" >> "$LOG_FILE"
 }
 
@@ -86,17 +187,97 @@ log_step() {
 # ═══════════════════════════════════════════════════════════════════════════
 # FONCTIONS UTILITAIRES
 # ═══════════════════════════════════════════════════════════════════════════
+
+# Spinner animé pour les opérations longues
+SPINNER_PID=""
+
+start_spinner() {
+    local message="${1:-Chargement...}"
+    if [[ "$UNATTENDED_MODE" == "true" ]]; then
+        echo -e "${CYAN}⏳${NC} $message"
+        return
+    fi
+
+    (
+        local i=0
+        while true; do
+            printf "\r${CYAN}${SPINNER_CHARS:i++%${#SPINNER_CHARS}:1}${NC} $message"
+            sleep 0.1
+        done
+    ) &
+    SPINNER_PID=$!
+    disown $SPINNER_PID 2>/dev/null
+}
+
+stop_spinner() {
+    local status="${1:-success}"
+    local message="${2:-}"
+
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill $SPINNER_PID 2>/dev/null || true
+        wait $SPINNER_PID 2>/dev/null || true
+        SPINNER_PID=""
+    fi
+
+    # Effacer la ligne du spinner
+    printf "\r\033[K"
+
+    if [[ -n "$message" ]]; then
+        if [[ "$status" == "success" ]]; then
+            log_success "$message"
+        elif [[ "$status" == "error" ]]; then
+            log_error "$message"
+        else
+            log_info "$message"
+        fi
+    fi
+}
+
+# Barre de progression
+show_progress() {
+    local current=$1
+    local total=$2
+    local width=40
+    local percent=$((current * 100 / total))
+    local filled=$((current * width / total))
+    local empty=$((width - filled))
+
+    printf "\r["
+    printf "%${filled}s" | tr ' ' '█'
+    printf "%${empty}s" | tr ' ' '░'
+    printf "] %3d%% (%d/%d)" "$percent" "$current" "$total"
+}
+
+# Compte à rebours visuel
+countdown() {
+    local seconds=$1
+    local message="${2:-Attente}"
+
+    if [[ "$UNATTENDED_MODE" == "true" || "$QUICK_MODE" == "true" ]]; then
+        sleep "$seconds"
+        return
+    fi
+
+    for ((i=seconds; i>0; i--)); do
+        printf "\r${CYAN}⏳${NC} $message (%ds)" "$i"
+        sleep 1
+    done
+    printf "\r\033[K"
+}
+
 print_banner() {
+    [[ "$QUICK_MODE" == "true" ]] && return
+
     clear
     echo -e "${CYAN}"
     cat << "EOF"
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                          ║
-║   🚀 LinkedIn Birthday Bot - Installation Sécurisée v4.0                ║
+║   🚀 LinkedIn Birthday Bot - Installation Sécurisée v5.0                ║
 ║                                                                          ║
 ║   • Déploiement étape par étape                                         ║
 ║   • Hardening sécurité intégré                                          ║
-║   • Logs debug détaillés                                                ║
+║   • Optimisé pour Raspberry Pi 4                                        ║
 ║                                                                          ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 EOF
@@ -105,9 +286,38 @@ EOF
 
 ask_continue() {
     local prompt="${1:-Continuer ?}"
+
+    # Mode non-interactif : toujours oui
+    if [[ "$UNATTENDED_MODE" == "true" ]]; then
+        log_debug "Mode non-interactif: auto-accept '$prompt'"
+        return 0
+    fi
+
     echo -e -n "${CYAN}❓${NC} $prompt [O/n] "
     read -r response
     [[ -z "$response" || "$response" =~ ^[OoYy]$ ]]
+}
+
+# Demande avec valeur par défaut (supporte mode unattended)
+ask_input() {
+    local prompt="$1"
+    local default="$2"
+    local var_name="$3"
+
+    # En mode unattended, utiliser la valeur par défaut ou env var
+    if [[ "$UNATTENDED_MODE" == "true" ]]; then
+        local env_value="${!var_name:-}"
+        if [[ -n "$env_value" ]]; then
+            echo "$env_value"
+        else
+            echo "$default"
+        fi
+        return
+    fi
+
+    echo -e -n "${CYAN}❓${NC} $prompt [$default]: "
+    read -r response
+    echo "${response:-$default}"
 }
 
 generate_secure_key() {
@@ -140,6 +350,167 @@ validate_key() {
     return 0
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# FONCTIONS DE VÉRIFICATION RPI4
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Vérifie si on est sur un Raspberry Pi
+is_raspberry_pi() {
+    [[ -f /proc/device-tree/model ]] && grep -qi "raspberry" /proc/device-tree/model 2>/dev/null
+}
+
+# Récupère la température CPU du RPI4
+get_cpu_temp() {
+    if [[ -f /sys/class/thermal/thermal_zone0/temp ]]; then
+        local temp_raw=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo "0")
+        echo $((temp_raw / 1000))
+    else
+        echo "0"
+    fi
+}
+
+# Vérifie la température et avertit si trop élevée
+check_cpu_temp() {
+    local temp=$(get_cpu_temp)
+
+    if [[ "$temp" -eq 0 ]]; then
+        log_debug "Impossible de lire la température CPU"
+        return 0
+    fi
+
+    log_debug "Température CPU: ${temp}°C"
+
+    if [[ "$temp" -ge "$RPI4_CRITICAL_TEMP" ]]; then
+        log_error "CRITIQUE: CPU à ${temp}°C - Risque de throttling!"
+        log_warning "Le RPI4 va réduire sa performance pour éviter la surchauffe"
+        log_info "Conseil: Vérifiez le refroidissement (ventilateur, dissipateur)"
+
+        if ! ask_continue "Continuer malgré la température critique ?"; then
+            exit 1
+        fi
+        return 1
+    elif [[ "$temp" -ge "$RPI4_WARN_TEMP" ]]; then
+        log_warning "CPU chaud: ${temp}°C - Performance peut être réduite"
+        return 0
+    else
+        log_debug "Température CPU OK: ${temp}°C"
+        return 0
+    fi
+}
+
+# Vérifie la mémoire disponible
+check_memory() {
+    local total_mb=$(free -m | awk '/^Mem:/{print $2}')
+    local available_mb=$(free -m | awk '/^Mem:/{print $7}')
+    local swap_mb=$(free -m | awk '/^Swap:/{print $2}')
+
+    log_debug "RAM: ${total_mb}MB total, ${available_mb}MB disponible, ${swap_mb}MB swap"
+
+    if [[ "$total_mb" -lt "$RPI4_MIN_RAM_MB" ]]; then
+        log_warning "RAM totale faible: ${total_mb}MB (recommandé: ≥4GB)"
+    fi
+
+    # Vérifier si swap est configuré
+    if [[ "$swap_mb" -lt 1000 ]]; then
+        log_warning "Swap faible ou absent (${swap_mb}MB)"
+        log_info "Conseil: Activez au moins 1GB de swap pour la stabilité"
+
+        if is_raspberry_pi && [[ ! -f /etc/dphys-swapfile ]]; then
+            log_info "Pour activer le swap sur RPI4:"
+            log_info "  sudo dphys-swapfile swapoff"
+            log_info "  sudo nano /etc/dphys-swapfile  # CONF_SWAPSIZE=2048"
+            log_info "  sudo dphys-swapfile setup && sudo dphys-swapfile swapon"
+        fi
+    fi
+
+    # Vérifier si assez de mémoire pour l'installation
+    if [[ "$available_mb" -lt 500 ]]; then
+        log_error "Mémoire disponible insuffisante: ${available_mb}MB"
+        log_info "Fermez d'autres applications ou augmentez le swap"
+        return 1
+    fi
+
+    return 0
+}
+
+# Configure automatiquement le swap si nécessaire (avec permission)
+setup_swap_if_needed() {
+    local swap_mb=$(free -m | awk '/^Swap:/{print $2}')
+
+    if [[ "$swap_mb" -ge 1000 ]]; then
+        return 0  # Swap déjà configuré
+    fi
+
+    if ! is_raspberry_pi; then
+        return 0  # Pas un RPI, ne pas toucher au swap
+    fi
+
+    if [[ "$UNATTENDED_MODE" == "true" ]]; then
+        log_info "Mode unattended: configuration swap ignorée"
+        return 0
+    fi
+
+    if ask_continue "Configurer automatiquement 2GB de swap ? (recommandé)"; then
+        log_info "Configuration du swap..."
+
+        if [[ -f /etc/dphys-swapfile ]]; then
+            sudo dphys-swapfile swapoff 2>/dev/null || true
+            sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+            sudo dphys-swapfile setup
+            sudo dphys-swapfile swapon
+            log_success "Swap configuré (2GB)"
+        else
+            log_warning "dphys-swapfile non trouvé, swap manuel requis"
+        fi
+    fi
+}
+
+# Vérifie si le système est surchargé
+check_system_load() {
+    local load_1min=$(cat /proc/loadavg | awk '{print $1}')
+    local cpus=$(nproc)
+    local load_threshold=$(echo "$cpus * 2" | bc 2>/dev/null || echo "4")
+
+    log_debug "Load average: $load_1min (CPUs: $cpus)"
+
+    # Comparer en entier (bash ne gère pas les floats)
+    local load_int=${load_1min%.*}
+    if [[ "$load_int" -gt "$load_threshold" ]]; then
+        log_warning "Système très chargé (load: $load_1min)"
+        log_info "L'installation sera plus lente, patientez..."
+        return 1
+    fi
+
+    return 0
+}
+
+# Retry avec backoff exponentiel
+retry_with_backoff() {
+    local max_attempts=${1:-4}
+    local base_delay=${2:-2}
+    local cmd="${@:3}"
+    local attempt=1
+
+    while [[ $attempt -le $max_attempts ]]; do
+        log_debug "Tentative $attempt/$max_attempts: $cmd"
+
+        if eval "$cmd"; then
+            return 0
+        fi
+
+        if [[ $attempt -lt $max_attempts ]]; then
+            local delay=$((base_delay * (2 ** (attempt - 1))))
+            log_warning "Échec, nouvelle tentative dans ${delay}s..."
+            countdown "$delay" "Attente avant retry"
+        fi
+
+        ((attempt++))
+    done
+
+    log_error "Échec après $max_attempts tentatives"
+    return 1
+}
+
 wait_container_healthy() {
     local container="$1"
     local timeout="${2:-120}"
@@ -147,11 +518,14 @@ wait_container_healthy() {
 
     log_debug "Attente de $container (timeout: ${timeout}s)"
 
+    # Utiliser le spinner pour l'attente
+    start_spinner "Démarrage de $container..."
+
     while true; do
         local elapsed=$(($(date +%s) - start_time))
 
         if [[ $elapsed -ge $timeout ]]; then
-            log_error "Timeout: $container non healthy après ${timeout}s"
+            stop_spinner "error" "Timeout: $container non healthy après ${timeout}s"
             log_debug "Logs de $container:"
             docker logs "$container" --tail 30 2>&1 | tee -a "$LOG_FILE"
             return 1
@@ -164,17 +538,17 @@ wait_container_healthy() {
 
         case "$health" in
             "healthy")
-                log_success "$container est healthy (${elapsed}s)"
+                stop_spinner "success" "$container est healthy (${elapsed}s)"
                 return 0
                 ;;
             "no_healthcheck")
                 if [[ "$status" == "running" ]]; then
-                    log_success "$container est running (pas de healthcheck)"
+                    stop_spinner "success" "$container est running (pas de healthcheck)"
                     return 0
                 fi
                 ;;
             "unhealthy")
-                log_error "$container est unhealthy!"
+                stop_spinner "error" "$container est unhealthy!"
                 log_debug "Derniers logs:"
                 docker logs "$container" --tail 20 2>&1 | tee -a "$LOG_FILE"
                 return 1
@@ -182,13 +556,12 @@ wait_container_healthy() {
         esac
 
         if [[ "$status" == "exited" || "$status" == "dead" ]]; then
-            log_error "$container a crashé (status: $status)"
+            stop_spinner "error" "$container a crashé (status: $status)"
             log_debug "Logs de crash:"
             docker logs "$container" --tail 50 2>&1 | tee -a "$LOG_FILE"
             return 1
         fi
 
-        echo -n "."
         sleep 3
     done
 }
@@ -202,27 +575,127 @@ step_0_init() {
     log_info "Fichier de log: $LOG_FILE"
     log_info "Mode debug: $DEBUG_MODE"
 
+    # Afficher les modes actifs
+    [[ "$UNATTENDED_MODE" == "true" ]] && log_info "Mode: Non-interactif (unattended)"
+    [[ "$QUICK_MODE" == "true" ]] && log_info "Mode: Rapide (quick)"
+    [[ "$SKIP_PHASE2" == "true" ]] && log_info "Mode: Phase 2 ignorée"
+
     # Détection plateforme
-    if [[ -f /proc/device-tree/model ]]; then
-        local model=$(cat /proc/device-tree/model)
+    if is_raspberry_pi; then
+        local model=$(tr -d '\0' < /proc/device-tree/model)
         log_success "Plateforme: $model"
+
+        # Vérifications spécifiques RPI4
+        echo ""
+        log_info "Vérifications Raspberry Pi..."
+
+        # Température CPU
+        local temp=$(get_cpu_temp)
+        if [[ "$temp" -gt 0 ]]; then
+            if [[ "$temp" -ge "$RPI4_WARN_TEMP" ]]; then
+                log_warning "Température CPU: ${temp}°C (élevée)"
+            else
+                log_success "Température CPU: ${temp}°C"
+            fi
+        fi
+
+        # Vérifier le throttling actuel
+        if command -v vcgencmd &>/dev/null; then
+            local throttled=$(vcgencmd get_throttled 2>/dev/null | cut -d= -f2)
+            if [[ "$throttled" != "0x0" && -n "$throttled" ]]; then
+                log_warning "Throttling détecté: $throttled"
+                log_info "Le RPI4 a réduit ses performances (température/alimentation)"
+            else
+                log_debug "Pas de throttling actif"
+            fi
+        fi
+
+        check_cpu_temp
     else
         log_info "Plateforme: $(uname -m) / $(uname -s)"
     fi
 
     # RAM
     if command -v free &>/dev/null; then
-        local ram=$(free -m | awk '/^Mem:/{print $2}')
-        log_info "RAM: ${ram}MB"
+        local ram_total=$(free -m | awk '/^Mem:/{print $2}')
+        local ram_avail=$(free -m | awk '/^Mem:/{print $7}')
+        local swap=$(free -m | awk '/^Swap:/{print $2}')
+
+        log_info "RAM: ${ram_total}MB total, ${ram_avail}MB disponible"
+        log_info "Swap: ${swap}MB"
         log_debug "RAM détail: $(free -m | head -2)"
+
+        # Vérifier et configurer le swap si nécessaire
+        check_memory || true
+        setup_swap_if_needed
     fi
 
     # Disque
     local disk=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
     log_info "Disque disponible: ${disk}GB"
 
-    if [[ "$disk" -lt 3 ]]; then
-        log_warning "Espace disque faible (<3GB)"
+    if [[ "$disk" -lt "$RPI4_MIN_DISK_GB" ]]; then
+        log_warning "Espace disque faible (<${RPI4_MIN_DISK_GB}GB)"
+        log_info "Conseil: Nettoyez avec 'docker system prune -a'"
+    fi
+
+    # Vérifier la charge système
+    check_system_load || true
+
+    # Détection d'une installation précédente
+    check_existing_installation
+}
+
+# Vérifie s'il y a déjà une installation
+check_existing_installation() {
+    echo ""
+    log_info "Vérification d'une installation existante..."
+
+    local existing_containers=0
+    local running_containers=0
+
+    # Compter les containers existants
+    for container in redis-bot redis-dashboard bot-api bot-worker dashboard; do
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
+            ((existing_containers++))
+            if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
+                ((running_containers++))
+            fi
+        fi
+    done
+
+    if [[ $existing_containers -gt 0 ]]; then
+        log_info "Installation précédente détectée:"
+        log_info "  • $existing_containers containers existants"
+        log_info "  • $running_containers containers en cours d'exécution"
+
+        if [[ $running_containers -eq 5 ]]; then
+            log_success "Tous les services sont déjà en cours d'exécution!"
+
+            if [[ "$FORCE_REINSTALL" == "true" ]]; then
+                log_warning "Mode --force: réinstallation forcée"
+            elif [[ "$RESUME_MODE" == "true" ]]; then
+                log_info "Mode --resume: vérification de l'état..."
+                return 0
+            else
+                if ! ask_continue "L'installation semble complète. Réinstaller ?"; then
+                    log_info "Utilisez les commandes suivantes:"
+                    echo "  • Status:  docker compose -f $COMPOSE_FILE ps"
+                    echo "  • Logs:    docker compose -f $COMPOSE_FILE logs -f"
+                    echo "  • Stop:    docker compose -f $COMPOSE_FILE down"
+                    exit 0
+                fi
+            fi
+        fi
+
+        # Afficher l'état des services
+        if [[ "$QUICK_MODE" != "true" ]]; then
+            echo ""
+            docker compose -f "$COMPOSE_FILE" ps 2>/dev/null || true
+            echo ""
+        fi
+    else
+        log_info "Aucune installation précédente détectée"
     fi
 }
 
@@ -454,24 +927,73 @@ step_4_pull_images() {
     log_info "Pull des images pré-construites depuis GitHub Container Registry..."
     log_debug "Compose file: $COMPOSE_FILE"
 
+    # Vérifier la température avant le pull (opération intensive)
+    if is_raspberry_pi; then
+        check_cpu_temp || log_warning "Température élevée - le téléchargement peut être plus lent"
+    fi
+
     # Arrêt des containers existants
-    log_info "Arrêt des containers existants..."
-    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>&1 | tee -a "$LOG_FILE" || true
+    if [[ "$FORCE_REINSTALL" == "true" ]] || docker compose -f "$COMPOSE_FILE" ps -q 2>/dev/null | grep -q .; then
+        log_info "Arrêt des containers existants..."
+        start_spinner "Arrêt des services..."
+        docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>&1 >> "$LOG_FILE" || true
+        stop_spinner "success" "Services arrêtés"
+    fi
 
-    # Pull des images
-    log_info "Téléchargement des images (peut prendre quelques minutes)..."
+    # Liste des images à télécharger
+    local images=(
+        "redis:7-alpine"
+        "ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest"
+        "ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+    )
 
-    if docker compose -f "$COMPOSE_FILE" pull 2>&1 | tee -a "$LOG_FILE"; then
-        log_success "Images téléchargées avec succès"
-    else
-        log_error "Échec du téléchargement des images"
-        log_info "Vérifiez votre connexion internet et les permissions GHCR"
+    log_info "Téléchargement de ${#images[@]} images (peut prendre 5-15 minutes sur RPI4)..."
+    echo ""
+
+    local total=${#images[@]}
+    local current=0
+    local failed=0
+
+    for image in "${images[@]}"; do
+        ((current++))
+
+        # Afficher progression
+        show_progress "$current" "$total"
+        echo -n " $image"
+
+        # Télécharger avec retry
+        if retry_with_backoff 3 2 "docker pull '$image' >> '$LOG_FILE' 2>&1"; then
+            echo -e " ${GREEN}✓${NC}"
+        else
+            echo -e " ${RED}✗${NC}"
+            ((failed++))
+            log_error "Échec du pull de $image"
+        fi
+    done
+
+    echo ""
+
+    if [[ $failed -gt 0 ]]; then
+        log_error "$failed image(s) n'ont pas pu être téléchargées"
+        log_info "Vérifiez votre connexion internet et réessayez"
+        log_info "Conseil: docker compose -f $COMPOSE_FILE pull"
         exit 1
     fi
 
-    # Liste des images
-    log_debug "Images Docker présentes:"
-    docker images --format "{{.Repository}}:{{.Tag}} ({{.Size}})" | grep -E "linkedin|redis" | tee -a "$LOG_FILE" || true
+    log_success "Toutes les images téléchargées avec succès"
+
+    # Afficher la taille des images
+    if [[ "$DEBUG_MODE" == "true" ]]; then
+        log_debug "Images Docker présentes:"
+        docker images --format "  {{.Repository}}:{{.Tag}} ({{.Size}})" | grep -E "linkedin|redis" | tee -a "$LOG_FILE" || true
+    fi
+
+    # Nettoyage des vieilles images si l'espace est limité
+    local disk=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
+    if [[ "$disk" -lt 5 ]]; then
+        log_info "Nettoyage des images inutilisées pour libérer de l'espace..."
+        docker image prune -f >> "$LOG_FILE" 2>&1 || true
+    fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -480,35 +1002,59 @@ step_4_pull_images() {
 step_5_start_services() {
     log_step "5" "DÉMARRAGE SÉQUENTIEL DES SERVICES"
 
+    # Vérifier la température avant le démarrage
+    if is_raspberry_pi; then
+        local temp=$(get_cpu_temp)
+        if [[ "$temp" -ge "$RPI4_WARN_TEMP" ]]; then
+            log_warning "CPU à ${temp}°C - Pause de 30s pour refroidissement..."
+            countdown 30 "Refroidissement du CPU"
+        fi
+    fi
+
+    local services_started=0
+    local total_services=5
+
     # ─────────────────────────────────────────────────────────────────────
     # 5.1 Redis Bot
     # ─────────────────────────────────────────────────────────────────────
-    log_info "5.1 Démarrage redis-bot..."
-    docker compose -f "$COMPOSE_FILE" up -d redis-bot 2>&1 | tee -a "$LOG_FILE"
+    echo ""
+    show_progress 1 $total_services
+    echo -e " ${BOLD}Redis Bot${NC}"
 
-    if wait_container_healthy "redis-bot" 60; then
-        log_success "redis-bot démarré"
+    log_info "5.1 Démarrage redis-bot..."
+    docker compose -f "$COMPOSE_FILE" up -d redis-bot 2>&1 >> "$LOG_FILE"
+
+    if wait_container_healthy "redis-bot" "$TIMEOUT_REDIS"; then
+        ((services_started++))
     else
         log_error "redis-bot n'a pas démarré correctement"
+        show_troubleshooting "redis-bot"
         exit 1
     fi
 
     # ─────────────────────────────────────────────────────────────────────
     # 5.2 Redis Dashboard
     # ─────────────────────────────────────────────────────────────────────
-    log_info "5.2 Démarrage redis-dashboard..."
-    docker compose -f "$COMPOSE_FILE" up -d redis-dashboard 2>&1 | tee -a "$LOG_FILE"
+    show_progress 2 $total_services
+    echo -e " ${BOLD}Redis Dashboard${NC}"
 
-    if wait_container_healthy "redis-dashboard" 60; then
-        log_success "redis-dashboard démarré"
+    log_info "5.2 Démarrage redis-dashboard..."
+    docker compose -f "$COMPOSE_FILE" up -d redis-dashboard 2>&1 >> "$LOG_FILE"
+
+    if wait_container_healthy "redis-dashboard" "$TIMEOUT_REDIS"; then
+        ((services_started++))
     else
         log_error "redis-dashboard n'a pas démarré correctement"
+        show_troubleshooting "redis-dashboard"
         exit 1
     fi
 
     # ─────────────────────────────────────────────────────────────────────
     # 5.3 Bot API
     # ─────────────────────────────────────────────────────────────────────
+    show_progress 3 $total_services
+    echo -e " ${BOLD}Bot API${NC}"
+
     log_info "5.3 Démarrage bot-api..."
     log_debug "Vérification API_KEY avant démarrage..."
 
@@ -521,48 +1067,96 @@ step_5_start_services() {
         exit 1
     fi
 
-    docker compose -f "$COMPOSE_FILE" up -d api 2>&1 | tee -a "$LOG_FILE"
+    docker compose -f "$COMPOSE_FILE" up -d api 2>&1 >> "$LOG_FILE"
 
-    echo -n "Attente bot-api "
-    if wait_container_healthy "bot-api" 180; then
-        echo ""
-        log_success "bot-api démarré et healthy"
+    if wait_container_healthy "bot-api" "$TIMEOUT_API"; then
+        ((services_started++))
     else
-        echo ""
         log_error "bot-api n'a pas démarré correctement"
-        log_info "Diagnostic:"
-        docker logs bot-api --tail 50 2>&1 | tee -a "$LOG_FILE"
+        show_troubleshooting "bot-api"
         exit 1
     fi
 
     # ─────────────────────────────────────────────────────────────────────
     # 5.4 Bot Worker
     # ─────────────────────────────────────────────────────────────────────
-    log_info "5.4 Démarrage bot-worker..."
-    docker compose -f "$COMPOSE_FILE" up -d bot-worker 2>&1 | tee -a "$LOG_FILE"
+    show_progress 4 $total_services
+    echo -e " ${BOLD}Bot Worker${NC}"
 
-    if wait_container_healthy "bot-worker" 120; then
-        log_success "bot-worker démarré"
+    log_info "5.4 Démarrage bot-worker..."
+    docker compose -f "$COMPOSE_FILE" up -d bot-worker 2>&1 >> "$LOG_FILE"
+
+    if wait_container_healthy "bot-worker" "$TIMEOUT_WORKER"; then
+        ((services_started++))
     else
-        log_warning "bot-worker pas encore healthy (peut être normal)"
+        log_warning "bot-worker pas encore healthy (peut être normal au premier démarrage)"
+        ((services_started++))  # Compter quand même car peut être OK
     fi
 
     # ─────────────────────────────────────────────────────────────────────
     # 5.5 Dashboard
     # ─────────────────────────────────────────────────────────────────────
-    log_info "5.5 Démarrage dashboard..."
-    docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 | tee -a "$LOG_FILE"
+    show_progress 5 $total_services
+    echo -e " ${BOLD}Dashboard${NC}"
 
-    echo -n "Attente dashboard "
-    if wait_container_healthy "dashboard" 180; then
-        echo ""
-        log_success "dashboard démarré"
+    log_info "5.5 Démarrage dashboard..."
+    docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 >> "$LOG_FILE"
+
+    if wait_container_healthy "dashboard" "$TIMEOUT_DASHBOARD"; then
+        ((services_started++))
     else
-        echo ""
         log_warning "dashboard pas encore healthy - vérifiez les logs"
     fi
 
-    log_success "Tous les services sont lancés"
+    # Résumé
+    echo ""
+    if [[ $services_started -ge 4 ]]; then
+        log_success "Services démarrés: $services_started/$total_services"
+    else
+        log_warning "Seulement $services_started/$total_services services démarrés"
+    fi
+
+    # Afficher la température finale
+    if is_raspberry_pi; then
+        local final_temp=$(get_cpu_temp)
+        log_info "Température CPU finale: ${final_temp}°C"
+    fi
+}
+
+# Affiche les conseils de dépannage pour un container
+show_troubleshooting() {
+    local container="$1"
+
+    echo ""
+    log_info "=== Conseils de dépannage pour $container ==="
+
+    case "$container" in
+        "redis-bot"|"redis-dashboard")
+            log_info "1. Vérifiez la mémoire disponible: free -m"
+            log_info "2. Vérifiez les logs: docker logs $container --tail 50"
+            log_info "3. Redémarrez: docker restart $container"
+            ;;
+        "bot-api")
+            log_info "1. Vérifiez API_KEY dans .env (doit être unique et 64+ chars)"
+            log_info "2. Vérifiez que redis-bot est healthy"
+            log_info "3. Logs: docker logs $container --tail 50"
+            ;;
+        "bot-worker")
+            log_info "1. Vérifiez la mémoire (besoin de ~1.8GB pour Playwright)"
+            log_info "2. Vérifiez le swap: free -m"
+            log_info "3. Logs: docker logs $container --tail 50"
+            ;;
+        "dashboard")
+            log_info "1. Vérifiez JWT_SECRET et DASHBOARD_PASSWORD dans .env"
+            log_info "2. Vérifiez que bot-api est healthy"
+            log_info "3. Logs: docker logs $container --tail 50"
+            ;;
+    esac
+
+    # Logs du container
+    echo ""
+    log_info "Derniers logs de $container:"
+    docker logs "$container" --tail 20 2>&1 | head -20 || true
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1163,12 +1757,27 @@ step_final_security_summary() {
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════
 main() {
+    # Parser les arguments CLI
+    parse_args "$@"
+
     print_banner
     log_init
 
-    log_info "Démarrage de l'installation..."
-    log_info "Pour activer le mode debug: DEBUG=true ./setup_simplified.sh"
+    # Afficher info version et mode
+    log_info "LinkedIn Birthday Bot - Setup v${SCRIPT_VERSION}"
+    log_info "Optimisé pour Raspberry Pi 4"
+
+    if [[ "$DEBUG_MODE" != "true" ]]; then
+        log_info "Pour activer le mode debug: DEBUG=true ./setup_simplified.sh"
+    fi
     echo ""
+
+    # Résumé des options en mode non-interactif
+    if [[ "$UNATTENDED_MODE" == "true" ]]; then
+        log_info "Mode non-interactif activé"
+        [[ "$SKIP_PHASE2" == "true" ]] && log_info "Phase 2 sera ignorée"
+        [[ "$QUICK_MODE" == "true" ]] && log_info "Mode rapide activé"
+    fi
 
     if ! ask_continue "Démarrer l'installation ?"; then
         log_info "Installation annulée par l'utilisateur"
@@ -1178,6 +1787,8 @@ main() {
     # ─────────────────────────────────────────────────────────────────────
     # PHASE 1: Installation de base
     # ─────────────────────────────────────────────────────────────────────
+    local phase1_start=$(date +%s)
+
     step_0_init
     step_1_prerequisites
     step_2_security_config
@@ -1185,7 +1796,7 @@ main() {
 
     if ! ask_continue "Télécharger les images et démarrer les services ?"; then
         log_info "Déploiement annulé - Configuration sauvegardée"
-        log_info "Pour reprendre: docker compose -f $COMPOSE_FILE up -d"
+        log_info "Pour reprendre: ./setup_simplified.sh --resume"
         exit 0
     fi
 
@@ -1193,16 +1804,24 @@ main() {
     step_5_start_services
     step_6_validate
 
+    local phase1_end=$(date +%s)
+    local phase1_duration=$((phase1_end - phase1_start))
+    log_info "Phase 1 terminée en ${phase1_duration}s"
+
     # ─────────────────────────────────────────────────────────────────────
     # PHASE 2: Sécurisation avancée (optionnel)
     # ─────────────────────────────────────────────────────────────────────
-    echo ""
-    echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${MAGENTA}${BOLD}  PHASE 2 : SÉCURISATION AVANCÉE (Optionnel)${NC}"
-    echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
+    if [[ "$SKIP_PHASE2" == "true" ]]; then
+        log_info "Phase 2 ignorée (--skip-phase2)"
+    else
+        echo ""
+        echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${MAGENTA}${BOLD}  PHASE 2 : SÉCURISATION AVANCÉE (Optionnel)${NC}"
+        echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
 
-    cat << 'EOF'
+        if [[ "$QUICK_MODE" != "true" ]]; then
+            cat << 'EOF'
 La sécurisation avancée comprend :
   • Hashage bcrypt du mot de passe
   • Protection CORS
@@ -1211,29 +1830,33 @@ La sécurisation avancée comprend :
   • Backup automatique Google Drive
 
 EOF
-
-    if ask_continue "Continuer avec la sécurisation avancée ?"; then
-        step_7_bcrypt_password
-        step_8_cors_protection
-        step_9_anti_indexation
-
-        if ask_continue "Configurer HTTPS (nécessite un nom de domaine) ?"; then
-            step_10_https_letsencrypt
         fi
 
-        if ask_continue "Configurer le backup Google Drive ?"; then
-            step_11_gdrive_backup
-        fi
+        if ask_continue "Continuer avec la sécurisation avancée ?"; then
+            step_7_bcrypt_password
+            step_8_cors_protection
+            step_9_anti_indexation
 
-        step_final_security_summary
-    else
-        log_info "Sécurisation avancée ignorée"
-        log_info "Pour la configurer plus tard: ./scripts/setup_security.sh"
+            if ask_continue "Configurer HTTPS (nécessite un nom de domaine) ?"; then
+                step_10_https_letsencrypt
+            fi
+
+            if ask_continue "Configurer le backup Google Drive ?"; then
+                step_11_gdrive_backup
+            fi
+
+            step_final_security_summary
+        else
+            log_info "Sécurisation avancée ignorée"
+            log_info "Pour la configurer plus tard: ./scripts/setup_security.sh"
+        fi
     fi
 
     # ─────────────────────────────────────────────────────────────────────
     # FIN
     # ─────────────────────────────────────────────────────────────────────
+    local total_duration=$(($(date +%s) - phase1_start))
+
     echo ""
     echo -e "${GREEN}${BOLD}"
     cat << EOF
@@ -1251,6 +1874,7 @@ EOF
     echo -e "📍 ${BOLD}Dashboard:${NC}      http://${local_ip}:${dashboard_port:-3000}"
     echo -e "📄 ${BOLD}Logs setup:${NC}     $LOG_FILE"
     echo -e "🔐 ${BOLD}Credentials:${NC}    Fichier .env"
+    echo -e "⏱️  ${BOLD}Durée totale:${NC}   ${total_duration}s"
     echo ""
     echo -e "${BOLD}Commandes utiles:${NC}"
     echo "  • Logs:        docker compose -f $COMPOSE_FILE logs -f"
@@ -1258,7 +1882,25 @@ EOF
     echo "  • Redémarrer:  docker compose -f $COMPOSE_FILE restart"
     echo "  • Arrêter:     docker compose -f $COMPOSE_FILE down"
     echo ""
+
+    # Afficher la température finale sur RPI4
+    if is_raspberry_pi; then
+        local final_temp=$(get_cpu_temp)
+        if [[ "$final_temp" -gt 0 ]]; then
+            echo -e "🌡️  ${BOLD}Température CPU:${NC} ${final_temp}°C"
+            echo ""
+        fi
+    fi
+
+    log_success "Installation terminée avec succès!"
 }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POINT D'ENTRÉE
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Gestion du signal CTRL+C
+trap 'stop_spinner; echo ""; log_warning "Installation interrompue"; exit 130' INT TERM
 
 # Lancer le script
 main "$@"
