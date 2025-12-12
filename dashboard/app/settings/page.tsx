@@ -109,11 +109,12 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link href="/settings/config-editor" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
-              >
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              asChild
+            >
+              <Link href="/settings/config-editor">
                 <FileCode className="h-6 w-6 mb-1 text-cyan-500" />
                 <div className="text-center">
                   <span className="font-semibold block">Éditeur Config</span>
@@ -121,29 +122,31 @@ export default function SettingsPage() {
                     Modifier config.yaml
                   </span>
                 </div>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
-            <Link href="/settings/terminal" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
-              >
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              asChild
+            >
+              <Link href="/settings/terminal">
                 <Terminal className="h-6 w-6 mb-1 text-cyan-500" />
                 <div className="text-center">
                   <span className="font-semibold block">Terminal Web</span>
                   <span className="text-xs text-muted-foreground font-normal">
-                    Console d'urgence
+                    Console d&apos;urgence
                   </span>
                 </div>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
-            <Link href="/settings/notifications" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
-              >
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              asChild
+            >
+              <Link href="/settings/notifications">
                 <Bell className="h-6 w-6 mb-1 text-cyan-500" />
                 <div className="text-center">
                   <span className="font-semibold block">Notifications</span>
@@ -151,14 +154,15 @@ export default function SettingsPage() {
                     Alertes en temps réel
                   </span>
                 </div>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
-            <Link href="/settings/webhooks" className="block">
-              <Button
-                variant="outline"
-                className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
-              >
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 flex flex-col items-center gap-2 border-dashed hover:bg-cyan-500/10 hover:border-cyan-500/50"
+              asChild
+            >
+              <Link href="/settings/webhooks">
                 <Webhook className="h-6 w-6 mb-1 text-cyan-500" />
                 <div className="text-center">
                   <span className="font-semibold block">Webhooks</span>
@@ -166,8 +170,8 @@ export default function SettingsPage() {
                     Automatisation externe
                   </span>
                 </div>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
