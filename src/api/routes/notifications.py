@@ -6,7 +6,7 @@ Fournit des endpoints pour configurer et tester les notifications.
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, EmailStr
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 from ...services.notification_service import NotificationService
@@ -29,6 +29,13 @@ class NotificationSettings(BaseModel):
     notify_on_cookies_expiry: bool = Field(
         default=True, description="Notifier quand cookies expirent"
     )
+    # SMTP Configuration fields
+    smtp_host: Optional[str] = Field(default=None, description="Serveur SMTP (ex: smtp.gmail.com)")
+    smtp_port: Optional[int] = Field(default=None, description="Port SMTP (ex: 587)")
+    smtp_user: Optional[str] = Field(default=None, description="Nom d'utilisateur SMTP")
+    smtp_password: Optional[str] = Field(default=None, description="Mot de passe SMTP")
+    smtp_use_tls: bool = Field(default=True, description="Utiliser TLS pour la connexion SMTP")
+    smtp_from_email: Optional[str] = Field(default=None, description="Adresse email d'expédition")
 
 
 class TestNotificationRequest(BaseModel):
@@ -52,11 +59,14 @@ async def get_notification_settings(
     """
     Récupère les paramètres de notification.
 
+    Le mot de passe SMTP est masqué pour des raisons de sécurité.
+
     Returns:
         Paramètres de notification actuels
     """
     try:
-        settings = notification_service.get_settings()
+        # Mask password for security when returning settings
+        settings = notification_service.get_settings(mask_password=True)
         return {
             "success": True,
             "settings": settings,

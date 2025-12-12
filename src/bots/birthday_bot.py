@@ -4,6 +4,7 @@ Bot LinkedIn pour anniversaires avec limites (mode standard).
 Ce bot traite les anniversaires en fonction de la configuration.
 """
 
+import asyncio
 from datetime import datetime
 import random
 import time
@@ -14,6 +15,7 @@ from playwright.sync_api import Locator
 from ..core.base_bot import BaseLinkedInBot, ContactData
 from ..core.database import get_database
 from ..monitoring.metrics import RUN_DURATION_SECONDS
+from ..services.notification_service import NotificationService
 from ..utils.exceptions import DailyLimitReachedError, MessageSendError, WeeklyLimitReachedError
 from ..utils.logging import get_logger
 
@@ -46,6 +48,7 @@ class BirthdayBot(BaseLinkedInBot):
         Utilise le générateur 'Process-As-You-Go' pour fiabilité maximale.
         """
         start_time = time.time()
+        notification_service = None
 
         logger.info("═" * 70)
         logger.info(f"🎂 Starting BirthdayBot ({self.config.bot_mode})")
@@ -63,90 +66,146 @@ class BirthdayBot(BaseLinkedInBot):
         if self.config.database.enabled:
             try:
                 self.db = get_database(self.config.database.db_path)
+                # Initialize notification service with the database
+                notification_service = NotificationService(self.db)
             except Exception as e:
                 logger.warning(f"Database unavailable: {e}", exc_info=True)
                 self.db = None
 
-        self._check_limits()
+        try:
+            self._check_limits()
 
-        if not self.check_login_status():
-            return self._build_error_result("Login verification failed")
+            if not self.check_login_status():
+                error_result = self._build_error_result("Login verification failed")
+                # Send error notification
+                if notification_service:
+                    self._send_notification_sync(
+                        notification_service.notify_error,
+                        "Login verification failed",
+                        "The bot could not verify login status on LinkedIn."
+                    )
+                return error_result
 
-        max_allowed = self._calculate_max_allowed_messages()
-        logger.info(f"✅ Budget for this run: {max_allowed} messages")
+            max_allowed = self._calculate_max_allowed_messages()
+            logger.info(f"✅ Budget for this run: {max_allowed} messages")
 
-        # ITERATION DU FLUX (Generator Pattern)
-        for contact_data, contact_locator in self.yield_birthday_contacts():
+            # ITERATION DU FLUX (Generator Pattern)
+            for contact_data, contact_locator in self.yield_birthday_contacts():
 
-            try:
-                should_process = False
+                try:
+                    should_process = False
 
-                if contact_data.birthday_type == "today":
-                    self.run_stats["today_found"] += 1
-                    if self.config.birthday_filter.process_today:
-                        should_process = True
-                elif contact_data.birthday_type == "late":
-                    self.run_stats["late_found"] += 1
-                    if self.config.birthday_filter.process_late:
-                         if contact_data.days_late <= self.config.birthday_filter.max_days_late:
+                    if contact_data.birthday_type == "today":
+                        self.run_stats["today_found"] += 1
+                        if self.config.birthday_filter.process_today:
                             should_process = True
-                         else:
-                            logger.debug(f"Skipping late contact (Too old: {contact_data.days_late} days)")
+                    elif contact_data.birthday_type == "late":
+                        self.run_stats["late_found"] += 1
+                        if self.config.birthday_filter.process_late:
+                             if contact_data.days_late <= self.config.birthday_filter.max_days_late:
+                                should_process = True
+                             else:
+                                logger.debug(f"Skipping late contact (Too old: {contact_data.days_late} days)")
 
-                if should_process:
-                    # Vérifier quota (FILTRE AVANT ACTION)
-                    if self.run_stats["sent"] < max_allowed:
+                    if should_process:
+                        # Vérifier quota (FILTRE AVANT ACTION)
+                        if self.run_stats["sent"] < max_allowed:
 
-                        # APPEL MÉTHODE ROBUSTE
-                        success = self.process_birthday_contact(contact_data, locator=contact_locator)
+                            # APPEL MÉTHODE ROBUSTE
+                            success = self.process_birthday_contact(contact_data, locator=contact_locator)
 
-                        if success:
-                            self.run_stats["sent"] += 1
-                            self.stats["messages_sent"] += 1
-                            self.stats["contacts_processed"] += 1
+                            if success:
+                                self.run_stats["sent"] += 1
+                                self.stats["messages_sent"] += 1
+                                self.stats["contacts_processed"] += 1
 
-                            if random.random() < 0.3:
-                                self.simulate_human_activity()
-                            self._wait_between_messages()
+                                if random.random() < 0.3:
+                                    self.simulate_human_activity()
+                                self._wait_between_messages()
+                            else:
+                                self.stats["errors"] += 1
                         else:
-                            self.stats["errors"] += 1
+                            self.run_stats["ignored_limit"] += 1
+                            logger.debug("Limit reached for this run, ignoring remaining items.")
                     else:
-                        self.run_stats["ignored_limit"] += 1
-                        logger.debug("Limit reached for this run, ignoring remaining items.")
-                else:
-                    # Not eligible based on config
-                    pass
+                        # Not eligible based on config
+                        pass
 
-            except Exception as e:
-                logger.error(f"Error in main loop for {contact_data.name}: {e}")
-                self.stats["errors"] += 1
-                continue
+                except Exception as e:
+                    logger.error(f"Error in main loop for {contact_data.name}: {e}")
+                    self.stats["errors"] += 1
+                    continue
 
-        duration = time.time() - start_time
-        RUN_DURATION_SECONDS.observe(duration)
+            duration = time.time() - start_time
+            RUN_DURATION_SECONDS.observe(duration)
 
-        logger.info("")
-        logger.info("═" * 70)
-        logger.info("✅ BirthdayBot execution completed")
-        logger.info("═" * 70)
-        logger.info(
-            "execution_stats",
-            found_today=self.run_stats["today_found"],
-            found_late=self.run_stats["late_found"],
-            sent=f"{self.run_stats['sent']}/{max_allowed}",
-            ignored_limit=self.run_stats["ignored_limit"],
-            duration=f"{duration:.1f}s",
-        )
-        logger.info("═" * 70)
+            logger.info("")
+            logger.info("═" * 70)
+            logger.info("✅ BirthdayBot execution completed")
+            logger.info("═" * 70)
+            logger.info(
+                "execution_stats",
+                found_today=self.run_stats["today_found"],
+                found_late=self.run_stats["late_found"],
+                sent=f"{self.run_stats['sent']}/{max_allowed}",
+                ignored_limit=self.run_stats["ignored_limit"],
+                duration=f"{duration:.1f}s",
+            )
+            logger.info("═" * 70)
 
-        return self._build_result(
-            messages_sent=self.run_stats["sent"],
-            contacts_processed=self.stats["contacts_processed"],
-            birthdays_today=self.run_stats["today_found"],
-            birthdays_late_ignored=0 if self.config.birthday_filter.process_late else self.run_stats["late_found"],
-            messages_ignored=self.run_stats["ignored_limit"],
-            duration_seconds=duration,
-        )
+            result = self._build_result(
+                messages_sent=self.run_stats["sent"],
+                contacts_processed=self.stats["contacts_processed"],
+                birthdays_today=self.run_stats["today_found"],
+                birthdays_late_ignored=0 if self.config.birthday_filter.process_late else self.run_stats["late_found"],
+                messages_ignored=self.run_stats["ignored_limit"],
+                duration_seconds=duration,
+            )
+
+            # Send success notification
+            if notification_service:
+                self._send_notification_sync(
+                    notification_service.notify_success,
+                    self.run_stats["sent"]
+                )
+
+            return result
+
+        except Exception as e:
+            duration = time.time() - start_time
+            error_message = str(e)
+            logger.error(f"Fatal error in BirthdayBot: {error_message}", exc_info=True)
+
+            # Send error notification
+            if notification_service:
+                self._send_notification_sync(
+                    notification_service.notify_error,
+                    error_message,
+                    f"Duration before failure: {duration:.1f}s"
+                )
+
+            return self._build_error_result(error_message)
+
+    def _send_notification_sync(self, async_func, *args, **kwargs):
+        """
+        Helper method to run async notification functions from sync code.
+
+        Args:
+            async_func: The async notification function to call
+            *args: Positional arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+        """
+        try:
+            # Try to get the running event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, create a task
+                asyncio.ensure_future(async_func(*args, **kwargs))
+            except RuntimeError:
+                # No running event loop, create one
+                asyncio.run(async_func(*args, **kwargs))
+        except Exception as e:
+            logger.warning(f"Failed to send notification: {e}")
 
     def _check_limits(self) -> None:
         """Vérifie que les limites globales ne sont pas atteintes."""

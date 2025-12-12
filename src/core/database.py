@@ -352,11 +352,43 @@ class Database:
                     notify_on_bot_start BOOLEAN DEFAULT 0,
                     notify_on_bot_stop BOOLEAN DEFAULT 0,
                     notify_on_cookies_expiry BOOLEAN DEFAULT 1,
+                    smtp_host TEXT,
+                    smtp_port INTEGER,
+                    smtp_user TEXT,
+                    smtp_password TEXT,
+                    smtp_use_tls BOOLEAN DEFAULT 1,
+                    smtp_from_email TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """
             )
+
+            # Migration: Add SMTP columns if they don't exist (for existing databases)
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_host TEXT")
+            except Exception:
+                pass  # Column already exists
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_port INTEGER")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_user TEXT")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_password TEXT")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_use_tls BOOLEAN DEFAULT 1")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_from_email TEXT")
+            except Exception:
+                pass
 
             # Table notification_logs
             cursor.execute(
