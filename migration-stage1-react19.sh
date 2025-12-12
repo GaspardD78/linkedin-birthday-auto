@@ -16,6 +16,32 @@ echo ""
 # Change to dashboard directory
 cd "$DASHBOARD_DIR"
 
+# Context7 Pre-Migration Analysis
+echo "Step 0: Context7 Pre-Migration Analysis"
+echo "----------------------------------------"
+
+curl -X POST https://context7.com/api/analyze \
+  -H "Content-Type: application/json" \
+  -d @package.json > "$LOG_DIR/context7-pre-migration.json" 2>&1
+
+if [ $? -eq 0 ]; then
+  echo "✅ Context7 pre-migration analysis complete"
+  echo "Report: $LOG_DIR/context7-pre-migration.json"
+
+  # Check for critical issues
+  if grep -q '"severity":"critical"' "$LOG_DIR/context7-pre-migration.json" 2>/dev/null; then
+    CRITICAL_COUNT=$(grep -c '"severity":"critical"' "$LOG_DIR/context7-pre-migration.json")
+    echo "⚠️  Found $CRITICAL_COUNT critical issues"
+    echo "⚠️  Review before proceeding: $LOG_DIR/context7-pre-migration.json"
+  else
+    echo "✅ No critical issues found"
+  fi
+else
+  echo "⚠️  Context7 analysis failed (continuing anyway)"
+fi
+
+echo ""
+
 # Step 1.1: Pre-Migration Audit
 echo "Step 1.1: Pre-Migration Code Audit"
 echo "-----------------------------------"

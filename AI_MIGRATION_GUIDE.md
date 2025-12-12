@@ -34,10 +34,29 @@ test -d node_modules && echo "✅ node_modules found" || echo "❌ FAIL: Run npm
 # Checkpoint 0.3: Verify current versions
 node -e "const pkg=require('./package.json'); console.log('React:', pkg.dependencies.react); console.log('Next:', pkg.dependencies.next);"
 
-# Checkpoint 0.4: Verify build works
+# Checkpoint 0.4: External dependency analysis via context7
+echo "Analyzing dependencies with context7..."
+curl -X POST https://context7.com/api/analyze \
+  -H "Content-Type: application/json" \
+  -d @package.json > /tmp/context7-pre-migration.json 2>&1
+
+if [ $? -eq 0 ]; then
+  echo "✅ Context7 analysis complete"
+  echo "Report saved: /tmp/context7-pre-migration.json"
+
+  # Check for critical issues
+  if grep -q '"severity":"critical"' /tmp/context7-pre-migration.json 2>/dev/null; then
+    echo "⚠️  CRITICAL ISSUES FOUND - Review /tmp/context7-pre-migration.json"
+    echo "Consider fixing critical issues before migration"
+  fi
+else
+  echo "⚠️  Context7 analysis failed (continuing anyway)"
+fi
+
+# Checkpoint 0.5: Verify build works
 npm run build
 
-# Checkpoint 0.5: Create backup branch
+# Checkpoint 0.6: Create backup branch
 cd /home/user/linkedin-birthday-auto
 git checkout -b backup/pre-react19-migration-$(date +%Y%m%d)
 git push -u origin backup/pre-react19-migration-$(date +%Y%m%d)
@@ -45,6 +64,7 @@ git push -u origin backup/pre-react19-migration-$(date +%Y%m%d)
 
 **SUCCESS CRITERIA:**
 - ✅ All checkpoints pass
+- ✅ Context7 analysis completed (or warning noted)
 - ✅ Build succeeds
 - ✅ Backup branch created
 
@@ -1347,7 +1367,78 @@ fi
 
 ## STAGE 4: Final Validation and Push
 
-### Step 4.1: Run Complete Test Suite
+### Step 4.1: Context7 Post-Migration Analysis
+
+**Purpose:** Compare dependency health before and after migration
+
+**Command:**
+```bash
+cd /home/user/linkedin-birthday-auto/dashboard
+
+echo "=== Context7 Post-Migration Analysis ==="
+
+# Run context7 analysis on updated dependencies
+curl -X POST https://context7.com/api/analyze \
+  -H "Content-Type: application/json" \
+  -d @package.json > /tmp/context7-post-migration.json 2>&1
+
+if [ $? -eq 0 ]; then
+  echo "✅ Context7 post-migration analysis complete"
+  echo "Report saved: /tmp/context7-post-migration.json"
+
+  # Compare with pre-migration
+  if [ -f /tmp/context7-pre-migration.json ]; then
+    echo ""
+    echo "=== Comparison ==="
+    echo "Pre-migration report:  /tmp/context7-pre-migration.json"
+    echo "Post-migration report: /tmp/context7-post-migration.json"
+
+    # Check for improvements/regressions
+    PRE_CRITICAL=$(grep -c '"severity":"critical"' /tmp/context7-pre-migration.json 2>/dev/null || echo "0")
+    POST_CRITICAL=$(grep -c '"severity":"critical"' /tmp/context7-post-migration.json 2>/dev/null || echo "0")
+
+    echo "Critical issues: $PRE_CRITICAL → $POST_CRITICAL"
+
+    if [ $POST_CRITICAL -lt $PRE_CRITICAL ]; then
+      echo "✅ Improvement: Reduced critical issues"
+    elif [ $POST_CRITICAL -gt $PRE_CRITICAL ]; then
+      echo "⚠️  Warning: Increased critical issues - review report"
+    else
+      echo "✅ No change in critical issues"
+    fi
+  fi
+
+  # Check for new critical issues
+  if grep -q '"severity":"critical"' /tmp/context7-post-migration.json 2>/dev/null; then
+    echo "⚠️  CRITICAL ISSUES PRESENT - Review /tmp/context7-post-migration.json"
+  else
+    echo "✅ No critical issues detected"
+  fi
+else
+  echo "⚠️  Context7 analysis failed (continuing anyway)"
+fi
+
+echo ""
+```
+
+**VALIDATION:**
+```bash
+# Verify report exists
+if [ -f /tmp/context7-post-migration.json ]; then
+  echo "✅ Context7 report generated"
+else
+  echo "⚠️  Context7 report not available (non-critical)"
+fi
+```
+
+**SUCCESS CRITERIA:**
+- ✅ Context7 analysis completed (or warning noted)
+- ✅ Report available for review
+- ℹ️ Critical issues identified (if any)
+
+---
+
+### Step 4.2: Run Complete Test Suite
 
 **Command:**
 ```bash
@@ -1401,7 +1492,7 @@ fi
 
 ---
 
-### Step 4.2: Create Migration Summary
+### Step 4.3: Create Migration Summary
 
 **Command:**
 ```bash
@@ -1524,7 +1615,7 @@ cat MIGRATION_COMPLETED.md
 
 ---
 
-### Step 4.3: Push All Changes
+### Step 4.4: Push All Changes
 
 **Command:**
 ```bash

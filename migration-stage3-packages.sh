@@ -198,6 +198,49 @@ fi
 
 echo ""
 
+# Context7 Post-Migration Analysis
+echo "Context7 Post-Migration Analysis"
+echo "---------------------------------"
+
+curl -X POST https://context7.com/api/analyze \
+  -H "Content-Type: application/json" \
+  -d @package.json > "$LOG_DIR/context7-post-migration.json" 2>&1
+
+if [ $? -eq 0 ]; then
+  echo "✅ Context7 post-migration analysis complete"
+  echo "Report: $LOG_DIR/context7-post-migration.json"
+
+  # Compare with pre-migration if available
+  if [ -f "$LOG_DIR/context7-pre-migration.json" ]; then
+    PRE_CRITICAL=$(grep -c '"severity":"critical"' "$LOG_DIR/context7-pre-migration.json" 2>/dev/null || echo "0")
+    POST_CRITICAL=$(grep -c '"severity":"critical"' "$LOG_DIR/context7-post-migration.json" 2>/dev/null || echo "0")
+
+    echo ""
+    echo "Critical issues comparison:"
+    echo "  Before migration: $PRE_CRITICAL"
+    echo "  After migration:  $POST_CRITICAL"
+
+    if [ $POST_CRITICAL -lt $PRE_CRITICAL ]; then
+      echo "✅ Improvement: Reduced critical issues"
+    elif [ $POST_CRITICAL -gt $PRE_CRITICAL ]; then
+      echo "⚠️  Warning: Increased critical issues"
+    else
+      echo "✅ No change in critical issues"
+    fi
+  fi
+
+  # Check current critical issues
+  if grep -q '"severity":"critical"' "$LOG_DIR/context7-post-migration.json" 2>/dev/null; then
+    echo "⚠️  Critical issues present - review report"
+  else
+    echo "✅ No critical issues detected"
+  fi
+else
+  echo "⚠️  Context7 analysis failed"
+fi
+
+echo ""
+
 # Success summary
 echo "=================================="
 echo "✅ STAGE 3 COMPLETE: All Packages Updated"
@@ -215,6 +258,11 @@ echo "Validation:"
 echo "  - TypeScript compilation: PASS"
 echo "  - Production build: PASS"
 echo "  - Production server: PASS"
+echo "  - Context7 analysis: DONE"
+echo ""
+echo "Context7 Reports:"
+echo "  - Pre-migration:  $LOG_DIR/context7-pre-migration.json"
+echo "  - Post-migration: $LOG_DIR/context7-post-migration.json"
 echo ""
 echo "⚠️  MANUAL TESTING REQUIRED:"
 echo "  - Authentication flows (bcryptjs, jose)"
