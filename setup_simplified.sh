@@ -233,19 +233,20 @@ stop_spinner() {
     fi
 }
 
-# Barre de progression
+# Barre de progression (compatible tous terminaux)
 show_progress() {
     local current=$1
     local total=$2
-    local width=40
+    local width=30
     local percent=$((current * 100 / total))
     local filled=$((current * width / total))
     local empty=$((width - filled))
 
-    printf "\r["
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    printf "] %3d%% (%d/%d)" "$percent" "$current" "$total"
+    # Utiliser des caractères ASCII simples pour compatibilité
+    printf "["
+    for ((i=0; i<filled; i++)); do printf "#"; done
+    for ((i=0; i<empty; i++)); do printf "-"; done
+    printf "] %3d%%" "$percent"
 }
 
 # Compte à rebours visuel
@@ -330,12 +331,27 @@ validate_key() {
     local key="$1"
     local name="$2"
 
-    # Liste des valeurs interdites
-    local forbidden=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme" "secret" "password" "")
+    # Vérifier si la clé est vide
+    if [[ -z "$key" ]]; then
+        log_error "$name est vide"
+        return 1
+    fi
 
-    for bad in "${forbidden[@]}"; do
+    # Liste des valeurs interdites (préfixes)
+    local forbidden_prefixes=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme")
+    # Valeurs exactes interdites
+    local forbidden_exact=("secret" "password" "admin" "test" "demo")
+
+    for bad in "${forbidden_prefixes[@]}"; do
         if [[ "$key" == "$bad"* ]]; then
             log_error "$name contient une valeur non sécurisée: '$bad...'"
+            return 1
+        fi
+    done
+
+    for bad in "${forbidden_exact[@]}"; do
+        if [[ "$key" == "$bad" ]]; then
+            log_error "$name est une valeur par défaut non sécurisée: '$bad'"
             return 1
         fi
     done
@@ -958,16 +974,40 @@ step_4_pull_images() {
         ((current++))
 
         # Afficher progression
+        echo -n "  "
         show_progress "$current" "$total"
-        echo -n " $image"
+        echo " $image"
 
-        # Télécharger avec retry
-        if retry_with_backoff 3 2 "docker pull '$image' >> '$LOG_FILE' 2>&1"; then
-            echo -e " ${GREEN}✓${NC}"
+        # Télécharger avec affichage du statut
+        log_debug "Pull de $image..."
+        echo -n "    Téléchargement en cours..."
+
+        local pull_success=false
+        local attempts=0
+        local max_attempts=3
+
+        while [[ $attempts -lt $max_attempts ]]; do
+            ((attempts++))
+
+            if docker pull "$image" >> "$LOG_FILE" 2>&1; then
+                pull_success=true
+                break
+            fi
+
+            if [[ $attempts -lt $max_attempts ]]; then
+                echo ""
+                log_warning "    Tentative $attempts/$max_attempts échouée, retry dans 5s..."
+                sleep 5
+                echo -n "    Nouvelle tentative..."
+            fi
+        done
+
+        if [[ "$pull_success" == "true" ]]; then
+            echo -e " ${GREEN}✓ OK${NC}"
         else
-            echo -e " ${RED}✗${NC}"
+            echo -e " ${RED}✗ ÉCHEC${NC}"
             ((failed++))
-            log_error "Échec du pull de $image"
+            log_error "Échec du pull de $image après $max_attempts tentatives"
         fi
     done
 
