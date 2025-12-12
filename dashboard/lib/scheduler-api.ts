@@ -32,11 +32,33 @@ async function fetchAPI<T>(
       'Content-Type': 'application/json',
       ...options?.headers,
     },
+    // Ensure cookies are sent for middleware authentication
+    credentials: 'same-origin',
   });
 
   // Handle 204 No Content
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  // Handle 401 Unauthorized (Middleware redirect to login)
+  if (response.status === 401 || response.type === 'opaqueredirect' || response.url.includes('/login')) {
+      if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+      }
+      throw new Error('Session expired. Redirecting to login...');
+  }
+
+  // Check Content-Type to avoid "Unexpected token <" errors
+  const contentType = response.headers.get('content-type');
+  if (contentType && !contentType.includes('application/json')) {
+      const text = await response.text();
+      // If we got HTML (likely a 404 or 500 error page from Next.js/Nginx)
+      if (text.trim().startsWith('<')) {
+          console.error('API returned HTML instead of JSON:', text.substring(0, 100));
+          throw new Error(`API Error: Endpoint returned HTML (Status ${response.status}). The service might be unavailable.`);
+      }
+      throw new Error(`Invalid response type: ${contentType}`);
   }
 
   const data = await response.json();
