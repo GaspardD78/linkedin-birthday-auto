@@ -971,9 +971,11 @@ step_4_pull_images() {
     # Image 1: Redis
     img_num=1
     log_info "[$img_num/3] Téléchargement de redis:7-alpine..."
-    if docker pull redis:7-alpine 2>&1 | tee -a "$LOG_FILE"; then
+    if docker pull redis:7-alpine; then
+        echo "redis:7-alpine téléchargé avec succès" >> "$LOG_FILE"
         log_success "[$img_num/3] redis:7-alpine téléchargé"
     else
+        echo "Échec du téléchargement de redis:7-alpine" >> "$LOG_FILE"
         log_error "[$img_num/3] Échec redis:7-alpine"
         failed=$((failed + 1))
     fi
@@ -981,9 +983,11 @@ step_4_pull_images() {
     # Image 2: Bot
     img_num=2
     log_info "[$img_num/3] Téléchargement de linkedin-birthday-auto-bot..."
-    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest 2>&1 | tee -a "$LOG_FILE"; then
+    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest; then
+        echo "linkedin-birthday-auto-bot téléchargé avec succès" >> "$LOG_FILE"
         log_success "[$img_num/3] linkedin-birthday-auto-bot téléchargé"
     else
+        echo "Échec du téléchargement de linkedin-birthday-auto-bot" >> "$LOG_FILE"
         log_error "[$img_num/3] Échec linkedin-birthday-auto-bot"
         failed=$((failed + 1))
     fi
@@ -991,9 +995,11 @@ step_4_pull_images() {
     # Image 3: Dashboard
     img_num=3
     log_info "[$img_num/3] Téléchargement de linkedin-birthday-auto-dashboard..."
-    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest 2>&1 | tee -a "$LOG_FILE"; then
+    if docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest; then
+        echo "linkedin-birthday-auto-dashboard téléchargé avec succès" >> "$LOG_FILE"
         log_success "[$img_num/3] linkedin-birthday-auto-dashboard téléchargé"
     else
+        echo "Échec du téléchargement de linkedin-birthday-auto-dashboard" >> "$LOG_FILE"
         log_error "[$img_num/3] Échec linkedin-birthday-auto-dashboard"
         failed=$((failed + 1))
     fi
@@ -1049,7 +1055,10 @@ step_5_start_services() {
     echo -e " ${BOLD}Redis Bot${NC}"
 
     log_info "5.1 Démarrage redis-bot..."
-    docker compose -f "$COMPOSE_FILE" up -d redis-bot 2>&1 >> "$LOG_FILE"
+    if ! docker compose -f "$COMPOSE_FILE" up -d redis-bot 2> >(tee -a "$LOG_FILE" >&2); then
+        log_error "Échec de la commande docker compose up redis-bot"
+        exit 1
+    fi
 
     if wait_container_healthy "redis-bot" "$TIMEOUT_REDIS"; then
         ((services_started++))
@@ -1066,7 +1075,10 @@ step_5_start_services() {
     echo -e " ${BOLD}Redis Dashboard${NC}"
 
     log_info "5.2 Démarrage redis-dashboard..."
-    docker compose -f "$COMPOSE_FILE" up -d redis-dashboard 2>&1 >> "$LOG_FILE"
+    if ! docker compose -f "$COMPOSE_FILE" up -d redis-dashboard 2> >(tee -a "$LOG_FILE" >&2); then
+        log_error "Échec de la commande docker compose up redis-dashboard"
+        exit 1
+    fi
 
     if wait_container_healthy "redis-dashboard" "$TIMEOUT_REDIS"; then
         ((services_started++))
@@ -1094,7 +1106,11 @@ step_5_start_services() {
         exit 1
     fi
 
-    docker compose -f "$COMPOSE_FILE" up -d api 2>&1 >> "$LOG_FILE"
+    if ! docker compose -f "$COMPOSE_FILE" up -d api 2> >(tee -a "$LOG_FILE" >&2); then
+        log_error "Échec de la commande docker compose up api"
+        show_troubleshooting "bot-api"
+        exit 1
+    fi
 
     if wait_container_healthy "bot-api" "$TIMEOUT_API"; then
         ((services_started++))
@@ -1111,7 +1127,11 @@ step_5_start_services() {
     echo -e " ${BOLD}Bot Worker${NC}"
 
     log_info "5.4 Démarrage bot-worker..."
-    docker compose -f "$COMPOSE_FILE" up -d bot-worker 2>&1 >> "$LOG_FILE"
+    if ! docker compose -f "$COMPOSE_FILE" up -d bot-worker 2> >(tee -a "$LOG_FILE" >&2); then
+        log_error "Échec de la commande docker compose up bot-worker"
+        show_troubleshooting "bot-worker"
+        exit 1
+    fi
 
     if wait_container_healthy "bot-worker" "$TIMEOUT_WORKER"; then
         ((services_started++))
@@ -1127,7 +1147,11 @@ step_5_start_services() {
     echo -e " ${BOLD}Dashboard${NC}"
 
     log_info "5.5 Démarrage dashboard..."
-    docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 >> "$LOG_FILE"
+    if ! docker compose -f "$COMPOSE_FILE" up -d dashboard 2> >(tee -a "$LOG_FILE" >&2); then
+        log_error "Échec de la commande docker compose up dashboard"
+        show_troubleshooting "dashboard"
+        exit 1
+    fi
 
     if wait_container_healthy "dashboard" "$TIMEOUT_DASHBOARD"; then
         ((services_started++))
