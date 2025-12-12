@@ -331,7 +331,7 @@ validate_key() {
     local name="$2"
 
     # Liste des valeurs interdites
-    local forbidden=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme" "secret" "password" "")
+    local forbidden=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme" "secret" "password")
 
     for bad in "${forbidden[@]}"; do
         if [[ "$key" == "$bad"* ]]; then
