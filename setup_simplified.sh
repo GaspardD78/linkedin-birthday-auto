@@ -233,19 +233,20 @@ stop_spinner() {
     fi
 }
 
-# Barre de progression
+# Barre de progression (compatible tous terminaux)
 show_progress() {
     local current=$1
     local total=$2
-    local width=40
+    local width=30
     local percent=$((current * 100 / total))
     local filled=$((current * width / total))
     local empty=$((width - filled))
 
-    printf "\r["
-    printf "%${filled}s" | tr ' ' '█'
-    printf "%${empty}s" | tr ' ' '░'
-    printf "] %3d%% (%d/%d)" "$percent" "$current" "$total"
+    # Utiliser des caractères ASCII simples pour compatibilité
+    printf "["
+    for ((i=0; i<filled; i++)); do printf "#"; done
+    for ((i=0; i<empty; i++)); do printf "-"; done
+    printf "] %3d%%" "$percent"
 }
 
 # Compte à rebours visuel
@@ -330,12 +331,27 @@ validate_key() {
     local key="$1"
     local name="$2"
 
-    # Liste des valeurs interdites
-    local forbidden=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme" "secret" "password")
+    # Vérifier si la clé est vide
+    if [[ -z "$key" ]]; then
+        log_error "$name est vide"
+        return 1
+    fi
 
-    for bad in "${forbidden[@]}"; do
+    # Liste des valeurs interdites (préfixes)
+    local forbidden_prefixes=("internal_secret_key" "CHANGE_ME" "CHANGEZ_MOI" "changeme")
+    # Valeurs exactes interdites
+    local forbidden_exact=("secret" "password" "admin" "test" "demo")
+
+    for bad in "${forbidden_prefixes[@]}"; do
         if [[ "$key" == "$bad"* ]]; then
             log_error "$name contient une valeur non sécurisée: '$bad...'"
+            return 1
+        fi
+    done
+
+    for bad in "${forbidden_exact[@]}"; do
+        if [[ "$key" == "$bad" ]]; then
+            log_error "$name est une valeur par défaut non sécurisée: '$bad'"
             return 1
         fi
     done
@@ -958,16 +974,90 @@ step_4_pull_images() {
         ((current++))
 
         # Afficher progression
+        echo -n "  "
         show_progress "$current" "$total"
-        echo -n " $image"
+        echo " $image"
 
-        # Télécharger avec retry
-        if retry_with_backoff 3 2 "docker pull '$image' >> '$LOG_FILE' 2>&1"; then
-            echo -e " ${GREEN}✓${NC}"
+        # Télécharger avec affichage du statut
+        log_debug "Pull de $image..."
+        echo -n "    Téléchargement en cours..."
+
+        local pull_success=false
+        local attempts=0
+        local max_attempts=3
+        local pull_output=""
+        local pull_error=""
+
+        while [[ $attempts -lt $max_attempts ]]; do
+            ((attempts++))
+
+            # Capturer stdout et stderr séparément
+            pull_output=$(docker pull "$image" 2>&1)
+            local exit_code=$?
+
+            echo "$pull_output" >> "$LOG_FILE"
+
+            if [[ $exit_code -eq 0 ]]; then
+                pull_success=true
+                break
+            fi
+
+            # Sauvegarder l'erreur pour affichage
+            pull_error="$pull_output"
+
+            if [[ $attempts -lt $max_attempts ]]; then
+                echo ""
+                log_warning "    Tentative $attempts/$max_attempts échouée, retry dans 5s..."
+                log_debug "    Erreur: $(echo "$pull_error" | tail -1)"
+                sleep 5
+                echo -n "    Nouvelle tentative..."
+            fi
+        done
+
+        if [[ "$pull_success" == "true" ]]; then
+            echo -e " ${GREEN}✓ OK${NC}"
+            # Afficher la taille de l'image téléchargée
+            local img_size=$(docker images --format "{{.Size}}" "$image" 2>/dev/null | head -1)
+            [[ -n "$img_size" ]] && log_debug "    Taille: $img_size"
         else
-            echo -e " ${RED}✗${NC}"
+            echo -e " ${RED}✗ ÉCHEC${NC}"
             ((failed++))
-            log_error "Échec du pull de $image"
+            log_error "Échec du pull de $image après $max_attempts tentatives"
+
+            # Afficher les détails de l'erreur
+            echo ""
+            echo -e "    ${RED}━━━ Détails de l'erreur ━━━${NC}"
+            echo "$pull_error" | while IFS= read -r line; do
+                echo -e "    ${DIM}$line${NC}"
+            done
+            echo -e "    ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+
+            # Diagnostics supplémentaires
+            log_info "    Diagnostics:"
+
+            # Vérifier la connectivité réseau
+            if ! ping -c 1 -W 3 ghcr.io &>/dev/null 2>&1; then
+                log_error "    → Impossible de joindre ghcr.io (problème réseau?)"
+            fi
+
+            # Vérifier l'espace disque
+            local disk_avail=$(df -BG . | awk 'NR==2 {print $4}' | tr -d 'G')
+            if [[ "$disk_avail" -lt 2 ]]; then
+                log_error "    → Espace disque insuffisant: ${disk_avail}GB disponible"
+            fi
+
+            # Vérifier la mémoire
+            local mem_avail=$(free -m | awk '/^Mem:/{print $7}')
+            if [[ "$mem_avail" -lt 200 ]]; then
+                log_error "    → Mémoire faible: ${mem_avail}MB disponible"
+            fi
+
+            # Suggérer des solutions
+            log_info "    Solutions possibles:"
+            log_info "    1. Vérifiez votre connexion internet"
+            log_info "    2. Essayez: docker pull $image"
+            log_info "    3. Nettoyez: docker system prune -a"
         fi
     done
 
@@ -1128,35 +1218,145 @@ show_troubleshooting() {
     local container="$1"
 
     echo ""
-    log_info "=== Conseils de dépannage pour $container ==="
+    echo -e "${RED}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}${BOLD}  ÉCHEC: $container${NC}"
+    echo -e "${RED}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
 
+    # État du container
+    local status=$(docker inspect "$container" --format='{{.State.Status}}' 2>/dev/null || echo "introuvable")
+    local exit_code=$(docker inspect "$container" --format='{{.State.ExitCode}}' 2>/dev/null || echo "N/A")
+    local health=$(docker inspect "$container" --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}N/A{{end}}' 2>/dev/null || echo "N/A")
+    local started=$(docker inspect "$container" --format='{{.State.StartedAt}}' 2>/dev/null | cut -d'T' -f1,2 | tr 'T' ' ' || echo "N/A")
+    local error_msg=$(docker inspect "$container" --format='{{.State.Error}}' 2>/dev/null || echo "")
+
+    log_info "État du container:"
+    echo "    • Status:     $status"
+    echo "    • Exit code:  $exit_code"
+    echo "    • Health:     $health"
+    echo "    • Démarré:    $started"
+    [[ -n "$error_msg" ]] && echo -e "    • Erreur:     ${RED}$error_msg${NC}"
+
+    # Ressources utilisées
+    echo ""
+    log_info "Ressources système:"
+    local mem_total=$(free -m | awk '/^Mem:/{print $2}')
+    local mem_used=$(free -m | awk '/^Mem:/{print $3}')
+    local mem_avail=$(free -m | awk '/^Mem:/{print $7}')
+    local swap_used=$(free -m | awk '/^Swap:/{print $3}')
+    echo "    • RAM:  ${mem_used}/${mem_total}MB utilisé (${mem_avail}MB disponible)"
+    echo "    • Swap: ${swap_used}MB utilisé"
+
+    # Conseils spécifiques par container
+    echo ""
+    log_info "Causes possibles:"
     case "$container" in
         "redis-bot"|"redis-dashboard")
-            log_info "1. Vérifiez la mémoire disponible: free -m"
-            log_info "2. Vérifiez les logs: docker logs $container --tail 50"
-            log_info "3. Redémarrez: docker restart $container"
+            echo "    1. Mémoire insuffisante"
+            echo "    2. Port déjà utilisé"
+            echo "    3. Volume corrompu"
+            echo ""
+            log_info "Solutions:"
+            echo "    • Libérer de la mémoire: docker system prune"
+            echo "    • Vérifier les ports: netstat -tlnp | grep 6379"
+            echo "    • Reset volume: docker volume rm linkedin-bot-redis-data"
             ;;
         "bot-api")
-            log_info "1. Vérifiez API_KEY dans .env (doit être unique et 64+ chars)"
-            log_info "2. Vérifiez que redis-bot est healthy"
-            log_info "3. Logs: docker logs $container --tail 50"
+            echo "    1. API_KEY invalide ou manquante dans .env"
+            echo "    2. Redis non accessible"
+            echo "    3. Port 8000 déjà utilisé"
+            echo ""
+            log_info "Vérifications:"
+            # Vérifier API_KEY
+            local api_key_len=0
+            if [[ -f "$ENV_FILE" ]]; then
+                local api_key=$(grep -E "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+                api_key_len=${#api_key}
+            fi
+            if [[ $api_key_len -lt 32 ]]; then
+                echo -e "    ${RED}✗${NC} API_KEY trop courte: ${api_key_len} chars (min 32)"
+            else
+                echo -e "    ${GREEN}✓${NC} API_KEY OK: ${api_key_len} chars"
+            fi
+            # Vérifier Redis
+            if docker exec redis-bot redis-cli ping 2>/dev/null | grep -q PONG; then
+                echo -e "    ${GREEN}✓${NC} Redis accessible"
+            else
+                echo -e "    ${RED}✗${NC} Redis non accessible"
+            fi
             ;;
         "bot-worker")
-            log_info "1. Vérifiez la mémoire (besoin de ~1.8GB pour Playwright)"
-            log_info "2. Vérifiez le swap: free -m"
-            log_info "3. Logs: docker logs $container --tail 50"
+            echo "    1. Mémoire insuffisante pour Playwright (~1.8GB requis)"
+            echo "    2. Swap insuffisant"
+            echo "    3. Redis non accessible"
+            echo ""
+            log_info "Vérifications:"
+            if [[ $mem_avail -lt 500 ]]; then
+                echo -e "    ${RED}✗${NC} Mémoire très faible: ${mem_avail}MB"
+            elif [[ $mem_avail -lt 1000 ]]; then
+                echo -e "    ${YELLOW}~${NC} Mémoire limite: ${mem_avail}MB (1GB+ recommandé)"
+            else
+                echo -e "    ${GREEN}✓${NC} Mémoire OK: ${mem_avail}MB"
+            fi
+            local swap_total=$(free -m | awk '/^Swap:/{print $2}')
+            if [[ $swap_total -lt 1000 ]]; then
+                echo -e "    ${RED}✗${NC} Swap insuffisant: ${swap_total}MB (2GB recommandé)"
+            else
+                echo -e "    ${GREEN}✓${NC} Swap OK: ${swap_total}MB"
+            fi
             ;;
         "dashboard")
-            log_info "1. Vérifiez JWT_SECRET et DASHBOARD_PASSWORD dans .env"
-            log_info "2. Vérifiez que bot-api est healthy"
-            log_info "3. Logs: docker logs $container --tail 50"
+            echo "    1. JWT_SECRET manquant ou invalide"
+            echo "    2. DASHBOARD_PASSWORD manquant"
+            echo "    3. Bot API non accessible"
+            echo ""
+            log_info "Vérifications:"
+            # Vérifier JWT_SECRET
+            if [[ -f "$ENV_FILE" ]]; then
+                local jwt=$(grep -E "^JWT_SECRET=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+                if [[ ${#jwt} -ge 32 ]]; then
+                    echo -e "    ${GREEN}✓${NC} JWT_SECRET OK"
+                else
+                    echo -e "    ${RED}✗${NC} JWT_SECRET manquant ou trop court"
+                fi
+                local dash_pass=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2-)
+                if [[ -n "$dash_pass" ]]; then
+                    echo -e "    ${GREEN}✓${NC} DASHBOARD_PASSWORD défini"
+                else
+                    echo -e "    ${RED}✗${NC} DASHBOARD_PASSWORD manquant"
+                fi
+            fi
+            # Vérifier API
+            if docker exec bot-api curl -sf http://localhost:8000/health &>/dev/null; then
+                echo -e "    ${GREEN}✓${NC} Bot API accessible"
+            else
+                echo -e "    ${RED}✗${NC} Bot API non accessible"
+            fi
             ;;
     esac
 
-    # Logs du container
+    # Afficher les logs du container
     echo ""
-    log_info "Derniers logs de $container:"
-    docker logs "$container" --tail 20 2>&1 | head -20 || true
+    echo -e "${YELLOW}━━━ Derniers logs de $container ━━━${NC}"
+    docker logs "$container" --tail 30 2>&1 | while IFS= read -r line; do
+        # Colorier les erreurs
+        if echo "$line" | grep -qiE "error|exception|fatal|failed|critical"; then
+            echo -e "  ${RED}$line${NC}"
+        elif echo "$line" | grep -qiE "warning|warn"; then
+            echo -e "  ${YELLOW}$line${NC}"
+        else
+            echo "  $line"
+        fi
+    done
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Commandes utiles
+    echo ""
+    log_info "Commandes utiles:"
+    echo "    • Logs complets: docker logs $container"
+    echo "    • Redémarrer:    docker restart $container"
+    echo "    • Shell:         docker exec -it $container /bin/sh"
+    echo "    • Inspecter:     docker inspect $container"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
