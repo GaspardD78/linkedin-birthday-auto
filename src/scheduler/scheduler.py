@@ -229,8 +229,9 @@ class AutomationScheduler:
             self.redis_conn = None
 
         # APScheduler configuration
+        # Use /app/data/ path to match Docker volume mount (shared-data volume)
         jobstores = {
-            'default': SQLAlchemyJobStore(url='sqlite:///data/scheduler_apscheduler.db')
+            'default': SQLAlchemyJobStore(url='sqlite:////app/data/scheduler_apscheduler.db')
         }
         executors = {
             'default': ThreadPoolExecutor(max_workers=3)
