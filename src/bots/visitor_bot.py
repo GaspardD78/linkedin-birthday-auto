@@ -377,17 +377,18 @@ class VisitorBot(BaseLinkedInBot):
             containers = self.page.query_selector_all(result_container_selector)
             logger.info(f"Found {len(containers)} profile containers on page {page_number}")
 
+            # Optimization: Fetch selectors once outside the loop
+            link_selectors = self.selector_manager.get_selectors("visitor.search.links")
+            if not link_selectors:
+                link_selectors = [
+                    'a[data-view-name="search-result-lockup-title"]',
+                    'a.app-aware-link[href*="/in/"]',
+                    'span.entity-result__title-text a',
+                    'a[href*="/in/"]'  # Fallback générique
+                ]
+
             for container in containers:
                 # Stratégie Cascade pour trouver le lien
-                link_selectors = self.selector_manager.get_selectors("visitor.search.links")
-                if not link_selectors:
-                    link_selectors = [
-                        'a[data-view-name="search-result-lockup-title"]',
-                        'a.app-aware-link[href*="/in/"]',
-                        'span.entity-result__title-text a',
-                        'a[href*="/in/"]'  # Fallback générique
-                    ]
-
                 link_element = self._find_element_by_cascade(container, link_selectors)
 
                 if link_element:
