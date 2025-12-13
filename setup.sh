@@ -521,7 +521,7 @@ retry_with_backoff() {
             countdown "$delay" "Attente avant retry"
         fi
 
-        ((attempt++))
+        ((++attempt))
     done
 
     log_error "Échec après $max_attempts tentatives"
@@ -685,9 +685,9 @@ check_existing_installation() {
     # Compter les containers existants
     for container in redis-bot redis-dashboard bot-api bot-worker dashboard; do
         if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
-            ((existing_containers++))
+            ((++existing_containers))
             if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container}$"; then
-                ((running_containers++))
+                ((++running_containers))
             fi
         fi
     done
@@ -744,7 +744,7 @@ step_1_prerequisites() {
     else
         log_error "Docker n'est pas installé!"
         log_info "Installation: curl -fsSL https://get.docker.com | sh"
-        ((errors++))
+        ((++errors))
     fi
 
     # Permissions Docker
@@ -754,7 +754,7 @@ step_1_prerequisites() {
     else
         log_error "Pas de permissions Docker pour $(whoami)"
         log_info "Exécutez: sudo usermod -aG docker $(whoami) && newgrp docker"
-        ((errors++))
+        ((++errors))
     fi
 
     # Docker Compose V2
@@ -765,7 +765,7 @@ step_1_prerequisites() {
     else
         log_error "Docker Compose V2 manquant!"
         log_info "Installation: sudo apt install docker-compose-plugin"
-        ((errors++))
+        ((++errors))
     fi
 
     # Fichier compose
@@ -775,7 +775,7 @@ step_1_prerequisites() {
         log_debug "Services définis: $(grep -E '^\s+\w+:$' "$COMPOSE_FILE" | head -10)"
     else
         log_error "Fichier $COMPOSE_FILE introuvable!"
-        ((errors++))
+        ((++errors))
     fi
 
     # Template .env
@@ -784,7 +784,7 @@ step_1_prerequisites() {
         log_success "Template: $ENV_TEMPLATE"
     else
         log_error "Template $ENV_TEMPLATE introuvable!"
-        ((errors++))
+        ((++errors))
     fi
 
     if [[ $errors -gt 0 ]]; then
@@ -1086,7 +1086,7 @@ step_5_start_services() {
     fi
 
     if wait_container_healthy "redis-bot" "$TIMEOUT_REDIS"; then
-        ((services_started++))
+        ((++services_started))
     else
         log_error "redis-bot n'a pas démarré correctement"
         show_troubleshooting "redis-bot"
@@ -1106,7 +1106,7 @@ step_5_start_services() {
     fi
 
     if wait_container_healthy "redis-dashboard" "$TIMEOUT_REDIS"; then
-        ((services_started++))
+        ((++services_started))
     else
         log_error "redis-dashboard n'a pas démarré correctement"
         show_troubleshooting "redis-dashboard"
@@ -1138,7 +1138,7 @@ step_5_start_services() {
     fi
 
     if wait_container_healthy "bot-api" "$TIMEOUT_API"; then
-        ((services_started++))
+        ((++services_started))
     else
         log_error "bot-api n'a pas démarré correctement"
         show_troubleshooting "bot-api"
@@ -1159,10 +1159,10 @@ step_5_start_services() {
     fi
 
     if wait_container_healthy "bot-worker" "$TIMEOUT_WORKER"; then
-        ((services_started++))
+        ((++services_started))
     else
         log_warning "bot-worker pas encore healthy (peut être normal au premier démarrage)"
-        ((services_started++))  # Compter quand même car peut être OK
+        ((++services_started))  # Compter quand même car peut être OK
     fi
 
     # ─────────────────────────────────────────────────────────────────────
@@ -1179,7 +1179,7 @@ step_5_start_services() {
     fi
 
     if wait_container_healthy "dashboard" "$TIMEOUT_DASHBOARD"; then
-        ((services_started++))
+        ((++services_started))
     else
         log_warning "dashboard pas encore healthy - vérifiez les logs"
     fi
@@ -1876,7 +1876,7 @@ step_final_security_summary() {
     local api_key=$(grep -E "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
     if [[ ${#api_key} -ge 32 && "$api_key" != "internal_secret_key"* ]]; then
         echo -e "  ${GREEN}✓${NC} API_KEY sécurisée"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${RED}✗${NC} API_KEY non sécurisée"
     fi
@@ -1885,7 +1885,7 @@ step_final_security_summary() {
     local jwt=$(grep -E "^JWT_SECRET=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
     if [[ ${#jwt} -ge 32 ]]; then
         echo -e "  ${GREEN}✓${NC} JWT_SECRET sécurisé"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${RED}✗${NC} JWT_SECRET non sécurisé"
     fi
@@ -1894,7 +1894,7 @@ step_final_security_summary() {
     local pass=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
     if [[ "$pass" =~ ^\$2 ]]; then
         echo -e "  ${GREEN}✓${NC} Mot de passe hashé (bcrypt)"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${YELLOW}~${NC} Mot de passe en clair"
     fi
@@ -1903,7 +1903,7 @@ step_final_security_summary() {
     local cors=$(grep -E "^ALLOWED_ORIGINS=" "$ENV_FILE" | cut -d'=' -f2-)
     if [[ -n "$cors" && "$cors" != "http://localhost:3000" ]]; then
         echo -e "  ${GREEN}✓${NC} CORS configuré: $cors"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${YELLOW}~${NC} CORS par défaut (localhost)"
     fi
@@ -1911,7 +1911,7 @@ step_final_security_summary() {
     # 5. robots.txt
     if [[ -f "dashboard/public/robots.txt" ]] && grep -q "Disallow: /" "dashboard/public/robots.txt"; then
         echo -e "  ${GREEN}✓${NC} Anti-indexation (robots.txt)"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${YELLOW}~${NC} Anti-indexation non configurée"
     fi
@@ -1919,7 +1919,7 @@ step_final_security_summary() {
     # 6. HTTPS
     if command -v certbot &>/dev/null && sudo certbot certificates 2>/dev/null | grep -q "Certificate Name:"; then
         echo -e "  ${GREEN}✓${NC} HTTPS (Let's Encrypt)"
-        ((score++))
+        ((++score))
     else
         echo -e "  ${YELLOW}~${NC} HTTPS non configuré"
     fi
