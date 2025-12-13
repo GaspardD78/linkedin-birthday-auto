@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - Installation Simplifiée v5.0                    ║
+# ║  LinkedIn Birthday Bot - Script Maître de Déploiement & Maintenance v6.0 ║
 # ║  Déploiement étape par étape avec hardening sécurité intégré             ║
 # ║                                                                          ║
 # ║  Optimisé pour Raspberry Pi 4 - Images pré-construites via GHCR         ║
@@ -13,11 +13,12 @@ set -euo pipefail
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════
 COMPOSE_FILE="docker-compose.pi4-standalone.yml"
+LINK_COMPOSE_FILE="docker-compose.yml"
 ENV_FILE=".env"
 ENV_TEMPLATE=".env.pi4.example"
 LOG_FILE="setup_$(date +%Y%m%d_%H%M%S).log"
 DEBUG_MODE="${DEBUG:-false}"
-SCRIPT_VERSION="5.0"
+SCRIPT_VERSION="6.0"
 
 # Options CLI
 UNATTENDED_MODE=false
@@ -57,11 +58,11 @@ SPINNER_CHARS='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 # ═══════════════════════════════════════════════════════════════════════════
 show_help() {
     cat << EOF
-${BOLD}LinkedIn Birthday Bot - Installation Simplifiée v${SCRIPT_VERSION}${NC}
+${BOLD}LinkedIn Birthday Bot - Script Maître v${SCRIPT_VERSION}${NC}
 Optimisé pour Raspberry Pi 4
 
 ${BOLD}Usage:${NC}
-  ./setup_simplified.sh [OPTIONS]
+  ./setup.sh [OPTIONS]
 
 ${BOLD}Options:${NC}
   -h, --help          Affiche cette aide
@@ -73,10 +74,10 @@ ${BOLD}Options:${NC}
   -d, --debug         Activer le mode debug (logs détaillés)
 
 ${BOLD}Exemples:${NC}
-  ./setup_simplified.sh                    # Installation interactive
-  ./setup_simplified.sh -u -s              # Installation automatique basique
-  ./setup_simplified.sh -u -q              # Installation rapide complète
-  DEBUG=true ./setup_simplified.sh         # Installation avec debug
+  ./setup.sh                    # Installation interactive
+  ./setup.sh -u -s              # Installation automatique basique
+  ./setup.sh -u -q              # Installation rapide complète
+  DEBUG=true ./setup.sh         # Installation avec debug
 
 ${BOLD}Variables d'environnement:${NC}
   DEBUG=true          Active le mode debug
@@ -84,7 +85,7 @@ ${BOLD}Variables d'environnement:${NC}
   DASHBOARD_PASSWORD  Définit le mot de passe dashboard
 
 ${BOLD}Documentation:${NC}
-  https://github.com/GaspardD78/linkedin-birthday-auto
+  Voir DOCS_INDEX.md à la racine.
 
 EOF
     exit 0
@@ -274,7 +275,7 @@ print_banner() {
     cat << "EOF"
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                          ║
-║   🚀 LinkedIn Birthday Bot - Installation Sécurisée v5.0                ║
+║   🚀 LinkedIn Birthday Bot - Script Maître v6.0                         ║
 ║                                                                          ║
 ║   • Déploiement étape par étape                                         ║
 ║   • Hardening sécurité intégré                                          ║
@@ -596,6 +597,17 @@ step_0_init() {
     [[ "$QUICK_MODE" == "true" ]] && log_info "Mode: Rapide (quick)"
     [[ "$SKIP_PHASE2" == "true" ]] && log_info "Mode: Phase 2 ignorée"
 
+    # Création du symlink pour docker-compose
+    if [[ -f "$COMPOSE_FILE" ]]; then
+        if [[ ! -L "$LINK_COMPOSE_FILE" || "$(readlink "$LINK_COMPOSE_FILE")" != "$COMPOSE_FILE" ]]; then
+             log_info "Création du lien symbolique $LINK_COMPOSE_FILE -> $COMPOSE_FILE"
+             ln -sf "$COMPOSE_FILE" "$LINK_COMPOSE_FILE"
+        fi
+    else
+        log_error "Fichier principal $COMPOSE_FILE introuvable !"
+        exit 1
+    fi
+
     # Détection plateforme
     if is_raspberry_pi; then
         local model=$(tr -d '\0' < /proc/device-tree/model)
@@ -696,9 +708,9 @@ check_existing_installation() {
             else
                 if ! ask_continue "L'installation semble complète. Réinstaller ?"; then
                     log_info "Utilisez les commandes suivantes:"
-                    echo "  • Status:  docker compose -f $COMPOSE_FILE ps"
-                    echo "  • Logs:    docker compose -f $COMPOSE_FILE logs -f"
-                    echo "  • Stop:    docker compose -f $COMPOSE_FILE down"
+                    echo "  • Status:  docker compose ps"
+                    echo "  • Logs:    docker compose logs -f"
+                    echo "  • Stop:    docker compose down"
                     exit 0
                 fi
             fi
@@ -931,6 +943,19 @@ step_3_prepare_dirs() {
         log_success "config/config.yaml présent"
     fi
 
+    # Fichiers messages si manquants (pour éviter erreurs de montage)
+    if [[ ! -f "messages.txt" ]]; then
+        touch messages.txt
+        log_success "messages.txt initialisé"
+    fi
+    if [[ ! -f "late_messages.txt" ]]; then
+        touch late_messages.txt
+        log_success "late_messages.txt initialisé"
+    fi
+
+    # Permissions 666 sur ces fichiers pour être sûr que le bot (UID 1000) peut écrire
+    chmod 666 messages.txt late_messages.txt 2>/dev/null || true
+
     log_success "Dossiers préparés"
 }
 
@@ -1009,7 +1034,7 @@ step_4_pull_images() {
     if [[ $failed -gt 0 ]]; then
         log_error "$failed image(s) n'ont pas pu être téléchargées"
         log_info "Vérifiez votre connexion internet et réessayez"
-        log_info "Conseil: docker compose -f $COMPOSE_FILE pull"
+        log_info "Conseil: docker compose pull"
         exit 1
     fi
 
@@ -1364,10 +1389,10 @@ EOF
     echo -e "🔐 ${BOLD}Credentials:${NC}    Voir fichier .env"
     echo ""
     echo -e "${BOLD}Commandes utiles:${NC}"
-    echo "  • Logs temps réel:   docker compose -f $COMPOSE_FILE logs -f"
-    echo "  • Status:            docker compose -f $COMPOSE_FILE ps"
-    echo "  • Redémarrer:        docker compose -f $COMPOSE_FILE restart"
-    echo "  • Arrêter:           docker compose -f $COMPOSE_FILE down"
+    echo "  • Logs temps réel:   docker compose logs -f"
+    echo "  • Status:            docker compose ps"
+    echo "  • Redémarrer:        docker compose restart"
+    echo "  • Arrêter:           docker compose down"
     echo ""
 
     log_success "Installation de base complète!"
@@ -1611,7 +1636,7 @@ EOF
     local nginx_conf="/etc/nginx/sites-available/linkedin-bot"
     sudo tee "$nginx_conf" > /dev/null << NGINX
 # LinkedIn Birthday Bot - Nginx Configuration
-# Generated by setup_simplified.sh
+# Generated by setup.sh
 
 server {
     listen 80;
@@ -1929,7 +1954,7 @@ main() {
     log_info "Optimisé pour Raspberry Pi 4"
 
     if [[ "$DEBUG_MODE" != "true" ]]; then
-        log_info "Pour activer le mode debug: DEBUG=true ./setup_simplified.sh"
+        log_info "Pour activer le mode debug: DEBUG=true ./setup.sh"
     fi
     echo ""
 
@@ -1957,7 +1982,7 @@ main() {
 
     if ! ask_continue "Télécharger les images et démarrer les services ?"; then
         log_info "Déploiement annulé - Configuration sauvegardée"
-        log_info "Pour reprendre: ./setup_simplified.sh --resume"
+        log_info "Pour reprendre: ./setup.sh --resume"
         exit 0
     fi
 
@@ -2038,10 +2063,10 @@ EOF
     echo -e "⏱️  ${BOLD}Durée totale:${NC}   ${total_duration}s"
     echo ""
     echo -e "${BOLD}Commandes utiles:${NC}"
-    echo "  • Logs:        docker compose -f $COMPOSE_FILE logs -f"
-    echo "  • Status:      docker compose -f $COMPOSE_FILE ps"
-    echo "  • Redémarrer:  docker compose -f $COMPOSE_FILE restart"
-    echo "  • Arrêter:     docker compose -f $COMPOSE_FILE down"
+    echo "  • Logs:        docker compose logs -f"
+    echo "  • Status:      docker compose ps"
+    echo "  • Redémarrer:  docker compose restart"
+    echo "  • Arrêter:     docker compose down"
     echo ""
 
     # Afficher la température finale sur RPI4
