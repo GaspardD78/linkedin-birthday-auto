@@ -144,7 +144,9 @@ services:
           memory: 200M
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # CRASH PROOF: Use Python healthcheck instead of curl for robustness
+      # as recommended in GUIDE_INSTALLATION_SIMPLIFIEE.md
+      test: ["CMD", "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read())"]
       interval: 30s
       timeout: 10s
       retries: 5
