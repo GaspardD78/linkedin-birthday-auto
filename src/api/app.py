@@ -73,6 +73,13 @@ async def lifespan(app: FastAPI):
         logger.critical(f"Failed to initialize database: {e}")
         sys.exit(1)
 
+    # Log registered routes
+    logger.info("✅ Registered Routes:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            methods = ",".join(route.methods) if hasattr(route, "methods") else "ALL"
+            logger.info(f" - {route.path} [{methods}]")
+
     yield
 
     logger.info("🛑 API Shutting down...")
@@ -124,24 +131,28 @@ try:
     from src.api.routes import deployment
     from src.api.routes import sourcing
     from src.api.routes import campaign_routes
+    from src.api.routes import stream_routes
+    from src.api.routes import debug_routes
     from src.api.auth_routes import router as auth_router
-    # from src.api.routes import stream_routes  # Optional if exists
 
-    # Include routers with prefixes and tags
-    app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-    app.include_router(bot_control.router, prefix="/bot", tags=["Bot Control"], dependencies=[Security(verify_api_key)])
-    app.include_router(automation_control.router, prefix="/system", tags=["System"], dependencies=[Security(verify_api_key)])
-    app.include_router(scheduler_routes.router, prefix="/scheduler", tags=["Scheduler"], dependencies=[Security(verify_api_key)])
-    app.include_router(crm.router, prefix="/crm", tags=["CRM"], dependencies=[Security(verify_api_key)])
-    app.include_router(visitor_routes.router, prefix="/visitor", tags=["Visitor"], dependencies=[Security(verify_api_key)])
-    app.include_router(notifications.router, prefix="/notifications", tags=["Notifications"], dependencies=[Security(verify_api_key)])
-    app.include_router(blacklist.router, prefix="/blacklist", tags=["Blacklist"], dependencies=[Security(verify_api_key)])
-    app.include_router(nurturing.router, prefix="/nurturing", tags=["Nurturing"], dependencies=[Security(verify_api_key)])
-    app.include_router(deployment.router, prefix="/deployment", tags=["Deployment"], dependencies=[Security(verify_api_key)])
-    app.include_router(sourcing.router, prefix="/sourcing", tags=["Sourcing"], dependencies=[Security(verify_api_key)])
-    app.include_router(campaign_routes.router, prefix="/campaigns", tags=["Campaigns"], dependencies=[Security(verify_api_key)])
+    # Include routers.
+    # Note: Routers already have their 'prefix' defined in their files.
+    # We include them WITHOUT an additional prefix argument to avoid double prefixes (e.g. /scheduler/scheduler).
 
-    # app.include_router(stream_routes.router, prefix="/stream", tags=["Stream"])
+    app.include_router(auth_router)             # prefix="/auth"
+    app.include_router(bot_control.router)      # prefix="/bot"
+    app.include_router(automation_control.router) # prefix="/automation"
+    app.include_router(scheduler_routes.router) # prefix="/scheduler"
+    app.include_router(crm.router)              # prefix="/crm"
+    app.include_router(visitor_routes.router)   # prefix="/visitor"
+    app.include_router(notifications.router)    # prefix="/notifications"
+    app.include_router(blacklist.router)        # prefix="/blacklist"
+    app.include_router(nurturing.router)        # prefix="/nurturing"
+    app.include_router(deployment.router)       # prefix="/deployment"
+    app.include_router(sourcing.router)         # prefix="/sourcing"
+    app.include_router(campaign_routes.router)  # prefix="/campaigns"
+    app.include_router(stream_routes.router)    # prefix="/stream"
+    app.include_router(debug_routes.router)     # prefix="/debug"
 
 except ImportError as e:
     logger.error(f"Failed to import some routers: {e}")
