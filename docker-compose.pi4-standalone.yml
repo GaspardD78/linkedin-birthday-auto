@@ -107,7 +107,9 @@ services:
   api:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
-    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+    command: >
+      sh -c "pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
+      uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
     # Enable privileged mode to allow systemctl commands
     privileged: true
     environment:
@@ -160,7 +162,9 @@ services:
   bot-worker:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-worker
-    command: python -m src.queue.worker
+    command: >
+      sh -c "pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
+      python -m src.queue.worker"
     depends_on:
       redis-bot:
         condition: service_healthy
