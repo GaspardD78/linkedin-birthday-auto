@@ -17,12 +17,16 @@ Usage:
 
 import os
 import sys
+import time
 
 from redis import Redis
 from rq import Connection, Queue, Worker
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from ..monitoring.tracing import setup_tracing
 from ..utils.logging import get_logger, setup_logging
+from ..utils.data_files import initialize_data_files
+from ..utils.database_maintenance import start_maintenance_scheduler
 
 # Configuration
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -30,51 +34,49 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 QUEUES = ["linkedin-bot"]
 
 # Configuration du logging avec fichier pour Docker
-# Le worker écrit dans le même fichier de log que l'API (géré par rotation externe ou Docker)
 LOG_FILE = os.getenv("LOG_FILE", "/app/logs/linkedin_bot.log")
 setup_logging(log_level="INFO", log_file=LOG_FILE)
 logger = get_logger("worker")
 
 
-# 🚀 Refactored: use shared data_files module (no more duplication)
-from ..utils.data_files import initialize_data_files
-
-
 def start_worker():
     """
-    Démarre le worker RQ.
-
-    Cette fonction :
-    1. Initialise les fichiers de données (messages).
-    2. Configure le tracing et le logging.
-    3. Établit la connexion Redis.
-    4. Lance la boucle principale du Worker qui attend et traite les jobs.
+    Démarre le worker RQ avec gestion d'erreurs robuste.
     """
-    # Initialiser les fichiers de données avant de démarrer
     initialize_data_files()
-
-    # 🚀 Démarrer le scheduler de maintenance de la base de données
-    from ..utils.database_maintenance import start_maintenance_scheduler
     start_maintenance_scheduler()
 
     logger.info("starting_worker", redis_host=REDIS_HOST, queues=QUEUES)
-
-    # Initialisation du tracing (OpenTelemetry) si activé
     setup_tracing(service_name="linkedin-bot-worker")
 
-    try:
-        redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
+    retry_count = 0
+    max_retries = 10
 
-        with Connection(redis_conn):
-            # Le Worker écoute sur les queues définies.
-            # RQ gère le cycle de vie des jobs (succès, échec, retry).
-            worker = Worker(map(Queue, QUEUES))
-            worker.work()
+    while True:
+        try:
+            redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
+            # Test connexion
+            redis_conn.ping()
 
-    except Exception as e:
-        logger.error("worker_failed", error=str(e))
-        sys.exit(1)
+            with Connection(redis_conn):
+                worker = Worker(map(Queue, QUEUES))
+                worker.work()
 
+        except RedisConnectionError:
+            retry_count += 1
+            wait_time = min(retry_count * 2, 30)
+            logger.error(f"Redis connection failed. Retrying in {wait_time}s ({retry_count}/{max_retries})...")
+            if retry_count > max_retries:
+                logger.critical("Max retries reached for Redis connection. Exiting.")
+                sys.exit(1)
+            time.sleep(wait_time)
+
+        except Exception as e:
+            logger.error("worker_crashed_unexpectedly", error=str(e))
+            # On attend un peu avant de redémarrer pour éviter une boucle rapide en cas d'erreur fatale
+            time.sleep(5)
+            # On ne sort pas, on tente de redémarrer le worker (sauf si c'est une SystemExit)
+            # rq.Worker gère déjà les exceptions des jobs, ici on attrape les crashs du processus worker lui-même
 
 if __name__ == "__main__":
     start_worker()

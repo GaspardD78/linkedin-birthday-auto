@@ -1,18 +1,9 @@
-# Docker Compose pour Raspberry Pi 4 - Configuration Standalone
-# Tout-en-un : Bot Worker + Dashboard + Redis
-# Pas de dépendance externe (Synology MySQL/NFS retiré)
-#
-# Architecture simplifiée:
-# - Pi4 : Bot Worker + Dashboard + Redis + SQLite
-# - Freebox Pop : IP résidentielle légitime pour LinkedIn
+# Docker Compose pour Raspberry Pi 4 - Production
+# Architecture: Bot Worker + Dashboard + Redis + SQLite (Standalone)
 #
 # Utilisation:
-#   docker compose -f docker-compose.pi4-standalone.yml up -d
-#
-# Documentation:
-# - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
-# - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
-# - Verification: ./scripts/verify_rpi_docker.sh
+#   ./scripts/deploy_prod.sh
+#   (ou docker compose -f docker-compose.prod.yml up -d)
 
 services:
   # ========================================
@@ -21,10 +12,10 @@ services:
   redis-bot:
     image: redis:7-alpine
     container_name: redis-bot
+    env_file: .env
     volumes:
     - redis-bot-data:/data
-    # Optimisations Redis pour Pi 4
-    # AOF only (no RDB snapshots) to avoid fork-based BGSAVE warnings
+    # Optimisations Redis pour Pi 4 (AOF only)
     command: >
       redis-server
       --appendonly yes
@@ -33,7 +24,6 @@ services:
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
-    # Fix memory overcommit warning
     sysctls:
       - net.core.somaxconn=511
     deploy:
@@ -65,7 +55,8 @@ services:
   redis-dashboard:
     image: redis:7-alpine
     container_name: redis-dashboard
-    # Cache only (no persistence) to avoid fork operations and memory overcommit warnings
+    env_file: .env
+    # Cache only (no persistence)
     command: >
       redis-server
       --maxmemory 64mb
@@ -73,7 +64,6 @@ services:
       --save ""
       --appendonly no
       --loglevel warning
-    # Fix memory overcommit warning
     sysctls:
       - net.core.somaxconn=511
     restart: unless-stopped
@@ -108,7 +98,7 @@ services:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
-    # Enable privileged mode to allow systemctl commands
+    env_file: .env
     privileged: true
     environment:
     - REDIS_HOST=redis-bot
@@ -116,22 +106,14 @@ services:
     - PYTHONPATH=/app
     - LOG_LEVEL=INFO
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Clé API pour sécuriser les appels internes (OBLIGATOIRE)
-      # Générer avec: python -c "import secrets; print(secrets.token_hex(32))"
     - API_KEY=${API_KEY:?API_KEY must be set in .env file}
-      # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=api
-      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    # Messages files are stored in /app/data/ and editable via API
-    # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - shared-data:/app/data
-    # Mount systemd and D-Bus to allow systemctl commands from container
     - /run/systemd:/run/systemd:ro
     - /var/run/dbus:/var/run/dbus:ro
     - /bin/systemctl:/bin/systemctl:ro
@@ -144,8 +126,6 @@ services:
           memory: 200M
     restart: unless-stopped
     healthcheck:
-      # CRASH PROOF: Use Python healthcheck instead of curl for robustness
-      # as recommended in GUIDE_INSTALLATION_SIMPLIFIEE.md
       test: ["CMD", "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read())"]
       interval: 30s
       timeout: 10s
@@ -161,6 +141,7 @@ services:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-worker
     command: python -m src.queue.worker
+    env_file: .env
     depends_on:
       redis-bot:
         condition: service_healthy
@@ -169,30 +150,22 @@ services:
     - REDIS_PORT=6379
     - PYTHONPATH=/app
     - LOG_LEVEL=INFO
-      # Utilisation SQLite partagé avec le dashboard
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
-      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
     volumes:
     - ./logs:/app/logs
     - ./config:/app/config
-    # Messages files are stored in /app/data/ and editable via API
-    # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - shared-data:/app/data
-    # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:
       resources:
         limits:
           cpus: '1.5'
-          memory: 1800M  # Increased to support 1024MB browser heap + Python/Playwright overhead
+          memory: 1800M
         reservations:
           cpus: '0.5'
           memory: 512M
-    memswap_limit: 2000M  # Increased swap limit to match new memory requirements
     logging:
       driver: json-file
       options:
@@ -213,18 +186,17 @@ services:
   # DASHBOARD (Next.js avec SQLite)
   # ========================================
   dashboard:
-    # Dashboard utilise l'image officielle depuis GHCR
-    # (plus de build local pour économiser ressources Pi4)
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
     pull_policy: always
     restart: unless-stopped
     container_name: dashboard
+    env_file: .env
     ports:
     - ${DASHBOARD_PORT:-3000}:3000
     deploy:
       resources:
         limits:
-          memory: 400M    # Optimisé après suppression de Chromium
+          memory: 400M
           cpus: '1.0'
         reservations:
           memory: 200M
@@ -238,32 +210,18 @@ services:
     environment:
     - NODE_ENV=production
     - NEXT_TELEMETRY_DISABLED=1
-
-      # ✅ SQLite Local
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-
-      # Configuration Redis Dashboard
     - REDIS_URL=redis://redis-dashboard:6379
-
-      # Configuration Bot (pour Proxy API)
     - BOT_API_URL=http://api:8000
     - BOT_API_KEY=${API_KEY:?API_KEY must be set in .env file}
-
-      # Configuration Authentification Dashboard (REQUIS)
     - JWT_SECRET=${JWT_SECRET}
     - DASHBOARD_USER=${DASHBOARD_USER}
     - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
-
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=dashboard
     volumes:
-      # Logs partagés avec le bot
     - ./logs:/app/logs
-      # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
     - ./config:/app/config
-      # Base de données SQLite partagée avec le bot
     - shared-data:/app/data
-      # Monitoring de température du Raspberry Pi 4 (lecture seule)
     - /sys/class/thermal:/sys/class/thermal:ro
     depends_on:
       redis-dashboard:
@@ -279,9 +237,6 @@ services:
     networks:
     - linkedin-network
 
-# ========================================
-# VOLUMES PERSISTANTS
-# ========================================
 volumes:
   redis-bot-data:
     name: linkedin-bot-redis-data
@@ -289,11 +244,7 @@ volumes:
     name: linkedin-dashboard-redis-data
   shared-data:
     name: linkedin-shared-data
-    # Volume partagé entre le bot et le dashboard pour SQLite
 
-# ========================================
-# RÉSEAU INTERNE
-# ========================================
 networks:
   linkedin-network:
     name: linkedin-network
