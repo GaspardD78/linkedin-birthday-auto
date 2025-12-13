@@ -2,7 +2,8 @@
 Module de gestion de la base de données SQLite pour LinkedIn Birthday Auto
 Gère les contacts, messages, visites de profils, erreurs et sélecteurs LinkedIn
 
-Version 2.3.0 - Robust Nested Transactions:
+Version 2.3.1 - Clean Code & Robustesse:
+- Suppression des print()
 - Gestion intelligente des transactions imbriquées (Nested Transactions)
 - Seul l'appelant le plus externe déclenche le commit
 - Rollback complet en cas d'erreur
@@ -2084,23 +2085,23 @@ if __name__ == "__main__":
     # Test de la base de données
     db = Database("test_linkedin.db")
 
-    print("✓ Base de données créée avec succès")
+    logger.info("✓ Base de données créée avec succès")
 
     # Test d'ajout de contact
     contact_id = db.add_contact("Jean Dupont", "https://linkedin.com/in/jeandupont", 75.0)
-    print(f"✓ Contact créé avec ID: {contact_id}")
+    logger.info(f"✓ Contact créé avec ID: {contact_id}")
 
     # Test d'ajout de message
     msg_id = db.add_birthday_message("Jean Dupont", "Joyeux anniversaire Jean !", False, 0)
-    print(f"✓ Message créé avec ID: {msg_id}")
+    logger.info(f"✓ Message créé avec ID: {msg_id}")
 
     # Test de statistiques
     stats = db.get_statistics(30)
-    print(f"✓ Statistiques: {stats}")
+    logger.info(f"✓ Statistiques: {stats}")
 
     # Test d'export
     db.export_to_json("test_export.json")
-    print("✓ Export JSON créé")
+    logger.info("✓ Export JSON créé")
 
     # Clean up test DB
     if os.path.exists("test_linkedin.db"):
@@ -2110,4 +2111,4 @@ if __name__ == "__main__":
     if os.path.exists("test_linkedin.db-wal"):
         os.remove("test_linkedin.db-wal")
 
-    print("\n✓ Tous les tests sont passés avec succès !")
+    logger.info("✓ Tous les tests sont passés avec succès !")
