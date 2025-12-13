@@ -1288,7 +1288,7 @@ show_troubleshooting() {
                 fi
             fi
             # Vérifier API
-            if docker exec bot-api curl -sf http://localhost:8000/health &>/dev/null; then
+            if docker exec bot-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" &>/dev/null; then
                 echo -e "    ${GREEN}✓${NC} Bot API accessible"
             else
                 echo -e "    ${RED}✗${NC} Bot API non accessible"
