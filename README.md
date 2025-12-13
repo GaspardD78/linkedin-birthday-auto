@@ -1,80 +1,96 @@
-# 🤖 LinkedIn Birthday Bot - Guide Raspberry Pi 4
+# LinkedIn Automation Bot (Raspberry Pi 4 Edition)
 
-Bienvenue ! Ce guide est conçu pour installer le bot sur un **Raspberry Pi 4** (ou autre environnement Docker).
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Docker](https://img.shields.io/badge/docker-available-blue.svg)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 📋 Prérequis
+Un outil d'automatisation LinkedIn professionnel, sécurisé et optimisé pour Raspberry Pi 4 (ARM64).
+Il permet d'automatiser l'envoi de messages d'anniversaire, la visite de profils ciblés, et la gestion des invitations.
 
-*   **Matériel** :
-    *   Raspberry Pi 4 (2GB RAM minimum, 4GB+ recommandé).
-    *   Carte MicroSD de **32 Go minimum**.
-*   **Logiciel** :
-    *   **Raspberry Pi OS Lite (64-bit)** (Recommandé).
-    *   Docker et Docker Compose (installés automatiquement par le script).
+## ✨ Fonctionnalités
 
----
+- **🤖 Bots Autonomes** :
+  - **Birthday Bot** : Souhaite les anniversaires (avec gestion du retard et messages personnalisés).
+  - **Visitor Bot** : Visite des profils basés sur une recherche (augmente la visibilité "Who viewed your profile").
+  - **Invitation Manager** : Nettoie les invitations en attente trop anciennes.
+- **🖥️ Dashboard Moderne** : Interface Web (Next.js) pour piloter les bots, voir les stats et les logs en temps réel.
+- **🔒 Sécurité** : Authentification par cookies (pas de mot de passe stocké), API sécurisée, protection des données.
+- **🚀 Optimisé RPi4** : Architecture légère (Docker), gestion des ressources, logs rotatifs, base de données SQLite optimisée (WAL).
 
-## 🚀 Installation Automatique
+## 🛠️ Pré-requis
 
-Nous fournissons un script "tout-en-un" qui installe Docker, configure le système et déploie le bot.
+- **Matériel** : Raspberry Pi 4 (4GB ou 8GB recommandés).
+- **OS** : Raspberry Pi OS (64-bit) Lite ou Desktop.
+- **Logiciels** :
+  - Docker & Docker Compose
+  - Git
 
-```bash
-# 1. Cloner le projet
-git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
-cd linkedin-birthday-auto
+## 🚀 Installation Rapide (Docker)
 
-# 2. Lancer l'installation
-./setup.sh
+1. **Cloner le dépôt :**
+   ```bash
+   git clone https://github.com/votre-repo/linkedin-automation.git
+   cd linkedin-automation
+   ```
+
+2. **Configuration :**
+   Copiez le fichier d'exemple et éditez-le :
+   ```bash
+   cp .env.pi4.example .env
+   nano .env
+   ```
+   *Remplissez les variables obligatoires (`API_KEY`, `JWT_SECRET`, etc.).*
+
+3. **Authentification LinkedIn :**
+   Le bot utilise vos cookies de session pour se connecter.
+   - Connectez-vous à LinkedIn sur votre navigateur PC.
+   - Utilisez une extension comme "EditThisCookie" pour exporter les cookies au format JSON.
+   - Ou récupérez les valeurs `li_at` et `JSESSIONID`.
+   - Une fois le dashboard lancé, vous pourrez uploader le fichier `auth_state.json` via l'interface `/auth`.
+
+4. **Lancement :**
+   Utilisez le script de déploiement optimisé :
+   ```bash
+   ./scripts/deploy_pi4_standalone.sh
+   ```
+   *Cela va construire les images, lancer les conteneurs (Redis, API, Worker, Dashboard) et configurer le réseau.*
+
+5. **Accès :**
+   - **Dashboard** : `http://<IP_RPI>:3000`
+   - **API Docs** : `http://<IP_RPI>:8000/docs`
+
+## 📂 Structure du Projet
+
+```
+.
+├── config/                 # Fichiers de configuration (YAML)
+├── dashboard/              # Frontend Next.js
+├── data/                   # Base de données SQLite et fichiers persistants
+├── logs/                   # Logs des services
+├── scripts/                # Scripts utilitaires (déploiement, maintenance)
+├── src/                    # Code source Python
+│   ├── api/                # API FastAPI
+│   ├── bots/               # Logique des bots (Playwright)
+│   ├── core/               # Noyau (Base de données, Auth, Browser)
+│   └── ...
+├── docker-compose.pi4-standalone.yml  # Configuration Docker Production
+└── requirements.txt        # Dépendances Python (épinglées)
 ```
 
-**Le script va :**
-1. Installer les dépendances (Docker, etc.).
-2. Vous aider à configurer vos cookies LinkedIn (`auth_state.json`) et préférences.
-3. Déployer les conteneurs (Dashboard, API, Worker, Redis, SQLite).
+## 🛡️ Maintenance & Sécurité
 
-> ⚠️ **Note sur connexion internet** : Le téléchargement des images Docker peut prendre 2-5 minutes selon votre connexion. Le script intègre automatiquement :
-> - Retry automatique en cas de timeout (jusqu'à 5 tentatives)
-> - Pull séquentiel optimisé pour connexions lentes
-> - Si vous rencontrez des erreurs réseau, consultez le [Guide de Dépannage](docs/RASPBERRY_PI_TROUBLESHOOTING.md#issue-docker-image-pull-timeout-tls-handshake-timeout).
+- **Mise à jour** :
+  ```bash
+  git pull
+  ./scripts/deploy_pi4_standalone.sh
+  ```
+- **Logs** : Les logs sont accessibles via le Dashboard ou dans `logs/linkedin_bot.log`.
+- **Base de données** : SQLite est configuré en mode WAL pour la robustesse. Un `VACUUM` automatique est effectué périodiquement.
 
----
+## 🤝 Contribuer
 
-## 📚 Documentation
+Les Pull Requests sont les bienvenues. Merci de respecter les standards "Clean Code" et de vérifier la compatibilité ARM64.
 
-Toute la documentation technique se trouve dans le dossier `docs/` :
+## 📄 Licence
 
-*   👉 **[Architecture (ARCHITECTURE.md)](docs/ARCHITECTURE.md)** : Comprendre comment ça marche (Next.js, FastAPI, RQ, SQLite).
-*   👉 **[Guide de Déploiement (AUTOMATION_DEPLOYMENT_PI4.md)](docs/AUTOMATION_DEPLOYMENT_PI4.md)** : Détails sur le script d'installation et le déploiement manuel.
-*   👉 **[Mise à jour (UPDATE_GUIDE.md)](docs/UPDATE_GUIDE.md)** : Comment mettre à jour le bot.
-*   👉 **[Dépannage (RASPBERRY_PI_TROUBLESHOOTING.md)](docs/RASPBERRY_PI_TROUBLESHOOTING.md)** : Résoudre les problèmes courants.
-
----
-
-## 🌐 Utilisation
-
-Une fois installé :
-
-*   **Dashboard** : `http://<IP_DE_VOTRE_RPI>:3000`
-*   **API** : `http://<IP_DE_VOTRE_RPI>:8000/docs`
-
-> ⚠️ **Trafic réseau et automatisations** : Si vous avez installé les automatisations systemd, le bot démarre **automatiquement au boot** et reste actif en permanence. Cela génère du trafic réseau continu vers LinkedIn.
-> - Pour arrêter : `sudo systemctl stop linkedin-bot && docker compose -f docker-compose.pi4-standalone.yml down`
-> - Pour diagnostic : `sudo ./scripts/diagnose_network_traffic.sh`
-> - Pour désinstaller : `sudo ./scripts/uninstall_automation_pi4.sh`
-> - Voir le [Guide de Dépannage](docs/RASPBERRY_PI_TROUBLESHOOTING.md#issue-abnormal-network-traffic-after-installing-automations)
-
----
-
-## 🛠️ Commandes Utiles
-
-Pour gérer le bot une fois installé :
-
-```bash
-# Voir les logs
-docker compose -f docker-compose.pi4-standalone.yml logs -f
-
-# Redémarrer
-docker compose -f docker-compose.pi4-standalone.yml restart
-
-# Mettre à jour (méthode recommandée)
-./setup.sh
-```
+Ce projet est sous licence MIT.
