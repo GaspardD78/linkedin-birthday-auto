@@ -20,10 +20,10 @@ from prometheus_client import make_asgi_app
 
 from src.api.security import verify_api_key, API_KEY_NAME
 from src.core.database import get_database
-from src.utils.logging import configure_logging
+from src.utils.logging import setup_logging
 
 # Configure logging using structlog
-configure_logging()
+setup_logging(log_file="logs/linkedin_bot.log")
 logger = logging.getLogger(__name__)
 
 # --- Models ---
