@@ -12,8 +12,10 @@ from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+API_KEY_NAME = "X-API-Key"
+
 # Header expected: X-API-Key: <your-key>
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 
 def get_api_key_from_env() -> str:
