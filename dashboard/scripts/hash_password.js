@@ -53,7 +53,7 @@ async function main() {
 
       if (quietMode) {
         // Mode silencieux: afficher uniquement le hash brut (setup.sh gère l'échappement)
-        console.log(hash);
+        console.log(hash); // FIX: Raw hash for setup.sh
       } else {
         // Mode verbose
         const escapedHash = escapeForDockerCompose(hash);

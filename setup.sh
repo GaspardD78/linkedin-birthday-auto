@@ -1414,9 +1414,13 @@ EOF
     # Vérifier si le mot de passe est déjà hashé
     local current_pass=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
 
+    # Exporter le mot de passe en clair seulement s'il n'est pas déjà hashé
     if [[ "$current_pass" =~ ^\$2[aby]\$ ]]; then
+        export FINAL_CLEAR_PASS=""
         log_success "Mot de passe déjà hashé avec bcrypt"
         return 0
+    else
+        export FINAL_CLEAR_PASS="$current_pass"
     fi
 
     # Vérifier si Node.js est disponible
@@ -2040,6 +2044,25 @@ EOF
             echo ""
         fi
     fi
+
+    # Récupérer le User et le Hash final depuis .env
+    local final_user=$(grep -E "^DASHBOARD_USER=" "$ENV_FILE" | cut -d'=' -f2-)
+    local final_hash=$(grep -E "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+
+    # Si FINAL_CLEAR_PASS est vide, tenter de le retrouver dans le backup
+    if [[ -z "${FINAL_CLEAR_PASS:-}" ]]; then
+        local last_backup=$(ls -t "${ENV_FILE}.backup."* 2>/dev/null | head -1)
+        if [[ -n "$last_backup" ]]; then
+            FINAL_CLEAR_PASS=$(grep "DASHBOARD_PASSWORD=" "$last_backup" | cut -d'=' -f2- | tr -d "'" | tr -d '"')
+        fi
+    fi
+
+    echo ""
+    echo -e "🔐 ${BOLD}IDENTIFIANTS DE CONNEXION :${NC}"
+    echo -e "   User:            ${final_user}"
+    echo -e "   Mot de passe:    ${FINAL_CLEAR_PASS:-[Non récupéré]}  <-- Celui à taper pour se connecter"
+    echo -e "   Hash stocké:     ${final_hash}   <-- Pour vérification technique"
+    echo ""
 
     log_success "Installation terminée avec succès!"
 }
