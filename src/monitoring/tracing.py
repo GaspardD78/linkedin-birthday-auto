@@ -13,23 +13,28 @@ Exemple docker-compose:
 """
 
 import os
-from typing import Optional
-
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from typing import Optional, Any
 
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+OPENTELEMETRY_AVAILABLE = False
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    OPENTELEMETRY_AVAILABLE = True
+except ImportError:
+    logger.warning("opentelemetry_missing", message="Tracing will be disabled")
 
 def setup_tracing(
     service_name: str = "linkedin-bot", endpoint: Optional[str] = None
-) -> Optional[trace.Tracer]:
+) -> Any:
     """
     Configure OpenTelemetry pour l'application.
 
@@ -40,6 +45,9 @@ def setup_tracing(
     Returns:
         Tracer ou None si désactivé
     """
+    if not OPENTELEMETRY_AVAILABLE:
+        return None
+
     # Vérifier si le tracing est activé
     tracing_enabled = os.getenv("ENABLE_TELEMETRY", "false").lower() in ("true", "1", "yes")
 
@@ -87,6 +95,9 @@ def setup_tracing(
 
 def instrument_app(app):
     """Instrumente une application FastAPI."""
+    if not OPENTELEMETRY_AVAILABLE:
+        return
+
     try:
         FastAPIInstrumentor.instrument_app(app)
         logger.info("fastapi_instrumented")
@@ -122,6 +133,9 @@ class TemporaryTracing:
 
     def __enter__(self):
         """Active le tracing temporairement."""
+        if not OPENTELEMETRY_AVAILABLE:
+            return None
+
         logger.info("temporary_tracing_enabled", service=self.service_name, endpoint=self.endpoint)
 
         # Sauvegarder le provider actuel
@@ -165,6 +179,9 @@ class TemporaryTracing:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Désactive le tracing et force l'export des spans."""
+        if not OPENTELEMETRY_AVAILABLE:
+            return
+
         try:
             # Forcer l'export des spans en attente
             if self.temp_provider:

@@ -52,8 +52,8 @@ async function main() {
       const hash = await hashPassword(password);
 
       if (quietMode) {
-        // Mode silencieux: afficher uniquement le hash échappé pour Docker Compose
-        console.log(escapeForDockerCompose(hash));
+        // Mode silencieux: afficher uniquement le hash brut (setup.sh gère l'échappement)
+        console.log(hash);
       } else {
         // Mode verbose
         const escapedHash = escapeForDockerCompose(hash);
