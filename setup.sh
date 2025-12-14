@@ -231,9 +231,56 @@ if [[ "$API_KEY" == "internal_secret_key" || -z "$API_KEY" ]]; then
     log SUCCESS "Generated secure API Keys."
 fi
 
+# 2.4b Check JWT_SECRET & DASHBOARD_USER
+JWT_SECRET=$(grep "^JWT_SECRET=" "$ENV_FILE" | cut -d'=' -f2)
+if [[ "$JWT_SECRET" == *"CHANGEZ_MOI"* || -z "$JWT_SECRET" ]]; then
+    NEW_JWT=$(openssl rand -hex 32)
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$NEW_JWT|" "$ENV_FILE"
+    log SUCCESS "Generated secure JWT Secret."
+fi
+
+DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" | cut -d'=' -f2)
+if [[ -z "$DASHBOARD_USER" ]]; then
+    echo "DASHBOARD_USER=gaspard" >> "$ENV_FILE"
+    log SUCCESS "Added default DASHBOARD_USER=gaspard to .env"
+fi
+
 # 2.5 Nginx Proposal
 if ask_confirmation "Do you want to configure Nginx/HTTPS (Certbot)?"; then
     log INFO "Invoking security script for Nginx setup..."
+
+    # Pre-copy config file if Nginx is present
+    if check_command "nginx"; then
+        if [ -f "deployment/nginx/linkedin-bot.conf" ]; then
+             log INFO "Copying Nginx configuration..."
+             sudo cp deployment/nginx/linkedin-bot.conf /etc/nginx/sites-available/linkedin-bot.conf
+
+             # Configure Domain
+             DOMAIN_NAME="gaspardanoukolivier.freeboxos.fr"
+             log INFO "Configuring Nginx for: $DOMAIN_NAME"
+             sudo sed -i "s/YOUR_DOMAIN.COM/$DOMAIN_NAME/g" /etc/nginx/sites-available/linkedin-bot.conf
+
+             if [ ! -L "/etc/nginx/sites-enabled/linkedin-bot.conf" ]; then
+                 sudo ln -s /etc/nginx/sites-available/linkedin-bot.conf /etc/nginx/sites-enabled/
+             fi
+
+             # Remove default if present
+             if [ -L "/etc/nginx/sites-enabled/default" ]; then
+                 sudo rm /etc/nginx/sites-enabled/default
+             fi
+
+             # Reload nginx to verify config
+             if sudo nginx -t; then
+                 sudo systemctl reload nginx
+                 log SUCCESS "Nginx configuration loaded."
+             else
+                 log WARN "Nginx config check failed. Please check /etc/nginx/sites-available/linkedin-bot.conf"
+             fi
+        else
+             log WARN "deployment/nginx/linkedin-bot.conf not found."
+        fi
+    fi
+
     if [ -f "scripts/fix_security_issues.py" ]; then
         sudo python3 scripts/fix_security_issues.py --nginx-only
     else
@@ -300,7 +347,7 @@ analyze_logs() {
 
 wait_for_healthy() {
     local service=$1
-    local max_retries=30
+    local max_retries=60  # Increased from 30 for Pi 4
     log INFO "Waiting for $service to be healthy..."
 
     for i in $(seq 1 $max_retries); do
