@@ -86,35 +86,60 @@ class Database:
         self.init_database()
 
     def _create_connection(self) -> sqlite3.Connection:
-        """Crée et configure une nouvelle connexion SQLite"""
-        conn = sqlite3.connect(self.db_path, timeout=60.0) # Timeout augmenté à 60s
-        conn.row_factory = sqlite3.Row
+        """
+        Crée et configure une nouvelle connexion SQLite avec retry automatique.
+        Robustesse accrue pour le démarrage concurrent (API vs Worker).
+        """
+        max_retries = 5
+        base_delay = 0.5
+        last_error = None
 
-        # Optimisations Performance & Concurrence
-        try:
-            # 🚀 OPTIMISATIONS RASPBERRY PI 4
-            # WAL (Write-Ahead Logging) permet lecture et écriture simultanées
-            conn.execute("PRAGMA journal_mode=WAL")
-            # Synchronous NORMAL est safe avec WAL et plus rapide
-            conn.execute("PRAGMA synchronous=NORMAL")
-            # Timeout de busy handler (attente de verrou)
-            conn.execute("PRAGMA busy_timeout=60000")
-            # Cache size RÉDUIT: 20MB au lieu de 40MB (optimisé Pi4)
-            conn.execute("PRAGMA cache_size=-5000")  # -5000 pages = ~20MB
-            # Foreign keys enforce
-            conn.execute("PRAGMA foreign_keys=ON")
-            # Tables temporaires en RAM
-            conn.execute("PRAGMA temp_store=MEMORY")
-            # Memory-mapped I/O 256MB (accélère lectures)
-            conn.execute("PRAGMA mmap_size=268435456")
-            # Checkpoint tous les 1000 pages
-            conn.execute("PRAGMA wal_autocheckpoint=1000")
-            # Limite WAL à 4MB
-            conn.execute("PRAGMA journal_size_limit=4194304")
-        except Exception as e:
-            logger.warning(f"Failed to set PRAGMA optimizations: {e}", exc_info=True)
+        for attempt in range(max_retries):
+            try:
+                # Tentative de connexion
+                conn = sqlite3.connect(self.db_path, timeout=60.0)  # Timeout augmenté à 60s
+                conn.row_factory = sqlite3.Row
 
-        return conn
+                # Optimisations Performance & Concurrence
+                try:
+                    # 🚀 OPTIMISATIONS RASPBERRY PI 4
+                    # WAL (Write-Ahead Logging) permet lecture et écriture simultanées
+                    conn.execute("PRAGMA journal_mode=WAL")
+                    # Synchronous NORMAL est safe avec WAL et plus rapide
+                    conn.execute("PRAGMA synchronous=NORMAL")
+                    # Timeout de busy handler (attente de verrou)
+                    conn.execute("PRAGMA busy_timeout=60000")
+                    # Cache size RÉDUIT: 20MB au lieu de 40MB (optimisé Pi4)
+                    conn.execute("PRAGMA cache_size=-5000")  # -5000 pages = ~20MB
+                    # Foreign keys enforce
+                    conn.execute("PRAGMA foreign_keys=ON")
+                    # Tables temporaires en RAM
+                    conn.execute("PRAGMA temp_store=MEMORY")
+                    # Memory-mapped I/O 256MB (accélère lectures)
+                    conn.execute("PRAGMA mmap_size=268435456")
+                    # Checkpoint tous les 1000 pages
+                    conn.execute("PRAGMA wal_autocheckpoint=1000")
+                    # Limite WAL à 4MB
+                    conn.execute("PRAGMA journal_size_limit=4194304")
+                except Exception as e:
+                    logger.warning(f"Failed to set PRAGMA optimizations: {e}", exc_info=True)
+
+                return conn
+
+            except sqlite3.OperationalError as e:
+                last_error = e
+                wait_time = base_delay * (2 ** attempt)  # Backoff exponentiel
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Database connection failed (locked/busy). Retrying in {wait_time:.1f}s... "
+                        f"(Attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Fatal: Could not connect to database after {max_retries} attempts.")
+
+        # Si on arrive ici, c'est que toutes les tentatives ont échoué
+        raise last_error or sqlite3.OperationalError("Could not connect to database")
 
     @contextmanager
     def get_connection(self):
