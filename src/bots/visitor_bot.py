@@ -1237,6 +1237,7 @@ if __name__ == "__main__":
     parser.add_argument("--location", help="Localisation (ex: Paris, France)")
     parser.add_argument("--limit", type=int, help="Limite de profils à visiter")
     parser.add_argument("--campaign-id", type=int, help="ID de la campagne (optionnel)")
+    parser.add_argument("--filters-json", help="Filtres avancés en JSON (SearchFiltersConfig structure)")
     parser.add_argument("--dry-run", action="store_true", help="Mode simulation")
 
     args = parser.parse_args()
@@ -1252,6 +1253,21 @@ if __name__ == "__main__":
             config.visitor.location = args.location
         if args.dry_run:
             config.dry_run = True
+
+        # Surcharge des filtres avancés
+        if args.filters_json:
+            try:
+                filters_data = json.loads(args.filters_json)
+                if isinstance(filters_data, dict):
+                    # Mise à jour des champs de search_filters
+                    for key, value in filters_data.items():
+                        if hasattr(config.visitor.search_filters, key):
+                            setattr(config.visitor.search_filters, key, value)
+                    logger.info(f"Applied advanced filters from CLI: {filters_data.keys()}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON for --filters-json: {e}")
+            except Exception as e:
+                logger.error(f"Error applying filters: {e}")
 
         profiles_limit = args.limit if args.limit else None
         campaign_id = args.campaign_id
