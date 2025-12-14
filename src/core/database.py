@@ -1132,12 +1132,13 @@ class Database:
             return dict(row) if row else None
 
     @retry_on_lock()
-    def get_all_scraped_profiles(self, limit: Optional[int] = None) -> list[dict]:
+    def get_all_scraped_profiles(self, limit: Optional[int] = None, offset: int = 0) -> list[dict]:
         """
-        Récupère tous les profils scrapés.
+        Récupère tous les profils scrapés avec pagination.
 
         Args:
             limit: Nombre maximal de profils à retourner (None = tous)
+            offset: Décalage pour la pagination
 
         Returns:
             Liste de dictionnaires avec les données des profils
@@ -1150,9 +1151,9 @@ class Database:
                     """
                     SELECT * FROM scraped_profiles
                     ORDER BY scraped_at DESC
-                    LIMIT ?
+                    LIMIT ? OFFSET ?
                 """,
-                    (limit,),
+                    (limit, offset),
                 )
             else:
                 cursor.execute(
@@ -1163,6 +1164,14 @@ class Database:
                 )
 
             return [dict(row) for row in cursor.fetchall()]
+
+    @retry_on_lock()
+    def get_scraped_profiles_count(self) -> int:
+        """Retourne le nombre total de profils scrapés."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM scraped_profiles")
+            return cursor.fetchone()["count"]
 
     @retry_on_lock()
     def export_scraped_data_to_csv(self, output_path: str) -> str:
