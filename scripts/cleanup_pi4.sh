@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # =========================================================================
-# Script de nettoyage périodique pour Raspberry Pi 4
-# Économise l'espace sur la carte SD (32GB)
+# Script de nettoyage COMPLET pour Raspberry Pi 4 (Reset Environnement)
+# Supprime TOUS les conteneurs, TOUTES les images et TOUS les volumes
+# Opère SANS sudo (suppose que l'utilisateur est dans le groupe docker)
 # =========================================================================
 
-set -e
-
+# Couleurs
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -17,84 +17,83 @@ print_header() { echo -e "\n${BLUE}=== $1 ===${NC}\n"; }
 print_success() { echo -e "${GREEN}✅ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_info() { echo -e "ℹ️  $1"; }
+print_error() { echo -e "${RED}❌ $1${NC}"; }
 
-# Vérifier espace avant nettoyage
-print_header "📊 Espace Disque AVANT Nettoyage"
-df -h / | awk 'NR==1 || NR==2'
-SPACE_BEFORE=$(df / | awk 'NR==2 {print $4}')
+# 0. Avertissement et Confirmation
+echo -e "${RED}######################################################################${NC}"
+echo -e "${RED}#                        ATTENTION - DANGER                          #${NC}"
+echo -e "${RED}######################################################################${NC}"
+echo -e "${YELLOW}Ce script va effectuer un NETTOYAGE COMPLET de l'environnement Docker.${NC}"
+echo -e "${YELLOW}Les actions suivantes seront effectuées :${NC}"
+echo -e "  1. Arrêt de tous les conteneurs"
+echo -e "  2. Suppression de TOUS les conteneurs"
+echo -e "  3. Suppression de TOUTES les images Docker (même utilisées ailleurs !)"
+echo -e "  4. Suppression de TOUS les volumes et réseaux Docker"
+echo -e "  5. Arrêt forcé des processus Python/Chrome liés au bot"
+echo -e ""
+echo -e "Note : Les données persistantes (dossier data/, config/, .env) sont CONSERVÉES."
+echo -e ""
 
-print_header "🧹 Nettoyage Raspberry Pi 4"
-
-# 1. Nettoyage Docker
-print_info "Nettoyage des images, conteneurs et volumes Docker inutilisés..."
-if docker system prune -af --filter "until=168h" --volumes 2>/dev/null; then
-    print_success "Images Docker > 7 jours supprimées"
-else
-    print_warning "Échec nettoyage Docker (déjà clean ?)"
+read -p "Êtes-vous sûr de vouloir continuer ? (y/N) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    print_info "Opération annulée."
+    exit 1
 fi
 
-# 2. Logs applicatifs anciens
-print_info "Suppression logs applicatifs > 30 jours..."
-if [ -d "logs/" ]; then
-    DELETED_LOGS=$(find logs/ -name "*.log" -mtime +30 -delete -print | wc -l)
-    if [ "$DELETED_LOGS" -gt 0 ]; then
-        print_success "Logs supprimés: $DELETED_LOGS fichiers"
-    else
-        print_info "Aucun log ancien à supprimer"
-    fi
+print_header "🧹 Démarrage du Grand Nettoyage"
+
+# 1. Arrêt via Docker Compose (tentative propre)
+print_info "Arrêt des services via Docker Compose..."
+if [ -f "docker-compose.pi4-standalone.yml" ]; then
+    docker compose -f docker-compose.pi4-standalone.yml down --volumes --remove-orphans 2>/dev/null || true
 else
-    print_info "Dossier logs/ introuvable"
+    print_warning "Fichier docker-compose.pi4-standalone.yml non trouvé, passage à l'arrêt forcé."
 fi
 
-# 3. Screenshots anciens
-print_info "Suppression screenshots > 7 jours..."
-if [ -d "screenshots/" ]; then
-    DELETED_SCREENSHOTS=$(find screenshots/ -name "*.png" -mtime +7 -delete -print | wc -l)
-    if [ "$DELETED_SCREENSHOTS" -gt 0 ]; then
-        print_success "Screenshots supprimés: $DELETED_SCREENSHOTS fichiers"
-    else
-        print_info "Aucun screenshot ancien à supprimer"
-    fi
+# 2. Arrêt forcé et suppression de tous les conteneurs
+print_info "Arrêt et suppression de TOUS les conteneurs..."
+CONTAINERS=$(docker ps -aq)
+if [ -n "$CONTAINERS" ]; then
+    docker stop $CONTAINERS 2>/dev/null || true
+    docker rm -f $CONTAINERS 2>/dev/null || true
+    print_success "Tous les conteneurs ont été supprimés."
 else
-    print_info "Dossier screenshots/ introuvable"
+    print_info "Aucun conteneur à supprimer."
 fi
 
-# 4. Fichiers temporaires du projet
-print_info "Nettoyage fichiers temporaires Python..."
+# 3. Suppression des images (y compris non-dangling)
+print_info "Suppression de TOUTES les images Docker..."
+# -a : remove all unused images, not just dangling ones
+# -f : force (no confirmation prompt)
+docker image prune -a -f
+print_success "Toutes les images Docker résiduelles ont été supprimées."
+
+# 4. Nettoyage des volumes et réseaux
+print_info "Nettoyage des volumes et réseaux orphelins..."
+docker volume prune -f
+docker network prune -f
+print_success "Volumes et réseaux nettoyés."
+
+# 5. Tuer les processus zombies (Bot & Dashboard)
+print_info "Arrêt des processus zombies résiduels..."
+# Tuer les processus Python liés au projet (en évitant de se tuer soi-même si lancé via python, though this is bash)
+pkill -f "python.*linkedin" 2>/dev/null || true
+pkill -f "python.*visit_profiles" 2>/dev/null || true
+pkill -f "chrome" 2>/dev/null || true
+pkill -f "chromium" 2>/dev/null || true
+# Tuer node (Dashboard)
+pkill -f "next-server" 2>/dev/null || true
+print_success "Processus zombies nettoyés."
+
+# 6. Nettoyage fichiers temporaires locaux
+print_info "Nettoyage des fichiers temporaires Python..."
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 find . -type f -name "*.pyc" -delete 2>/dev/null || true
-print_success "Cache Python nettoyé"
+find . -type f -name "*.pyo" -delete 2>/dev/null || true
+print_success "Cache Python nettoyé."
 
-# 5. Cache APT (nécessite sudo)
-if [ "$EUID" -eq 0 ]; then
-    print_info "Nettoyage cache APT..."
-    apt-get clean 2>/dev/null || true
-    print_success "Cache APT nettoyé"
-else
-    print_warning "Cache APT non nettoyé (nécessite sudo)"
-fi
-
-# 6. Journaux système (nécessite sudo)
-if [ "$EUID" -eq 0 ]; then
-    print_info "Nettoyage journaux système > 7 jours..."
-    journalctl --vacuum-time=7d 2>/dev/null || true
-    print_success "Journaux système nettoyés"
-else
-    print_warning "Journaux système non nettoyés (nécessite sudo)"
-fi
-
-# Vérifier espace après nettoyage
-print_header "📊 Espace Disque APRÈS Nettoyage"
-df -h / | awk 'NR==1 || NR==2'
-SPACE_AFTER=$(df / | awk 'NR==2 {print $4}')
-
-# Calcul espace libéré
-SPACE_FREED=$((SPACE_AFTER - SPACE_BEFORE))
-SPACE_FREED_MB=$((SPACE_FREED / 1024))
-
-print_header "✅ Nettoyage Terminé"
-if [ $SPACE_FREED_MB -gt 0 ]; then
-    print_success "Espace libéré: ~${SPACE_FREED_MB}MB"
-else
-    print_info "Peu d'espace libéré (système déjà propre)"
-fi
+# Rapport final
+print_header "✨ Nettoyage Terminé"
+print_info "Votre environnement est propre."
+print_info "Pour redéployer, utilisez : ./scripts/deploy_pi4_standalone.sh"
