@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"Database connected: {db.db_path}")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
-        sys.exit(1)
+        # Do not exit immediately, allowing the dashboard to see the error via /health
 
     # Log registered routes
     logger.info("✅ Registered Routes:")
@@ -118,49 +118,50 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- Routes Inclusion ---
 
-# Import routers safely
-try:
-    from src.api.routes import bot_control
-    from src.api.routes import automation_control
-    from src.api.routes import scheduler_routes
-    from src.api.routes import crm
-    from src.api.routes import visitor_routes
-    from src.api.routes import notifications
-    from src.api.routes import blacklist
-    from src.api.routes import nurturing
-    from src.api.routes import deployment
-    from src.api.routes import sourcing
-    from src.api.routes import campaign_routes
-    from src.api.routes import stream_routes
-    from src.api.routes import debug_routes
-    from src.api.auth_routes import router as auth_router
+# Helper for safe inclusion
+def include_safe(module_path: str, router_name: str = "router"):
+    try:
+        module = __import__(module_path, fromlist=[router_name])
+        router_obj = getattr(module, router_name)
+        app.include_router(router_obj)
+        logger.info(f"✅ Router included: {module_path}")
+    except ImportError as e:
+        logger.error(f"❌ Failed to import router {module_path}: {e}")
+    except AttributeError as e:
+        logger.error(f"❌ Failed to find '{router_name}' in {module_path}: {e}")
+    except Exception as e:
+        logger.error(f"❌ Unexpected error including {module_path}: {e}")
 
-    # Include routers.
-    # Note: Routers already have their 'prefix' defined in their files.
-    # We include them WITHOUT an additional prefix argument to avoid double prefixes (e.g. /scheduler/scheduler).
+# 1. Critical Routers (Auth, Bot Control)
+include_safe("src.api.auth_routes", "router")
+include_safe("src.api.routes.bot_control", "router")
+include_safe("src.api.routes.automation_control", "router")
 
-    app.include_router(auth_router)             # prefix="/auth"
-    app.include_router(bot_control.router)      # prefix="/bot"
-    app.include_router(automation_control.router) # prefix="/automation"
-    app.include_router(scheduler_routes.router) # prefix="/scheduler"
-    app.include_router(crm.router)              # prefix="/crm"
-    app.include_router(visitor_routes.router)   # prefix="/visitor"
-    app.include_router(notifications.router)    # prefix="/notifications"
-    app.include_router(blacklist.router)        # prefix="/blacklist"
-    app.include_router(nurturing.router)        # prefix="/nurturing"
-    app.include_router(deployment.router)       # prefix="/deployment"
-    app.include_router(sourcing.router)         # prefix="/sourcing"
-    app.include_router(campaign_routes.router)  # prefix="/campaigns"
-    app.include_router(stream_routes.router)    # prefix="/stream"
-    app.include_router(debug_routes.router)     # prefix="/debug"
+# 2. Features
+include_safe("src.api.routes.sourcing", "router")
+include_safe("src.api.routes.campaign_routes", "router")
+include_safe("src.api.routes.crm", "router")
+include_safe("src.api.routes.visitor_routes", "router")
+include_safe("src.api.routes.notifications", "router")
+include_safe("src.api.routes.blacklist", "router")
+include_safe("src.api.routes.nurturing", "router")
+include_safe("src.api.routes.deployment", "router")
 
-except ImportError as e:
-    logger.error(f"Failed to import some routers: {e}")
+# 3. Utilities & Streaming
+include_safe("src.api.routes.stream_routes", "router")
+include_safe("src.api.routes.debug_routes", "router")
+
+# 4. Scheduler (Often problematic due to DB/deps)
+include_safe("src.api.routes.scheduler_routes", "router")
+
 
 # --- Prometheus Metrics ---
 
-metrics_app = make_asgi_app()
-app.mount("/metrics", metrics_app)
+try:
+    metrics_app = make_asgi_app()
+    app.mount("/metrics", metrics_app)
+except Exception as e:
+    logger.error(f"Failed to mount metrics: {e}")
 
 # --- Core Endpoints ---
 

@@ -79,6 +79,13 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
          throw new Error('Session expirée');
      }
      const error = await res.json().catch(() => ({ detail: res.statusText }));
+
+     // Resilience: On 404/502/503 during startup, return a handled error
+     // that widgets can catch and ignore instead of crashing.
+     if ([404, 502, 503].includes(res.status)) {
+        console.warn(`API Not Ready (${res.status}): ${url}`);
+     }
+
      throw new Error(error.detail || `Request failed: ${res.status}`);
   }
   return responseType === 'blob' ? res.blob() : res.json();
@@ -262,7 +269,13 @@ export interface ServicesStatusResponse {
 }
 
 export async function getAutomationServicesStatus(): Promise<ServicesStatusResponse> {
-  return get('/api/automation/services/status')
+  try {
+    return await get('/api/automation/services/status');
+  } catch (e) {
+    console.warn("Automation services status fetch failed:", e);
+    // Return empty fallback instead of crashing
+    return { services: [], is_systemd_available: false };
+  }
 }
 
 export async function executeServiceAction(service: string, action: string) {
@@ -285,7 +298,12 @@ export interface WorkersStatusResponse {
 }
 
 export async function getWorkersStatus(): Promise<WorkersStatusResponse> {
-  return get('/api/automation/workers/status')
+  try {
+    return await get('/api/automation/workers/status');
+  } catch (e) {
+    console.warn("Workers status fetch failed:", e);
+    return { workers: [], total_workers: 0 };
+  }
 }
 
 // --- Campaign API ---
