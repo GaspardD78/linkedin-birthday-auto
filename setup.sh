@@ -381,11 +381,11 @@ SERVICES=$($DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" config --services 2>/dev/null 
 
 if [ -z "$SERVICES" ]; then
     log WARN "Impossible de lister les services via 'config'. Fallback vers pull global."
-    $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull --quiet || { log ERROR "Échec du pull global"; exit 1; }
+    $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull >> "$LOG_FILE" 2>&1 || { log ERROR "Échec du pull global"; exit 1; }
 else
     for service in $SERVICES; do
         log INFO "⬇️ Téléchargement image pour : $service..."
-        $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull "$service" || { log ERROR "Échec du pull pour $service"; exit 1; }
+        $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull "$service" >> "$LOG_FILE" 2>&1 || { log ERROR "Échec du pull pour $service"; exit 1; }
     done
 fi
 log SUCCESS "Toutes les images ont été téléchargées."
@@ -429,13 +429,36 @@ log SUCCESS "API est Healthy."
 log INFO "🗄️ PHASE 5a : Initialisation de la Base de Données"
 
 # On utilise exec sur le conteneur API qui a le code et l'accès au volume
-# On ignore l'erreur si le script n'existe pas encore dans l'image
+# Attente active du conteneur
+log INFO "Attente que le conteneur bot-api soit prêt..."
+MAX_API_WAIT=30
+for i in $(seq 1 $MAX_API_WAIT); do
+    if [ "$($DOCKER_CMD inspect -f '{{.State.Status}}' bot-api 2>/dev/null)" == "running" ]; then
+        break
+    fi
+    echo -n "."
+    sleep 2
+done
+echo ""
+
+# Verification sommaire du script
+if ! $DOCKER_CMD exec bot-api test -f /app/src/scripts/init_db.py; then
+    log WARN "Script src/scripts/init_db.py introuvable dans le conteneur bot-api."
+fi
+
 log INFO "Exécution du script d'initialisation DB..."
-if $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" exec -T bot-api python -m src.scripts.init_db; then
+set +e
+INIT_OUTPUT=$($DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" exec -T bot-api python -m src.scripts.init_db 2>&1)
+INIT_EXIT_CODE=$?
+set -e
+
+if [ $INIT_EXIT_CODE -eq 0 ]; then
     log SUCCESS "Tables de base de données créées/vérifiées avec succès."
+    echo "$INIT_OUTPUT" >> "$LOG_FILE"
 else
-    log WARN "Échec de l'initialisation de la DB via le conteneur."
-    log WARN "Le conteneur est peut-être inaccessible ou le script est manquant."
+    log ERROR "Échec de l'initialisation de la DB."
+    log ERROR "Sortie de la commande :"
+    echo "$INIT_OUTPUT" | tee -a "$LOG_FILE"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -482,16 +505,22 @@ for svc in "${SERVICES[@]}"; do
 done
 
 # Endpoints
-if curl -s -f http://localhost:8000/health >/dev/null; then
-    log SUCCESS "API Endpoint : OK"
+HTTP_CODE_API=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
+if [ "$HTTP_CODE_API" == "200" ]; then
+    log SUCCESS "API Endpoint : OK (200)"
 else
-    log ERROR "API Endpoint inaccessible."
+    log ERROR "API Endpoint inaccessible (Code: $HTTP_CODE_API)."
+    log INFO "Derniers logs bot-api :"
+    $DOCKER_CMD logs bot-api --tail 20 | tee -a "$LOG_FILE"
 fi
 
-if curl -s -I http://localhost:3000 >/dev/null; then
-    log SUCCESS "Dashboard Endpoint : OK"
+HTTP_CODE_DASH=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 || echo "000")
+if [[ "$HTTP_CODE_DASH" == "200" || "$HTTP_CODE_DASH" == "307" || "$HTTP_CODE_DASH" == "308" ]]; then
+    log SUCCESS "Dashboard Endpoint : OK ($HTTP_CODE_DASH)"
 else
-    log WARN "Dashboard démarre encore (Next.js build)."
+    log WARN "Dashboard inaccessible (Code: $HTTP_CODE_DASH)."
+    log INFO "Derniers logs dashboard :"
+    $DOCKER_CMD logs dashboard --tail 50 | tee -a "$LOG_FILE"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
