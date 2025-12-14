@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v7.0                      ║
+# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v7.2                      ║
 # ║  Installation, Sécurisation, Diagnostic et Réparation Automatisée        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -113,6 +113,16 @@ spinner() {
     printf "    \b\b\b\b"
 }
 
+# Helper Check Command
+check_command() {
+    local cmd=$1
+    if ! command -v "$cmd" &> /dev/null; then
+        log ERROR "Commande requise introuvable : $cmd"
+        return 1
+    fi
+    return 0
+}
+
 # Banner
 clear
 echo -e "${BLUE}${BOLD}"
@@ -124,7 +134,7 @@ cat << "EOF"
  | |____| | | | |   <  __/ (_| | | | | |     | |_) | (_) | |_
  |______|_|_| |_|_|\_\___|\__,_|_|_| |_|     |____/ \___/ \__|
 
-      🚀 ULTIMATE SETUP SCRIPT v7.0
+      🚀 ULTIMATE SETUP SCRIPT v7.2
 EOF
 echo -e "${NC}"
 log INFO "Démarrage de l'installation..."
@@ -144,7 +154,7 @@ ensure_dependency() {
     if ! command -v "$cmd" &> /dev/null; then
         log INFO "Installation de $pkg..."
         sudo apt-get update -qq
-        sudo apt-get install -y "$pkg"
+        sudo apt-get install -y "$pkg" || log WARN "Impossible d'installer $pkg automatiquement."
     else
         log INFO "$pkg est déjà installé."
     fi
@@ -155,6 +165,7 @@ ensure_dependency "git" "git"
 ensure_dependency "jq" "jq"
 ensure_dependency "python3" "python3"
 ensure_dependency "curl" "curl"
+ensure_dependency "openssl" "openssl" # Required for Phase 2
 
 # 1.2 Docker Engine (Official Script)
 if ! command -v docker &> /dev/null; then
@@ -220,15 +231,41 @@ if [ "$SWAP_TOTAL" -lt 2000 ]; then
     log WARN "Swap insuffisant (< 2GB). Next.js risque de crasher sur Pi4."
     if ask_confirmation "Voulez-vous augmenter le Swap à 2GB automatiquement ?"; then
         log INFO "Configuration du Swap..."
+
+        # 1. Check/Install dphys-swapfile
+        if ! command -v dphys-swapfile &> /dev/null; then
+             log WARN "dphys-swapfile manquant. Tentative d'installation..."
+             sudo apt-get update -qq && sudo apt-get install -y dphys-swapfile || true
+        fi
+
         if command -v dphys-swapfile &> /dev/null; then
+            # Méthode standard Raspbian
+            log INFO "Utilisation de dphys-swapfile..."
             sudo dphys-swapfile swapoff 2>/dev/null || true
             sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile 2>/dev/null || \
             (echo "CONF_SWAPSIZE=2048" | sudo tee -a /etc/dphys-swapfile > /dev/null)
             sudo dphys-swapfile setup
             sudo dphys-swapfile swapon
-            log SUCCESS "Swap augmenté à 2GB."
+            log SUCCESS "Swap augmenté à 2GB (via dphys-swapfile)."
         else
-             log WARN "dphys-swapfile non trouvé."
+             # Fallback: Manual Swapfile (Ubuntu Server etc)
+             log WARN "dphys-swapfile introuvable ou installation échouée. Utilisation du fallback."
+             log INFO "Tentative de création manuelle (fallback)..."
+             SWAPFILE="/swapfile"
+
+             # Utilisation de fallocate ou dd si fallocate n'est pas dispo
+             if (sudo fallocate -l 2G $SWAPFILE 2>/dev/null || sudo dd if=/dev/zero of=$SWAPFILE bs=1M count=2048); then
+                 sudo chmod 600 $SWAPFILE
+                 sudo mkswap $SWAPFILE
+                 sudo swapon $SWAPFILE
+                 # Persistance
+                 if ! grep -q "$SWAPFILE" /etc/fstab; then
+                     echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+                 fi
+                 log SUCCESS "Swap augmenté à 2GB (via fallback manuel)."
+             else
+                 log ERROR "Échec de la création du swap (fallback inclus). Le script continue mais risque d'instabilité."
+             fi
         fi
     fi
 fi
@@ -243,24 +280,30 @@ log INFO "IP Locale détectée : ${LOCAL_IP}"
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🔒 PHASE 2 : Configuration Sécurité (.env)"
 
+# Verification OpenSSL
+check_command "openssl" || log WARN "OpenSSL manquant, la génération de clés sera limitée."
+
 if [ ! -f "$ENV_FILE" ]; then
     if [ -f "$ENV_TEMPLATE" ]; then
-        cp "$ENV_TEMPLATE" "$ENV_FILE"
+        log INFO "Création de $ENV_FILE depuis $ENV_TEMPLATE..."
+        cp "$ENV_TEMPLATE" "$ENV_FILE" || { log ERROR "Impossible de copier $ENV_TEMPLATE vers $ENV_FILE"; exit 1; }
         sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://${LOCAL_IP}:8000|g" "$ENV_FILE"
         sed -i "s|NEXT_PUBLIC_DASHBOARD_URL=.*|NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000|g" "$ENV_FILE"
         log SUCCESS ".env créé depuis template."
     else
-        log WARN "Template absent. Création .env minimal."
-        echo "NEXT_PUBLIC_API_URL=http://${LOCAL_IP}:8000" > "$ENV_FILE"
-        echo "NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000" >> "$ENV_FILE"
-        echo "API_KEY=internal_secret_key" >> "$ENV_FILE"
-        echo "JWT_SECRET=secret" >> "$ENV_FILE"
-        echo "DASHBOARD_PASSWORD=admin" >> "$ENV_FILE"
+        log WARN "Template $ENV_TEMPLATE absent. Création .env minimal."
+        {
+            echo "NEXT_PUBLIC_API_URL=http://${LOCAL_IP}:8000"
+            echo "NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000"
+            echo "API_KEY=internal_secret_key"
+            echo "JWT_SECRET=secret"
+            echo "DASHBOARD_PASSWORD=admin"
+        } > "$ENV_FILE" || { log ERROR "Impossible d'écrire dans $ENV_FILE"; exit 1; }
     fi
 else
     # Check IP match
-    CURRENT_API_URL=$(grep "NEXT_PUBLIC_API_URL" "$ENV_FILE" | cut -d'=' -f2)
-    if [[ "$CURRENT_API_URL" != *"$LOCAL_IP"* && "$CURRENT_API_URL" != *"localhost"* && "$CURRENT_API_URL" != *"127.0.0.1"* ]]; then
+    CURRENT_API_URL=$(grep "NEXT_PUBLIC_API_URL" "$ENV_FILE" | cut -d'=' -f2 || echo "")
+    if [[ -n "$CURRENT_API_URL" && "$CURRENT_API_URL" != *"$LOCAL_IP"* && "$CURRENT_API_URL" != *"localhost"* && "$CURRENT_API_URL" != *"127.0.0.1"* ]]; then
         log WARN "NEXT_PUBLIC_API_URL ($CURRENT_API_URL) diffère de IP locale ($LOCAL_IP)."
     fi
 fi
@@ -269,23 +312,46 @@ fi
 chmod 600 "$ENV_FILE" 2>/dev/null || true
 
 # Password Check
-DASHBOARD_PASS=$(grep "DASHBOARD_PASSWORD" "$ENV_FILE" | cut -d'=' -f2)
-if [[ "$DASHBOARD_PASS" == "change_me" || "$DASHBOARD_PASS" == "admin" || ${#DASHBOARD_PASS} -lt 8 ]]; then
-    if ask_confirmation "Mot de passe faible détecté. Générer un mot de passe fort ?"; then
-        NEW_PASS=$(openssl rand -base64 12)
-        ESCAPED_PASS=$(printf '%s\n' "$NEW_PASS" | sed -e 's/[\/&]/\\&/g')
-        sed -i "s/^DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$ESCAPED_PASS/" "$ENV_FILE"
-        log SUCCESS "Nouveau mot de passe généré : $NEW_PASS"
+DASHBOARD_PASS=$(grep "DASHBOARD_PASSWORD" "$ENV_FILE" | cut -d'=' -f2 || echo "")
+if [[ -z "$DASHBOARD_PASS" || "$DASHBOARD_PASS" == "change_me" || "$DASHBOARD_PASS" == "admin" || ${#DASHBOARD_PASS} -lt 8 ]]; then
+    if ask_confirmation "Mot de passe faible ou manquant. Générer un mot de passe fort ?"; then
+        if command -v openssl &>/dev/null; then
+            NEW_PASS=$(openssl rand -base64 12)
+            ESCAPED_PASS=$(printf '%s\n' "$NEW_PASS" | sed -e 's/[\/&]/\\&/g')
+
+            if grep -q "DASHBOARD_PASSWORD" "$ENV_FILE"; then
+                sed -i "s/^DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$ESCAPED_PASS/" "$ENV_FILE"
+            else
+                echo "DASHBOARD_PASSWORD=$ESCAPED_PASS" >> "$ENV_FILE"
+            fi
+            log SUCCESS "Nouveau mot de passe généré : $NEW_PASS"
+        else
+            log ERROR "Impossible de générer un mot de passe (openssl manquant)."
+        fi
     fi
 fi
 
 # API Key Check
-API_KEY=$(grep "API_KEY" "$ENV_FILE" | cut -d'=' -f2)
+API_KEY=$(grep "API_KEY" "$ENV_FILE" | cut -d'=' -f2 || echo "")
 if [[ "$API_KEY" == "internal_secret_key" || -z "$API_KEY" ]]; then
-    NEW_KEY=$(openssl rand -hex 32)
-    sed -i "s/^API_KEY=.*/API_KEY=$NEW_KEY/" "$ENV_FILE"
-    sed -i "s/^BOT_API_KEY=.*/BOT_API_KEY=$NEW_KEY/" "$ENV_FILE"
-    log SUCCESS "Clés API régénérées."
+    if command -v openssl &>/dev/null; then
+        NEW_KEY=$(openssl rand -hex 32)
+
+        if grep -q "API_KEY" "$ENV_FILE"; then
+            sed -i "s/^API_KEY=.*/API_KEY=$NEW_KEY/" "$ENV_FILE"
+        else
+            echo "API_KEY=$NEW_KEY" >> "$ENV_FILE"
+        fi
+
+        if grep -q "BOT_API_KEY" "$ENV_FILE"; then
+            sed -i "s/^BOT_API_KEY=.*/BOT_API_KEY=$NEW_KEY/" "$ENV_FILE"
+        else
+            echo "BOT_API_KEY=$NEW_KEY" >> "$ENV_FILE"
+        fi
+        log SUCCESS "Clés API régénérées."
+    else
+         log ERROR "Impossible de générer API KEY (openssl manquant)."
+    fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -300,18 +366,29 @@ fi
 log SUCCESS "Dossiers prêts."
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 4. PHASE PULL IMAGES
+# 4. PHASE PULL IMAGES (Sequential for Pi4 Stability)
 # ═══════════════════════════════════════════════════════════════════════════
-log INFO "⬇️ PHASE 4 : Téléchargement des images"
+log INFO "⬇️ PHASE 4 : Téléchargement des images (Mode Séquentiel)"
 
 if [ ! -f "$COMPOSE_FILE" ]; then
     log ERROR "$COMPOSE_FILE introuvable."
     exit 1
 fi
 
-$DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull --quiet &
-spinner $!
-log SUCCESS "Images téléchargées."
+# Récupération de la liste des services
+log INFO "Analyse du docker-compose..."
+SERVICES=$($DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" config --services 2>/dev/null || echo "")
+
+if [ -z "$SERVICES" ]; then
+    log WARN "Impossible de lister les services via 'config'. Fallback vers pull global."
+    $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull --quiet || { log ERROR "Échec du pull global"; exit 1; }
+else
+    for service in $SERVICES; do
+        log INFO "⬇️ Téléchargement image pour : $service..."
+        $DOCKER_COMPOSE_CMD -f "$COMPOSE_FILE" pull "$service" || { log ERROR "Échec du pull pour $service"; exit 1; }
+    done
+fi
+log SUCCESS "Toutes les images ont été téléchargées."
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. PHASE START SERVICES
