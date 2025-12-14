@@ -169,21 +169,69 @@ LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "$LOCAL_IP" ]; then LOCAL_IP="127.0.0.1"; fi
 log INFO "IP Locale détectée : ${LOCAL_IP}"
 
-# 1.3 Docker Access
-if ! docker info >/dev/null 2>&1; then
-    log ERROR "L'utilisateur $(whoami) n'a pas accès à Docker ou Docker n'est pas lancé."
-    log INFO "Tentative de correction des droits..."
-    # On tente d'ajouter le user sans sudo password si possible, sinon ça failera
-    if sudo usermod -aG docker $(whoami); then
-        log WARN "Droits appliqués. Vous devez vous déconnecter/reconnecter pour que cela prenne effet."
-        log WARN "Relancez ce script après reconnexion (ex: 'newgrp docker')."
-        exit 1
+# 1.3 Docker Installation & Access
+log INFO "Vérification de l'installation Docker..."
+
+# A. Installation si absent
+if ! command -v docker &> /dev/null; then
+    log WARN "Commande 'docker' introuvable."
+    log INFO "Lancement de l'installation automatique (get.docker.com)..."
+    if curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh; then
+        log SUCCESS "Docker installé avec succès."
+        rm -f get-docker.sh
+        # Activation service
+        sudo systemctl enable docker --now || true
     else
-        log ERROR "Impossible d'appliquer les droits Docker automatiquement."
+        log ERROR "L'installation de Docker a échoué."
+        exit 1
+    fi
+else
+    log SUCCESS "Docker est déjà installé."
+fi
+
+# B. Vérification du groupe
+if ! getent group docker >/dev/null; then
+    log WARN "Le groupe 'docker' n'existe pas malgré l'installation."
+    if sudo groupadd docker; then
+        log SUCCESS "Groupe 'docker' créé manuellement."
+    else
+        log ERROR "Impossible de créer le groupe 'docker'."
         exit 1
     fi
 fi
-log SUCCESS "Accès Docker OK."
+
+# C. Vérification des droits utilisateur
+CURRENT_USER=${SUDO_USER:-$(whoami)}
+# On vérifie l'appartenance dans la base des utilisateurs (pas le shell courant)
+if ! id -nG "$CURRENT_USER" | grep -qw "docker"; then
+    log INFO "L'utilisateur '$CURRENT_USER' n'est pas dans le groupe 'docker'. Ajout en cours..."
+    if sudo usermod -aG docker "$CURRENT_USER"; then
+        log SUCCESS "Utilisateur ajouté au groupe 'docker'."
+        log WARN "⚠️  IMPORTANT : Les droits Docker nécessitent une reconnexion."
+        log WARN "Veuillez vous déconnecter (exit) et vous reconnecter, puis relancer ce script."
+        exit 1
+    else
+        log ERROR "Échec de la commande usermod."
+        exit 1
+    fi
+fi
+
+# D. Test d'accès effectif (Shell courant)
+if ! docker info >/dev/null 2>&1; then
+    log WARN "L'utilisateur est dans le groupe, mais le shell actuel n'a pas les droits (session non mise à jour)."
+
+    # Tentative de diagnostic
+    log INFO "Tentative de redémarrage du service Docker..."
+    sudo systemctl start docker || true
+    sleep 2
+
+    if ! docker info >/dev/null 2>&1; then
+        log ERROR "Accès Docker refusé dans cette session."
+        log ERROR "Veuillez relancer votre session SSH ou redémarrer le Pi."
+        exit 1
+    fi
+fi
+log SUCCESS "Accès Docker opérationnel."
 
 # 1.4 Check .env IP
 if [ -f "$ENV_FILE" ]; then
