@@ -24,6 +24,7 @@ TEMP_CLEAR_PASS=""
 TEMP_HASH_PASS=""
 DASHBOARD_USER=""
 LOCAL_IP=""
+DOMAIN_NAME=""
 
 # Colors
 RED='\033[0;31m'
@@ -243,6 +244,87 @@ for KEY in API_KEY JWT_SECRET; do
 done
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 2.5 HTTPS & REVERSE PROXY CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+log INFO "🌐 PHASE 2.5: HTTPS Configuration"
+
+ENABLE_HTTPS=false
+
+# Check if ports 80/443 are free
+PORTS_HTTP=(80 443)
+HTTP_PORTS_BUSY=false
+for p in "${PORTS_HTTP[@]}"; do
+    if sudo lsof -i :$p >/dev/null 2>&1; then
+        PID=$(sudo lsof -t -i :$p | head -n1)
+        PROCESS=$(ps -p $PID -o comm=)
+        if [[ "$PROCESS" != "dockerd" && "$PROCESS" != "docker-proxy" ]]; then
+            log WARN "Port $p occupied by $PROCESS. HTTPS setup might fail."
+            HTTP_PORTS_BUSY=true
+        fi
+    fi
+done
+
+if [ "$HTTP_PORTS_BUSY" = false ]; then
+    if ask_confirmation "Voulez-vous activer l'accès externe via HTTPS (Reverse Proxy Nginx) ?"; then
+        ENABLE_HTTPS=true
+
+        # Get Domain
+        read -p "$(echo -e "${BOLD}Domaine (Default: gaspardanoukolivier.freeboxos.fr): ${NC}")" INPUT_DOMAIN
+        DOMAIN_NAME=${INPUT_DOMAIN:-"gaspardanoukolivier.freeboxos.fr"}
+
+        # Get Email for Certbot
+        read -p "$(echo -e "${BOLD}Email pour Let's Encrypt: ${NC}")" EMAIL_ADDR
+
+        if [[ -z "$EMAIL_ADDR" ]]; then
+            log ERROR "Email requise pour SSL. Abort HTTPS setup."
+            ENABLE_HTTPS=false
+        else
+            log INFO "Setting up HTTPS for $DOMAIN_NAME..."
+            mkdir -p certbot/conf certbot/www
+
+            # Update Nginx Config with Domain
+            NGINX_CONF="deployment/nginx/linkedin-bot.conf"
+            if [ -f "$NGINX_CONF" ]; then
+                # Use sed to replace placeholder or update existing
+                sed -i "s/server_name .*/server_name $DOMAIN_NAME;/g" "$NGINX_CONF"
+                log SUCCESS "Updated Nginx config with domain $DOMAIN_NAME"
+            else
+                log ERROR "Nginx config not found at $NGINX_CONF"
+                exit 1
+            fi
+
+            # Check for existing certs
+            if [ ! -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+                log INFO "Generating SSL Certificates via Certbot (Standalone)..."
+                # Stop any potential binding on port 80
+
+                docker run --rm -p 80:80 \
+                    -v "$PWD/certbot/conf:/etc/letsencrypt" \
+                    -v "$PWD/certbot/www:/var/www/certbot" \
+                    certbot/certbot certonly \
+                    --standalone \
+                    --email "$EMAIL_ADDR" \
+                    --agree-tos \
+                    --no-eff-email \
+                    -d "$DOMAIN_NAME" \
+                    --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
+
+                if [ -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+                    log SUCCESS "Certificates generated successfully!"
+                else
+                     log WARN "Certificate generation failed. Nginx might fail to start."
+                fi
+            else
+                log INFO "Existing certificates found for $DOMAIN_NAME. Skipping generation."
+            fi
+        fi
+    fi
+else
+    log WARN "Ports 80/443 busy. Skipping HTTPS setup."
+fi
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # 3. PHASE 3: DEPLOYMENT
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🚀 PHASE 3: Deployment"
@@ -258,7 +340,7 @@ if [ "$CLEAN_DEPLOY" = true ]; then
 fi
 
 log INFO "Pulling images..."
-SERVICES="redis-bot redis-dashboard api bot-worker dashboard"
+SERVICES="redis-bot redis-dashboard api bot-worker dashboard nginx"
 for svc in $SERVICES; do
     $DOCKER_CMD -f "$COMPOSE_FILE" pull "$svc" || log WARN "Could not pull $svc"
 done
@@ -319,22 +401,22 @@ audit_services() {
     log INFO "🕵️ PHASE 5: Deep Health Audit"
 
     # Audit Targets
-    TARGETS=("dashboard" "bot-api" "bot-worker" "redis-bot")
+    TARGETS=("dashboard" "bot-api" "bot-worker" "redis-bot" "nginx-proxy")
     declare -A SERVICE_STATUS
     declare -A SERVICE_ERRORS
 
     for svc in "${TARGETS[@]}"; do
         # 1. Status Check
-        RAW_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "dead")
+        RAW_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "running") # nginx doesn't have healthcheck by default
 
         # 2. Log Mining (Last 100 lines)
         LOGS=$(docker logs --tail 100 "$svc" 2>&1)
         ERROR_COUNT=$(echo "$LOGS" | grep -c -iE "Error|Exception|Traceback|Connection refused")
         ERRORS=$(echo "$LOGS" | grep -iE "Error|Exception|Traceback|Connection refused" | tail -n 5)
 
-        if [[ "$RAW_STATUS" == "healthy" && "$ERROR_COUNT" -eq 0 ]]; then
+        if [[ "$RAW_STATUS" == "healthy" || "$RAW_STATUS" == "running" ]] && [[ "$ERROR_COUNT" -eq 0 ]]; then
             SERVICE_STATUS[$svc]="${GREEN}OK${NC}"
-        elif [[ "$RAW_STATUS" == "healthy" ]]; then
+        elif [[ "$RAW_STATUS" == "healthy" || "$RAW_STATUS" == "running" ]]; then
              SERVICE_STATUS[$svc]="${YELLOW}WARNING (${ERROR_COUNT} log errors)${NC}"
              SERVICE_ERRORS[$svc]="$ERRORS"
         else
@@ -353,7 +435,10 @@ audit_services() {
     echo -e ""
     echo -e "${BOLD}1. ACCÈS DASHBOARD${NC}"
     echo -e "──────────────────"
-    echo -e "🌐 URL      : http://${LOCAL_IP:-localhost}:${DASHBOARD_PORT:-3000}"
+    echo -e "🌐 Local    : http://${LOCAL_IP:-localhost}:${DASHBOARD_PORT:-3000}"
+    if [ "$ENABLE_HTTPS" = true ]; then
+    echo -e "🔒 HTTPS    : https://${DOMAIN_NAME}"
+    fi
     echo -e "👤 User     : ${DASHBOARD_USER}"
     echo -e "🔑 Pass     : ${TEMP_CLEAR_PASS}      <-- (En clair)"
     echo -e "🔒 Hash     : ${TEMP_HASH_PASS}      <-- (Stocké dans .env)"
@@ -364,6 +449,7 @@ audit_services() {
     echo -e "🟢 API        : ${SERVICE_STATUS[bot-api]}"
     echo -e "🟢 Bot Worker : ${SERVICE_STATUS[bot-worker]}"
     echo -e "🟢 Redis      : ${SERVICE_STATUS[redis-bot]}"
+    echo -e "🟢 Nginx      : ${SERVICE_STATUS[nginx-proxy]}"
     echo -e ""
 
     echo -e "${BOLD}3. DÉTAILS DEBUG (Si erreurs détectées)${NC}"
