@@ -42,6 +42,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Install curl for healthcheck (Essential for Docker Compose healthchecks on RPi4)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 # Utilisation de l'utilisateur 'node' (UID 1000) inclus par défaut dans l'image
 # Cela assure la compatibilité avec les volumes partagés (ex: bases de données, logs)

@@ -243,6 +243,8 @@ services:
     - NODE_ENV=production
     - NEXT_TELEMETRY_DISABLED=1
     - HOSTNAME=0.0.0.0
+      # Optimisation Mémoire pour RPi4 (éviter OOM Crash)
+    - NODE_OPTIONS=--max-old-space-size=256
 
       # ✅ SQLite Local
     - DATABASE_URL=sqlite:///app/data/linkedin.db
@@ -276,7 +278,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/system/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/system/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
