@@ -297,7 +297,10 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./deployment/nginx/linkedin-bot.conf:/etc/nginx/conf.d/default.conf
+      - ./deployment/nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf
+      - ./deployment/nginx/429.html:/var/www/html/429.html
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
     depends_on:
