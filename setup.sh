@@ -116,12 +116,18 @@ check_connectivity() {
 fix_permissions() {
     log INFO "Applying preventive permission fixes..."
     mkdir -p data logs config
+
+    # Reclaim ownership from Docker (root) to current user
+    sudo chown -R $USER:$USER data logs config
+
     if [ -d "data/linkedin.db" ]; then
         log WARN "data/linkedin.db detected as a DIRECTORY. Fixing..."
-        mv "data/linkedin.db" "data/linkedin.db.bak_$(date +%s)"
+        mv "data/linkedin.db" "data/linkedin.db.bak_$(date +%s)" || true
     fi
     if [ ! -e "data/linkedin.db" ]; then touch "data/linkedin.db"; fi
-    chmod -R 777 data logs config
+
+    # Apply permissive permissions with sudo
+    sudo chmod -R 777 data logs config
     log SUCCESS "Permissions fixed: data, logs, config set to 777."
 }
 
@@ -294,7 +300,7 @@ if [ "$HTTP_PORTS_BUSY" = false ]; then
             fi
 
             # Check for existing certs
-            if [ ! -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+            if ! sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
                 log INFO "Generating SSL Certificates via Certbot (Standalone)..."
                 # Stop any potential binding on port 80
 
@@ -309,7 +315,7 @@ if [ "$HTTP_PORTS_BUSY" = false ]; then
                     -d "$DOMAIN_NAME" \
                     --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
 
-                if [ -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+                if sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
                     log SUCCESS "Certificates generated successfully!"
                 else
                      log WARN "Certificate generation failed. Nginx might fail to start."
