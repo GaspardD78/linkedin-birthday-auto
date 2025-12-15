@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v10.0 "Bulletproof"       ║
+# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v13.0 "Crystal Clear"     ║
 # ║  Refactored & Hardened for Raspberry Pi 4                                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -18,6 +18,13 @@ ENV_FILE=".env"
 ENV_TEMPLATE=".env.pi4.example"
 COMPOSE_FILE="docker-compose.pi4-standalone.yml"
 mkdir -p logs
+
+# Global Variables for Report
+TEMP_CLEAR_PASS=""
+TEMP_HASH_PASS=""
+DASHBOARD_USER=""
+LOCAL_IP=""
+DOMAIN_NAME=""
 
 # Colors
 RED='\033[0;31m'
@@ -86,7 +93,6 @@ trap 'error_handler ${LINENO} $?' EXIT
 # Utilities
 ask_confirmation() {
     local prompt=$1
-    # Auto-yes if headless password is provided or --yes flag (implied by non-interactive check)
     if [[ -n "$HEADLESS_PASSWORD" ]] || [[ " $* " == *" -y "* ]] || [[ " $* " == *" --yes "* ]]; then return 0; fi
 
     read -p "$(echo -e "${BOLD}${prompt} (y/n) ${NC}")" -n 1 -r < /dev/tty
@@ -100,276 +106,243 @@ check_command() {
 
 check_connectivity() {
     log INFO "Checking network connectivity..."
-
-    # Check DNS resolution
-    if ! ping -c 1 google.com &> /dev/null; then
-        log ERROR "DNS resolution failed (cannot ping google.com)."
-        log INFO "Checking IP connectivity (8.8.8.8)..."
-        if ! ping -c 1 8.8.8.8 &> /dev/null; then
-             log ERROR "No internet access (cannot ping 8.8.8.8)."
-             log INFO "Please check your network cable or Wi-Fi connection."
-             return 1
-        else
-             log ERROR "IP connectivity OK, but DNS failed."
-             log INFO "Please check your DNS settings in /etc/resolv.conf"
-             return 1
-        fi
+    if ! ping -c 1 8.8.8.8 &> /dev/null; then
+         log ERROR "No internet access (cannot ping 8.8.8.8)."
+         return 1
     fi
     log SUCCESS "Network connectivity OK."
 }
 
+fix_permissions() {
+    log INFO "Applying preventive permission fixes..."
+    mkdir -p data logs config
+    if [ -d "data/linkedin.db" ]; then
+        log WARN "data/linkedin.db detected as a DIRECTORY. Fixing..."
+        mv "data/linkedin.db" "data/linkedin.db.bak_$(date +%s)"
+    fi
+    if [ ! -e "data/linkedin.db" ]; then touch "data/linkedin.db"; fi
+    chmod -R 777 data logs config
+    log SUCCESS "Permissions fixed: data, logs, config set to 777."
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
-# 1. PHASE 1: INTELLIGENT INFRASTRUCTURE
+# 1. PHASE 1: INFRASTRUCTURE & CREDENTIALS
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🔍 PHASE 1: Infrastructure Check"
 
-# 1.1 Connectivity Check
 check_connectivity
 
-# 1.2 Essential Tools
+# Tools Check
 TOOLS=("git" "python3" "curl" "grep" "sed" "lsof")
 MISSING_TOOLS=()
-
 for tool in "${TOOLS[@]}"; do
-    if ! check_command "$tool"; then
-        MISSING_TOOLS+=("$tool")
-    fi
+    if ! check_command "$tool"; then MISSING_TOOLS+=("$tool"); fi
 done
-
 if [ ${#MISSING_TOOLS[@]} -ne 0 ]; then
-    log WARN "Missing tools: ${MISSING_TOOLS[*]}"
-    log INFO "Installing missing tools..."
-    sudo apt-get update -qq
-    sudo apt-get install -y "${MISSING_TOOLS[@]}" || log ERROR "Failed to install tools."
+    log WARN "Installing missing tools: ${MISSING_TOOLS[*]}"
+    sudo apt-get update -qq && sudo apt-get install -y "${MISSING_TOOLS[@]}"
 fi
 
-# 1.3 Docker Group Check
-if check_command "docker"; then
-    if ! groups "$USER" | grep -q "docker"; then
-        log WARN "User $USER is not in the 'docker' group."
-        sudo usermod -aG docker "$USER"
-        log WARN "Added $USER to docker group. A REBOOT or 'newgrp docker' is required."
-        log WARN "Please reboot your Pi and run this script again."
-        exit 1
-    else
-        log SUCCESS "User is correctly in the docker group."
-    fi
-else
-    log WARN "Docker not found. Installing..."
+# Docker Check
+if ! check_command "docker"; then
     curl -fsSL https://get.docker.com | sh
     sudo usermod -aG docker "$USER"
-    log WARN "Docker installed. Please reboot and re-run this script."
+    log WARN "Docker installed. Reboot required."
     exit 1
 fi
 
-# 1.4 Pre-flight Port Check
-log INFO "Checking port availability..."
-PORTS_TO_CHECK=(3000 8000 80 443)
-PORT_CONFLICT=false
+# Password Management
+reset_password() {
+    log INFO "🔑 PHASE 1.5: Credential Management (Systematic Reset)"
 
-for port in "${PORTS_TO_CHECK[@]}"; do
-    # Check if port is in use
-    if sudo lsof -i :$port >/dev/null 2>&1; then
-        # Check if it's Docker (com.docker.backend or similar is acceptable if we are restarting)
-        PID=$(sudo lsof -t -i :$port | head -n1)
-        PROCESS=$(ps -p $PID -o comm=)
+    if ! python3 -c "import bcrypt" 2>/dev/null; then
+        sudo apt-get install -y python3-bcrypt || pip3 install bcrypt || true
+    fi
 
-        if [[ "$PROCESS" != "dockerd" && "$PROCESS" != "docker-proxy" ]]; then
-            log WARN "Port $port is in use by non-Docker process: $PROCESS (PID $PID)."
-            PORT_CONFLICT=true
+    if [[ -n "$HEADLESS_PASSWORD" ]]; then
+        TEMP_CLEAR_PASS="$HEADLESS_PASSWORD"
+        log INFO "Using headless password."
+    else
+        echo -e "${YELLOW}Enter new dashboard password (leave empty to generate random):${NC}"
+        # Use simple read to allow empty input
+        read -s -p "Password: " USER_PASS
+        echo ""
+        if [[ -z "$USER_PASS" ]]; then
+            TEMP_CLEAR_PASS=$(openssl rand -base64 12)
+            log INFO "Generated random password."
         else
-            log INFO "Port $port is used by Docker (Safe to restart)."
+            TEMP_CLEAR_PASS="$USER_PASS"
         fi
-    else
-        log INFO "Port $port is free."
     fi
-done
 
-if [ "$PORT_CONFLICT" = true ]; then
-    if ! ask_confirmation "Some ports are occupied by other services. Continue?"; then
-        log ERROR "Aborted by user due to port conflict."
+    export PASS_VAR="$TEMP_CLEAR_PASS"
+    TEMP_HASH_PASS=$(python3 -c "import bcrypt, os; print(bcrypt.hashpw(os.environ['PASS_VAR'].encode(), bcrypt.gensalt()).decode())" 2>/dev/null)
+    unset PASS_VAR
+
+    if [[ -n "$TEMP_HASH_PASS" ]]; then
+        # Escape $ for Docker Compose
+        ESCAPED_HASH=$(echo "$TEMP_HASH_PASS" | sed 's/\$/$$/g')
+        # Smart Update .env
+        if grep -q "^DASHBOARD_PASSWORD=" "$ENV_FILE"; then
+            sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$ESCAPED_HASH|" "$ENV_FILE"
+        else
+            echo "DASHBOARD_PASSWORD=$ESCAPED_HASH" >> "$ENV_FILE"
+        fi
+        log SUCCESS "Password updated in .env"
+    else
+        log ERROR "Failed to hash password."
         exit 1
     fi
-fi
-
-# 1.5 Swap Check (Pi 4 Requirement)
-SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')
-if [ "$SWAP_TOTAL" -lt 2000 ]; then
-    log WARN "Swap < 2GB ($SWAP_TOTAL MB). Increasing swap..."
-    if [ -f /etc/dphys-swapfile ]; then
-        sudo sed -i 's/^CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
-        sudo dphys-swapfile setup && sudo dphys-swapfile swapon
-    else
-        log INFO "Creating manual swapfile..."
-        sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        grep -q "/swapfile" /etc/fstab || echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
-    fi
-    log SUCCESS "Swap configured."
-fi
+}
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 2. PHASE 2: SECURITY & CONFIGURATION
+# 2. PHASE 2: CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════
-log INFO "🔒 PHASE 2: Security & Environment"
+log INFO "🔒 PHASE 2: Configuration"
 
-# 2.1 Robust Database Initialization
-# Ensure data/linkedin.db exists as a FILE, not a directory
-mkdir -p data
-DB_PATH="data/linkedin.db"
-
-if [ -d "$DB_PATH" ]; then
-    log WARN "$DB_PATH detected as a DIRECTORY (Docker mounting error)."
-    BACKUP_NAME="${DB_PATH}_backup_$(date +%s)"
-    mv "$DB_PATH" "$BACKUP_NAME"
-    log INFO "Moved invalid directory to $BACKUP_NAME"
-fi
-
-if [ ! -f "$DB_PATH" ]; then
-    touch "$DB_PATH"
-    log INFO "Created empty database file: $DB_PATH"
-fi
-
-# 2.2 Smart .env Merging
 if [ ! -f "$ENV_FILE" ]; then
-    if [ -f "$ENV_TEMPLATE" ]; then
-        cp "$ENV_TEMPLATE" "$ENV_FILE"
-        log SUCCESS "Created .env from template."
-
-        # Auto-configure Local IP for fresh install
-        LOCAL_IP=$(hostname -I | awk '{print $1}')
-        sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://${LOCAL_IP}:8000|g" "$ENV_FILE"
-        sed -i "s|NEXT_PUBLIC_DASHBOARD_URL=.*|NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000|g" "$ENV_FILE"
-    else
-        log ERROR "Template $ENV_TEMPLATE not found!"
-        exit 1
-    fi
+    cp "$ENV_TEMPLATE" "$ENV_FILE"
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+    sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://${LOCAL_IP}:8000|g" "$ENV_FILE"
+    sed -i "s|NEXT_PUBLIC_DASHBOARD_URL=.*|NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000|g" "$ENV_FILE"
+    log SUCCESS "Created .env from template."
 else
-    # Smart Merge: Append missing keys from template
-    log INFO "Analyzing .env for missing keys..."
-    MISSING_KEYS_COUNT=0
-
-    # Read template line by line
+    # Smart Merge (Append missing keys)
     while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip comments and empty lines
-        if [[ "$line" =~ ^#.* ]] || [[ -z "$line" ]]; then
-            continue
-        fi
-
-        # Extract key name (before first =)
+        if [[ "$line" =~ ^#.* ]] || [[ -z "$line" ]]; then continue; fi
         KEY=$(echo "$line" | cut -d'=' -f1 | xargs)
-
-        # If key is valid and NOT found in .env (grep returns non-zero)
         if [[ -n "$KEY" ]] && ! grep -q "^${KEY}=" "$ENV_FILE"; then
-            echo "" >> "$ENV_FILE"
-            echo "# Added by setup.sh update" >> "$ENV_FILE"
             echo "$line" >> "$ENV_FILE"
             log INFO "Added missing key: $KEY"
-            ((MISSING_KEYS_COUNT++))
         fi
     done < "$ENV_TEMPLATE"
 
-    if [ $MISSING_KEYS_COUNT -gt 0 ]; then
-        log SUCCESS "Merged $MISSING_KEYS_COUNT new keys into $ENV_FILE"
-    else
-        log INFO ".env is up to date."
+    # Ensure Critical Defaults
+    if ! grep -q "^DASHBOARD_PORT=" "$ENV_FILE"; then
+         echo "DASHBOARD_PORT=3000" >> "$ENV_FILE"
     fi
 fi
 
-# Generate Secure Keys (Alphanumeric only) if needed
-API_KEY=$(grep "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2)
-if [[ "$API_KEY" == "CHANGEZ_MOI"* || "$API_KEY" == "internal_secret_key" || -z "$API_KEY" ]]; then
-    NEW_KEY=$(openssl rand -hex 32)
-    sed -i "s|^API_KEY=.*|API_KEY=$NEW_KEY|" "$ENV_FILE"
-    sed -i "s|^BOT_API_KEY=.*|BOT_API_KEY=$NEW_KEY|" "$ENV_FILE"
-    log SUCCESS "Generated secure API_KEY."
+# Run Password Reset
+reset_password
+
+# Retrieve User
+DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" | cut -d'=' -f2)
+[ -z "$DASHBOARD_USER" ] && DASHBOARD_USER="admin"
+
+# Generate other secrets if missing
+for KEY in API_KEY JWT_SECRET; do
+    VAL=$(grep "^$KEY=" "$ENV_FILE" | cut -d'=' -f2)
+    if [[ -z "$VAL" || "$VAL" == "CHANGEZ_MOI"* ]]; then
+        NEW_VAL=$(openssl rand -hex 32)
+        sed -i "s|^$KEY=.*|$KEY=$NEW_VAL|" "$ENV_FILE"
+        if [ "$KEY" == "API_KEY" ]; then
+            sed -i "s|^BOT_API_KEY=.*|BOT_API_KEY=$NEW_VAL|" "$ENV_FILE"
+        fi
+        log SUCCESS "Generated secure $KEY."
+    fi
+done
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2.5 HTTPS & REVERSE PROXY CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+log INFO "🌐 PHASE 2.5: HTTPS Configuration"
+
+ENABLE_HTTPS=false
+
+# Check if ports 80/443 are free
+PORTS_HTTP=(80 443)
+HTTP_PORTS_BUSY=false
+for p in "${PORTS_HTTP[@]}"; do
+    if sudo lsof -i :$p >/dev/null 2>&1; then
+        PID=$(sudo lsof -t -i :$p | head -n1)
+        PROCESS=$(ps -p $PID -o comm=)
+        if [[ "$PROCESS" != "dockerd" && "$PROCESS" != "docker-proxy" ]]; then
+            log WARN "Port $p occupied by $PROCESS. HTTPS setup might fail."
+            HTTP_PORTS_BUSY=true
+        fi
+    fi
+done
+
+if [ "$HTTP_PORTS_BUSY" = false ]; then
+    if ask_confirmation "Voulez-vous activer l'accès externe via HTTPS (Reverse Proxy Nginx) ?"; then
+        ENABLE_HTTPS=true
+
+        # Get Domain
+        read -p "$(echo -e "${BOLD}Domaine (Default: gaspardanoukolivier.freeboxos.fr): ${NC}")" INPUT_DOMAIN
+        DOMAIN_NAME=${INPUT_DOMAIN:-"gaspardanoukolivier.freeboxos.fr"}
+
+        # Get Email for Certbot
+        read -p "$(echo -e "${BOLD}Email pour Let's Encrypt: ${NC}")" EMAIL_ADDR
+
+        if [[ -z "$EMAIL_ADDR" ]]; then
+            log ERROR "Email requise pour SSL. Abort HTTPS setup."
+            ENABLE_HTTPS=false
+        else
+            log INFO "Setting up HTTPS for $DOMAIN_NAME..."
+            mkdir -p certbot/conf certbot/www
+
+            # Update Nginx Config with Domain
+            NGINX_CONF="deployment/nginx/linkedin-bot.conf"
+            if [ -f "$NGINX_CONF" ]; then
+                # Use sed to replace placeholder or update existing
+                sed -i "s/server_name .*/server_name $DOMAIN_NAME;/g" "$NGINX_CONF"
+                log SUCCESS "Updated Nginx config with domain $DOMAIN_NAME"
+            else
+                log ERROR "Nginx config not found at $NGINX_CONF"
+                exit 1
+            fi
+
+            # Check for existing certs
+            if [ ! -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+                log INFO "Generating SSL Certificates via Certbot (Standalone)..."
+                # Stop any potential binding on port 80
+
+                docker run --rm -p 80:80 \
+                    -v "$PWD/certbot/conf:/etc/letsencrypt" \
+                    -v "$PWD/certbot/www:/var/www/certbot" \
+                    certbot/certbot certonly \
+                    --standalone \
+                    --email "$EMAIL_ADDR" \
+                    --agree-tos \
+                    --no-eff-email \
+                    -d "$DOMAIN_NAME" \
+                    --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
+
+                if [ -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+                    log SUCCESS "Certificates generated successfully!"
+                else
+                     log WARN "Certificate generation failed. Nginx might fail to start."
+                fi
+            else
+                log INFO "Existing certificates found for $DOMAIN_NAME. Skipping generation."
+            fi
+        fi
+    fi
+else
+    log WARN "Ports 80/443 busy. Skipping HTTPS setup."
 fi
 
-JWT_SECRET=$(grep "^JWT_SECRET=" "$ENV_FILE" | cut -d'=' -f2)
-if [[ "$JWT_SECRET" == "CHANGEZ_MOI"* || -z "$JWT_SECRET" ]]; then
-    NEW_JWT=$(openssl rand -hex 32)
-    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$NEW_JWT|" "$ENV_FILE"
-    log SUCCESS "Generated secure JWT_SECRET."
-fi
-
-# 2.3 Robust Password Hashing
-# Check DASHBOARD_PASSWORD status
-CURRENT_PASS=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
-
-if [[ "$CURRENT_PASS" != "\$2"* ]]; then
-    log WARN "DASHBOARD_PASSWORD is not hashed."
-
-    # Ensure bcrypt is available
-    if ! python3 -c "import bcrypt" 2>/dev/null; then
-        log INFO "Installing python3-bcrypt..."
-        sudo apt-get install -y python3-bcrypt || pip3 install bcrypt || log WARN "Failed to install bcrypt via apt/pip. Will attempt fallback or fail."
-    fi
-
-    PASSWORD_TO_HASH=""
-
-    if [[ -n "$HEADLESS_PASSWORD" ]]; then
-        log INFO "Using password provided via --headless argument."
-        PASSWORD_TO_HASH="$HEADLESS_PASSWORD"
-    else
-        log INFO "Please enter the password for the Dashboard."
-        # Use python to get password to avoid bash read visibility issues if desired, but read -s is fine too.
-        # We stick to the python method for consistency with hashing logic below
-        PASSWORD_TO_HASH=$(python3 -c "import getpass; print(getpass.getpass('Password: '))")
-    fi
-
-    if [[ -z "$PASSWORD_TO_HASH" ]]; then
-        log ERROR "No password provided. Aborting security setup."
-        exit 1
-    fi
-
-    # Hash using Python (Safe from injection via env var)
-    export PASS_VAR="$PASSWORD_TO_HASH"
-    HASHED_PASS=$(python3 -c "import bcrypt, os; print(bcrypt.hashpw(os.environ['PASS_VAR'].encode(), bcrypt.gensalt()).decode())" 2>/dev/null)
-    unset PASS_VAR
-
-    if [[ -n "$HASHED_PASS" ]]; then
-        # Escape $ for Docker Compose ($ -> $$)
-        ESCAPED_HASH=$(echo "$HASHED_PASS" | sed 's/\$/$$/g')
-        sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$ESCAPED_HASH|" "$ENV_FILE"
-        log SUCCESS "Password hashed and updated in .env"
-    else
-        log ERROR "Password hashing failed (missing bcrypt?)."
-        log INFO "Try running: sudo apt install python3-bcrypt"
-        exit 1
-    fi
-fi
-
-# 2.4 Robust Permissions
-log INFO "Enforcing permissions on critical directories..."
-mkdir -p data logs config
-# Recursive 777 for Pi4 local env to prevent "Read-only" SQLite errors or Docker user conflicts
-chmod -R 777 data logs config
-chmod 666 "$ENV_FILE"
-log SUCCESS "Permissions fixed (data/logs/config set to 777)."
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. PHASE 3: DEPLOYMENT
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🚀 PHASE 3: Deployment"
 
+fix_permissions
+
 DOCKER_CMD="docker compose"
-if ! docker compose version &>/dev/null; then
-    if command -v docker-compose &>/dev/null; then
-        DOCKER_CMD="docker-compose"
-    fi
-fi
+if ! docker compose version &>/dev/null; then DOCKER_CMD="docker-compose"; fi
 
 if [ "$CLEAN_DEPLOY" = true ]; then
-    log WARN "Cleaning up existing containers (--clean)..."
+    log WARN "Cleaning up existing containers..."
     $DOCKER_CMD -f "$COMPOSE_FILE" down --remove-orphans
 fi
 
-log INFO "Pulling images (internet check passed)..."
-SERVICES="redis-bot redis-dashboard api bot-worker dashboard"
+log INFO "Pulling images..."
+SERVICES="redis-bot redis-dashboard api bot-worker dashboard nginx"
 for svc in $SERVICES; do
-    $DOCKER_CMD -f "$COMPOSE_FILE" pull "$svc" || log WARN "Could not pull $svc (using local cache if available)"
+    $DOCKER_CMD -f "$COMPOSE_FILE" pull "$svc" || log WARN "Could not pull $svc"
 done
 
 log INFO "Starting Stack..."
@@ -382,40 +355,126 @@ log INFO "🕵️ PHASE 4: Health Check"
 
 wait_for_healthy() {
     local service=$1
-    local retries=30
-    log INFO "Waiting for $service..."
-    while [ $retries -gt 0 ]; do
+    local max_retries=120
+    local retry=0
+
+    log INFO "Waiting for $service to be healthy (Timeout: 10 mins)..."
+    echo -n "Waiting: "
+
+    while [ $retry -lt $max_retries ]; do
         STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "starting")
         if [ "$STATUS" == "healthy" ]; then
+            echo ""
             log SUCCESS "$service is healthy."
             return 0
         fi
+        echo -n "."
         sleep 5
-        retries=$((retries-1))
+        ((retry++))
     done
 
-    # Diagnostics on failure
+    echo ""
     log ERROR "CRITICAL: $service failed to become healthy."
-    echo -e "${RED}--- Last 50 Log Lines for $service ---${NC}"
-    docker logs --tail 50 "$service"
-    echo -e "${RED}--------------------------------------${NC}"
-
-    echo -e "${YELLOW}--- Resource Usage (Docker Stats) ---${NC}"
-    docker stats --no-stream
-
+    # Fail immediately so we can trigger the final report (via trap or exit code)
+    # But for now, we return 1 and let set -e catch it?
+    # Actually, we want to run audit_services EVEN IF it fails.
+    # We will disable set -e temporarily for the wait?
     return 1
 }
 
+# We allow wait_for_healthy to fail without exiting immediately to run diagnostics
+set +e
 wait_for_healthy "bot-api"
+API_EXIT=$?
 wait_for_healthy "dashboard"
+DASH_EXIT=$?
+set -e
 
-log INFO "Initializing Database Schema..."
-docker exec bot-api python -m src.scripts.init_db || log WARN "DB Init warning (check logs)"
+# DB Init
+docker exec bot-api python -m src.scripts.init_db || log WARN "DB Init warning"
 
-log SUCCESS "---------------------------------------------------"
-log SUCCESS "✅ DEPLOYMENT COMPLETE"
-LOCAL_IP=$(hostname -I | awk '{print $1}')
-log SUCCESS "Dashboard: http://${LOCAL_IP:-localhost}:3000"
-log SUCCESS "API:       http://${LOCAL_IP:-localhost}:8000"
-log SUCCESS "---------------------------------------------------"
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. PHASE 5: DIAGNOSTIC REPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+audit_services() {
+    log INFO "🕵️ PHASE 5: Deep Health Audit"
+
+    # Audit Targets
+    TARGETS=("dashboard" "bot-api" "bot-worker" "redis-bot" "nginx-proxy")
+    declare -A SERVICE_STATUS
+    declare -A SERVICE_ERRORS
+
+    for svc in "${TARGETS[@]}"; do
+        # 1. Status Check
+        RAW_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "running") # nginx doesn't have healthcheck by default
+
+        # 2. Log Mining (Last 100 lines)
+        LOGS=$(docker logs --tail 100 "$svc" 2>&1)
+        ERROR_COUNT=$(echo "$LOGS" | grep -c -iE "Error|Exception|Traceback|Connection refused")
+        ERRORS=$(echo "$LOGS" | grep -iE "Error|Exception|Traceback|Connection refused" | tail -n 5)
+
+        if [[ "$RAW_STATUS" == "healthy" || "$RAW_STATUS" == "running" ]] && [[ "$ERROR_COUNT" -eq 0 ]]; then
+            SERVICE_STATUS[$svc]="${GREEN}OK${NC}"
+        elif [[ "$RAW_STATUS" == "healthy" || "$RAW_STATUS" == "running" ]]; then
+             SERVICE_STATUS[$svc]="${YELLOW}WARNING (${ERROR_COUNT} log errors)${NC}"
+             SERVICE_ERRORS[$svc]="$ERRORS"
+        else
+             SERVICE_STATUS[$svc]="${RED}CRITICAL (${RAW_STATUS})${NC}"
+             SERVICE_ERRORS[$svc]="$ERRORS"
+        fi
+    done
+
+    LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+    # Display "Crystal Clear" Box
+    echo -e "\n"
+    echo -e "╔════════════════════════════════════════════════════════════════════╗"
+    echo -e "║                 🚀 RAPPORT D'INSTALLATION v13.0                    ║"
+    echo -e "╚════════════════════════════════════════════════════════════════════╝"
+    echo -e ""
+    echo -e "${BOLD}1. ACCÈS DASHBOARD${NC}"
+    echo -e "──────────────────"
+    echo -e "🌐 Local    : http://${LOCAL_IP:-localhost}:${DASHBOARD_PORT:-3000}"
+    if [ "$ENABLE_HTTPS" = true ]; then
+    echo -e "🔒 HTTPS    : https://${DOMAIN_NAME}"
+    fi
+    echo -e "👤 User     : ${DASHBOARD_USER}"
+    echo -e "🔑 Pass     : ${TEMP_CLEAR_PASS}      <-- (En clair)"
+    echo -e "🔒 Hash     : ${TEMP_HASH_PASS}      <-- (Stocké dans .env)"
+    echo -e ""
+    echo -e "${BOLD}2. ÉTAT DES SERVICES${NC}"
+    echo -e "────────────────────"
+    echo -e "🟢 Dashboard  : ${SERVICE_STATUS[dashboard]}"
+    echo -e "🟢 API        : ${SERVICE_STATUS[bot-api]}"
+    echo -e "🟢 Bot Worker : ${SERVICE_STATUS[bot-worker]}"
+    echo -e "🟢 Redis      : ${SERVICE_STATUS[redis-bot]}"
+    echo -e "🟢 Nginx      : ${SERVICE_STATUS[nginx-proxy]}"
+    echo -e ""
+
+    echo -e "${BOLD}3. DÉTAILS DEBUG (Si erreurs détectées)${NC}"
+    echo -e "───────────────────────────────────────"
+    ANY_ERRORS=false
+    for svc in "${TARGETS[@]}"; do
+        if [[ -n "${SERVICE_ERRORS[$svc]}" ]]; then
+            ANY_ERRORS=true
+            echo -e "${YELLOW}>> ${svc}:${NC}"
+            echo -e "${SERVICE_ERRORS[$svc]}"
+            echo ""
+        fi
+    done
+
+    if [ "$ANY_ERRORS" = false ]; then
+        echo -e "${GREEN}Aucune erreur critique détectée dans les logs récents.${NC}"
+    fi
+
+    echo -e "\n⚠️  ${BOLD}Sauvegardez vos identifiants maintenant !${NC}"
+
+    # Exit code based on wait_for_healthy results
+    if [ "$API_EXIT" -ne 0 ] || [ "$DASH_EXIT" -ne 0 ]; then
+        exit 1
+    fi
+}
+
+audit_services
 exit 0

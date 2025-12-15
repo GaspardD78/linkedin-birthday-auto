@@ -1,9 +1,9 @@
 # Docker Compose pour Raspberry Pi 4 - Configuration Standalone
-# Tout-en-un : Bot Worker + Dashboard + Redis
+# Tout-en-un : Bot Worker + Dashboard + Redis + Nginx (Proxy)
 # Pas de dépendance externe (Synology MySQL/NFS retiré)
 #
 # Architecture simplifiée:
-# - Pi4 : Bot Worker + Dashboard + Redis + SQLite
+# - Pi4 : Bot Worker + Dashboard + Redis + SQLite + Nginx
 # - Freebox Pop : IP résidentielle légitime pour LinkedIn
 #
 # Utilisation:
@@ -285,6 +285,26 @@ services:
       start_period: 120s
     networks:
     - linkedin-network
+
+  # ========================================
+  # REVERSE PROXY (Nginx + SSL)
+  # ========================================
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployment/nginx/linkedin-bot.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - dashboard
+      - api
+    networks:
+      - linkedin-network
 
 # ========================================
 # VOLUMES PERSISTANTS
