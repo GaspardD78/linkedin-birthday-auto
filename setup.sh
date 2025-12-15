@@ -417,8 +417,8 @@ audit_services() {
 
         # 2. Log Mining (Last 100 lines)
         LOGS=$(docker logs --tail 100 "$svc" 2>&1)
-        ERROR_COUNT=$(echo "$LOGS" | grep -c -iE "Error|Exception|Traceback|Connection refused")
-        ERRORS=$(echo "$LOGS" | grep -iE "Error|Exception|Traceback|Connection refused" | tail -n 5)
+        ERROR_COUNT=$(echo "$LOGS" | grep -c -iE "Error|Exception|Traceback|Connection refused" || true)
+        ERRORS=$(echo "$LOGS" | grep -iE "Error|Exception|Traceback|Connection refused" | tail -n 5 || true)
 
         if [[ "$RAW_STATUS" == "healthy" || "$RAW_STATUS" == "running" ]] && [[ "$ERROR_COUNT" -eq 0 ]]; then
             SERVICE_STATUS[$svc]="${GREEN}OK${NC}"
