@@ -117,7 +117,7 @@ fix_permissions() {
     log INFO "Applying preventive permission fixes..."
     mkdir -p data logs config
 
-    # Reclaim ownership from Docker (root) to current user
+    # Reclaim ownership from Docker (root) to current user for initial setup
     sudo chown -R $USER:$USER data logs config
 
     if [ -d "data/linkedin.db" ]; then
@@ -126,9 +126,17 @@ fix_permissions() {
     fi
     if [ ! -e "data/linkedin.db" ]; then touch "data/linkedin.db"; fi
 
-    # Apply permissive permissions with sudo
-    sudo chmod -R 777 data logs config
-    log SUCCESS "Permissions fixed: data, logs, config set to 777."
+    # Apply secure permissions for container users (UID 1000)
+    # Using 1000:1000 as defined in Dockerfiles (appuser/node)
+    log INFO "Setting ownership to UID 1000:1000 (Container User)..."
+    sudo chown -R 1000:1000 data logs config
+
+    # Ensure group write access if host user is part of group 1000,
+    # but strictly chmod 777 is not needed if ownership is correct.
+    # However, to avoid 'Permission denied' on host if mapped, we keep it readable.
+    sudo chmod -R 775 data logs config
+
+    log SUCCESS "Permissions fixed: data, logs, config owned by 1000:1000."
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -137,6 +145,33 @@ fix_permissions() {
 log INFO "🔍 PHASE 1: Infrastructure Check"
 
 check_connectivity
+
+# Swap Check
+SWAP_TOTAL=$(free -m | awk '/Swap/ {print $2}')
+if [ "$SWAP_TOTAL" -lt 2000 ]; then
+    log WARN "Swap insuficient detected: ${SWAP_TOTAL}MB. Recommended: 2048MB+"
+    log WARN "Raspberry Pi 4 running Chrome + Next.js needs Swap to prevent crashes."
+    if ask_confirmation "Voulez-vous augmenter la taille du SWAP à 2Go (Recommandé) ?"; then
+        log INFO "Configuring Swap (dphys-swapfile)..."
+        # Temporarily stop swap
+        sudo dphys-swapfile swapoff || true
+        # Edit configuration
+        if grep -q "CONF_SWAPSIZE" /etc/dphys-swapfile; then
+            # Handle both active and commented lines
+            sudo sed -i 's/^#*CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+        else
+            echo "CONF_SWAPSIZE=2048" | sudo tee -a /etc/dphys-swapfile
+        fi
+        # Re-initialize
+        sudo dphys-swapfile setup
+        sudo dphys-swapfile swapon
+        log SUCCESS "Swap updated to 2048MB."
+    else
+        log WARN "Continuing with low Swap. Stability not guaranteed."
+    fi
+else
+    log SUCCESS "Swap OK: ${SWAP_TOTAL}MB"
+fi
 
 # Tools Check
 TOOLS=("git" "python3" "curl" "grep" "sed" "lsof")
@@ -302,23 +337,62 @@ if [ "$HTTP_PORTS_BUSY" = false ]; then
             # Check for existing certs
             if ! sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
                 log INFO "Generating SSL Certificates via Certbot (Standalone)..."
-                # Stop any potential binding on port 80
 
-                docker run --rm -p 80:80 \
-                    -v "$PWD/certbot/conf:/etc/letsencrypt" \
+                # Check for port 80 availability
+                if sudo lsof -i :80 >/dev/null 2>&1; then
+                    log WARN "Port 80 is currently in use. Certbot requires port 80."
+                    PID_80=$(sudo lsof -t -i :80 | head -n1)
+                    PROC_80=$(ps -p $PID_80 -o comm=)
+                    log WARN "Process using port 80: $PROC_80 (PID: $PID_80)"
+
+                    if ask_confirmation "Voulez-vous arrêter temporairement le service sur le port 80 pour Certbot ?"; then
+                        # Try to stop common web servers
+                        if [ "$PROC_80" == "nginx" ]; then
+                            sudo systemctl stop nginx || true
+                            sudo docker stop nginx-proxy 2>/dev/null || true
+                        elif [ "$PROC_80" == "apache2" ]; then
+                            sudo systemctl stop apache2 || true
+                        else
+                             # Last resort: docker stop or kill? Better be safe and just warn.
+                             # If it's a docker container:
+                             if docker ps -q -f "publish=80" | grep -q .; then
+                                 docker stop $(docker ps -q -f "publish=80") 2>/dev/null || true
+                             fi
+                        fi
+
+                        # Verify again
+                        sleep 2
+                        if sudo lsof -i :80 >/dev/null 2>&1; then
+                             log ERROR "Port 80 still busy. Cannot proceed with Certbot."
+                             log ERROR "Please free port 80 manually and retry."
+                             ENABLE_HTTPS=false
+                        fi
+                    else
+                        log WARN "Skipping HTTPS setup (Port 80 busy)."
+                        ENABLE_HTTPS=false
+                    fi
+                fi
+
+                if [ "$ENABLE_HTTPS" = true ]; then
+                    docker run --rm -p 80:80 \
+                        -v "$PWD/certbot/conf:/etc/letsencrypt" \
                     -v "$PWD/certbot/www:/var/www/certbot" \
                     certbot/certbot certonly \
                     --standalone \
                     --email "$EMAIL_ADDR" \
                     --agree-tos \
                     --no-eff-email \
-                    -d "$DOMAIN_NAME" \
-                    --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
+                        -d "$DOMAIN_NAME" \
+                        --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
 
-                if sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
-                    log SUCCESS "Certificates generated successfully!"
-                else
-                     log WARN "Certificate generation failed. Nginx might fail to start."
+                    if sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
+                        log SUCCESS "Certificates generated successfully!"
+
+                        # Restart local web server if we stopped it?
+                        # Nginx will be started by docker compose later anyway.
+                    else
+                        log WARN "Certificate generation failed. Nginx might fail to start."
+                    fi
                 fi
             else
                 log INFO "Existing certificates found for $DOMAIN_NAME. Skipping generation."
@@ -458,7 +532,33 @@ audit_services() {
     echo -e "🟢 Nginx      : ${SERVICE_STATUS[nginx-proxy]}"
     echo -e ""
 
-    echo -e "${BOLD}3. DÉTAILS DEBUG (Si erreurs détectées)${NC}"
+    # Security Status Check
+    SEC_HTTPS="❌ Désactivé"
+    if [ "$ENABLE_HTTPS" = true ] && [ -d "certbot/conf/live/$DOMAIN_NAME" ]; then
+        SEC_HTTPS="✅ Activé ($DOMAIN_NAME)"
+    fi
+
+    SEC_PERMS="✅ Correctes (UID 1000)"
+    if [ "$(stat -c '%u' data)" != "1000" ]; then
+        SEC_PERMS="⚠️  Incorrectes (Check owner)"
+    fi
+
+    SEC_ENV="✅ Sécurisé (600)"
+    # Check .env permissions (stat -c %a on Linux)
+    ENV_PERM=$(stat -c '%a' .env 2>/dev/null || echo "Unknown")
+    # Accept 600, 640, 644 is warning but common
+    if [[ "$ENV_PERM" != "600" && "$ENV_PERM" != "640" ]]; then
+         SEC_ENV="⚠️  Permissions .env: $ENV_PERM (Rec: 600)"
+    fi
+
+    echo -e "${BOLD}3. ÉTAT SÉCURITÉ${NC}"
+    echo -e "────────────────"
+    echo -e "🔒 HTTPS    : ${SEC_HTTPS}"
+    echo -e "👤 Droits   : ${SEC_PERMS}"
+    echo -e "🔑 Secrets  : ${SEC_ENV}"
+    echo -e ""
+
+    echo -e "${BOLD}4. DÉTAILS DEBUG (Si erreurs détectées)${NC}"
     echo -e "───────────────────────────────────────"
     ANY_ERRORS=false
     for svc in "${TARGETS[@]}"; do
