@@ -232,9 +232,6 @@ services:
         limits:
           memory: 400M    # Optimisé après suppression de Chromium
           cpus: '2.0'
-        reservations:
-          memory: 200M
-          cpus: '0.25'
     logging:
       driver: json-file
       options:
@@ -245,6 +242,7 @@ services:
     environment:
     - NODE_ENV=production
     - NEXT_TELEMETRY_DISABLED=1
+    - HOSTNAME=0.0.0.0
 
       # ✅ SQLite Local
     - DATABASE_URL=sqlite:///app/data/linkedin.db
@@ -279,10 +277,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/system/health || exit 1"]
-      interval: 20s
+      interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 120s
+      retries: 5
+      start_period: 40s
     networks:
     - linkedin-network
 
