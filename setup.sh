@@ -100,22 +100,34 @@ check_command() {
 
 check_connectivity() {
     log INFO "Checking network connectivity..."
-
-    # Check DNS resolution
-    if ! ping -c 1 google.com &> /dev/null; then
-        log ERROR "DNS resolution failed (cannot ping google.com)."
-        log INFO "Checking IP connectivity (8.8.8.8)..."
-        if ! ping -c 1 8.8.8.8 &> /dev/null; then
-             log ERROR "No internet access (cannot ping 8.8.8.8)."
-             log INFO "Please check your network cable or Wi-Fi connection."
-             return 1
-        else
-             log ERROR "IP connectivity OK, but DNS failed."
-             log INFO "Please check your DNS settings in /etc/resolv.conf"
-             return 1
-        fi
+    if ! ping -c 1 8.8.8.8 &> /dev/null; then
+         log ERROR "No internet access (cannot ping 8.8.8.8)."
+         log INFO "Please check your network cable or Wi-Fi connection."
+         return 1
     fi
     log SUCCESS "Network connectivity OK."
+}
+
+fix_permissions() {
+    log INFO "Applying preventive permission fixes..."
+
+    # Create directories if missing
+    mkdir -p data logs config
+
+    # Check if data/linkedin.db is a directory (Docker error)
+    if [ -d "data/linkedin.db" ]; then
+        log WARN "data/linkedin.db detected as a DIRECTORY. Fixing..."
+        mv "data/linkedin.db" "data/linkedin.db.bak_$(date +%s)"
+    fi
+
+    # Ensure it's a file if it doesn't exist
+    if [ ! -e "data/linkedin.db" ]; then
+        touch "data/linkedin.db"
+    fi
+
+    # Force 777 permissions (Critical for Pi4 Docker binding)
+    chmod -R 777 data logs config
+    log SUCCESS "Permissions fixed: data, logs, config set to 777."
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -215,24 +227,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🔒 PHASE 2: Security & Environment"
 
-# 2.1 Robust Database Initialization
-# Ensure data/linkedin.db exists as a FILE, not a directory
-mkdir -p data
-DB_PATH="data/linkedin.db"
-
-if [ -d "$DB_PATH" ]; then
-    log WARN "$DB_PATH detected as a DIRECTORY (Docker mounting error)."
-    BACKUP_NAME="${DB_PATH}_backup_$(date +%s)"
-    mv "$DB_PATH" "$BACKUP_NAME"
-    log INFO "Moved invalid directory to $BACKUP_NAME"
-fi
-
-if [ ! -f "$DB_PATH" ]; then
-    touch "$DB_PATH"
-    log INFO "Created empty database file: $DB_PATH"
-fi
-
-# 2.2 Smart .env Merging
+# 2.1 Smart .env Merging
 if [ ! -f "$ENV_FILE" ]; then
     if [ -f "$ENV_TEMPLATE" ]; then
         cp "$ENV_TEMPLATE" "$ENV_FILE"
@@ -247,21 +242,14 @@ if [ ! -f "$ENV_FILE" ]; then
         exit 1
     fi
 else
-    # Smart Merge: Append missing keys from template
     log INFO "Analyzing .env for missing keys..."
+
     MISSING_KEYS_COUNT=0
 
-    # Read template line by line
+    # 1. Merge from template (general update)
     while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip comments and empty lines
-        if [[ "$line" =~ ^#.* ]] || [[ -z "$line" ]]; then
-            continue
-        fi
-
-        # Extract key name (before first =)
+        if [[ "$line" =~ ^#.* ]] || [[ -z "$line" ]]; then continue; fi
         KEY=$(echo "$line" | cut -d'=' -f1 | xargs)
-
-        # If key is valid and NOT found in .env (grep returns non-zero)
         if [[ -n "$KEY" ]] && ! grep -q "^${KEY}=" "$ENV_FILE"; then
             echo "" >> "$ENV_FILE"
             echo "# Added by setup.sh update" >> "$ENV_FILE"
@@ -271,6 +259,15 @@ else
         fi
     done < "$ENV_TEMPLATE"
 
+    # 2. Force check specific critical keys with defaults if still missing
+    # DASHBOARD_PORT default 3000
+    if ! grep -q "^DASHBOARD_PORT=" "$ENV_FILE"; then
+         echo "" >> "$ENV_FILE"
+         echo "DASHBOARD_PORT=3000" >> "$ENV_FILE"
+         log INFO "Added critical default: DASHBOARD_PORT=3000"
+         ((MISSING_KEYS_COUNT++))
+    fi
+
     if [ $MISSING_KEYS_COUNT -gt 0 ]; then
         log SUCCESS "Merged $MISSING_KEYS_COUNT new keys into $ENV_FILE"
     else
@@ -278,7 +275,7 @@ else
     fi
 fi
 
-# Generate Secure Keys (Alphanumeric only) if needed
+# Generate Secure Keys if placeholder or missing
 API_KEY=$(grep "^API_KEY=" "$ENV_FILE" | cut -d'=' -f2)
 if [[ "$API_KEY" == "CHANGEZ_MOI"* || "$API_KEY" == "internal_secret_key" || -z "$API_KEY" ]]; then
     NEW_KEY=$(openssl rand -hex 32)
@@ -294,8 +291,7 @@ if [[ "$JWT_SECRET" == "CHANGEZ_MOI"* || -z "$JWT_SECRET" ]]; then
     log SUCCESS "Generated secure JWT_SECRET."
 fi
 
-# 2.3 Robust Password Hashing
-# Check DASHBOARD_PASSWORD status
+# 2.2 Robust Password Hashing
 CURRENT_PASS=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
 
 if [[ "$CURRENT_PASS" != "\$2"* ]]; then
@@ -308,14 +304,11 @@ if [[ "$CURRENT_PASS" != "\$2"* ]]; then
     fi
 
     PASSWORD_TO_HASH=""
-
     if [[ -n "$HEADLESS_PASSWORD" ]]; then
         log INFO "Using password provided via --headless argument."
         PASSWORD_TO_HASH="$HEADLESS_PASSWORD"
     else
         log INFO "Please enter the password for the Dashboard."
-        # Use python to get password to avoid bash read visibility issues if desired, but read -s is fine too.
-        # We stick to the python method for consistency with hashing logic below
         PASSWORD_TO_HASH=$(python3 -c "import getpass; print(getpass.getpass('Password: '))")
     fi
 
@@ -324,13 +317,11 @@ if [[ "$CURRENT_PASS" != "\$2"* ]]; then
         exit 1
     fi
 
-    # Hash using Python (Safe from injection via env var)
     export PASS_VAR="$PASSWORD_TO_HASH"
     HASHED_PASS=$(python3 -c "import bcrypt, os; print(bcrypt.hashpw(os.environ['PASS_VAR'].encode(), bcrypt.gensalt()).decode())" 2>/dev/null)
     unset PASS_VAR
 
     if [[ -n "$HASHED_PASS" ]]; then
-        # Escape $ for Docker Compose ($ -> $$)
         ESCAPED_HASH=$(echo "$HASHED_PASS" | sed 's/\$/$$/g')
         sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$ESCAPED_HASH|" "$ENV_FILE"
         log SUCCESS "Password hashed and updated in .env"
@@ -341,18 +332,13 @@ if [[ "$CURRENT_PASS" != "\$2"* ]]; then
     fi
 fi
 
-# 2.4 Robust Permissions
-log INFO "Enforcing permissions on critical directories..."
-mkdir -p data logs config
-# Recursive 777 for Pi4 local env to prevent "Read-only" SQLite errors or Docker user conflicts
-chmod -R 777 data logs config
-chmod 666 "$ENV_FILE"
-log SUCCESS "Permissions fixed (data/logs/config set to 777)."
-
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. PHASE 3: DEPLOYMENT
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🚀 PHASE 3: Deployment"
+
+# Run preventive permission fixes
+fix_permissions
 
 DOCKER_CMD="docker compose"
 if ! docker compose version &>/dev/null; then
@@ -366,7 +352,7 @@ if [ "$CLEAN_DEPLOY" = true ]; then
     $DOCKER_CMD -f "$COMPOSE_FILE" down --remove-orphans
 fi
 
-log INFO "Pulling images (internet check passed)..."
+log INFO "Pulling images..."
 SERVICES="redis-bot redis-dashboard api bot-worker dashboard"
 for svc in $SERVICES; do
     $DOCKER_CMD -f "$COMPOSE_FILE" pull "$svc" || log WARN "Could not pull $svc (using local cache if available)"
@@ -382,20 +368,34 @@ log INFO "🕵️ PHASE 4: Health Check"
 
 wait_for_healthy() {
     local service=$1
-    local retries=30
-    log INFO "Waiting for $service..."
-    while [ $retries -gt 0 ]; do
+    local max_retries=120
+    local retry=0
+
+    log INFO "Waiting for $service to be healthy (Timeout: 10 mins)..."
+
+    # Progress bar style
+    echo -n "Waiting: "
+
+    while [ $retry -lt $max_retries ]; do
         STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "starting")
+
         if [ "$STATUS" == "healthy" ]; then
+            echo "" # New line after dots
             log SUCCESS "$service is healthy."
             return 0
         fi
+
+        # Feedback visual
+        echo -n "."
         sleep 5
-        retries=$((retries-1))
+        ((retry++))
     done
 
-    # Diagnostics on failure
-    log ERROR "CRITICAL: $service failed to become healthy."
+    echo "" # New line
+    # Diagnostics on failure (Auto-Diagnostic)
+    log ERROR "CRITICAL: $service failed to become healthy after $((max_retries * 5)) seconds."
+
+    echo -e "${RED}🚨 DUMPING LOGS FOR DEBUGGING...${NC}"
     echo -e "${RED}--- Last 50 Log Lines for $service ---${NC}"
     docker logs --tail 50 "$service"
     echo -e "${RED}--------------------------------------${NC}"
@@ -406,6 +406,13 @@ wait_for_healthy() {
     return 1
 }
 
+# Protected wait calls (won't exit immediately on return 1 due to if wrap or explicit check,
+# but set -e is active so we need to be careful. The return 1 will trigger exit unless handled)
+# We want it to exit if it fails, but AFTER the logs are printed.
+# wait_for_healthy prints logs then returns 1.
+# set -e will cause the script to exit immediately when wait_for_healthy returns 1.
+# This is desired behavior.
+
 wait_for_healthy "bot-api"
 wait_for_healthy "dashboard"
 
@@ -415,7 +422,6 @@ docker exec bot-api python -m src.scripts.init_db || log WARN "DB Init warning (
 log SUCCESS "---------------------------------------------------"
 log SUCCESS "✅ DEPLOYMENT COMPLETE"
 LOCAL_IP=$(hostname -I | awk '{print $1}')
-log SUCCESS "Dashboard: http://${LOCAL_IP:-localhost}:3000"
-log SUCCESS "API:       http://${LOCAL_IP:-localhost}:8000"
+log SUCCESS "Dashboard accessible at http://${LOCAL_IP:-localhost}:3000"
 log SUCCESS "---------------------------------------------------"
 exit 0
