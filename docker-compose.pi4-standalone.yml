@@ -306,6 +306,67 @@ services:
     networks:
       - linkedin-network
 
+  # ========================================
+  # MONITORING (Prometheus + Grafana)
+  # ========================================
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+    restart: unless-stopped
+    networks:
+      - linkedin-network
+
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    ports:
+      - "3001:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    restart: unless-stopped
+    networks:
+      - linkedin-network
+
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+    networks:
+      - linkedin-network
+
 # ========================================
 # VOLUMES PERSISTANTS
 # ========================================
@@ -314,6 +375,10 @@ volumes:
     name: linkedin-bot-redis-data
   redis-dashboard-data:
     name: linkedin-dashboard-redis-data
+  prometheus_data:
+    name: linkedin-prometheus-data
+  grafana_data:
+    name: linkedin-grafana-data
   shared-data:
     name: linkedin-shared-data
     # Volume partagé entre le bot et le dashboard pour SQLite
