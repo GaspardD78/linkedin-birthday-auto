@@ -318,7 +318,7 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Determine Domain (Crucial for Nginx)
-DOMAIN_NAME=$(grep "^DOMAIN_NAME=" "$ENV_FILE" | cut -d'=' -f2)
+DOMAIN_NAME=$(grep "^DOMAIN_NAME=" "$ENV_FILE" | cut -d'=' -f2 || true)
 if [[ -z "$DOMAIN_NAME" ]]; then
     read -p "$(echo -e "${BOLD}Domaine (Default: gaspardanoukolivier.freeboxos.fr): ${NC}")" INPUT_DOMAIN
     DOMAIN_NAME=${INPUT_DOMAIN:-"gaspardanoukolivier.freeboxos.fr"}
@@ -328,7 +328,7 @@ fi
 # Password Hashing Logic
 secure_password() {
     local key=$1
-    local val=$(grep "^$key=" "$ENV_FILE" | cut -d'=' -f2-)
+    local val=$(grep "^$key=" "$ENV_FILE" | cut -d'=' -f2- || true)
     if [[ -z "$val" ]] || [[ "$val" == \$2* ]]; then return; fi
     log SEC "Hashing $key..."
     export CLEAR_PASS="$val"
@@ -343,7 +343,7 @@ secure_password "DASHBOARD_PASSWORD"
 
 # Ensure API Keys
 for KEY in API_KEY JWT_SECRET; do
-    VAL=$(grep "^$KEY=" "$ENV_FILE" | cut -d'=' -f2)
+    VAL=$(grep "^$KEY=" "$ENV_FILE" | cut -d'=' -f2 || true)
     if [[ -z "$VAL" || "$VAL" == "CHANGEZ_MOI"* ]]; then
         NEW_VAL=$(openssl rand -hex 32)
         sed -i "s|^$KEY=.*|$KEY=$NEW_VAL|" "$ENV_FILE"
