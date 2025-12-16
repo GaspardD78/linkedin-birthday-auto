@@ -29,8 +29,9 @@ Il permet d'automatiser l'envoi de messages d'anniversaire, la visite de profils
 
 1. **Cloner le dépôt :**
    ```bash
-   git clone https://github.com/votre-repo/linkedin-automation.git
+   git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
    cd linkedin-automation
+   sudo ./setup.sh
    ```
 
 2. **Configuration :**
