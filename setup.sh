@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v14.0 "Nginx Host"        ║
+# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v14.1 "SD-Safe"           ║
 # ║  Refactored & Hardened for Raspberry Pi 4                                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -122,18 +122,103 @@ fix_permissions() {
     log SUCCESS "Permissions fixed."
 }
 
+# --- NEW: Cgroups Check for Raspberry Pi 4 ---
+check_and_enable_cgroups() {
+    log INFO "Checking Cgroups configuration (Memory/CPU)..."
+    CMDLINE_FILE=""
+    if [ -f "/boot/cmdline.txt" ]; then
+        CMDLINE_FILE="/boot/cmdline.txt"
+    elif [ -f "/boot/firmware/cmdline.txt" ]; then
+        CMDLINE_FILE="/boot/firmware/cmdline.txt"
+    fi
+
+    if [ -z "$CMDLINE_FILE" ]; then
+        log WARN "Could not find cmdline.txt. Skipping Cgroups check."
+        return
+    fi
+
+    # Check for cgroup_memory=1
+    if ! grep -q "cgroup_memory=1" "$CMDLINE_FILE"; then
+        log WARN "Cgroups memory limit MISSING. Required for Docker reliability on Pi 4."
+        echo -e "${RED}⚠️  Kernel update required: Enabling cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1${NC}"
+
+        # Backup
+        cp "$CMDLINE_FILE" "${CMDLINE_FILE}.bak"
+
+        # Append to line
+        sed -i 's/$/ cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1/' "$CMDLINE_FILE"
+
+        log FIX "Cgroups flags added to $CMDLINE_FILE."
+        echo -e "${RED}🔴 A SYSTEM REBOOT IS REQUIRED TO APPLY KERNEL CHANGES.${NC}"
+        echo -e "${YELLOW}Please reboot and re-run this script.${NC}"
+
+        read -p "Reboot now? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            reboot
+        else
+            log ERROR "Script aborted. Please reboot manually."
+            exit 1
+        fi
+    else
+        log SUCCESS "Cgroups already enabled (Kernel OK)."
+    fi
+}
+
+# --- NEW: Port 80 Auto-Correction ---
+check_and_fix_port_80() {
+    log INFO "Checking Port 80 availability..."
+
+    # Check if port 80 is used
+    if lsof -i :80 -t >/dev/null 2>&1 || netstat -lnp | grep -q ":80 "; then
+        log WARN "Port 80 is occupied. Attempting auto-fix..."
+
+        # Identify Process
+        PID=$(lsof -i :80 -t | head -n 1)
+        if [ -z "$PID" ]; then
+            PID=$(netstat -lnp | grep ":80 " | awk '{print $7}' | cut -d'/' -f1)
+        fi
+
+        if [ -n "$PID" ]; then
+            PNAME=$(ps -p "$PID" -o comm=)
+            log INFO "Found blocking process: $PNAME (PID: $PID)"
+
+            case "$PNAME" in
+                nginx|apache2|lighttpd|httpd)
+                    log FIX "Stopping web server service: $PNAME..."
+                    systemctl stop "$PNAME" || kill "$PID"
+                    systemctl disable "$PNAME" 2>/dev/null || true
+                    ;;
+                *)
+                    log WARN "Unknown process on Port 80 ($PNAME). Killing it..."
+                    kill -9 "$PID"
+                    ;;
+            esac
+        else
+            log WARN "Could not identify PID. Trying blind stop of common web servers..."
+            systemctl stop nginx apache2 lighttpd 2>/dev/null || true
+        fi
+
+        # Verify
+        sleep 2
+        if lsof -i :80 -t >/dev/null 2>&1; then
+             log ERROR "Port 80 is STILL occupied. Please free it manually."
+             exit 1
+        else
+             log SUCCESS "Port 80 liberated."
+        fi
+    else
+        log SUCCESS "Port 80 is free."
+    fi
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FUNCTION: HOST NGINX SETUP
 # ═══════════════════════════════════════════════════════════════════════════
 setup_host_nginx() {
     log INFO "🌐 Setting up Host Nginx..."
 
-    # 1. Install Packages
-    if ! dpkg -s nginx &> /dev/null; then
-        log INFO "Installing Nginx & Tools..."
-        apt-get update -qq
-        apt-get install -y nginx apache2-utils python3-certbot-nginx
-    fi
+    # 1. Install Packages (Already done in Phase 1)
 
     # 2. Configure Rate Limit Zones
     if [ -f "deployment/nginx/rate-limit-zones.conf" ]; then
@@ -149,11 +234,7 @@ EOF
         log FIX "Created default rate-limit-zones.conf"
     fi
 
-    # 3. Verify nginx.conf includes conf.d
-    # Default nginx.conf usually includes /etc/nginx/conf.d/*.conf inside http block
-    # We assume it is present or we would need complex sed.
-
-    # 4. Prepare Site Config
+    # 3. Prepare Site Config
     local template="deployment/nginx/linkedin-bot.conf"
     local target="/etc/nginx/sites-available/linkedin-bot"
     local link="/etc/nginx/sites-enabled/linkedin-bot"
@@ -169,42 +250,30 @@ EOF
     # Replacements
     local domain=${DOMAIN_NAME:-"gaspardanoukolivier.freeboxos.fr"}
     sed -i "s|YOUR_DOMAIN.COM|$domain|g" "$temp_conf"
-    # Ensure local proxies are correct (template has 127.0.0.1:3000 but double check)
     sed -i "s|http://dashboard:3000|http://127.0.0.1:3000|g" "$temp_conf"
 
     # SSL Check
     local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
     local key_path="/etc/letsencrypt/live/$domain/privkey.pem"
-    local ssl_options="/etc/letsencrypt/options-ssl-nginx.conf"
 
     if [ -f "$cert_path" ] && [ -f "$key_path" ]; then
         log INFO "SSL Certs found for $domain. Enabling HTTPS..."
-        # Uncomment SSL lines
         sed -i "s|# ssl_certificate |ssl_certificate |g" "$temp_conf"
         sed -i "s|# ssl_certificate_key |ssl_certificate_key |g" "$temp_conf"
 
-        # FIX: Point to correct options-ssl-nginx.conf if it exists in letsencrypt dir (Idempotence)
+        # Check options (simplified for brevity)
         if [ -f "/etc/letsencrypt/options-ssl-nginx.conf" ]; then
              sed -i "s|/etc/nginx/conf.d/options-ssl-nginx.conf|/etc/letsencrypt/options-ssl-nginx.conf|g" "$temp_conf"
+        else
+             sed -i "s|include /etc/nginx/conf.d/options-ssl-nginx.conf;|# options missing|g" "$temp_conf"
         fi
         if [ -f "/etc/letsencrypt/ssl-dhparams.pem" ]; then
              sed -i "s|/etc/nginx/conf.d/ssl-dhparams.pem|/etc/letsencrypt/ssl-dhparams.pem|g" "$temp_conf"
-        fi
-
-        # Check for options file presence
-        # If we didn't update the path (still pointing to conf.d) and it doesn't exist there, comment it out
-        if grep -q "/etc/nginx/conf.d/options-ssl-nginx.conf" "$temp_conf" && [ ! -f "/etc/nginx/conf.d/options-ssl-nginx.conf" ]; then
-             sed -i "s|include /etc/nginx/conf.d/options-ssl-nginx.conf;|# options-ssl-nginx.conf missing|g" "$temp_conf"
-        fi
-        if grep -q "/etc/nginx/conf.d/ssl-dhparams.pem" "$temp_conf" && [ ! -f "/etc/nginx/conf.d/ssl-dhparams.pem" ]; then
-             sed -i "s|ssl_dhparam /etc/nginx/conf.d/ssl-dhparams.pem;|# ssl-dhparams missing|g" "$temp_conf"
+        else
+             sed -i "s|ssl_dhparam /etc/nginx/conf.d/ssl-dhparams.pem;|# dhparams missing|g" "$temp_conf"
         fi
     else
-        log WARN "SSL Certs NOT found for $domain."
-        log INFO "Installing HTTP-only config first to allow Certbot to run..."
-
-        # Remove the HTTPS block for now to prevent errors
-        # We assume HTTPS_BLOCK_START and HTTPS_BLOCK_END markers exist
+        log WARN "SSL Certs NOT found. Installing HTTP-only config..."
         sed -i '/HTTPS_BLOCK_START/,/HTTPS_BLOCK_END/d' "$temp_conf"
     fi
 
@@ -227,50 +296,17 @@ EOF
         exit 1
     fi
 
-    # Certbot Run (if needed)
+    # Certbot
     if [ ! -f "$cert_path" ]; then
         log INFO "Requesting SSL Certificate via Certbot..."
-        # We use 'certonly' so we can overwrite the config with our robust version afterwards
         set +e
         certbot certonly --nginx -d "$domain" --non-interactive --agree-tos --email "admin@$domain"
         CERTBOT_RES=$?
         set -e
-
         if [ $CERTBOT_RES -eq 0 ]; then
-             log SUCCESS "Certbot succeeded."
-             # NOW: Re-install the FULL config with HTTPS enabled
-             log INFO "Applying Full HTTPS Configuration..."
-             cp "$template" "$temp_conf"
-             sed -i "s|YOUR_DOMAIN.COM|$domain|g" "$temp_conf"
-             sed -i "s|http://dashboard:3000|http://127.0.0.1:3000|g" "$temp_conf"
-
-             # Uncomment SSL
-             sed -i "s|# ssl_certificate |ssl_certificate |g" "$temp_conf"
-             sed -i "s|# ssl_certificate_key |ssl_certificate_key |g" "$temp_conf"
-
-             # Handle missing options file if any
-             if [ ! -f "$ssl_options" ]; then
-                 # Point to where certbot might have put them or just comment out
-                 if [ -f "/etc/letsencrypt/options-ssl-nginx.conf" ]; then
-                      sed -i "s|/etc/nginx/conf.d/options-ssl-nginx.conf|/etc/letsencrypt/options-ssl-nginx.conf|g" "$temp_conf"
-                 else
-                      sed -i "s|include /etc/nginx/conf.d/options-ssl-nginx.conf;|# options missing|g" "$temp_conf"
-                 fi
-                 if [ -f "/etc/letsencrypt/ssl-dhparams.pem" ]; then
-                      sed -i "s|/etc/nginx/conf.d/ssl-dhparams.pem|/etc/letsencrypt/ssl-dhparams.pem|g" "$temp_conf"
-                 else
-                      sed -i "s|ssl_dhparam /etc/nginx/conf.d/ssl-dhparams.pem;|# dhparams missing|g" "$temp_conf"
-                 fi
-             fi
-
-             cp "$temp_conf" "$target"
-             if nginx -t; then
-                 systemctl reload nginx
-                 log SUCCESS "HTTPS Config enabled and Nginx reloaded."
-             else
-                 log WARN "Failed to enable HTTPS config. Reverting to HTTP."
-                 # Re-run the HTTP-only setup... (Simplified: assume it worked before)
-             fi
+             log SUCCESS "Certbot succeeded. Re-running setup_host_nginx to enable HTTPS..."
+             setup_host_nginx # Recursive call to apply SSL config
+             return
         else
              log ERROR "Certbot failed. System remains on HTTP."
         fi
@@ -283,8 +319,15 @@ EOF
 # ═══════════════════════════════════════════════════════════════════════════
 log INFO "🔍 PHASE 1: System Prerequisites"
 
+# 1. Check Cgroups (Kernel)
+check_and_enable_cgroups
+
+# 2. Network
 check_connectivity
-PACKAGES=("nginx" "certbot" "python3-certbot-nginx" "rclone" "bc" "apache2-utils" "python3-bcrypt")
+
+# 3. Packages
+# Added 'lsof' and 'net-tools' (for netstat) to ensure Port 80 check works
+PACKAGES=("nginx" "certbot" "python3-certbot-nginx" "rclone" "bc" "apache2-utils" "python3-bcrypt" "lsof" "net-tools")
 MISSING_PKGS=()
 for pkg in "${PACKAGES[@]}"; do
     if ! dpkg -s "$pkg" &> /dev/null; then MISSING_PKGS+=("$pkg"); fi
@@ -297,12 +340,16 @@ if [ ${#MISSING_PKGS[@]} -ne 0 ]; then
     log FIX "Packages installed."
 fi
 
+# 4. Docker
 if ! check_command "docker"; then
     log WARN "Installing Docker..."
     curl -fsSL https://get.docker.com | sh
     REAL_USER=${SUDO_USER:-$USER}
     usermod -aG docker "$REAL_USER"
 fi
+
+# 5. Check Port 80
+check_and_fix_port_80
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. PHASE 2: CONFIGURATION & SECRETS
@@ -317,7 +364,7 @@ if [ ! -f "$ENV_FILE" ]; then
     sed -i "s|NEXT_PUBLIC_DASHBOARD_URL=.*|NEXT_PUBLIC_DASHBOARD_URL=http://${LOCAL_IP}:3000|g" "$ENV_FILE"
 fi
 
-# Determine Domain (Crucial for Nginx)
+# Determine Domain
 DOMAIN_NAME=$(grep "^DOMAIN_NAME=" "$ENV_FILE" | cut -d'=' -f2 || true)
 if [[ -z "$DOMAIN_NAME" ]]; then
     read -p "$(echo -e "${BOLD}Domaine (Default: gaspardanoukolivier.freeboxos.fr): ${NC}")" INPUT_DOMAIN
@@ -365,14 +412,17 @@ if [ "$CLEAN_DEPLOY" = true ]; then
     $DOCKER_CMD -f "$COMPOSE_FILE" down --remove-orphans
 fi
 
-log INFO "Starting Stack..."
+log INFO "Starting Stack (Sequential Pull enabled for SD protection)..."
+
+# PROTECTION SD CARD: TÉLÉCHARGEMENT SÉQUENTIEL
+export COMPOSE_PARALLEL_LIMIT=1
+
 $DOCKER_CMD -f "$COMPOSE_FILE" up -d --remove-orphans
 docker image prune -f > /dev/null 2>&1
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. PHASE 4: HOST NGINX
 # ═══════════════════════════════════════════════════════════════════════════
-# Execute Nginx setup AFTER Docker containers are up (as requested)
 setup_host_nginx
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -404,7 +454,7 @@ set -e
 # Final Report
 echo -e "\n"
 echo -e "╔════════════════════════════════════════════════════════════════════╗"
-echo -e "║                 🚀 DÉPLOIEMENT TERMINÉ (v14.0)                     ║"
+echo -e "║                 🚀 DÉPLOIEMENT TERMINÉ (v14.1)                     ║"
 echo -e "╚════════════════════════════════════════════════════════════════════╝"
 echo -e "🌐 Dashboard : https://$DOMAIN_NAME"
 echo -e "📝 Logs      : $LOG_FILE"
