@@ -95,12 +95,29 @@ log_success "Docker et Docker Compose détectés."
 # Port 80 Check
 PORT80_PID=$(lsof -t -i :80 || true)
 if [ -n "$PORT80_PID" ]; then
-    PROCESS_NAME=$(ps -p $PORT80_PID -o comm=)
-    log_warn "Port 80 occupé par : $PROCESS_NAME ($PORT80_PID)"
+    # Sécurisation : Gestion de multiples PIDs et nettoyage
+    PORT80_PIDS_CLEAN=$(echo "$PORT80_PID" | tr '\n' ' ' | xargs)
+    # On prend le premier PID pour identifier le nom (évite les erreurs ps -p multiples)
+    FIRST_PID=$(echo "$PORT80_PIDS_CLEAN" | cut -d ' ' -f 1)
+
+    PROCESS_NAME=$(ps -p "$FIRST_PID" -o comm= 2>/dev/null || echo "unknown")
+
+    log_warn "Port 80 occupé par : $PROCESS_NAME (PIDs: $PORT80_PIDS_CLEAN)"
     read -p "Arrêter ce service pour libérer le port ? (O/n) " -r CHECK_PORT
     if [[ "$CHECK_PORT" =~ ^[OoyY]$ || -z "$CHECK_PORT" ]]; then
-        systemctl stop "$PROCESS_NAME" 2>/dev/null || kill -9 $PORT80_PID
-        systemctl disable "$PROCESS_NAME" 2>/dev/null || true
+        # Arrêt propre via systemd si possible
+        if [ "$PROCESS_NAME" != "unknown" ]; then
+            systemctl stop "$PROCESS_NAME" 2>/dev/null || true
+        fi
+
+        # Arrêt forcé (kill -9) de tous les PIDs trouvés
+        if [ -n "$PORT80_PIDS_CLEAN" ]; then
+            kill -9 $PORT80_PIDS_CLEAN 2>/dev/null || true
+        fi
+
+        if [ "$PROCESS_NAME" != "unknown" ]; then
+            systemctl disable "$PROCESS_NAME" 2>/dev/null || true
+        fi
         log_success "Port 80 libéré."
     else
         log_error "Le port 80 est requis."
