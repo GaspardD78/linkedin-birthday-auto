@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v13.0 "Crystal Clear"     ║
+# ║  LinkedIn Birthday Bot - ULTIMATE SETUP SCRIPT v13.2 "Crystal Clear"     ║
 # ║  Refactored & Hardened for Raspberry Pi 4                                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -146,31 +146,38 @@ log INFO "🔍 PHASE 1: Infrastructure Check"
 
 check_connectivity
 
-# Swap Check
+# ZRAM vs Swap Check (Optimized for Pi 4)
 SWAP_TOTAL=$(free -m | awk '/Swap/ {print $2}')
+# CORRECTION: Revert to 2000MB threshold to catch default 100MB Swap and ensure enough memory
 if [ "$SWAP_TOTAL" -lt 2000 ]; then
-    log WARN "Swap insuficient detected: ${SWAP_TOTAL}MB. Recommended: 2048MB+"
-    log WARN "Raspberry Pi 4 running Chrome + Next.js needs Swap to prevent crashes."
-    if ask_confirmation "Voulez-vous augmenter la taille du SWAP à 2Go (Recommandé) ?"; then
-        log INFO "Configuring Swap (dphys-swapfile)..."
-        # Temporarily stop swap
-        sudo dphys-swapfile swapoff || true
-        # Edit configuration
-        if grep -q "CONF_SWAPSIZE" /etc/dphys-swapfile; then
-            # Handle both active and commented lines
-            sudo sed -i 's/^#*CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
-        else
-            echo "CONF_SWAPSIZE=2048" | sudo tee -a /etc/dphys-swapfile
-        fi
-        # Re-initialize
-        sudo dphys-swapfile setup
-        sudo dphys-swapfile swapon
-        log SUCCESS "Swap updated to 2048MB."
+    log WARN "Insufficient Swap detected: ${SWAP_TOTAL}MB (Recommended: 2048MB+ or ZRAM)."
+
+    if check_command "zramctl"; then
+        log SUCCESS "ZRAM detected, this is optimal for Raspberry Pi 4."
     else
-        log WARN "Continuing with low Swap. Stability not guaranteed."
+        log INFO "Checking for ZRAM support..."
+        if ask_confirmation "Install optimized ZRAM (Recommended for Pi4) instead of slow SwapFile?"; then
+             sudo apt-get update && sudo apt-get install -y zram-tools
+             # Default config is usually fine (50% RAM), reload service
+             sudo systemctl restart zramswap || true
+             log SUCCESS "ZRAM installed and active."
+        else
+            # Fallback to legacy dphys-swapfile
+             log WARN "Falling back to standard SwapFile (slower)."
+             # Only ask if swap is truly low (e.g. < 2GB)
+             if [ "$SWAP_TOTAL" -lt 2000 ]; then
+                 if ask_confirmation "Increase SwapFile to 2GB?"; then
+                     sudo dphys-swapfile swapoff || true
+                     sudo sed -i 's/^#*CONF_SWAPSIZE=.*/CONF_SWAPSIZE=2048/' /etc/dphys-swapfile
+                     sudo dphys-swapfile setup
+                     sudo dphys-swapfile swapon
+                     log SUCCESS "SwapFile updated to 2048MB."
+                 fi
+             fi
+        fi
     fi
 else
-    log SUCCESS "Swap OK: ${SWAP_TOTAL}MB"
+    log SUCCESS "Swap/ZRAM Config OK: ${SWAP_TOTAL}MB"
 fi
 
 # Tools Check
@@ -338,62 +345,44 @@ if [ "$HTTP_PORTS_BUSY" = false ]; then
             if ! sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
                 log INFO "Generating SSL Certificates via Certbot (Standalone)..."
 
-                # Check for port 80 availability
+                # AUTO-FIX: Check if nginx-proxy container is holding port 80
+                NGINX_CONTAINER="nginx-proxy"
+                NGINX_WAS_RUNNING=false
+                if docker ps --format '{{.Names}}' | grep -q "^$NGINX_CONTAINER$"; then
+                     log WARN "Stopping $NGINX_CONTAINER to free Port 80 for Certbot..."
+                     docker stop "$NGINX_CONTAINER" || true
+                     NGINX_WAS_RUNNING=true
+                     sleep 3 # Wait for socket release
+                fi
+
+                # Check port 80 again
                 if sudo lsof -i :80 >/dev/null 2>&1; then
-                    log WARN "Port 80 is currently in use. Certbot requires port 80."
-                    PID_80=$(sudo lsof -t -i :80 | head -n1)
-                    PROC_80=$(ps -p $PID_80 -o comm=)
-                    log WARN "Process using port 80: $PROC_80 (PID: $PID_80)"
+                     log ERROR "Port 80 still busy (System process?). Cannot proceed with Certbot."
+                     log ERROR "Use: sudo lsof -i :80 to find the culprit."
+                     ENABLE_HTTPS=false
+                else
+                    if [ "$ENABLE_HTTPS" = true ]; then
+                        docker run --rm -p 80:80 \
+                            -v "$PWD/certbot/conf:/etc/letsencrypt" \
+                            -v "$PWD/certbot/www:/var/www/certbot" \
+                            certbot/certbot certonly \
+                            --standalone \
+                            --email "$EMAIL_ADDR" \
+                            --agree-tos \
+                            --no-eff-email \
+                            -d "$DOMAIN_NAME" \
+                            --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
 
-                    if ask_confirmation "Voulez-vous arrêter temporairement le service sur le port 80 pour Certbot ?"; then
-                        # Try to stop common web servers
-                        if [ "$PROC_80" == "nginx" ]; then
-                            sudo systemctl stop nginx || true
-                            sudo docker stop nginx-proxy 2>/dev/null || true
-                        elif [ "$PROC_80" == "apache2" ]; then
-                            sudo systemctl stop apache2 || true
+                        if sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
+                            log SUCCESS "Certificates generated successfully!"
                         else
-                             # Last resort: docker stop or kill? Better be safe and just warn.
-                             # If it's a docker container:
-                             if docker ps -q -f "publish=80" | grep -q .; then
-                                 docker stop $(docker ps -q -f "publish=80") 2>/dev/null || true
-                             fi
+                            log WARN "Certificate generation failed. Nginx might fail to start."
                         fi
-
-                        # Verify again
-                        sleep 2
-                        if sudo lsof -i :80 >/dev/null 2>&1; then
-                             log ERROR "Port 80 still busy. Cannot proceed with Certbot."
-                             log ERROR "Please free port 80 manually and retry."
-                             ENABLE_HTTPS=false
-                        fi
-                    else
-                        log WARN "Skipping HTTPS setup (Port 80 busy)."
-                        ENABLE_HTTPS=false
                     fi
                 fi
 
-                if [ "$ENABLE_HTTPS" = true ]; then
-                    docker run --rm -p 80:80 \
-                        -v "$PWD/certbot/conf:/etc/letsencrypt" \
-                    -v "$PWD/certbot/www:/var/www/certbot" \
-                    certbot/certbot certonly \
-                    --standalone \
-                    --email "$EMAIL_ADDR" \
-                    --agree-tos \
-                    --no-eff-email \
-                        -d "$DOMAIN_NAME" \
-                        --non-interactive || log ERROR "Certbot failed. Check DNS or Port 80."
-
-                    if sudo test -d "certbot/conf/live/$DOMAIN_NAME"; then
-                        log SUCCESS "Certificates generated successfully!"
-
-                        # Restart local web server if we stopped it?
-                        # Nginx will be started by docker compose later anyway.
-                    else
-                        log WARN "Certificate generation failed. Nginx might fail to start."
-                    fi
-                fi
+                # Restart Nginx if we stopped it (will be handled by docker compose up later anyway, but good practice)
+                # if [ "$NGINX_WAS_RUNNING" = true ]; then docker start "$NGINX_CONTAINER" || true; fi
             else
                 log INFO "Existing certificates found for $DOMAIN_NAME. Skipping generation."
             fi
@@ -455,10 +444,6 @@ wait_for_healthy() {
 
     echo ""
     log ERROR "CRITICAL: $service failed to become healthy."
-    # Fail immediately so we can trigger the final report (via trap or exit code)
-    # But for now, we return 1 and let set -e catch it?
-    # Actually, we want to run audit_services EVEN IF it fails.
-    # We will disable set -e temporarily for the wait?
     return 1
 }
 
@@ -510,7 +495,7 @@ audit_services() {
     # Display "Crystal Clear" Box
     echo -e "\n"
     echo -e "╔════════════════════════════════════════════════════════════════════╗"
-    echo -e "║                 🚀 RAPPORT D'INSTALLATION v13.0                    ║"
+    echo -e "║                 🚀 RAPPORT D'INSTALLATION v13.2                    ║"
     echo -e "╚════════════════════════════════════════════════════════════════════╝"
     echo -e ""
     echo -e "${BOLD}1. ACCÈS DASHBOARD${NC}"
@@ -544,9 +529,7 @@ audit_services() {
     fi
 
     SEC_ENV="✅ Sécurisé (600)"
-    # Check .env permissions (stat -c %a on Linux)
     ENV_PERM=$(stat -c '%a' .env 2>/dev/null || echo "Unknown")
-    # Accept 600, 640, 644 is warning but common
     if [[ "$ENV_PERM" != "600" && "$ENV_PERM" != "640" ]]; then
          SEC_ENV="⚠️  Permissions .env: $ENV_PERM (Rec: 600)"
     fi
@@ -573,6 +556,10 @@ audit_services() {
     if [ "$ANY_ERRORS" = false ]; then
         echo -e "${GREEN}Aucune erreur critique détectée dans les logs récents.${NC}"
     fi
+
+    # SD Card Optimization: Cleanup
+    log INFO "🧹 Cleanup: Removing unused docker images to save SD card space..."
+    docker system prune -f > /dev/null 2>&1 || true
 
     echo -e "\n⚠️  ${BOLD}Sauvegardez vos identifiants maintenant !${NC}"
 
