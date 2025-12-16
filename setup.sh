@@ -505,7 +505,7 @@ audit_services() {
     echo -e "🔒 HTTPS    : https://${DOMAIN_NAME}"
     fi
     echo -e "👤 User     : ${DASHBOARD_USER}"
-    echo -e "🔑 Pass     : ****** (Masqué pour sécurité)"
+    echo -e "🔑 Pass     : ${TEMP_CLEAR_PASS}      <-- (En clair)"
     echo -e "🔒 Hash     : ${TEMP_HASH_PASS}      <-- (Stocké dans .env)"
     echo -e ""
     echo -e "${BOLD}2. ÉTAT DES SERVICES${NC}"
