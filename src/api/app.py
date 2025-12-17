@@ -167,6 +167,9 @@ include_safe("src.api.auth_routes", "router")
 include_safe("src.api.routes.bot_control", "router")
 include_safe("src.api.routes.automation_control", "router")
 
+# 1b. Configuration & Messages
+include_safe("src.api.routes.config_routes", "router")
+
 # 2. Features
 include_safe("src.api.routes.sourcing", "router")
 include_safe("src.api.routes.campaign_routes", "router")
