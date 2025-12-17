@@ -43,8 +43,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
+# Vérification des permissions de lecture sur .env
+if [[ ! -r "$ENV_FILE" ]]; then
+    log_error "Permissions insuffisantes pour lire $ENV_FILE"
+    log_info "Le fichier .env appartient probablement à root."
+    log_info "Solutions possibles:"
+    log_info "  1. Relancez ce script avec sudo: sudo ./scripts/setup_letsencrypt.sh"
+    log_info "  2. Ou corrigez les permissions: sudo chown \$USER:$USER $ENV_FILE && chmod 600 $ENV_FILE"
+    log_info "  3. Ou utilisez le script de maintenance: sudo ./scripts/fix_permissions.sh"
+    exit 1
+fi
+
 # Lecture du domaine depuis .env
-if ! grep -q "^DOMAIN=" "$ENV_FILE"; then
+if ! grep -q "^DOMAIN=" "$ENV_FILE" 2>/dev/null; then
     log_error "Variable DOMAIN non trouvée dans $ENV_FILE"
     exit 1
 fi
