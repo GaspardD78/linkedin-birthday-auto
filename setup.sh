@@ -87,6 +87,81 @@ check_sudo() {
     fi
 }
 
+configure_docker_ipv4() {
+    local daemon_json="/etc/docker/daemon.json"
+    local needs_restart=false
+
+    # Vérifier si Docker utilise déjà IPv4 uniquement
+    if [[ -f "$daemon_json" ]]; then
+        if grep -q '"ip6tables": false' "$daemon_json" 2>/dev/null; then
+            log_info "Docker déjà configuré pour IPv4."
+            return 0
+        fi
+    fi
+
+    log_info "Configuration de Docker pour forcer IPv4..."
+    check_sudo
+
+    # Créer ou mettre à jour daemon.json
+    if [[ ! -f "$daemon_json" ]]; then
+        # Créer nouveau fichier
+        sudo tee "$daemon_json" > /dev/null <<EOF
+{
+  "ipv6": false,
+  "ip6tables": false,
+  "registry-mirrors": []
+}
+EOF
+        needs_restart=true
+    else
+        # Modifier fichier existant
+        local temp_file=$(mktemp)
+        if command -v jq &> /dev/null; then
+            # Avec jq si disponible
+            sudo jq '. + {"ipv6": false, "ip6tables": false}' "$daemon_json" > "$temp_file"
+            sudo mv "$temp_file" "$daemon_json"
+        else
+            # Fallback : simple merge manuel
+            log_warn "jq non disponible, ajout manuel de la config IPv4"
+            if ! grep -q '"ipv6"' "$daemon_json"; then
+                sudo sed -i 's/^{/{\n  "ipv6": false,\n  "ip6tables": false,/' "$daemon_json"
+            fi
+        fi
+        needs_restart=true
+    fi
+
+    if [[ "$needs_restart" == "true" ]]; then
+        log_info "Redémarrage du daemon Docker..."
+        sudo systemctl restart docker
+        sleep 3
+        log_success "Docker redémarré avec IPv4 uniquement."
+    fi
+}
+
+docker_pull_with_retry() {
+    local compose_file="$1"
+    local max_retries=4
+    local retry_count=0
+    local base_delay=2
+
+    while [[ $retry_count -lt $max_retries ]]; do
+        if docker compose -f "$compose_file" pull --quiet 2>&1; then
+            log_success "Images téléchargées avec succès."
+            return 0
+        else
+            retry_count=$((retry_count + 1))
+            if [[ $retry_count -lt $max_retries ]]; then
+                local delay=$((base_delay ** retry_count))
+                log_warn "Échec du pull (tentative $retry_count/$max_retries). Nouvelle tentative dans ${delay}s..."
+                sleep "$delay"
+            fi
+        fi
+    done
+
+    log_error "Échec du pull après $max_retries tentatives."
+    return 1
+}
+
 get_total_memory_gb() {
     local ram_kb swap_kb total_kb
     ram_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -113,6 +188,9 @@ if ! cmd_exists docker; then
     log_info "curl -fsSL https://get.docker.com | sh"
     exit 1
 fi
+
+# 1.2.1 Configuration Docker IPv4 (Fix problème réseau IPv6 sur Raspberry Pi)
+configure_docker_ipv4
 
 # 1.3 Mémoire & Swap (CRITIQUE RPi4)
 TOTAL_MEM=$(get_total_memory_gb)
@@ -262,8 +340,12 @@ log_success "Permissions appliquées."
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
 
-log_info "Pull des images (parallèle)..."
-docker compose -f "$COMPOSE_FILE" pull --quiet
+log_info "Pull des images (parallèle avec retry automatique)..."
+if ! docker_pull_with_retry "$COMPOSE_FILE"; then
+    log_error "Impossible de télécharger les images Docker."
+    log_info "Vérifiez votre connexion réseau et réessayez."
+    exit 1
+fi
 
 log_info "Recréation des conteneurs..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
