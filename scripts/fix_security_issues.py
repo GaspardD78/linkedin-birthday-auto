@@ -81,35 +81,49 @@ def fix_database():
         logger.info("Database file exists.")
 
 def hash_password_node(password):
-    """Hash password using the existing Node.js script."""
-    node_script = "dashboard/scripts/hash_password.js"
-    if not os.path.exists(node_script):
-        logger.error(f"Node script not found at {node_script}")
-        return None
+    """Hash password using the existing Node.js script via Docker to ensure environment."""
+    node_script_host = os.path.join(os.getcwd(), "dashboard/scripts/hash_password.js")
+    node_script_container = "/tmp/hash.js"
 
-    # Check if we are in the root directory where dashboard/ exists
-    # If not, we might need to adjust path or change directory
-    cwd = os.getcwd()
+    if not os.path.exists(node_script_host):
+        logger.error(f"Node script not found at {node_script_host}")
+        return None
 
     try:
-        # Run node script in quiet mode
-        # We don't need sudo for this unless the script needs to write somewhere restricted, which it doesn't
-        # But we are running as root.
-        # Note: running node as root is generally okay for this utility script.
+        # Use Docker to run the script inside the dashboard container environment
+        # This avoids needing 'bcryptjs' installed on the host
+        # Fix: Add NODE_PATH to find modules in /app/node_modules even when running script in /tmp
+        cmd = [
+            'docker', 'run', '--rm',
+            '-v', f"{node_script_host}:{node_script_container}",
+            '-e', 'NODE_PATH=/app/node_modules',
+            '--entrypoint', 'node',
+            'ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest',
+            node_script_container, password, '--quiet'
+        ]
 
+        # Check if docker is available
+        try:
+            subprocess.run(['docker', '--version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+             logger.warning("Docker not found. Falling back to local node (may fail if dependencies missing)...")
+             # Fallback to local node if Docker is not present (unlikely in this setup but safe)
+             return subprocess.run(
+                ['node', "dashboard/scripts/hash_password.js", '--quiet', password],
+                capture_output=True, text=True, check=True
+            ).stdout.strip()
+
+        logger.info("Hashing password using Dashboard Docker container...")
         result = subprocess.run(
-            ['node', node_script, '--quiet', password],
+            cmd,
             capture_output=True,
             text=True,
-            check=True,
-            cwd=cwd # Ensure we run from root so relative paths inside js work if any
+            check=True
         )
         return result.stdout.strip()
+
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to hash password with Node script: {e.stderr}")
-        return None
-    except FileNotFoundError:
-        logger.error("Node.js executable not found. Cannot hash password.")
+        logger.error(f"Failed to hash password: {e.stderr}")
         return None
 
 def hash_password_in_env():
