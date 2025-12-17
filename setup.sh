@@ -189,18 +189,14 @@ if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV
     echo ""
 
     if [[ -n "$PASS_INPUT" ]]; then
-        log_info "Hachage sécurisé du mot de passe (via conteneur)..."
+        log_info "Hachage sécurisé du mot de passe (via conteneur node:20-alpine)..."
 
-        # On s'assure d'avoir l'image
-        docker compose -f "$COMPOSE_FILE" pull dashboard >/dev/null 2>&1 || true
-
-        # Exécution script hachage monté dans le conteneur dashboard
-        # Le script hash_password.js doit être accessible
+        # Exécution script hachage avec installation à la volée de bcryptjs
+        # Utilise sh -c pour chaîner npm install et node
         HASH_OUTPUT=$(docker run --rm \
             -v "$(pwd)/dashboard/scripts/hash_password.js:/tmp/hash.js" \
-            --entrypoint node \
-            ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-            /tmp/hash.js "$PASS_INPUT" --quiet)
+            node:20-alpine \
+            sh -c 'npm install bcryptjs --no-save --silent >/dev/null 2>&1 && node /tmp/hash.js "$1" --quiet' -- "$PASS_INPUT")
 
         if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
             # Échappement pour Docker Compose ($ -> $$)
