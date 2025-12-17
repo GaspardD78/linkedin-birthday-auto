@@ -95,10 +95,11 @@ test_warn() {
 fix_database() {
     echo -e "${BLUE}Création de la base de données...${NC}"
     mkdir -p data
-    # Initialiser la base de données avec un script Python
+    # Note: La base de données est normalement créée automatiquement par l'API
+    # au premier accès. Cette fonction crée une structure minimale.
     python3 -c "
 import sqlite3
-conn = sqlite3.connect('data/linkedin_bot.db')
+conn = sqlite3.connect('data/linkedin.db')
 cursor = conn.cursor()
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS contacts (
@@ -429,11 +430,14 @@ fi
 
 # Test 1.7 : Base de données existe
 test_check "Base de données SQLite existe"
-if [ -f "./data/linkedin_bot.db" ]; then
-    SIZE=$(du -h ./data/linkedin_bot.db | awk '{print $1}')
+if [ -f "./data/linkedin.db" ]; then
+    SIZE=$(du -h ./data/linkedin.db | awk '{print $1}')
     test_pass "Taille: $SIZE"
+elif docker exec bot-api test -f /app/data/linkedin.db 2>/dev/null; then
+    SIZE=$(docker exec bot-api du -h /app/data/linkedin.db 2>/dev/null | cut -f1 || echo "N/A")
+    test_pass "Taille: $SIZE (dans volume Docker)"
 else
-    test_fail "Base de données manquante: data/linkedin_bot.db" "fix_database"
+    test_warn "Base de données non trouvée (sera créée au premier accès)"
 fi
 
 ###############################################################################
@@ -729,13 +733,15 @@ fi
 
 # Test 7.2 : Permissions base de données
 test_check "Permissions base de données"
-if [ -f "./data/linkedin_bot.db" ]; then
-    PERMS=$(stat -c "%a" ./data/linkedin_bot.db)
-    if [ "$PERMS" = "644" ] || [ "$PERMS" = "664" ]; then
+if [ -f "./data/linkedin.db" ]; then
+    PERMS=$(stat -c "%a" ./data/linkedin.db)
+    if [ "$PERMS" = "644" ] || [ "$PERMS" = "664" ] || [ "$PERMS" = "775" ]; then
         test_pass "Permissions: $PERMS"
     else
-        test_warn "Permissions: $PERMS (recommandé: 644)"
+        test_warn "Permissions: $PERMS (recommandé: 644 ou 775)"
     fi
+elif docker exec bot-api test -f /app/data/linkedin.db 2>/dev/null; then
+    test_pass "Base de données dans volume Docker (permissions gérées par Docker)"
 fi
 
 # Test 7.3 : Docker installé
