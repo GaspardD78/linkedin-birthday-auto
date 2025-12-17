@@ -141,25 +141,54 @@ EOF
 docker_pull_with_retry() {
     local compose_file="$1"
     local max_retries=4
-    local retry_count=0
     local base_delay=2
 
-    while [[ $retry_count -lt $max_retries ]]; do
-        if docker compose -f "$compose_file" pull --quiet 2>&1; then
-            log_success "Images téléchargées avec succès."
-            return 0
-        else
-            retry_count=$((retry_count + 1))
-            if [[ $retry_count -lt $max_retries ]]; then
-                local delay=$((base_delay ** retry_count))
-                log_warn "Échec du pull (tentative $retry_count/$max_retries). Nouvelle tentative dans ${delay}s..."
-                sleep "$delay"
-            fi
-        fi
-    done
+    # Extraire la liste des services depuis le compose file
+    local services
+    services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
 
-    log_error "Échec du pull après $max_retries tentatives."
-    return 1
+    if [[ -z "$services" ]]; then
+        log_error "Impossible de lire la liste des services depuis $compose_file"
+        return 1
+    fi
+
+    local total_services
+    total_services=$(echo "$services" | wc -l)
+    local current=0
+
+    # Pull séquentiel de chaque service (évite surcharge réseau/mémoire sur RPi4)
+    while IFS= read -r service; do
+        current=$((current + 1))
+        echo -n "[${current}/${total_services}] Pull de l'image pour '${service}' "
+
+        local retry_count=0
+        local success=false
+
+        while [[ $retry_count -lt $max_retries ]]; do
+            if docker compose -f "$compose_file" pull --quiet "$service" 2>&1; then
+                echo -e "${GREEN}✓${NC}"
+                success=true
+                break
+            else
+                retry_count=$((retry_count + 1))
+                if [[ $retry_count -lt $max_retries ]]; then
+                    local delay=$((base_delay ** retry_count))
+                    echo -n "${YELLOW}✗${NC} (retry dans ${delay}s) "
+                    sleep "$delay"
+                else
+                    echo -e "${RED}✗ ÉCHEC${NC}"
+                fi
+            fi
+        done
+
+        if [[ "$success" != "true" ]]; then
+            log_error "Échec du pull pour le service '$service' après $max_retries tentatives."
+            return 1
+        fi
+    done <<< "$services"
+
+    log_success "Toutes les images ont été téléchargées avec succès."
+    return 0
 }
 
 get_total_memory_gb() {
@@ -340,7 +369,7 @@ log_success "Permissions appliquées."
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
 
-log_info "Pull des images (parallèle avec retry automatique)..."
+log_info "Pull des images (séquentiel avec retry automatique)..."
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     log_error "Impossible de télécharger les images Docker."
     log_info "Vérifiez votre connexion réseau et réessayez."
