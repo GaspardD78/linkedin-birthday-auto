@@ -181,7 +181,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # 3.2 Gestion Mot de Passe (Hachage via Docker)
-# On évite d'utiliser 'node' sur l'hôte, on utilise l'image dashboard
+# Utilisation d'un conteneur Node.js éphémère avec installation à la volée de bcryptjs
+# pour garantir la disponibilité de la dépendance sans polluer le système hôte
 if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV_FILE"; then
     echo -e "${BOLD}>>> Configuration du Mot de Passe Dashboard${NC}"
     echo -n "Entrez le nouveau mot de passe : "
@@ -189,18 +190,17 @@ if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV
     echo ""
 
     if [[ -n "$PASS_INPUT" ]]; then
-        log_info "Hachage sécurisé du mot de passe (via conteneur)..."
+        log_info "Hachage sécurisé du mot de passe (via conteneur Node.js ARM64)..."
 
-        # On s'assure d'avoir l'image
-        docker compose -f "$COMPOSE_FILE" pull dashboard >/dev/null 2>&1 || true
-
-        # Exécution script hachage monté dans le conteneur dashboard
-        # Le script hash_password.js doit être accessible
+        # Exécution dans un conteneur éphémère avec installation de bcryptjs à la volée
+        # Utilisation de variable d'environnement pour sécuriser le passage du mot de passe
+        # (évite les problèmes d'échappement avec caractères spéciaux: $, ", \, etc.)
+        # node:20-alpine est léger (~40MB) et natif ARM64
         HASH_OUTPUT=$(docker run --rm \
-            -v "$(pwd)/dashboard/scripts/hash_password.js:/tmp/hash.js" \
-            --entrypoint node \
-            ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-            /tmp/hash.js "$PASS_INPUT" --quiet)
+            --platform linux/arm64 \
+            -e PASSWORD="$PASS_INPUT" \
+            node:20-alpine \
+            sh -c "npm install bcryptjs --silent --no-progress 2>&1 >/dev/null && node -e \"const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync(process.env.PASSWORD, 12); console.log(hash);\"" 2>&1)
 
         if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
             # Échappement pour Docker Compose ($ -> $$)
