@@ -47,10 +47,13 @@ BOLD='\033[1m'
 DIM='\033[2m'
 
 # --- Configuration ---
-readonly DOMAIN="gaspardanoukolivier.freeboxos.fr"
+# DOMAIN sera lu depuis .env après sa création
+DOMAIN="gaspardanoukolivier.freeboxos.fr"  # Valeur par défaut
 readonly COMPOSE_FILE="docker-compose.pi4-standalone.yml"
 readonly ENV_FILE=".env"
 readonly ENV_TEMPLATE=".env.pi4.example"
+readonly NGINX_TEMPLATE="deployment/nginx/linkedin-bot.conf.template"
+readonly NGINX_CONFIG="deployment/nginx/linkedin-bot.conf"
 readonly MIN_MEMORY_GB=6      # RAM + SWAP minimum requis
 readonly SWAP_FILE="/swapfile"
 readonly DISK_THRESHOLD_PERCENT=20
@@ -287,6 +290,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
     chmod 600 "$ENV_FILE"
 fi
 
+# 3.1.1 Lecture du DOMAIN depuis .env (si présent)
+if grep -q "^DOMAIN=" "$ENV_FILE" 2>/dev/null; then
+    DOMAIN=$(grep "^DOMAIN=" "$ENV_FILE" | cut -d'=' -f2)
+    log_info "Domaine détecté dans .env: $DOMAIN"
+fi
+
 # 3.2 Gestion Mot de Passe (Hachage via Docker)
 # Utilisation d'un conteneur Node.js éphémère avec installation à la volée de bcryptjs
 # pour garantir la disponibilité de la dépendance sans polluer le système hôte
@@ -416,6 +425,59 @@ else
 fi
 
 # ==============================================================================
+# PHASE 4.6 : GÉNÉRATION CONFIGURATION NGINX DYNAMIQUE
+# ==============================================================================
+log_step "PHASE 4.6 : Configuration Nginx Dynamique"
+
+generate_nginx_config() {
+    local template="$1"
+    local output="$2"
+    local domain="$3"
+
+    if [[ ! -f "$template" ]]; then
+        log_error "Template Nginx introuvable: $template"
+        return 1
+    fi
+
+    log_info "Génération de la configuration Nginx pour le domaine: $domain"
+
+    # Vérifier si envsubst est disponible
+    if ! cmd_exists envsubst; then
+        log_warn "envsubst non trouvé, installation de gettext-base..."
+        check_sudo
+        sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+    fi
+
+    # Export de la variable pour envsubst
+    export DOMAIN="$domain"
+
+    # Génération du fichier de configuration
+    envsubst '${DOMAIN}' < "$template" > "$output"
+
+    if [[ $? -eq 0 ]]; then
+        chmod 644 "$output"
+        log_success "Configuration Nginx générée: $output"
+        log_info "  → Domaine: $domain"
+        log_info "  → Certificats: /etc/letsencrypt/live/$domain/"
+        return 0
+    else
+        log_error "Échec de la génération de la configuration Nginx"
+        return 1
+    fi
+}
+
+# Générer la configuration Nginx
+if [[ -f "$NGINX_TEMPLATE" ]]; then
+    generate_nginx_config "$NGINX_TEMPLATE" "$NGINX_CONFIG" "$DOMAIN" || {
+        log_error "Impossible de générer la configuration Nginx."
+        exit 1
+    }
+else
+    log_warn "Template Nginx absent: $NGINX_TEMPLATE"
+    log_warn "La configuration Nginx devra être créée manuellement."
+fi
+
+# ==============================================================================
 # PHASE 5 : DÉPLOIEMENT
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
@@ -473,18 +535,70 @@ wait_for_service "dashboard" "http://localhost:3000/api/system/health" || { log_
 # RAPPORT FINAL
 # ==============================================================================
 log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
+
+# Détection du type de certificat
+CERT_TYPE="auto-signé"
+if [[ -f "certbot/conf/live/${DOMAIN}/fullchain.pem" ]]; then
+    # Vérifier si c'est un vrai certificat Let's Encrypt
+    if openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout -issuer 2>/dev/null | grep -q "Let's Encrypt"; then
+        CERT_TYPE="Let's Encrypt"
+    fi
+fi
+
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+
 echo -e "
-${BOLD}Accès Disponibles :${NC}
--------------------
-🏠 Dashboard  : http://$(hostname -I | awk '{print $1}'):3000
-⚙️  API        : http://$(hostname -I | awk '{print $1}'):8000/docs
-📊 Grafana    : http://$(hostname -I | awk '{print $1}'):3001 (admin/admin)
+${BOLD}╔═══════════════════════════════════════════════════════════════╗${NC}
+${BOLD}║           🎉  DÉPLOIEMENT RÉUSSI - RASPBERRY PI 4            ║${NC}
+${BOLD}╚═══════════════════════════════════════════════════════════════╝${NC}
 
-${BOLD}Maintenance :${NC}
--------------
-Logs          : docker compose -f $COMPOSE_FILE logs -f
-Arrêt         : docker compose -f $COMPOSE_FILE down
-Mise à jour   : git pull && ./setup.sh
+${BOLD}📡 Accès Services :${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 Dashboard  : https://${DOMAIN}
+               (Local: http://${LOCAL_IP}:3000)
 
-${GREEN}Le système est stable et opérationnel.${NC}
+⚙️  API        : http://${LOCAL_IP}:8000/docs
+📊 Grafana    : http://${LOCAL_IP}:3001 (admin/admin)
+
+${BOLD}🔒 Statut SSL :${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Type          : ${CERT_TYPE}
+Domaine       : ${DOMAIN}
+"
+
+if [[ "$CERT_TYPE" == "auto-signé" ]]; then
+    echo -e "${YELLOW}⚠️  Certificat auto-signé actif (non approuvé par les navigateurs)${NC}
+
+${BOLD}Pour obtenir un vrai certificat Let's Encrypt :${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Assurez-vous que ${DOMAIN} pointe vers votre IP publique
+2. Ouvrez le port 80 sur votre box/firewall
+3. Exécutez: ${GREEN}./scripts/setup_letsencrypt.sh${NC}
+
+${DIM}Note: Le certificat auto-signé permet le démarrage immédiat avec HTTPS${NC}
+${DIM}mais générera un avertissement dans le navigateur.${NC}
+"
+else
+    echo -e "${GREEN}✅ Certificat Let's Encrypt valide et approuvé${NC}
+"
+fi
+
+echo -e "
+${BOLD}🛠️  Maintenance :${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Voir les logs    : docker compose -f $COMPOSE_FILE logs -f
+Arrêter          : docker compose -f $COMPOSE_FILE down
+Redémarrer       : docker compose -f $COMPOSE_FILE restart
+Mise à jour      : git pull && ./setup.sh
+
+${BOLD}📋 Fichiers Importants :${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Configuration    : .env
+Base de données  : ./data/linkedin.db
+Logs             : ./logs/
+Certificats SSL  : ./certbot/conf/live/${DOMAIN}/
+
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${GREEN}✨ Le système est opérationnel et sécurisé avec HTTPS${NC}
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 "
