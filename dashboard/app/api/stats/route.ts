@@ -2,51 +2,74 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Route Handler CRM Stats - Proxy vers Backend FastAPI
+ * Architecture RPi4: Timeout 3s, Zero-Crash Policy, Data Shaping
+ * Backend Endpoint: GET /crm/stats
+ */
 export async function GET() {
   try {
     const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
     const apiKey = process.env.BOT_API_KEY;
 
-    // Tentative de récupération des stats depuis l'API Python
-    const response = await fetch(`${apiUrl}/stats`, {
+    // Timeout de 3s pour libérer le worker Node.js (RPi4 constraint)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    // Appel vers le namespace CRM correct
+    const response = await fetch(`${apiUrl}/crm/stats`, {
       method: 'GET',
       headers: {
-        'X-API-Key': apiKey
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey || ''
       },
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.error('Failed to fetch stats from bot API:', response.statusText);
-      // Retourner une erreur explicite au lieu de valeurs par défaut silencieuses
-      return NextResponse.json(
-        {
-          error: 'Bot API unreachable',
-          detail: `API returned ${response.status}: ${response.statusText}`
-        },
-        { status: 503 } // Service Unavailable
-      );
+      console.error(`[CRM Stats] Backend returned ${response.status}: ${response.statusText}`);
+      // Zero-Crash Policy: Retourner structure valide avec stats à zéro
+      return NextResponse.json({
+        total_contacts: 0,
+        total_messages_sent: 0,
+        contacts_this_month: 0,
+        messages_this_month: 0,
+        avg_messages_per_contact: 0.0,
+        top_contacted: []
+      });
     }
 
     const data = await response.json();
 
-    // Retourner les stats au format attendu
+    // Data Shaping: Retourner uniquement les champs requis (économie bande passante)
+    // Le Backend retourne CRMStats conforme au modèle Pydantic
     return NextResponse.json({
-      wishes_sent_total: data.wishes_sent_total || 0,
-      wishes_sent_today: data.wishes_sent_today || 0,
-      profiles_visited_total: data.profiles_visited_total || 0,
-      profiles_visited_today: data.profiles_visited_today || 0
+      total_contacts: data.total_contacts || 0,
+      total_messages_sent: data.total_messages_sent || 0,
+      contacts_this_month: data.contacts_this_month || 0,
+      messages_this_month: data.messages_this_month || 0,
+      avg_messages_per_contact: data.avg_messages_per_contact || 0.0,
+      top_contacted: (data.top_contacted || []).slice(0, 5) // Limiter à top 5 (optimisation)
     });
 
   } catch (error) {
-    console.error('Error fetching stats:', error);
-    // Retourner une erreur 500 pour permettre au frontend de détecter le problème
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[CRM Stats] Timeout 3s exceeded (RPi4 protection)');
+    } else {
+      console.error('[CRM Stats] Unexpected error:', error);
+    }
+
+    // Zero-Crash Policy: Structure par défaut au lieu d'erreur 500
+    return NextResponse.json({
+      total_contacts: 0,
+      total_messages_sent: 0,
+      contacts_this_month: 0,
+      messages_this_month: 0,
+      avg_messages_per_contact: 0.0,
+      top_contacted: []
+    });
   }
 }
