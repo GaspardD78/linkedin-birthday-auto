@@ -196,11 +196,13 @@ if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV
         # Utilisation de variable d'environnement pour sécuriser le passage du mot de passe
         # (évite les problèmes d'échappement avec caractères spéciaux: $, ", \, etc.)
         # node:20-alpine est léger (~40MB) et natif ARM64
+        # -w /app définit le répertoire de travail pour que npm installe dans /app/node_modules
         HASH_OUTPUT=$(docker run --rm \
             --platform linux/arm64 \
             -e PASSWORD="$PASS_INPUT" \
+            -w /app \
             node:20-alpine \
-            sh -c "npm install bcryptjs --silent --no-progress 2>&1 >/dev/null && node -e \"const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync(process.env.PASSWORD, 12); console.log(hash);\"" 2>&1)
+            sh -c "npm install bcryptjs --silent >/dev/null 2>&1 && node -e \"const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync(process.env.PASSWORD, 12); console.log(hash);\"" 2>&1)
 
         if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
             # Échappement pour Docker Compose ($ -> $$)
