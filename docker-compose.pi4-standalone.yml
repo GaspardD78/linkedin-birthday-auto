@@ -134,7 +134,7 @@ services:
     - ./config:/app/config
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
-    - shared-data:/app/data
+    - ./data:/app/data
     # Mount systemd and D-Bus to allow systemctl commands from container
     - /run/systemd:/run/systemd:ro
     - /var/run/dbus:/var/run/dbus:ro
@@ -188,7 +188,7 @@ services:
     - ./config:/app/config
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
-    - shared-data:/app/data
+    - ./data:/app/data
     # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:
       resources:
@@ -269,7 +269,7 @@ services:
       # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
     - ./config:/app/config
       # Base de données SQLite partagée avec le bot
-    - shared-data:/app/data
+    - ./data:/app/data
       # Monitoring de température du Raspberry Pi 4 (lecture seule)
     - /sys/class/thermal:/sys/class/thermal:ro
     depends_on:
@@ -382,9 +382,7 @@ volumes:
     name: linkedin-prometheus-data
   grafana_data:
     name: linkedin-grafana-data
-  shared-data:
-    name: linkedin-shared-data
-    # Volume partagé entre le bot et le dashboard pour SQLite
+  # shared-data removed in favor of ./data bind mount
 
 # ========================================
 # RÉSEAU INTERNE
