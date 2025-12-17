@@ -14,11 +14,23 @@
 # - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
 # - Verification: ./scripts/verify_rpi_docker.sh
 #
+# ═══════════════════════════════════════════════════════════════════════════
+# AUDIT V3.2 - CORRECTIONS CRITIQUES RPi4 (2025-01)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# [FIX-A] sysctls vm.overcommit_memory SUPPRIMÉ des conteneurs
+#         → Ce paramètre kernel n'est PAS namespaceable sur ARM64
+#         → Doit être configuré sur l'HÔTE via: sudo sysctl vm.overcommit_memory=1
+#         → Script fourni: scripts/configure_rpi4_kernel.sh
+#
+# [FIX-D] DNS fiables forcés sur le réseau Docker
+#         → Évite les timeouts DNS sur box FAI (Freebox, etc.)
+#         → Utilise Cloudflare (1.1.1.1) et Google (8.8.8.8) comme fallback
+#
 # IMPORTANT - Limites de ressources:
 # Les limites mémoire (memory) ont été retirées car le kernel Raspberry Pi
 # ne supporte pas les capacités cgroup memory limit. Seules les limites CPU
-# sont conservées. Cela élimine les avertissements "kernel does not support
-# memory limit capabilities or the cgroup is not mounted".
+# sont conservées.
 
 services:
   # ========================================
@@ -39,10 +51,10 @@ services:
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
-    # Fix memory overcommit warning
-    sysctls:
-      - net.core.somaxconn=511
-      - vm.overcommit_memory=1
+      --tcp-backlog 511
+    # [FIX-A] sysctls SUPPRIMÉS - vm.overcommit_memory n'est pas namespaceable sur ARM64
+    # Le paramètre doit être configuré sur l'HÔTE via scripts/configure_rpi4_kernel.sh
+    # net.core.somaxconn remplacé par --tcp-backlog dans la commande Redis
     deploy:
       resources:
         limits:
@@ -78,10 +90,9 @@ services:
       --save ""
       --appendonly no
       --loglevel warning
-    # Fix memory overcommit warning
-    sysctls:
-      - net.core.somaxconn=511
-      - vm.overcommit_memory=1
+      --tcp-backlog 511
+    # [FIX-A] sysctls SUPPRIMÉS - vm.overcommit_memory n'est pas namespaceable sur ARM64
+    # Le paramètre doit être configuré sur l'HÔTE via scripts/configure_rpi4_kernel.sh
     restart: unless-stopped
     volumes:
     - redis-dashboard-data:/data
@@ -160,6 +171,10 @@ services:
       timeout: 10s
       retries: 15
       start_period: 180s
+    # [FIX-D] DNS fiables pour les appels API externes
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     networks:
     - linkedin-network
 
@@ -215,6 +230,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    # [FIX-D] DNS fiables - CRITIQUE pour connexion LinkedIn
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     networks:
     - linkedin-network
 
@@ -310,6 +329,17 @@ services:
     depends_on:
       - dashboard
       - api
+    # [FIX-D] DNS fiables pour résolution ACME/Certbot
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    # [FIX-B] Healthcheck avec validation config Nginx
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - linkedin-network
 
@@ -348,6 +378,10 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      # [FIX-C] Optimisations SQLite pour carte SD - évite "database is locked"
+      - GF_DATABASE_WAL=true
+      - GF_DATABASE_CACHE_MODE=shared
+      - GF_DATABASE_QUERY_RETRIES=3
     ports:
       - "3001:3000"
     deploy:
@@ -355,6 +389,10 @@ services:
         limits:
           cpus: '0.5'
     restart: unless-stopped
+    # [FIX-D] DNS fiables forcés
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     networks:
       - linkedin-network
 
@@ -395,3 +433,13 @@ networks:
   linkedin-network:
     name: linkedin-network
     driver: bridge
+    # [FIX-D] DNS fiables forcés - évite les timeouts DNS sur box FAI
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+    # DNS publics fiables (Cloudflare + Google) pour tous les conteneurs
+    # Résout les problèmes de résolution DNS sur Freebox/box FAI
+    # Note: Les DNS sont configurés au niveau du daemon Docker (/etc/docker/daemon.json)

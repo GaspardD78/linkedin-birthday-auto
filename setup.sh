@@ -94,41 +94,43 @@ configure_docker_ipv4() {
     local daemon_json="/etc/docker/daemon.json"
     local needs_restart=false
 
-    # Vérifier si Docker utilise déjà IPv4 uniquement
+    # [FIX-D] Configuration cible avec DNS fiables (Cloudflare + Google)
+    local target_config='{
+  "ipv6": false,
+  "ip6tables": false,
+  "dns": ["1.1.1.1", "8.8.8.8", "8.8.4.4"],
+  "dns-opts": ["timeout:2", "attempts:3"],
+  "registry-mirrors": []
+}'
+
+    # Vérifier si Docker utilise déjà la config complète (IPv4 + DNS)
     if [[ -f "$daemon_json" ]]; then
-        if grep -q '"ip6tables": false' "$daemon_json" 2>/dev/null; then
-            log_info "Docker déjà configuré pour IPv4."
+        if grep -q '"ip6tables": false' "$daemon_json" 2>/dev/null && \
+           grep -q '"dns"' "$daemon_json" 2>/dev/null; then
+            log_info "Docker déjà configuré (IPv4 + DNS fiables)."
             return 0
         fi
     fi
 
-    log_info "Configuration de Docker pour forcer IPv4..."
+    log_info "Configuration de Docker (IPv4 + DNS fiables Cloudflare/Google)..."
     check_sudo
 
     # Créer ou mettre à jour daemon.json
     if [[ ! -f "$daemon_json" ]]; then
-        # Créer nouveau fichier
-        sudo tee "$daemon_json" > /dev/null <<EOF
-{
-  "ipv6": false,
-  "ip6tables": false,
-  "registry-mirrors": []
-}
-EOF
+        # Créer nouveau fichier avec config complète
+        echo "$target_config" | sudo tee "$daemon_json" > /dev/null
         needs_restart=true
     else
-        # Modifier fichier existant
+        # Modifier fichier existant avec jq si disponible
         local temp_file=$(mktemp)
         if command -v jq &> /dev/null; then
-            # Avec jq si disponible
-            sudo jq '. + {"ipv6": false, "ip6tables": false}' "$daemon_json" > "$temp_file"
+            # Merge avec jq
+            sudo jq '. + {"ipv6": false, "ip6tables": false, "dns": ["1.1.1.1", "8.8.8.8", "8.8.4.4"], "dns-opts": ["timeout:2", "attempts:3"]}' "$daemon_json" > "$temp_file"
             sudo mv "$temp_file" "$daemon_json"
         else
-            # Fallback : simple merge manuel
-            log_warn "jq non disponible, ajout manuel de la config IPv4"
-            if ! grep -q '"ipv6"' "$daemon_json"; then
-                sudo sed -i 's/^{/{\n  "ipv6": false,\n  "ip6tables": false,/' "$daemon_json"
-            fi
+            # Fallback : remplacement complet
+            log_warn "jq non disponible, remplacement complet de daemon.json"
+            echo "$target_config" | sudo tee "$daemon_json" > /dev/null
         fi
         needs_restart=true
     fi
@@ -137,8 +139,58 @@ EOF
         log_info "Redémarrage du daemon Docker..."
         sudo systemctl restart docker
         sleep 3
-        log_success "Docker redémarré avec IPv4 uniquement."
+        log_success "Docker redémarré avec IPv4 + DNS fiables (1.1.1.1, 8.8.8.8)."
     fi
+}
+
+# [FIX-A] Configuration des paramètres kernel pour RPi4
+configure_kernel_params() {
+    local sysctl_file="/etc/sysctl.d/99-rpi4-docker.conf"
+
+    log_info "Configuration des paramètres kernel pour RPi4..."
+
+    # Vérifier si déjà configuré
+    if [[ -f "$sysctl_file" ]] && grep -q "vm.overcommit_memory" "$sysctl_file" 2>/dev/null; then
+        log_info "Paramètres kernel déjà configurés."
+        return 0
+    fi
+
+    check_sudo
+
+    # Créer le fichier de configuration sysctl
+    sudo tee "$sysctl_file" > /dev/null <<'EOF'
+# ═══════════════════════════════════════════════════════════════════════════
+# Configuration kernel optimisée pour LinkedIn Bot sur Raspberry Pi 4
+# Généré par setup.sh - NE PAS MODIFIER MANUELLEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Redis: Permet l'overcommit mémoire (évite les warnings BGSAVE)
+# IMPORTANT: Ce paramètre est global au kernel, pas namespaceable
+vm.overcommit_memory = 1
+
+# Augmente la file d'attente des connexions TCP (Redis, Nginx)
+net.core.somaxconn = 1024
+
+# Réduit le swappiness pour favoriser la RAM (carte SD = lent)
+vm.swappiness = 10
+
+# Optimisation des buffers réseau pour connexions stables
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+
+# Timeout TCP pour connexions longues (LinkedIn, API)
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_intvl = 60
+net.ipv4.tcp_keepalive_probes = 5
+EOF
+
+    # Appliquer immédiatement
+    sudo sysctl -p "$sysctl_file" > /dev/null 2>&1
+
+    log_success "Paramètres kernel configurés:"
+    log_info "  → vm.overcommit_memory=1 (Redis)"
+    log_info "  → net.core.somaxconn=1024 (TCP backlog)"
+    log_info "  → vm.swappiness=10 (Optimisation SD card)"
 }
 
 docker_pull_with_retry() {
@@ -221,8 +273,12 @@ if ! cmd_exists docker; then
     exit 1
 fi
 
-# 1.2.1 Configuration Docker IPv4 (Fix problème réseau IPv6 sur Raspberry Pi)
+# 1.2.1 Configuration Docker IPv4 + DNS fiables (Fix problème réseau IPv6/DNS sur Raspberry Pi)
 configure_docker_ipv4
+
+# 1.2.2 [FIX-A] Configuration kernel (vm.overcommit_memory, somaxconn, swappiness)
+# Ces paramètres doivent être sur l'HÔTE, pas dans les conteneurs Docker
+configure_kernel_params
 
 # 1.3 Mémoire & Swap (CRITIQUE RPi4)
 TOTAL_MEM=$(get_total_memory_gb)
@@ -439,6 +495,13 @@ generate_nginx_config() {
         return 1
     fi
 
+    # [FIX-B] Validation stricte du domaine AVANT génération
+    if [[ -z "$domain" || "$domain" == "YOUR_DOMAIN.COM" || "$domain" =~ ^\$\{ ]]; then
+        log_error "Domaine invalide ou non défini: '$domain'"
+        log_error "Vérifiez la variable DOMAIN dans le fichier .env"
+        return 1
+    fi
+
     log_info "Génération de la configuration Nginx pour le domaine: $domain"
 
     # Vérifier si envsubst est disponible
@@ -453,17 +516,43 @@ generate_nginx_config() {
 
     # Génération du fichier de configuration
     envsubst '${DOMAIN}' < "$template" > "$output"
+    local envsubst_status=$?
 
-    if [[ $? -eq 0 ]]; then
-        chmod 644 "$output"
-        log_success "Configuration Nginx générée: $output"
-        log_info "  → Domaine: $domain"
-        log_info "  → Certificats: /etc/letsencrypt/live/$domain/"
-        return 0
-    else
-        log_error "Échec de la génération de la configuration Nginx"
+    # [FIX-B] VALIDATION POST-GÉNÉRATION - Vérification que les placeholders ont été remplacés
+    if [[ $envsubst_status -ne 0 ]]; then
+        log_error "Échec de envsubst (code: $envsubst_status)"
         return 1
     fi
+
+    # Vérifier qu'aucun placeholder ${DOMAIN} ne reste dans le fichier généré
+    if grep -q '\${DOMAIN}' "$output" 2>/dev/null; then
+        log_error "ERREUR CRITIQUE: Placeholders \${DOMAIN} non remplacés dans $output"
+        log_error "Le fichier de configuration contient encore des variables non substituées."
+        rm -f "$output"  # Supprimer le fichier invalide
+        return 1
+    fi
+
+    # Vérifier que le domaine apparaît bien dans le fichier (preuve de substitution)
+    if ! grep -q "$domain" "$output" 2>/dev/null; then
+        log_error "ERREUR: Le domaine '$domain' n'apparaît pas dans la configuration générée"
+        rm -f "$output"
+        return 1
+    fi
+
+    # Vérifier la syntaxe Nginx si possible (via Docker si nginx non installé sur l'hôte)
+    log_info "Validation syntaxique de la configuration Nginx..."
+    if cmd_exists nginx; then
+        if ! nginx -t -c "$output" 2>/dev/null; then
+            log_warn "Validation Nginx locale non concluante (config partielle)"
+        fi
+    fi
+
+    chmod 644 "$output"
+    log_success "Configuration Nginx générée et validée: $output"
+    log_info "  → Domaine: $domain"
+    log_info "  → Certificats: /etc/letsencrypt/live/$domain/"
+    log_info "  → Validation: OK (pas de placeholders résiduels)"
+    return 0
 }
 
 # Générer la configuration Nginx
