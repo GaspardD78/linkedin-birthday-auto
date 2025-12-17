@@ -303,13 +303,13 @@ if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV
         # Utilisation de variable d'environnement pour sécuriser le passage du mot de passe
         # (évite les problèmes d'échappement avec caractères spéciaux: $, ", \, etc.)
         # node:20-alpine est léger (~40MB) et natif ARM64
-        # -w /app définit le répertoire de travail pour que npm installe dans /app/node_modules
+        # -w /tmp/hashwork définit un répertoire de travail temporaire avec permissions correctes
         HASH_OUTPUT=$(docker run --rm \
             --platform linux/arm64 \
             -e PASSWORD="$PASS_INPUT" \
-            -w /app \
+            -w /tmp/hashwork \
             node:20-alpine \
-            sh -c "npm install bcryptjs --silent >/dev/null 2>&1 && node -e \"const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync(process.env.PASSWORD, 12); console.log(hash);\"" 2>&1)
+            sh -c "npm install --no-save bcryptjs 2>&1 | grep -v 'npm notice' && node -e \"const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync(process.env.PASSWORD, 12); console.log(hash);\"" 2>&1)
 
         if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
             # Échappement pour Docker Compose ($ -> $$)
@@ -363,6 +363,57 @@ fi
 
 chmod -R 775 data logs config
 log_success "Permissions appliquées."
+
+# ==============================================================================
+# PHASE 4.5 : BOOTSTRAP SSL (CERTIFICATS DUMMY)
+# ==============================================================================
+log_step "PHASE 4.5 : Préparation SSL"
+
+# Vérifier si les certificats Let's Encrypt existent déjà
+CERT_DIR="certbot/conf/live/${DOMAIN}"
+if [[ ! -f "$CERT_DIR/fullchain.pem" ]] || [[ ! -f "$CERT_DIR/privkey.pem" ]]; then
+    log_warn "Certificats SSL absents. Génération de certificats auto-signés temporaires..."
+
+    # Créer le répertoire pour les certificats dummy
+    mkdir -p "$CERT_DIR"
+
+    # Générer un certificat auto-signé valide 365 jours
+    # Cela permettra à Nginx de démarrer même si Certbot n'a pas encore été exécuté
+    if cmd_exists openssl; then
+        openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+            -keyout "$CERT_DIR/privkey.pem" \
+            -out "$CERT_DIR/fullchain.pem" \
+            -subj "/CN=${DOMAIN}/O=Temporary Certificate/C=FR" 2>/dev/null
+
+        chmod 644 "$CERT_DIR/fullchain.pem"
+        chmod 600 "$CERT_DIR/privkey.pem"
+
+        log_success "Certificats temporaires créés (valides 365j)."
+        log_info "IMPORTANT : Exécutez Certbot après le démarrage pour obtenir de vrais certificats."
+    else
+        log_error "OpenSSL manquant. Impossible de créer des certificats temporaires."
+        log_info "Installation : sudo apt-get install openssl"
+        exit 1
+    fi
+else
+    log_success "Certificats SSL existants détectés."
+fi
+
+# Générer les paramètres DH si absents (requis pour SSL)
+DH_PARAMS="certbot/conf/ssl-dhparams.pem"
+if [[ ! -f "$DH_PARAMS" ]]; then
+    log_info "Génération des paramètres Diffie-Hellman (cela peut prendre 2-3 minutes sur RPi4)..."
+    if cmd_exists openssl; then
+        openssl dhparam -out "$DH_PARAMS" 2048 2>/dev/null
+        chmod 644 "$DH_PARAMS"
+        log_success "Paramètres DH générés."
+    else
+        log_warn "Impossible de générer ssl-dhparams.pem (openssl manquant)."
+        log_info "Nginx utilisera les paramètres par défaut."
+    fi
+else
+    log_info "Paramètres DH existants."
+fi
 
 # ==============================================================================
 # PHASE 5 : DÉPLOIEMENT
