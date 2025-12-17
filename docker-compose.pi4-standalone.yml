@@ -42,6 +42,7 @@ services:
     # Fix memory overcommit warning
     sysctls:
       - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     deploy:
       resources:
         limits:
@@ -80,6 +81,7 @@ services:
     # Fix memory overcommit warning
     sysctls:
       - net.core.somaxconn=511
+      - vm.overcommit_memory=1
     restart: unless-stopped
     volumes:
     - redis-dashboard-data:/data

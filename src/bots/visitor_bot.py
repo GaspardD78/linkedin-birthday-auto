@@ -335,9 +335,10 @@ class VisitorBot(BaseLinkedInBot):
         # Construction de l'URL finale
         base_url = "https://www.linkedin.com/search/results/people/?"
         query_parts = []
+        safe_chars = '[]"'
         for key, value in params.items():
             if value:
-                query_parts.append(f"{key}={urllib.parse.quote(str(value), safe='[]\"')}")
+                query_parts.append(f"{key}={urllib.parse.quote(str(value), safe=safe_chars)}")
 
         search_url = base_url + "&".join(query_parts)
 

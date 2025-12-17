@@ -47,10 +47,13 @@ BOLD='\033[1m'
 DIM='\033[2m'
 
 # --- Configuration ---
-readonly DOMAIN="gaspardanoukolivier.freeboxos.fr"
+# DOMAIN sera lu depuis .env après sa création
+DOMAIN="gaspardanoukolivier.freeboxos.fr"  # Valeur par défaut
 readonly COMPOSE_FILE="docker-compose.pi4-standalone.yml"
 readonly ENV_FILE=".env"
 readonly ENV_TEMPLATE=".env.pi4.example"
+readonly NGINX_TEMPLATE="deployment/nginx/linkedin-bot.conf.template"
+readonly NGINX_CONFIG="deployment/nginx/linkedin-bot.conf"
 readonly MIN_MEMORY_GB=6      # RAM + SWAP minimum requis
 readonly SWAP_FILE="/swapfile"
 readonly DISK_THRESHOLD_PERCENT=20
@@ -62,7 +65,7 @@ log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
-log_step()    { echo -e "\n${BOLD}${BLUE}══════════════════════════════════════════════════════════════${NC}"; echo -e "${BOLD}${BLUE}  $1${NC}"; echo -e "${BOLD}${BLUE}══════════════════════════════════════════════════════════════${NC}\n"; }
+log_step()    { echo -e "\n${BOLD}${BLUE}══════════════════════════════════════════════════════════════${NC}"; echo -e "${BOLD}${BLUE}  $1${NC}"; echo -e "${BOLD}${BLUE}══════════════════════════════════════════════════════════════${NC}\n"; sleep 2; }
 
 # --- Gestion d'erreurs ---
 cleanup() {
@@ -287,6 +290,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
     chmod 600 "$ENV_FILE"
 fi
 
+# 3.1.1 Lecture du DOMAIN depuis .env (si présent)
+if grep -q "^DOMAIN=" "$ENV_FILE" 2>/dev/null; then
+    DOMAIN=$(grep "^DOMAIN=" "$ENV_FILE" | cut -d'=' -f2)
+    log_info "Domaine détecté dans .env: $DOMAIN"
+fi
+
 # 3.2 Gestion Mot de Passe (Hachage via Docker)
 # Utilisation d'un conteneur Node.js éphémère avec installation à la volée de bcryptjs
 # pour garantir la disponibilité de la dépendance sans polluer le système hôte
@@ -416,6 +425,59 @@ else
 fi
 
 # ==============================================================================
+# PHASE 4.6 : GÉNÉRATION CONFIGURATION NGINX DYNAMIQUE
+# ==============================================================================
+log_step "PHASE 4.6 : Configuration Nginx Dynamique"
+
+generate_nginx_config() {
+    local template="$1"
+    local output="$2"
+    local domain="$3"
+
+    if [[ ! -f "$template" ]]; then
+        log_error "Template Nginx introuvable: $template"
+        return 1
+    fi
+
+    log_info "Génération de la configuration Nginx pour le domaine: $domain"
+
+    # Vérifier si envsubst est disponible
+    if ! cmd_exists envsubst; then
+        log_warn "envsubst non trouvé, installation de gettext-base..."
+        check_sudo
+        sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+    fi
+
+    # Export de la variable pour envsubst
+    export DOMAIN="$domain"
+
+    # Génération du fichier de configuration
+    envsubst '${DOMAIN}' < "$template" > "$output"
+
+    if [[ $? -eq 0 ]]; then
+        chmod 644 "$output"
+        log_success "Configuration Nginx générée: $output"
+        log_info "  → Domaine: $domain"
+        log_info "  → Certificats: /etc/letsencrypt/live/$domain/"
+        return 0
+    else
+        log_error "Échec de la génération de la configuration Nginx"
+        return 1
+    fi
+}
+
+# Générer la configuration Nginx
+if [[ -f "$NGINX_TEMPLATE" ]]; then
+    generate_nginx_config "$NGINX_TEMPLATE" "$NGINX_CONFIG" "$DOMAIN" || {
+        log_error "Impossible de générer la configuration Nginx."
+        exit 1
+    }
+else
+    log_warn "Template Nginx absent: $NGINX_TEMPLATE"
+    log_warn "La configuration Nginx devra être créée manuellement."
+fi
+
+# ==============================================================================
 # PHASE 5 : DÉPLOIEMENT
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
@@ -473,18 +535,142 @@ wait_for_service "dashboard" "http://localhost:3000/api/system/health" || { log_
 # RAPPORT FINAL
 # ==============================================================================
 log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
+
+# Collecte des informations pour le récapitulatif
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+# Détection du type de certificat
+CERT_TYPE="auto-signé"
+SSL_STATUS="${YELLOW}⚠️  Auto-signé${NC}"
+if [[ -f "certbot/conf/live/${DOMAIN}/fullchain.pem" ]]; then
+    if openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout -issuer 2>/dev/null | grep -q "Let's Encrypt"; then
+        CERT_TYPE="Let's Encrypt"
+        SSL_STATUS="${GREEN}✅ Let's Encrypt${NC}"
+    fi
+fi
+
+# Récupération des identifiants depuis .env
+DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
+
+# Détection statut backups (vérification cron ou script)
+BACKUP_STATUS="${YELLOW}⚠️  Non configuré${NC}"
+if crontab -l 2>/dev/null | grep -q "backup"; then
+    BACKUP_STATUS="${GREEN}✅ Actif (cron)${NC}"
+elif [[ -f "./scripts/backup.sh" ]]; then
+    BACKUP_STATUS="${YELLOW}⚙️  Script disponible${NC}"
+fi
+
+# Affichage du rapport
+clear
 echo -e "
-${BOLD}Accès Disponibles :${NC}
--------------------
-🏠 Dashboard  : http://$(hostname -I | awk '{print $1}'):3000
-⚙️  API        : http://$(hostname -I | awk '{print $1}'):8000/docs
-📊 Grafana    : http://$(hostname -I | awk '{print $1}'):3001 (admin/admin)
+${BOLD}╔═══════════════════════════════════════════════════════════════════════════╗${NC}
+${BOLD}║                                                                           ║${NC}
+${BOLD}║               🎉  DÉPLOIEMENT RÉUSSI - RASPBERRY PI 4                     ║${NC}
+${BOLD}║                                                                           ║${NC}
+${BOLD}╚═══════════════════════════════════════════════════════════════════════════╝${NC}
 
-${BOLD}Maintenance :${NC}
--------------
-Logs          : docker compose -f $COMPOSE_FILE logs -f
-Arrêt         : docker compose -f $COMPOSE_FILE down
-Mise à jour   : git pull && ./setup.sh
+${BOLD}${BLUE}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${BLUE}│                      RÉCAPITULATIF DE CONFIGURATION                     │${NC}
+${BOLD}${BLUE}└─────────────────────────────────────────────────────────────────────────┘${NC}
 
-${GREEN}Le système est stable et opérationnel.${NC}
+  ${BOLD}URL d'accès${NC}            : ${GREEN}https://${DOMAIN}${NC}
+  ${BOLD}URL locale${NC}             : http://${LOCAL_IP}:3000
+
+  ${BOLD}Login Dashboard${NC}        : ${GREEN}${DASHBOARD_USER}${NC}
+  ${BOLD}Mot de passe${NC}           : ${DIM}(Configuré dans .env)${NC}
+
+  ${BOLD}Statut SSL${NC}             : ${SSL_STATUS}
+  ${BOLD}Domaine${NC}                : ${DOMAIN}
+
+  ${BOLD}Statut Backups${NC}         : ${BACKUP_STATUS}
+  ${BOLD}Base de données${NC}        : SQLite (./data/linkedin.db)
+
+${BOLD}${BLUE}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${BLUE}│                          SERVICES DISPONIBLES                           │${NC}
+${BOLD}${BLUE}└─────────────────────────────────────────────────────────────────────────┘${NC}
+
+  🌐  ${BOLD}Dashboard${NC}           : https://${DOMAIN}
+  ⚙️   ${BOLD}API FastAPI${NC}        : http://${LOCAL_IP}:8000/docs
+  📊  ${BOLD}Grafana${NC}             : http://${LOCAL_IP}:3001 ${DIM}(admin/admin)${NC}
+"
+
+# Avertissement certificat auto-signé
+if [[ "$CERT_TYPE" == "auto-signé" ]]; then
+    echo -e "
+${BOLD}${YELLOW}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${YELLOW}│                     ⚠️  CERTIFICAT AUTO-SIGNÉ ACTIF                     │${NC}
+${BOLD}${YELLOW}└─────────────────────────────────────────────────────────────────────────┘${NC}
+
+  ${YELLOW}Le navigateur affichera un avertissement de sécurité.${NC}
+
+  ${BOLD}Pour obtenir un certificat Let's Encrypt approuvé :${NC}
+
+  ${BLUE}1.${NC} Configurez votre DNS : ${DOMAIN} → IP publique
+  ${BLUE}2.${NC} Ouvrez le port 80 sur votre box/firewall
+  ${BLUE}3.${NC} Exécutez : ${GREEN}./scripts/setup_letsencrypt.sh${NC}
+
+  ${DIM}Note: Le certificat auto-signé permet un démarrage immédiat avec HTTPS.${NC}
+"
+fi
+
+# Commandes utiles pour les logs
+echo -e "
+${BOLD}${BLUE}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${BLUE}│                        COMMANDES UTILES - LOGS                          │${NC}
+${BOLD}${BLUE}└─────────────────────────────────────────────────────────────────────────┘${NC}
+
+  ${BOLD}Logs en temps réel (tous les services)${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f
+
+  ${BOLD}Logs d'un service spécifique${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f dashboard
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f api
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f bot-worker
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f nginx
+
+  ${BOLD}Dernières 100 lignes de logs${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs --tail=100
+
+  ${BOLD}Logs avec timestamps${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE logs -f --timestamps
+
+  ${BOLD}État des conteneurs${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE ps
+
+${BOLD}${BLUE}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${BLUE}│                          COMMANDES MAINTENANCE                          │${NC}
+${BOLD}${BLUE}└─────────────────────────────────────────────────────────────────────────┘${NC}
+
+  ${BOLD}Arrêter les services${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE down
+
+  ${BOLD}Redémarrer les services${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE restart
+
+  ${BOLD}Redémarrer un service spécifique${NC}
+  ${GREEN}→${NC} docker compose -f $COMPOSE_FILE restart nginx
+
+  ${BOLD}Mise à jour du projet${NC}
+  ${GREEN}→${NC} git pull && ./setup.sh
+
+  ${BOLD}Obtenir certificat Let's Encrypt${NC}
+  ${GREEN}→${NC} ./scripts/setup_letsencrypt.sh
+
+  ${BOLD}Backup de la base de données${NC}
+  ${GREEN}→${NC} cp ./data/linkedin.db ./data/linkedin.db.backup.\$(date +%Y%m%d)
+
+${BOLD}${BLUE}┌─────────────────────────────────────────────────────────────────────────┐${NC}
+${BOLD}${BLUE}│                         FICHIERS IMPORTANTS                             │${NC}
+${BOLD}${BLUE}└─────────────────────────────────────────────────────────────────────────┘${NC}
+
+  ${BOLD}Configuration${NC}      : .env
+  ${BOLD}Base de données${NC}    : ./data/linkedin.db
+  ${BOLD}Logs applicatifs${NC}  : ./logs/
+  ${BOLD}Certificats SSL${NC}   : ./certbot/conf/live/${DOMAIN}/
+  ${BOLD}Messages${NC}           : ./data/messages.txt
+
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${GREEN}✨ Système opérationnel et sécurisé avec HTTPS${NC}
+${GREEN}🚀 Accédez au dashboard : ${BOLD}https://${DOMAIN}${NC}
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 "
