@@ -13,6 +13,12 @@
 # - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
 # - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
 # - Verification: ./scripts/verify_rpi_docker.sh
+#
+# IMPORTANT - Limites de ressources:
+# Les limites mémoire (memory) ont été retirées car le kernel Raspberry Pi
+# ne supporte pas les capacités cgroup memory limit. Seules les limites CPU
+# sont conservées. Cela élimine les avertissements "kernel does not support
+# memory limit capabilities or the cgroup is not mounted".
 
 services:
   # ========================================
@@ -40,10 +46,8 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 300M
         reservations:
           cpus: '0.25'
-          memory: 200M
     logging:
       driver: json-file
       options:
@@ -82,10 +86,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 100M
           cpus: '0.5'
         reservations:
-          memory: 50M
           cpus: '0.25'
     logging:
       driver: json-file
@@ -143,9 +145,6 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 500M
-        reservations:
-          memory: 200M
     restart: unless-stopped
     healthcheck:
       # CRASH PROOF: Use Python healthcheck instead of curl for robustness
@@ -194,11 +193,8 @@ services:
       resources:
         limits:
           cpus: '1.5'
-          memory: 1800M  # Increased to support 1024MB browser heap + Python/Playwright overhead
         reservations:
           cpus: '0.5'
-          memory: 512M
-    memswap_limit: 2000M  # Increased swap limit to match new memory requirements
     logging:
       driver: json-file
       options:
@@ -230,7 +226,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 400M    # Optimisé après suppression de Chromium
           cpus: '2.0'
     logging:
       driver: json-file
@@ -329,7 +324,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 200M
+          cpus: '1.0'
     restart: unless-stopped
     networks:
       - linkedin-network
@@ -351,7 +346,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 150M
+          cpus: '0.5'
     restart: unless-stopped
     networks:
       - linkedin-network
@@ -368,7 +363,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 50M
+          cpus: '0.25'
     networks:
       - linkedin-network
 
