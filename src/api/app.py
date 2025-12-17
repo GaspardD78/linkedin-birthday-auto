@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from prometheus_client import make_asgi_app
+import redis
 
 from src.api.security import verify_api_key, API_KEY_NAME
 from src.core.database import get_database
@@ -72,6 +73,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
         # Do not exit immediately, allowing the dashboard to see the error via /health
+
+    # Vérification Redis avec retry logic
+    redis_host = os.getenv("REDIS_HOST", "redis-bot")
+    redis_port = int(os.getenv("REDIS_PORT", 6379))
+    max_retries = 10
+    logger.info(f"Attempting to connect to Redis at {redis_host}:{redis_port}...")
+
+    for attempt in range(max_retries):
+        try:
+            redis_conn = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                socket_connect_timeout=2,
+                socket_timeout=2
+            )
+            redis_conn.ping()
+            logger.info(f"✅ Redis connection verified at {redis_host}:{redis_port}")
+            break
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+            if attempt == max_retries - 1:
+                logger.error(f"❌ Failed to connect to Redis after {max_retries} attempts: {e}")
+                logger.warning("⚠️ API will start but Redis-dependent endpoints may fail")
+            else:
+                wait_time = 2 ** attempt
+                logger.warning(f"Redis connection attempt {attempt + 1}/{max_retries} failed, retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+        except Exception as e:
+            logger.error(f"Unexpected error during Redis connection: {e}")
+            break
 
     # Log registered routes
     logger.info("✅ Registered Routes:")

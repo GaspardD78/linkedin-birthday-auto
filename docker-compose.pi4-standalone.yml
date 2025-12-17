@@ -113,8 +113,12 @@ services:
     container_name: bot-api
     ports:
     - "8000:8000"
+    depends_on:
+      redis-bot:
+        condition: service_healthy
     command: >
-      sh -c "pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
+      sh -c "pip install -r /app/requirements.txt &&
+      pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
       uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
     # Enable privileged mode to allow systemctl commands
     privileged: true
@@ -154,8 +158,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read())"]
       interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 120s
+      retries: 15
+      start_period: 180s
     networks:
     - linkedin-network
 
@@ -165,12 +169,13 @@ services:
   bot-worker:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-worker
-    command: >
-      sh -c "pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
-      python -m src.queue.worker"
     depends_on:
       redis-bot:
         condition: service_healthy
+    command: >
+      sh -c "pip install -r /app/requirements.txt &&
+      pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
+      python -m src.queue.worker"
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
@@ -209,7 +214,7 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 60s
     networks:
     - linkedin-network
 
