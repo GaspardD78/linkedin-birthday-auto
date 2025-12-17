@@ -6,6 +6,7 @@ from rq import Queue
 from rq.job import Job
 from rq.registry import StartedJobRegistry
 import os
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from src.api.security import verify_api_key
 from src.utils.logging import get_logger
 
@@ -51,15 +52,32 @@ class BotStatusResponse(BaseModel):
     queued_jobs: List[JobStatus]
     worker_status: str
 
+# Helper function with retry logic for Redis operations
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+    reraise=True
+)
+def get_redis_job_ids(connection):
+    """Get job IDs from Redis with retry logic."""
+    registry = StartedJobRegistry("linkedin-bot", connection=connection)
+    started_ids = registry.get_job_ids()
+    queue = Queue("linkedin-bot", connection=connection)
+    queued_ids = queue.job_ids
+    return started_ids, queued_ids
+
 @router.get("/status", response_model=BotStatusResponse)
 async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
     """Get granular status of all bots."""
     if not redis_conn:
         raise HTTPException(status_code=503, detail="Redis not available")
 
-    registry = StartedJobRegistry("linkedin-bot", connection=redis_conn)
-    started_ids = registry.get_job_ids()
-    queued_ids = job_queue.job_ids
+    try:
+        started_ids, queued_ids = get_redis_job_ids(redis_conn)
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Redis connection failed after retries: {e}")
+        raise HTTPException(status_code=503, detail="Redis service temporarily unavailable")
 
     active_jobs = []
     queued_jobs = []
