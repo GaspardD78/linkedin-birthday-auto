@@ -30,8 +30,8 @@
 # ║    - AVANT: ${HASHED_PASS//$/\$\$} ne produit pas $$ mais \$             ║
 # ║    - FIX: Utilisation de sed pour échappement fiable                     ║
 # ║                                                                          ║
-# ║ 5. [SÉCURITÉ] Mot de passe affiché en clair dans rapport                 ║
-# ║    - FIX: Afficher uniquement les 2 premiers caractères + étoiles        ║
+# ║ 5. [UX] Mot de passe visible dans rapport final                          ║
+# ║    - Affiché en clair avec indication "Copiez-le!" pour l'utilisateur    ║
 # ║                                                                          ║
 # ║ 6. [PERF] Pas de nettoyage disque intelligent                            ║
 # ║    - SD 32GB saturée rapidement par images Docker                        ║
@@ -108,16 +108,6 @@ get_disk_usage_percent() {
     df -h . | awk 'NR==2 {gsub(/%/,"",$5); print $5}'
 }
 
-# Masque un mot de passe pour l'affichage
-mask_password() {
-    local pass="$1"
-    local len=${#pass}
-    if [[ $len -le 2 ]]; then
-        echo "****"
-    else
-        echo "${pass:0:2}$(printf '*%.0s' $(seq 1 $((len-2))))"
-    fi
-}
 
 # Vérifie si l'utilisateur peut utiliser sudo
 check_sudo() {
@@ -663,11 +653,11 @@ SERVICES_STATUS=$(docker compose -f "$COMPOSE_FILE" ps --format "table {{.Servic
 # Utilisateur dashboard (lu depuis .env)
 FINAL_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" | cut -d '=' -f2)
 
-# Mot de passe masqué (si défini pendant ce run)
+# Mot de passe (affiché en clair pour copie)
 if [[ -n "${DASHBOARD_PASS:-}" ]]; then
-    MASKED_PASS=$(mask_password "$DASHBOARD_PASS")
+    DISPLAY_PASS="$DASHBOARD_PASS"
 else
-    MASKED_PASS="(inchangé - voir .env)"
+    DISPLAY_PASS="(inchangé - voir .env)"
 fi
 
 # État SSL
@@ -691,7 +681,7 @@ echo -e "${BLUE}║${NC}    Grafana      : http://${IP_ADDR}:3001 (admin/admin) 
 echo -e "${BLUE}║${NC}                                                                      ${BLUE}║${NC}"
 echo -e "${BLUE}║${NC}  ${BOLD}AUTHENTIFICATION${NC}                                                    ${BLUE}║${NC}"
 echo -e "${BLUE}║${NC}    Utilisateur  : ${FINAL_USER}                                              ${BLUE}║${NC}"
-echo -e "${BLUE}║${NC}    Mot de passe : ${MASKED_PASS}                                    ${BLUE}║${NC}"
+echo -e "${BLUE}║${NC}    Mot de passe : ${YELLOW}${DISPLAY_PASS}${NC} ${DIM}(Copiez-le!)${NC}              ${BLUE}║${NC}"
 echo -e "${BLUE}║${NC}                                                                      ${BLUE}║${NC}"
 echo -e "${BLUE}║${NC}  ${BOLD}SÉCURITÉ${NC}                                                            ${BLUE}║${NC}"
 echo -e "${BLUE}║${NC}    SSL (HTTPS)  : $SSL_STATUS                                        ${BLUE}║${NC}"
