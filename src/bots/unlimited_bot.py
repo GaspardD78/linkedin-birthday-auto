@@ -6,14 +6,14 @@ sans limite hebdomadaire (utilise seulement des délais entre messages).
 Refactorisé pour hériter directement de BirthdayBot et garantir l'harmonisation du code.
 """
 
-import logging
 from datetime import datetime
 from typing import Any
 
 from ..bots.birthday_bot import BirthdayBot
 from ..core.database import get_database
+from ..utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UnlimitedBirthdayBot(BirthdayBot):

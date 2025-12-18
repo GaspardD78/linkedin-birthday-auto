@@ -139,18 +139,18 @@ def generate_new_key() -> str:
 
 if __name__ == "__main__":
     # Test du module
-    print("🔐 Encryption Module Test")
-    print("=" * 50)
+    logger.info("🔐 Encryption Module Test")
+    logger.info("=" * 50)
 
     # Générer une nouvelle clé
     new_key = generate_new_key()
-    print(f"\n✅ New encryption key generated:")
-    print(f"AUTH_ENCRYPTION_KEY={new_key}")
-    print(f"\n⚠️  Add this to your .env file!")
+    logger.info(f"\n✅ New encryption key generated:")
+    logger.info(f"AUTH_ENCRYPTION_KEY={new_key}")
+    logger.warning(f"\n⚠️  Add this to your .env file!")
 
     # Test chiffrement/déchiffrement
-    print("\n" + "=" * 50)
-    print("Testing encryption/decryption...")
+    logger.info("\n" + "=" * 50)
+    logger.info("Testing encryption/decryption...")
 
     test_data = {
         "cookies": [
@@ -163,19 +163,19 @@ if __name__ == "__main__":
     try:
         # Chiffrer
         encrypted = encrypt_json(test_data)
-        print(f"✅ Encrypted (first 50 chars): {encrypted[:50]}...")
+        logger.info(f"✅ Encrypted (first 50 chars): {encrypted[:50]}...")
 
         # Déchiffrer
         decrypted = decrypt_json(encrypted)
-        print(f"✅ Decrypted successfully")
-        print(f"   Cookies count: {len(decrypted.get('cookies', []))}")
+        logger.info(f"✅ Decrypted successfully")
+        logger.info(f"   Cookies count: {len(decrypted.get('cookies', []))}")
 
         # Vérifier intégrité
         assert decrypted == test_data, "Data mismatch!"
-        print(f"✅ Data integrity verified")
+        logger.info(f"✅ Data integrity verified")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error(f"❌ Error: {e}")
 
-    print("\n" + "=" * 50)
-    print("✅ All tests passed!")
+    logger.info("\n" + "=" * 50)
+    logger.info("✅ All tests passed!")
