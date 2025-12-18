@@ -3,6 +3,7 @@ Gestionnaire d'authentification LinkedIn.
 
 Ce module gère le chargement, la validation et la persistance de l'état
 d'authentification LinkedIn depuis différentes sources.
+Utilise le chiffrement AES pour protéger les cookies LinkedIn.
 """
 
 import base64
@@ -17,6 +18,7 @@ import requests
 from ..config.config_manager import get_config
 from ..config.config_schema import AuthConfig
 from ..utils.exceptions import AuthenticationError, InvalidAuthStateError
+from ..utils.encryption import encrypt_json, decrypt_json
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +388,7 @@ class AuthManager:
 
     def _write_auth_to_file(self, auth_data: dict) -> str:
         """
-        Écrit l'auth state dans un fichier temporaire.
+        Écrit l'auth state chiffré dans un fichier sécurisé.
 
         Args:
             auth_data: Données d'authentification (dict)
@@ -395,7 +397,7 @@ class AuthManager:
             Chemin vers le fichier créé
 
         Raises:
-            AuthenticationError: Si l'écriture échoue
+            AuthenticationError: Si l'écriture ou le chiffrement échoue
         """
         try:
             auth_file = Path(self.config.auth_file_path)
@@ -403,21 +405,46 @@ class AuthManager:
             # Nettoyage automatique des cookies expirés avant sauvegarde
             cleaned_auth_data = self._clean_expired_cookies(auth_data)
 
-            # Écrire le fichier
+            # ✅ CHIFFREMENT : Chiffrer les données sensibles avant écriture
+            try:
+                encrypted_data = encrypt_json(cleaned_auth_data)
+                logger.debug("Auth data encrypted successfully")
+            except Exception as e:
+                logger.error(f"Encryption failed: {e}")
+                raise AuthenticationError(f"Failed to encrypt auth data: {e}")
+
+            # Encapsuler dans un wrapper avec métadonnées
+            encrypted_wrapper = {
+                "version": "1.0",
+                "encrypted": True,
+                "algorithm": "Fernet-AES128-CBC",
+                "data": encrypted_data
+            }
+
+            # Écrire le fichier chiffré
             with open(auth_file, "w", encoding="utf-8") as f:
-                json.dump(cleaned_auth_data, f, indent=2)
+                json.dump(encrypted_wrapper, f, indent=2)
+
+            # ✅ Permissions strictes (lecture/écriture owner uniquement)
+            try:
+                os.chmod(auth_file, 0o600)
+                logger.debug(f"File permissions set to 0600 (owner only)")
+            except Exception as e:
+                logger.warning(f"Failed to set 0600 permissions: {e}")
 
             self._temp_auth_file = auth_file
-            logger.info(f"Auth state written to: {auth_file}")
+            logger.info(f"✅ Encrypted auth state written to: {auth_file}")
             return str(auth_file)
 
+        except AuthenticationError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to write auth state to file: {e}", exc_info=True)
+            logger.error(f"Failed to write encrypted auth state: {e}", exc_info=True)
             raise AuthenticationError(f"Failed to write auth state: {e}")
 
     def _validate_auth_file(self, auth_file: Path) -> bool:
         """
-        Valide un fichier auth state.
+        Valide un fichier auth state (chiffré ou non chiffré).
 
         Args:
             auth_file: Chemin vers le fichier à valider
@@ -425,16 +452,31 @@ class AuthManager:
         Returns:
             True si valide, False sinon
 
-        Un auth state valide doit contenir au minimum :
-        - Un tableau "cookies" non vide
-        - Des propriétés "origins" (optionnel mais recommandé)
-        - Des cookies non expirés (ou sans date d'expiration)
+        Note:
+            Supporte les formats chiffrés (v1.0+) et non chiffrés (legacy).
+            Un auth state valide doit contenir :
+            - Un tableau "cookies" non vide
+            - Au moins un cookie LinkedIn valide
         """
         try:
             with open(auth_file, encoding="utf-8") as f:
-                auth_data = json.load(f)
+                file_data = json.load(f)
 
-            # Vérifier la structure minimale
+            # ✅ Détecter et déchiffrer si fichier chiffré
+            if isinstance(file_data, dict) and file_data.get("encrypted"):
+                logger.debug(f"Detected encrypted auth file (version {file_data.get('version', 'unknown')})")
+                try:
+                    auth_data = decrypt_json(file_data["data"])
+                    logger.debug("Auth file decrypted successfully")
+                except Exception as e:
+                    logger.error(f"Failed to decrypt auth file: {e}")
+                    return False
+            else:
+                # Format non chiffré (legacy ou depuis .env)
+                logger.debug("Auth file is not encrypted (legacy format)")
+                auth_data = file_data
+
+            # Validation standard de la structure
             if not isinstance(auth_data, dict):
                 logger.warning(f"Auth state is not a dict: {type(auth_data)}")
                 return False

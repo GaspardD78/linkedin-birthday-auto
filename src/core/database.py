@@ -180,10 +180,21 @@ class Database:
                 conn.commit()
 
         except Exception as e:
-            # En cas d'erreur, on rollback tout, peu importe la profondeur
-            self._local.transaction_depth = 0 # Reset forcé
-            conn.rollback()
-            logger.error(f"Database transaction failed (rolled back): {e}")
+            # ✅ Décrémenter proprement même en cas d'erreur (pas de reset forcé)
+            self._local.transaction_depth -= 1
+
+            # Rollback UNIQUEMENT si on est au niveau racine (depth = 0)
+            if self._local.transaction_depth == 0:
+                conn.rollback()
+                logger.error(f"Database transaction failed (rolled back): {e}")
+            else:
+                # Transaction imbriquée : propager l'erreur sans rollback
+                # Le rollback sera géré par l'appelant parent
+                logger.warning(
+                    f"Nested transaction failed at depth {self._local.transaction_depth + 1}. "
+                    "Error propagated to parent transaction."
+                )
+
             raise e
 
     def close(self):
