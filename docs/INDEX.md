@@ -1,13 +1,29 @@
 # 📚 Documentation Index - LinkedIn Auto RPi4
 
 **Last Updated:** 2025-12-18
-**Version:** v1.1 (Complete Restructure)
+**Version:** v1.2 (Security Audit Applied)
 
 ---
 
-## 📢 Important Note
+## 🔴 ⚠️ CRITICAL UPDATES - Read First!
 
-**2025-12-18:** Documentation was consolidated into a single authoritative source. See **[DOCUMENTATION_CONSOLIDATION.md](../DOCUMENTATION_CONSOLIDATION.md)** for details. Obsolete docs have been archived in **[_ARCHIVE_2025/](../_ARCHIVE_2025/)**
+**2025-12-18 - BREAKING CHANGES APPLIED:**
+
+### New Mandatory Requirements
+- ✅ **AUTH_ENCRYPTION_KEY** - Now REQUIRED (was optional/fallback)
+- ✅ **JWT_SECRET** - Now REQUIRED and validated (min 32 chars)
+- ✅ **Docker healthchecks** - Now test real dependencies (not fake)
+- ✅ **Startup time** - Improved by 75% (pip install removed)
+
+**👉 BEFORE DEPLOYING**, read: **[SECURITY_REQUIREMENTS_2025-12-18.md](SECURITY_REQUIREMENTS_2025-12-18.md)**
+
+**For technical details**, see: **[AUDIT_FINDINGS_2025-12-18.md](../AUDIT_FINDINGS_2025-12-18.md)**
+
+---
+
+## 📢 Documentation Consolidation
+
+**Previous Note:** Documentation was consolidated into a single authoritative source. See **[DOCUMENTATION_CONSOLIDATION.md](../DOCUMENTATION_CONSOLIDATION.md)** for details. Obsolete docs have been archived in **[_ARCHIVE_2025/](../_ARCHIVE_2025/)**
 
 ---
 
@@ -32,13 +48,16 @@
 | **[ARCHITECTURE_DETAILS.md](ARCHITECTURE_DETAILS.md)** | Deep dive: All bots, API routes, DB schema | Developers, Architects |
 | **[INDEX.md](INDEX.md)** | This file - navigation guide | Everyone |
 
-### **Audit & Compliance**
+### **Security & Audit**
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| **[AUDIT_REPORT.md](../AUDIT_REPORT.md)** | Performance & security audit | ✅ Recent (2025-12-18) |
-| **[AUDIT_REFACTORING_2025-12-18.md](../AUDIT_REFACTORING_2025-12-18.md)** | Code changes & optimizations | ✅ Applied |
-| **[AUDIT_SECURITE_2025-12-18.md](../AUDIT_SECURITE_2025-12-18.md)** | Security hardening report | ✅ Reviewed |
+| **[SECURITY_REQUIREMENTS_2025-12-18.md](SECURITY_REQUIREMENTS_2025-12-18.md)** | **⚠️ BREAKING CHANGE** - New mandatory secrets & deployment checklist | ✅ **REQUIRED FOR ALL DEPLOYMENTS** |
+| **[AUDIT_FINDINGS_2025-12-18.md](../AUDIT_FINDINGS_2025-12-18.md)** | Comprehensive audit of 12 domains (8 issues found + fixes) | ✅ Recent (2025-12-18) |
+| **[FIXES_IMMEDIATE_2025-12-18.md](../FIXES_IMMEDIATE_2025-12-18.md)** | Step-by-step implementation guide for audit fixes | ✅ Applied |
+| **[AUDIT_REPORT.md](../AUDIT_REPORT.md)** | Performance & security audit | ✅ Reference |
+| **[AUDIT_REFACTORING_2025-12-18.md](../AUDIT_REFACTORING_2025-12-18.md)** | Code changes & optimizations | ✅ Reference |
+| **[AUDIT_SECURITE_2025-12-18.md](../AUDIT_SECURITE_2025-12-18.md)** | Security hardening report | ✅ Reference |
 | **[CONTEXT.md](../CONTEXT.md)** | Project context & history | ℹ️ Reference |
 
 ---
@@ -101,6 +120,7 @@
 - Memory issues: [KNOWLEDGE_BASE_v1.1.md#symptôme-mémoire-full-out-of-memory](KNOWLEDGE_BASE_v1.1.md#symptôme-mémoire-full-out-of-memory)
 
 #### **Security**
+- **⚠️ NEW:** Deployment requirements: [SECURITY_REQUIREMENTS_2025-12-18.md](SECURITY_REQUIREMENTS_2025-12-18.md) (MANDATORY for all deployments)
 - Security standards: [KNOWLEDGE_BASE_v1.1.md#e4---normes-de-sécurité](KNOWLEDGE_BASE_v1.1.md#e4---normes-de-sécurité)
 - Best practices: [README.md#security-best-practices](../README.md#-security-best-practices)
 - Security protocols: [KNOWLEDGE_BASE_v1.1.md#d4---protocole-de-sécurité](KNOWLEDGE_BASE_v1.1.md#d4---protocole-de-sécurité)
