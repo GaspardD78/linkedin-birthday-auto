@@ -128,13 +128,22 @@ app = FastAPI(
 
 # --- Middleware ---
 
-# CORS (Restrictive in production, but open for dashboard on local network)
+# CORS Configuration Sécurisée (Whitelist explicite)
+# Lire les origines autorisées depuis l'environnement
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://192.168.1.50:3000"
+).split(",")
+
+logger.info(f"CORS configured with allowed origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À restreindre en prod si exposé internet
+    allow_origins=ALLOWED_ORIGINS,  # ✅ Origines explicites uniquement
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # ✅ Méthodes spécifiques
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],  # ✅ Headers spécifiques
+    max_age=3600,  # Cache preflight 1h
 )
 
 # Global Exception Handler

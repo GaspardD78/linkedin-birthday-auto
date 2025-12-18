@@ -82,7 +82,7 @@ class BrowserManager:
                 "--disable-software-rasterizer",
                 "--mute-audio",
 
-                # 🚀 OPTIMISATIONS RASPBERRY PI 4 (STABLE)
+                # 🚀 OPTIMISATIONS RASPBERRY PI 4 (MEMORY-SAFE)
                 # Removed --single-process (causes instability and crashes)
                 # Using multi-process with limits instead for better stability
                 "--disable-extensions",
@@ -92,15 +92,18 @@ class BrowserManager:
                 "--disable-plugins",
                 "--disable-default-apps",
                 "--no-first-run",
-                "--memory-pressure-off",
+                # ✅ RETIRÉ: --memory-pressure-off (causait OOM après 30min)
                 "--renderer-process-limit=2",  # Increased from 1 to 2 for better stability
-                "--max-old-space-size=1024",  # Increased from 512MB to 1024MB to prevent crashes
+                "--max-old-space-size=512",  # ✅ Réduit de 1024MB à 512MB (RPi4 safe)
                 "--disable-features=AudioServiceOutOfProcess",  # Prevent audio process spawn
                 "--disable-background-timer-throttling",  # Prevent tab suspension issues
                 "--disable-backgrounding-occluded-windows",
                 "--disable-breakpad",  # Disable crash reporter (saves memory)
                 "--disable-component-extensions-with-background-pages",
-                "--js-flags=--max-old-space-size=1024",  # Ensure V8 has enough memory
+                "--js-flags=--max-old-space-size=512",  # ✅ Cohérent avec ci-dessus
+                # ✅ AJOUT: Forcer garbage collection agressif
+                "--js-flags=--expose-gc",
+                "--enable-aggressive-domstorage-flushing"
             ]
 
             # Custom args from config
@@ -179,97 +182,102 @@ class BrowserManager:
         Ferme TOUTES les ressources du navigateur avec garantie de nettoyage.
 
         Ordre important pour éviter les fuites mémoire :
-        1. Pages individuelles
+        1. Pages individuelles (with hard timeout)
         2. Contexte browser
-        3. Browser
+        3. Browser process (with SIGKILL fallback)
         4. Playwright
 
-        Note: Utilise finally pour garantir le nettoyage même en cas d'erreur.
+        Note: Utilise SIGKILL comme dernier recours si timeout dépassé.
         """
+        import signal
+        import time
+        import subprocess
+        import threading
+
         logger.info("Closing browser resources...")
         errors = []
 
-        # Import for timeout handling
-        import signal
-        from contextlib import contextmanager
+        def force_close_with_timeout(close_fn, resource_name: str, timeout_sec: int = 5):
+            """Exécute close_fn avec timeout. Si timeout, retourne False."""
+            result = {"success": False, "error": None}
 
-        @contextmanager
-        def timeout_context(seconds):
-            """Context manager for timeout operations"""
-            def timeout_handler(signum, frame):
-                raise TimeoutError(f"Operation timed out after {seconds}s")
-
-            # Set alarm (Unix only)
-            if hasattr(signal, 'SIGALRM'):
-                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(seconds)
+            def target():
                 try:
-                    yield
-                finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, old_handler)
-            else:
-                # Windows fallback - no timeout protection
-                yield
+                    close_fn()
+                    result["success"] = True
+                except Exception as e:
+                    result["error"] = str(e)
 
-        # Étape 1: Fermer toutes les pages du contexte (with timeout)
+            thread = threading.Thread(target=target, daemon=True)
+            thread.start()
+            thread.join(timeout=timeout_sec)
+
+            if thread.is_alive():
+                logger.warning(f"{resource_name} close timed out after {timeout_sec}s")
+                return False
+
+            if result["error"] and "has been closed" not in result["error"]:
+                errors.append(f"{resource_name}: {result['error']}")
+
+            return result["success"]
+
+        # Étape 1: Fermer toutes les pages (timeout 3s par page)
         if self.context:
             try:
-                with timeout_context(5):
-                    for page in self.context.pages:
-                        try:
-                            page.close()
-                        except Exception as e:
-                            errors.append(f"Page close: {e}")
-            except TimeoutError:
-                logger.warning("Page closing timed out (5s), forcing cleanup")
+                pages = self.context.pages
+                for i, page in enumerate(pages):
+                    logger.debug(f"Closing page {i+1}/{len(pages)}...")
+                    force_close_with_timeout(page.close, f"Page {i+1}", timeout_sec=3)
             except Exception as e:
                 errors.append(f"Pages enumeration: {e}")
 
-        # Étape 2: Fermer le contexte (with timeout)
+        # Étape 2: Fermer le contexte (timeout 5s)
         if self.context:
-            try:
-                with timeout_context(5):
-                    self.context.close()
-            except TimeoutError:
-                logger.warning("Context closing timed out (5s), forcing cleanup")
-            except Exception as e:
-                # Ignore "Target page, context or browser has been closed" as it means job done
-                if "Target page, context or browser has been closed" not in str(e) and "has been closed" not in str(e):
-                    errors.append(f"Context close: {e}")
-            finally:
-                self.context = None
+            force_close_with_timeout(self.context.close, "Context", timeout_sec=5)
+            self.context = None
 
-        # Étape 3: Fermer le browser (with timeout)
+        # Étape 3: Fermer le browser (timeout 5s, puis SIGKILL)
         if self.browser:
-            try:
-                with timeout_context(5):
-                    self.browser.close()
-            except TimeoutError:
-                logger.warning("Browser closing timed out (5s), forcing cleanup")
-            except Exception as e:
-                if "has been closed" not in str(e):
-                    errors.append(f"Browser close: {e}")
-            finally:
-                self.browser = None
+            success = force_close_with_timeout(self.browser.close, "Browser", timeout_sec=5)
 
-        # Étape 4: Arrêter Playwright (with timeout)
+            if not success:
+                # ✅ Dernier recours : SIGKILL du process Chromium
+                logger.warning("Browser did not close gracefully. Attempting SIGKILL...")
+                try:
+                    # Trouver tous les process chromium
+                    result = subprocess.run(
+                        ["pgrep", "-f", "chromium"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+
+                    if result.returncode == 0:
+                        pids = result.stdout.strip().split("\n")
+                        for pid in pids:
+                            if pid:
+                                try:
+                                    os.kill(int(pid), signal.SIGKILL)
+                                    logger.info(f"Killed chromium process PID {pid}")
+                                except ProcessLookupError:
+                                    pass  # Already dead
+                                except Exception as e:
+                                    logger.warning(f"Failed to kill PID {pid}: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to SIGKILL chromium: {e}")
+
+            self.browser = None
+
+        # Étape 4: Arrêter Playwright (timeout 5s)
         if self.playwright:
-            try:
-                with timeout_context(5):
-                    self.playwright.stop()
-            except TimeoutError:
-                logger.warning("Playwright stop timed out (5s), forcing cleanup")
-            except Exception as e:
-                errors.append(f"Playwright stop: {e}")
-            finally:
-                self.playwright = None
+            force_close_with_timeout(self.playwright.stop, "Playwright", timeout_sec=5)
+            self.playwright = None
 
         # Logger les erreurs APRÈS le nettoyage complet
         if errors:
             logger.warning(f"Cleanup completed with warnings: {', '.join(errors)}")
         else:
-            logger.info("Browser resources closed successfully")
+            logger.info("✅ Browser resources closed successfully")
 
     def take_screenshot(self, name: str) -> None:
         """Prend une capture d'écran de la page active."""
