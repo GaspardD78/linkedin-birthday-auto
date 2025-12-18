@@ -8,7 +8,6 @@ Utilise le chiffrement AES pour protéger les cookies LinkedIn.
 
 import base64
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Optional, Dict
@@ -19,8 +18,9 @@ from ..config.config_manager import get_config
 from ..config.config_schema import AuthConfig
 from ..utils.exceptions import AuthenticationError, InvalidAuthStateError
 from ..utils.encryption import encrypt_json, decrypt_json
+from ..utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def normalize_same_site(value) -> str:

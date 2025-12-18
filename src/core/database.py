@@ -14,15 +14,15 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from functools import wraps
 import json
-import logging
 import os
 import sqlite3
 import threading
 import time
 from typing import Any, Optional, Counter
 
-# Configure logging
-logger = logging.getLogger(__name__)
+from ..utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def retry_on_lock(max_retries=5, delay=0.2):

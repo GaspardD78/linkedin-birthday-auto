@@ -193,6 +193,74 @@ EOF
     log_info "  → vm.swappiness=10 (Optimisation SD card)"
 }
 
+# [FIX-ZRAM] Configuration ZRAM (Swap Compressé en RAM)
+configure_zram() {
+    log_info "Configuration ZRAM (Swap compressé en RAM)..."
+
+    # Vérifier si ZRAM est déjà configuré
+    if lsblk | grep -q "zram0"; then
+        log_info "ZRAM déjà configuré et actif"
+        return 0
+    fi
+
+    # Vérifier si le module zram est disponible
+    if ! modprobe zram 2>/dev/null; then
+        log_warn "Module ZRAM non disponible sur ce système. Skip."
+        return 0
+    fi
+
+    check_sudo
+
+    # Configuration ZRAM: 1GB compressé (ratio ~3x = 3GB effectifs)
+    local ZRAM_SIZE="1G"
+    local ZRAM_DEVICE="/dev/zram0"
+
+    log_info "Création de ${ZRAM_SIZE} ZRAM (compression lz4)..."
+
+    # Charger le module avec 1 device
+    sudo modprobe zram num_devices=1
+
+    # Configurer la compression (lz4 = rapide, bon ratio)
+    echo lz4 | sudo tee /sys/block/zram0/comp_algorithm > /dev/null
+
+    # Définir la taille
+    echo "$ZRAM_SIZE" | sudo tee /sys/block/zram0/disksize > /dev/null
+
+    # Activer comme swap
+    sudo mkswap "$ZRAM_DEVICE"
+    sudo swapon -p 10 "$ZRAM_DEVICE"  # Priorité 10 (plus élevée que swap fichier)
+
+    # Rendre persistant au redémarrage
+    if ! grep -q "zram" /etc/modules 2>/dev/null; then
+        echo "zram" | sudo tee -a /etc/modules > /dev/null
+    fi
+
+    # Créer script de démarrage systemd si nécessaire
+    local ZRAM_SERVICE="/etc/systemd/system/zram-swap.service"
+    if [[ ! -f "$ZRAM_SERVICE" ]]; then
+        sudo tee "$ZRAM_SERVICE" > /dev/null <<'EOF'
+[Unit]
+Description=ZRAM Compressed Swap
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'modprobe zram num_devices=1 && echo lz4 > /sys/block/zram0/comp_algorithm && echo 1G > /sys/block/zram0/disksize && mkswap /dev/zram0 && swapon -p 10 /dev/zram0'
+ExecStop=/bin/sh -c 'swapoff /dev/zram0 && rmmod zram'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable zram-swap.service
+    fi
+
+    log_success "ZRAM activé (1GB → ~3GB effectifs avec compression)"
+    log_info "  → Priorité: 10 (plus élevée que swap fichier)"
+    log_info "  → Algorithme: lz4 (rapide)"
+}
+
 docker_pull_with_retry() {
     local compose_file="$1"
     local max_retries=4
@@ -279,6 +347,10 @@ configure_docker_ipv4
 # 1.2.2 [FIX-A] Configuration kernel (vm.overcommit_memory, somaxconn, swappiness)
 # Ces paramètres doivent être sur l'HÔTE, pas dans les conteneurs Docker
 configure_kernel_params
+
+# 1.2.3 [FIX-ZRAM] Configuration ZRAM (Swap compressé en RAM)
+# ZRAM doit être configuré AVANT le swap fichier pour priorité maximale
+configure_zram
 
 # 1.3 Mémoire & Swap (CRITIQUE RPi4)
 TOTAL_MEM=$(get_total_memory_gb)
@@ -619,6 +691,16 @@ wait_for_service "api" "http://localhost:8000/health" || { log_error "L'API ne r
 
 # 2. Dashboard (Plus long)
 wait_for_service "dashboard" "http://localhost:3000/api/system/health" || { log_error "Le Dashboard ne répond pas."; exit 1; }
+
+# ==============================================================================
+# PHASE 6.5 : CLEANUP CHROMIUM ZOMBIES (RASPBERRY PI 4)
+# ==============================================================================
+log_info "Nettoyage des processus Chromium orphelins (si présents)..."
+if [[ -x "./scripts/cleanup_chromium_zombies.sh" ]]; then
+    ./scripts/cleanup_chromium_zombies.sh 2>/dev/null || log_warn "Cleanup script terminé avec avertissements"
+else
+    log_warn "Script cleanup non trouvé. Skip."
+fi
 
 # ==============================================================================
 # RAPPORT FINAL

@@ -1,15 +1,21 @@
+# ==============================================================================
 # Dockerfile optimisé pour Raspberry Pi 4 (ARM64)
+# Optimisations : Memory, Storage, Garbage Collection
+# ==============================================================================
 FROM python:3.11-slim-bookworm
 
 ARG TARGETPLATFORM
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    # 🚀 RPi4 MEMORY OPTIMIZATIONS
+    MALLOC_ARENA_MAX=2 \
+    PYTHONHASHSEED=0
 
 WORKDIR /app
 
-# Installation des dépendances système minimales
+# Installation des dépendances système minimales avec cleanup agressif
 # Ajout de gcc et autres outils de build pour compiler certaines libs Python (psutil, cryptography) sur ARM
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -21,17 +27,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libdbus-1-3 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
     libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    && rm -rf /var/lib/apt/lists/*
+    # 🚀 CLEANUP AGRESSIF - Réduire taille de l'image
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
 # Copie et installation des requirements Python
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    # 🚀 CLEANUP: Supprimer les caches pip résiduels
+    rm -rf /root/.cache/pip
 
 # Installation des navigateurs Playwright (Chromium uniquement pour économiser espace)
 RUN playwright install chromium && \
     playwright install-deps chromium && \
-    rm -rf /var/lib/apt/lists/*
+    # 🚀 CLEANUP PLAYWRIGHT: Supprimer fichiers inutiles après install
+    rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /root/.cache/* \
+    && find /ms-playwright -type f -name "*.log" -delete \
+    && find /ms-playwright -type f -name "*.json" -size +1M -delete
 
 # Utilisation de l'utilisateur avec UID/GID 1000 (compatible dashboard pour SQLite partagé)
 # Crée l'utilisateur appuser avec UID/GID 1000, ou utilise celui existant si présent
