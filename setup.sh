@@ -255,6 +255,76 @@ get_total_memory_gb() {
 }
 
 # ==============================================================================
+# PHASE 0.5 : CONFIGURATION ZRAM (OPTIMISATION MÉMOIRE RPi4)
+# ==============================================================================
+log_step "PHASE 0.5 : Configuration ZRAM (Compression RAM)"
+
+configure_zram() {
+    # ZRAM compresse la RAM au lieu d'utiliser le SWAP sur SD (plus rapide, préserve la carte)
+    local ZRAM_SIZE_MB=1024  # 1GB de ZRAM compressé (~2GB effectif avec lz4)
+
+    # Vérifier si ZRAM est déjà configuré
+    if [[ -e /dev/zram0 ]] && swapon --show | grep -q zram; then
+        log_info "ZRAM déjà actif."
+        return 0
+    fi
+
+    log_info "Configuration de ZRAM (1GB compressé)..."
+    check_sudo
+
+    # Charger le module ZRAM
+    if ! lsmod | grep -q zram; then
+        sudo modprobe zram num_devices=1
+    fi
+
+    # Configurer la taille et l'algorithme
+    if [[ -e /sys/block/zram0 ]]; then
+        # Désactiver si déjà actif
+        sudo swapoff /dev/zram0 2>/dev/null || true
+
+        # Configurer l'algorithme de compression (lz4 = rapide, bon ratio)
+        echo lz4 | sudo tee /sys/block/zram0/comp_algorithm > /dev/null 2>&1 || true
+
+        # Définir la taille (1GB)
+        echo "${ZRAM_SIZE_MB}M" | sudo tee /sys/block/zram0/disksize > /dev/null
+
+        # Formater et activer avec priorité haute (avant SWAP fichier)
+        sudo mkswap /dev/zram0
+        sudo swapon -p 100 /dev/zram0
+
+        log_success "ZRAM activé: ${ZRAM_SIZE_MB}MB (priorité haute)"
+    else
+        log_warn "ZRAM non disponible sur ce kernel."
+        return 1
+    fi
+
+    # Persister la configuration ZRAM au boot
+    local ZRAM_SERVICE="/etc/systemd/system/zram-swap.service"
+    if [[ ! -f "$ZRAM_SERVICE" ]]; then
+        sudo tee "$ZRAM_SERVICE" > /dev/null <<'ZRAM_EOF'
+[Unit]
+Description=Configure ZRAM swap device
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'modprobe zram num_devices=1 && echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null; echo 1024M > /sys/block/zram0/disksize && mkswap /dev/zram0 && swapon -p 100 /dev/zram0'
+ExecStop=/bin/bash -c 'swapoff /dev/zram0 2>/dev/null; echo 1 > /sys/block/zram0/reset'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+ZRAM_EOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable zram-swap.service
+        log_success "Service ZRAM créé et activé au démarrage."
+    fi
+}
+
+# Activer ZRAM en premier (plus rapide que SWAP fichier)
+configure_zram
+
+# ==============================================================================
 # PHASE 1 : PRÉ-REQUIS & SÉCURITÉ SYSTÈME
 # ==============================================================================
 log_step "PHASE 1 : Vérifications Système & Hardware"
@@ -326,12 +396,22 @@ log_step "PHASE 2 : Nettoyage & Préparation Disque"
 # Nettoyage conditionnel pour économiser les cycles d'écriture SD
 DISK_USAGE=$(df -h . | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
 if [[ "$DISK_USAGE" -gt $((100 - DISK_THRESHOLD_PERCENT)) ]]; then
-    log_warn "Espace disque faible (${DISK_USAGE}% utilisé). Nettoyage..."
-    docker image prune -a -f --filter "until=24h"  # Supprime images non utilisées > 24h
-    docker builder prune -f
+    log_warn "Espace disque faible (${DISK_USAGE}% utilisé). Nettoyage AGRESSIF..."
+    # Nettoyage complet : images, containers arrêtés, volumes orphelins, cache
+    docker system prune -a -f --volumes --filter "until=24h"
+    docker builder prune -a -f
+    log_success "Nettoyage agressif terminé."
 else
-    log_info "Espace disque OK (${DISK_USAGE}%). Nettoyage léger (dangling only)."
-    docker image prune -f  # Uniquement les images <none>
+    log_info "Espace disque OK (${DISK_USAGE}%). Nettoyage léger."
+    # Nettoyage léger : images dangling et containers arrêtés
+    docker image prune -f
+    docker container prune -f --filter "until=1h"
+fi
+
+# Nettoyage logs Docker anciens (> 7 jours) pour économiser la SD
+if [[ -d /var/lib/docker/containers ]]; then
+    log_info "Nettoyage des logs Docker anciens..."
+    sudo find /var/lib/docker/containers -name "*.log" -mtime +7 -exec truncate -s 0 {} \; 2>/dev/null || true
 fi
 
 # ==============================================================================

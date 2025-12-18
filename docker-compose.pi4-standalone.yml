@@ -28,9 +28,21 @@
 #         → Utilise Cloudflare (1.1.1.1) et Google (8.8.8.8) comme fallback
 #
 # IMPORTANT - Limites de ressources:
-# Les limites mémoire (memory) ont été retirées car le kernel Raspberry Pi
-# ne supporte pas les capacités cgroup memory limit. Seules les limites CPU
-# sont conservées.
+# Les limites mémoire sont définies ci-dessous. Si elles ne fonctionnent pas,
+# activez cgroup memory dans /boot/cmdline.txt en ajoutant:
+#   cgroup_enable=memory cgroup_memory=1
+# Puis redémarrez le Pi4.
+#
+# Budget mémoire total: ~2.5GB sur 4GB disponibles
+#   - Redis Bot:      256MB
+#   - Redis Dashboard: 64MB
+#   - API:            512MB
+#   - Bot Worker:    1024MB (Playwright)
+#   - Dashboard:      512MB
+#   - Nginx:          64MB
+#   - Prometheus:     128MB
+#   - Grafana:        128MB
+#   - Node-Exporter:   32MB
 
 services:
   # ========================================
@@ -59,8 +71,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 256M
         reservations:
           cpus: '0.25'
+          memory: 128M
     logging:
       driver: json-file
       options:
@@ -100,8 +114,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 64M
         reservations:
           cpus: '0.25'
+          memory: 32M
     logging:
       driver: json-file
       options:
@@ -122,8 +138,13 @@ services:
   api:
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-bot:latest
     container_name: bot-api
-    ports:
-    - "8000:8000"
+    # [SECURITY FIX] Port 8000 uniquement accessible en interne (via nginx ou réseau Docker)
+    # Pour accès externe, utiliser le reverse proxy Nginx sur le port 443
+    expose:
+      - "8000"
+    # Port local uniquement pour debug (commenté par défaut en prod)
+    # ports:
+    # - "127.0.0.1:8000:8000"
     depends_on:
       redis-bot:
         condition: service_healthy
@@ -131,8 +152,9 @@ services:
       sh -c "pip install -r /app/requirements.txt &&
       pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
       uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
-    # Enable privileged mode to allow systemctl commands
-    privileged: true
+    # [SECURITY FIX] Mode privileged RETIRÉ - Risque de sécurité majeur
+    # Si systemctl est nécessaire, utiliser des alternatives sécurisées (API, webhook)
+    # privileged: true  # DÉSACTIVÉ
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
@@ -154,14 +176,18 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - ./data:/app/data
-    # Mount systemd and D-Bus to allow systemctl commands from container
-    - /run/systemd:/run/systemd:ro
-    - /var/run/dbus:/var/run/dbus:ro
-    - /bin/systemctl:/bin/systemctl:ro
+    # [SECURITY FIX] Mounts systemd RETIRÉS (nécessitaient privileged mode)
+    # - /run/systemd:/run/systemd:ro
+    # - /var/run/dbus:/var/run/dbus:ro
+    # - /bin/systemctl:/bin/systemctl:ro
     deploy:
       resources:
         limits:
           cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     restart: unless-stopped
     healthcheck:
       # CRASH PROOF: Use Python healthcheck instead of curl for robustness
@@ -215,8 +241,10 @@ services:
       resources:
         limits:
           cpus: '1.5'
+          memory: 1024M  # Playwright + Chromium nécessitent plus de RAM
         reservations:
           cpus: '0.5'
+          memory: 512M
     logging:
       driver: json-file
       options:
@@ -253,6 +281,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -340,6 +372,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 64M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
     networks:
       - linkedin-network
 
@@ -362,6 +402,10 @@ services:
       resources:
         limits:
           cpus: '1.0'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
     restart: unless-stopped
     networks:
       - linkedin-network
@@ -383,11 +427,16 @@ services:
       - GF_DATABASE_CACHE_MODE=shared
       - GF_DATABASE_QUERY_RETRIES=3
     ports:
-      - "3001:3000"
+      # [SECURITY FIX] Grafana accessible uniquement en local (pas depuis Internet)
+      - "127.0.0.1:3001:3000"
     deploy:
       resources:
         limits:
           cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
     restart: unless-stopped
     # [FIX-D] DNS fiables forcés
     dns:
@@ -409,6 +458,10 @@ services:
       resources:
         limits:
           cpus: '0.25'
+          memory: 32M
+        reservations:
+          cpus: '0.1'
+          memory: 16M
     networks:
       - linkedin-network
 
