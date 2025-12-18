@@ -5,6 +5,12 @@
 
 ---
 
+## 📢 Important Note
+
+**2025-12-18:** Documentation was consolidated into a single authoritative source. See **[DOCUMENTATION_CONSOLIDATION.md](../DOCUMENTATION_CONSOLIDATION.md)** for details. Obsolete docs have been archived in **[_ARCHIVE_2025/](../_ARCHIVE_2025/)**
+
+---
+
 ## 🎯 Start Here
 
 1. **New to the project?** → Start with [README.md](../README.md)
