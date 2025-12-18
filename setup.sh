@@ -365,69 +365,103 @@ chmod -R 775 data logs config
 log_success "Permissions appliquées."
 
 # ==============================================================================
-# PHASE 4.5 : BOOTSTRAP SSL (CERTIFICATS DUMMY)
+# PHASE 4.5 : BOOTSTRAP SSL (MÉCANISME ANTI-CRASH NGINX)
 # ==============================================================================
-log_step "PHASE 4.5 : Préparation SSL"
+log_step "PHASE 4.5 : Bootstrapping SSL & Configuration Nginx"
 
-# Vérifier si les certificats Let's Encrypt existent déjà
+# 1. Configuration Dynamique Nginx (Fix Domain & Proxy)
+NGINX_CONF="./deployment/nginx/linkedin-bot.conf"
+if [[ -f "$NGINX_CONF" ]]; then
+    log_info "Mise à jour de la configuration Nginx ($DOMAIN)..."
+
+    # Remplacement du domaine
+    if grep -q "YOUR_DOMAIN.COM" "$NGINX_CONF"; then
+        sed -i "s/YOUR_DOMAIN.COM/$DOMAIN/g" "$NGINX_CONF"
+        log_success "Domaine mis à jour dans nginx.conf."
+    fi
+
+    # Correction des Proxy Pass pour Docker (127.0.0.1 -> noms de service)
+    # Nginx dans Docker ne peut pas utiliser 127.0.0.1 pour joindre les autres conteneurs
+    sed -i "s|proxy_pass http://127.0.0.1:3000|proxy_pass http://dashboard:3000|g" "$NGINX_CONF"
+    sed -i "s|proxy_pass http://127.0.0.1:8000|proxy_pass http://api:8000|g" "$NGINX_CONF"
+else
+    log_warn "Fichier de configuration Nginx introuvable: $NGINX_CONF"
+fi
+
+# 2. Gestion des Certificats SSL (Dummy vs Real)
 CERT_DIR="certbot/conf/live/${DOMAIN}"
+mkdir -p "$CERT_DIR" "certbot/www"
+
+# NOTE CRITIQUE : Le Port 80 et 443 de la Freebox DOIVENT être redirigés
+# vers l'IP du Raspberry Pi (ex: 192.168.1.145) pour que le challenge ACME fonctionne.
+
 if [[ ! -f "$CERT_DIR/fullchain.pem" ]] || [[ ! -f "$CERT_DIR/privkey.pem" ]]; then
-    log_warn "Certificats SSL absents. Génération de certificats auto-signés temporaires..."
+    log_warn "Certificats SSL absents. Démarrage du Bootstrapping SSL..."
+    log_info "Génération de certificats DUMMY (Auto-signés) pour permettre le démarrage de Nginx..."
 
-    # Créer le répertoire pour les certificats dummy
-    mkdir -p "$CERT_DIR"
-
-    # Générer un certificat auto-signé valide 365 jours
-    # Cela permettra à Nginx de démarrer même si Certbot n'a pas encore été exécuté
     if cmd_exists openssl; then
-        openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+        check_sudo
+        # Génération RSA 4096 bits comme demandé
+        sudo openssl req -x509 -nodes -newkey rsa:4096 -days 1 \
             -keyout "$CERT_DIR/privkey.pem" \
             -out "$CERT_DIR/fullchain.pem" \
-            -subj "/CN=${DOMAIN}/O=Temporary Certificate/C=FR" 2>/dev/null
+            -subj "/CN=${DOMAIN}/O=Temporary Certificate" 2>/dev/null
 
-        chmod 644 "$CERT_DIR/fullchain.pem"
-        chmod 600 "$CERT_DIR/privkey.pem"
-
-        log_success "Certificats temporaires créés (valides 365j)."
-        log_info "IMPORTANT : Exécutez Certbot après le démarrage pour obtenir de vrais certificats."
+        log_success "Certificats Dummy générés (RSA 4096)."
     else
-        log_error "OpenSSL manquant. Impossible de créer des certificats temporaires."
-        log_info "Installation : sudo apt-get install openssl"
+        log_error "OpenSSL requis mais non trouvé."
         exit 1
     fi
 else
-    log_success "Certificats SSL existants détectés."
+    log_info "Certificats SSL déjà présents."
 fi
 
-# Générer les paramètres DH si absents (requis pour SSL)
+# 3. Permissions (Critique pour Nginx Container UID 101/1000)
+log_info "Correction des permissions SSL (User 1000)..."
+check_sudo
+sudo chown -R 1000:1000 certbot/
+sudo chmod -R 755 certbot/
+# Fichiers sensibles
+if [[ -f "$CERT_DIR/privkey.pem" ]]; then
+    sudo chmod 600 "$CERT_DIR/privkey.pem"
+fi
+
+# 4. Paramètres DH
 DH_PARAMS="certbot/conf/ssl-dhparams.pem"
 if [[ ! -f "$DH_PARAMS" ]]; then
-    log_info "Génération des paramètres Diffie-Hellman (cela peut prendre 2-3 minutes sur RPi4)..."
-    if cmd_exists openssl; then
-        openssl dhparam -out "$DH_PARAMS" 2048 2>/dev/null
-        chmod 644 "$DH_PARAMS"
-        log_success "Paramètres DH générés."
-    else
-        log_warn "Impossible de générer ssl-dhparams.pem (openssl manquant)."
-        log_info "Nginx utilisera les paramètres par défaut."
-    fi
-else
-    log_info "Paramètres DH existants."
+    log_info "Génération Diffie-Hellman (Patience...)"
+    check_sudo
+    sudo openssl dhparam -out "$DH_PARAMS" 2048 2>/dev/null
+    sudo chmod 644 "$DH_PARAMS"
+    sudo chown 1000:1000 "$DH_PARAMS"
 fi
 
 # ==============================================================================
-# PHASE 5 : DÉPLOIEMENT
+# PHASE 5 : DÉPLOIEMENT SÉQUENCÉ (BOOTSTRAP STRATEGY)
 # ==============================================================================
-log_step "PHASE 5 : Lancement des Services"
+log_step "PHASE 5 : Lancement Orchestré"
 
-log_info "Pull des images (séquentiel avec retry automatique)..."
-if ! docker_pull_with_retry "$COMPOSE_FILE"; then
-    log_error "Impossible de télécharger les images Docker."
-    log_info "Vérifiez votre connexion réseau et réessayez."
-    exit 1
+log_info "Pull des images..."
+docker_pull_with_retry "$COMPOSE_FILE" || exit 1
+
+log_info "1. Démarrage Nginx (Frontend) avec certificats actuels..."
+# On démarre Nginx SEUL pour qu'il puisse servir le challenge ACME si besoin
+docker compose -f "$COMPOSE_FILE" up -d nginx
+
+log_info "Attente stabilisation Nginx..."
+sleep 10
+
+# Vérification optionnelle : Lancement de Certbot si on est sur des Dummy Certs
+# On utilise le script helper dédié
+INIT_SSL_SCRIPT="./deployment/nginx/init-ssl.sh"
+if [[ -f "$INIT_SSL_SCRIPT" ]]; then
+    chmod +x "$INIT_SSL_SCRIPT"
+    log_info "Vérification de l'état SSL..."
+    # On passe le domaine, l'email (vide), et le fichier compose
+    "$INIT_SSL_SCRIPT" "$DOMAIN" "" "$COMPOSE_FILE" || log_warn "Avertissement SSL (voir logs ci-dessus)."
 fi
 
-log_info "Recréation des conteneurs..."
+log_info "2. Démarrage de la stack complète..."
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
 # ==============================================================================
