@@ -84,15 +84,37 @@ if ! docker compose -f "$COMPOSE_FILE" ps nginx | grep -q "Up"; then
 fi
 log_success "Conteneur Nginx actif"
 
-# 2. Vérification DNS
+# 2. Vérification DNS (Robustifié)
 log_info "Vérification de la résolution DNS pour $DOMAIN..."
-if ! host "$DOMAIN" >/dev/null 2>&1; then
+
+RESOLVED_IP=""
+
+if command -v host >/dev/null 2>&1; then
+    # Essai avec 'host'
+    if host "$DOMAIN" >/dev/null 2>&1; then
+        RESOLVED_IP=$(host "$DOMAIN" | grep "has address" | awk '{print $4}' | head -1)
+    fi
+elif command -v python3 >/dev/null 2>&1; then
+    # Fallback Python (fiable pour IPv4)
+    RESOLVED_IP=$(python3 -c "import socket; print(socket.gethostbyname('$DOMAIN'))" 2>/dev/null || true)
+elif command -v getent >/dev/null 2>&1; then
+    # Fallback getent (peut retourner IPv6)
+    RESOLVED_IP=$(getent hosts "$DOMAIN" | awk '{print $1}' | head -1)
+fi
+
+if [[ -z "$RESOLVED_IP" ]]; then
     log_error "Le domaine $DOMAIN ne résout pas vers une IP."
-    log_info "Vérifiez votre configuration DNS avant de continuer."
+    log_info "Détails:"
+    log_info "  - Le script a tenté de résoudre le domaine via 'host', 'python3', et 'getent'."
+    log_info "  - Aucune IP n'a été trouvée."
+    log_info ""
+    log_info "Actions requises:"
+    log_info "  1. Vérifiez que votre domaine est correctement configuré (A record)."
+    log_info "  2. Vérifiez votre connexion internet/DNS."
+    log_info "  3. Si nécessaire, installez dnsutils: sudo apt install dnsutils"
     exit 1
 fi
 
-RESOLVED_IP=$(host "$DOMAIN" | grep "has address" | awk '{print $4}' | head -1)
 log_success "DNS OK: $DOMAIN → $RESOLVED_IP"
 
 # 3. Vérification accessibilité HTTP
