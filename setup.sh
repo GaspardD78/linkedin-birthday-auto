@@ -150,9 +150,14 @@ configure_kernel_params() {
     log_info "Configuration des paramètres kernel pour RPi4..."
 
     # Vérifier si déjà configuré
-    if [[ -f "$sysctl_file" ]] && grep -q "vm.overcommit_memory" "$sysctl_file" 2>/dev/null; then
-        log_info "Paramètres kernel déjà configurés."
-        return 0
+    if [[ -f "$sysctl_file" ]]; then
+         # Check if ALL parameters are set (simple grep check)
+         if grep -q "vm.overcommit_memory" "$sysctl_file" && \
+            grep -q "net.core.somaxconn" "$sysctl_file" && \
+            grep -q "vm.swappiness" "$sysctl_file"; then
+             log_info "Paramètres kernel déjà configurés."
+             return 0
+         fi
     fi
 
     check_sudo
@@ -467,6 +472,15 @@ if grep -q "API_KEY=your_secure_random_key_here" "$ENV_FILE"; then
     log_info "Génération automatique d'une API Key robuste..."
     NEW_KEY=$(openssl rand -hex 32)
     sed -i "s|^API_KEY=.*|API_KEY=${NEW_KEY}|" "$ENV_FILE"
+fi
+
+# 3.4 Génération JWT Secret si manquant
+if grep -q "JWT_SECRET=" "$ENV_FILE" && grep -q "your_jwt_secret_here" "$ENV_FILE"; then
+    log_info "Génération automatique d'un JWT Secret robuste..."
+    NEW_JWT=$(openssl rand -base64 48 | tr -d '\n\r')
+    # Escape for sed
+    ESCAPED_JWT=$(echo "$NEW_JWT" | sed 's/[\/&]/\\&/g')
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${ESCAPED_JWT}|" "$ENV_FILE"
 fi
 
 # ==============================================================================

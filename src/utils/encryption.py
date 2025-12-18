@@ -7,7 +7,7 @@ import os
 import base64
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from .logging import get_logger
 
@@ -34,10 +34,10 @@ def get_encryption_key() -> bytes:
     if key_b64:
         try:
             # Valider la clé Fernet (doit être 44 caractères base64)
-            key = base64.urlsafe_b64decode(key_b64)
-            if len(key) != 32:
-                raise ValueError(f"Invalid key length: {len(key)} (expected 32 bytes)")
-            return key
+            # IMPORTANT: Fernet key decoding expects urlsafe b64
+            # We assume key_b64 is already a Fernet key (32 bytes random base64 encoded)
+            # Fernet(key_b64) handles validation internally.
+            return key_b64.encode('utf-8')
         except Exception as e:
             logger.error(f"Invalid AUTH_ENCRYPTION_KEY format: {e}")
             raise ValueError(f"AUTH_ENCRYPTION_KEY is invalid: {e}")
@@ -53,7 +53,7 @@ def get_encryption_key() -> bytes:
     password = b"linkedin-bot-temp-key-CHANGE-ME"
     salt = b"static-salt-rpi4-INSECURE"
 
-    kdf = PBKDF2(
+    kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
         salt=salt,
@@ -62,7 +62,7 @@ def get_encryption_key() -> bytes:
     key = base64.urlsafe_b64encode(kdf.derive(password))
 
     logger.warning(f"Temporary encryption key generated (first 16 chars): {key[:16].decode()}...")
-    return base64.urlsafe_b64decode(key)
+    return key
 
 
 def encrypt_json(data: dict) -> str:

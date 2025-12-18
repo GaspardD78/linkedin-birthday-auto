@@ -94,7 +94,7 @@ class BrowserManager:
                 "--disable-default-apps",
                 "--no-first-run",
                 # ✅ RETIRÉ: --memory-pressure-off (causait OOM après 30min)
-                "--renderer-process-limit=2",  # Increased from 1 to 2 for better stability
+                "--renderer-process-limit=1",  # Strictly 1 worker as requested
                 "--max-old-space-size=512",  # ✅ Réduit de 1024MB à 512MB (RPi4 safe)
                 "--disable-features=AudioServiceOutOfProcess",  # Prevent audio process spawn
                 "--disable-background-timer-throttling",  # Prevent tab suspension issues

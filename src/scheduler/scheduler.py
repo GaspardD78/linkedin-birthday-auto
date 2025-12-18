@@ -15,6 +15,8 @@ from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_MI
 from redis import Redis
 from rq import Queue
 import asyncio
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from src.scheduler.models import (
     ScheduledJobConfig,
@@ -28,6 +30,13 @@ from src.scheduler.job_store import JobConfigStore, JobExecutionStore
 
 logger = logging.getLogger(__name__)
 
+# 🚀 OPTIMIZATION: Enable WAL mode for all SQLite connections used by SQLAlchemy/APScheduler
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 def execute_scheduled_job_proxy(job_id: str, config_data: Dict[str, Any]):
     """
