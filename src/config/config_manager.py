@@ -5,7 +5,6 @@ Ce module gère le chargement, la validation et l'accès à la configuration
 depuis différentes sources (YAML, variables d'environnement, valeurs par défaut).
 """
 
-import logging
 import os
 from pathlib import Path
 import threading
@@ -15,8 +14,9 @@ from pydantic import ValidationError
 import yaml
 
 from .config_schema import DEFAULT_CONFIG, LinkedInBotConfig
+from ..utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConfigManager:

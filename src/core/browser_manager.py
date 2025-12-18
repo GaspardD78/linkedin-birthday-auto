@@ -7,7 +7,7 @@ Ce module encapsule la logique de gestion du cycle de vie du navigateur
 """
 
 import json
-import logging
+import os
 import random
 from typing import Optional, Tuple, Dict, Any
 
@@ -15,8 +15,9 @@ from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, 
 
 from ..config.config_schema import BrowserConfig
 from ..utils.exceptions import BrowserInitError
+from ..utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BrowserManager:

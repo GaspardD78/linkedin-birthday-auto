@@ -178,6 +178,12 @@ class BaseLinkedInBot(ABC):
             # Notification d'arrêt
             notifier.notify_bot_stop()
 
+        # 🚀 RASPBERRY PI 4 MEMORY CLEANUP
+        # Force garbage collection to free memory immediately after browser close
+        import gc
+        gc.collect()
+        logger.debug("Forced garbage collection completed")
+
         logger.info("✅ Bot teardown completed")
 
     def _handle_critical_error(self, error: Exception, context: str = "") -> None:

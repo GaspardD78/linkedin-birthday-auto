@@ -8,12 +8,13 @@ Version 1.0.0 - Audit Phase 2
 """
 
 from enum import Enum
-import logging
 import threading
 import time
 from typing import Any, Callable, Optional
 
-logger = logging.getLogger(__name__)
+from .logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class CircuitState(Enum):
