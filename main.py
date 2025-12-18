@@ -147,6 +147,33 @@ def ensure_api_key() -> None:
             logger.error(f"   You MUST set API_KEY={new_key} manually.")
 
 
+def ensure_jwt_secret() -> None:
+    """
+    Validates JWT_SECRET is set and has minimum strength.
+    Hardening Step 1.3: Prevent weak session keys.
+    """
+    logger = logging.getLogger("security_hardening")
+
+    jwt_secret = os.getenv("JWT_SECRET")
+
+    if not jwt_secret:
+        logger.error("❌ JWT_SECRET is missing from environment")
+        new_secret = secrets.token_hex(32)  # 64 chars
+        logger.error(f"   Generate with: JWT_SECRET={new_secret}")
+        raise RuntimeError(
+            "JWT_SECRET environment variable is REQUIRED but not set. "
+            f"Please set it to: JWT_SECRET={new_secret}"
+        )
+
+    if len(jwt_secret) < 32:
+        logger.error(f"❌ JWT_SECRET is too weak ({len(jwt_secret)} chars, need minimum 32)")
+        raise RuntimeError(
+            f"JWT_SECRET must be at least 32 characters long (currently {len(jwt_secret)} chars)"
+        )
+
+    logger.info(f"✅ JWT_SECRET validated (length={len(jwt_secret)} chars, sufficient)")
+
+
 def print_banner(config) -> None:
     """Affiche la bannière de démarrage."""
     logger = logging.getLogger(__name__)
@@ -679,6 +706,7 @@ For more information, see: https://github.com/GaspardD78/linkedin-birthday-auto
 
     # Ensure Security Hardening
     ensure_api_key()
+    ensure_jwt_secret()
 
     # Exécuter la commande appropriée
     if args.command == "validate":

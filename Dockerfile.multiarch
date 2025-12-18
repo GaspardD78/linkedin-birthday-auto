@@ -70,8 +70,9 @@ RUN chown -R 1000:1000 /app
 # Bascule sur l'utilisateur non-root
 USER appuser
 
-# Healthcheck léger (évite d'importer tout le projet)
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "print('Health OK')" || exit 1
+# Healthcheck pour le bot worker - teste la connexion à Redis
+# (car le bot worker communique toujours avec Redis pour les jobs)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import redis; redis.Redis(host='redis-bot', port=6379, socket_timeout=2).ping()" || exit 1
 
 CMD ["python", "-m", "src.queue.worker"]
