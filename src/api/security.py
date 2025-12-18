@@ -26,21 +26,71 @@ failed_attempts = defaultdict(list)  # {ip: [timestamp1, timestamp2, ...]}
 
 
 def get_api_key_from_env() -> str:
-    """Retrieves API key from environment."""
-    key = os.getenv("API_KEY")
+    """
+    Retrieves and validates API key from environment.
+    Implements strict validation to prevent default/weak keys at runtime.
+    """
+    key = os.getenv("API_KEY", "").strip()
+
+    # List of dangerous/default values that are NEVER acceptable
+    DANGEROUS_KEYS = [
+        "internal_secret_key",
+        "CHANGEZ_MOI_PAR_CLE_FORTE_GENERER_AVEC_COMMANDE_CI_DESSUS",
+        "your_secure_random_key_here",
+        "CHANGEZ_MOI",
+        "changez_moi",
+        "placeholder",
+        "default",
+        "test",
+        "demo",
+        "",  # Empty string
+    ]
+
+    # CRITICAL: Reject if not set
     if not key:
-        logger.critical("no_api_key_configured", msg="API_KEY not set in environment!")
-        # HARDENING: Raise explicit error if key is missing
-        raise RuntimeError("API_KEY environment variable is not set. Please run main.py to generate one.")
-
-    # HARDENING: Explicitly reject the legacy default key
-    if key == "internal_secret_key":
-        logger.critical("insecure_default_key", msg="API_KEY is set to insecure default 'internal_secret_key'!")
-        raise RuntimeError(
-            "Security Violation: API_KEY is set to the insecure default 'internal_secret_key'. "
-            "Please remove it from your environment/configuration and run main.py to generate a secure key."
+        error_msg = (
+            "🛑 CRITICAL: API_KEY environment variable is REQUIRED and NOT SET.\n"
+            "   This prevents unauthorized API access.\n"
+            "   Please set a strong API_KEY (min 32 characters):\n"
+            "   \n"
+            "   python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            "   \n"
+            "   Then update your .env file and restart the application."
         )
+        logger.critical("api_key_missing", msg=error_msg)
+        raise RuntimeError(error_msg)
 
+    # CRITICAL: Reject if matches dangerous patterns
+    key_lower = key.lower()
+    if key_lower in DANGEROUS_KEYS or key in DANGEROUS_KEYS:
+        error_msg = (
+            f"🛑 CRITICAL: API_KEY is set to a dangerous/default value: '{key[:10]}...'\n"
+            "   This is a SECURITY VIOLATION. The API will not start.\n"
+            "   \n"
+            "   Generate a strong API_KEY:\n"
+            "   python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            "   \n"
+            "   Update .env and restart."
+        )
+        logger.critical("insecure_default_key", msg=error_msg)
+        raise RuntimeError(error_msg)
+
+    # CRITICAL: Enforce minimum length (security requirement)
+    MIN_KEY_LENGTH = 32
+    if len(key) < MIN_KEY_LENGTH:
+        error_msg = (
+            f"🛑 CRITICAL: API_KEY is too short ({len(key)} chars, min {MIN_KEY_LENGTH} required).\n"
+            "   This is a SECURITY VIOLATION. The API will not start.\n"
+            "   \n"
+            "   Generate a strong API_KEY:\n"
+            "   python -c \"import secrets; print(secrets.token_hex(32))\"\n"
+            "   \n"
+            "   Update .env and restart."
+        )
+        logger.critical("weak_api_key_length", msg=error_msg)
+        raise RuntimeError(error_msg)
+
+    logger.info("api_key_validation_passed", key_length=len(key))
     return key
 
 

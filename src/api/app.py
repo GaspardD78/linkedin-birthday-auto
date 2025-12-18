@@ -59,6 +59,16 @@ async def lifespan(app: FastAPI):
     """Gère le cycle de vie de l'application (démarrage/arrêt)"""
     logger.info("🚀 API Starting up...")
 
+    # 🔐 PRIORITY 1: Validate API_KEY at startup (CRITICAL SECURITY)
+    try:
+        from src.api.security import get_api_key_from_env
+        api_key = get_api_key_from_env()
+        logger.info(f"✅ API_KEY validation passed (length: {len(api_key)} chars)")
+    except RuntimeError as e:
+        logger.critical(f"🛑 API_KEY VALIDATION FAILED: {e}")
+        logger.critical("⛔ API STARTUP BLOCKED - Cannot proceed without valid API_KEY")
+        raise  # Fail-fast: stop application immediately
+
     # Vérification des fichiers critiques
     log_file = "logs/linkedin_bot.log"
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
