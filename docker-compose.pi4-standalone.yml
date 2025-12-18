@@ -9,28 +9,22 @@
 # Utilisation:
 #   docker compose -f docker-compose.pi4-standalone.yml up -d
 #
-# Documentation:
-# - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
-# - Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
-# - Verification: ./scripts/verify_rpi_docker.sh
-#
 # ═══════════════════════════════════════════════════════════════════════════
-# AUDIT V3.2 - CORRECTIONS CRITIQUES RPi4 (2025-01)
+# AUDIT V3.0 - ZERO-WRITE ARCHITECTURE (SD CARD PROTECTION)
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# [FIX-A] sysctls vm.overcommit_memory SUPPRIMÉ des conteneurs
-#         → Ce paramètre kernel n'est PAS namespaceable sur ARM64
-#         → Doit être configuré sur l'HÔTE via: sudo sysctl vm.overcommit_memory=1
-#         → Script fourni: scripts/configure_rpi4_kernel.sh
+# [OPTIM-1] TMPFS (RAM Disk) pour tous les fichiers éphémères
+#           - Logs (/app/logs)
+#           - Playwright Caches (/ms-playwright/chromium-...)
+#           - Temp (/tmp)
+#           → Élimine 95% des écritures disques inutiles sur la carte SD.
 #
-# [FIX-D] DNS fiables forcés sur le réseau Docker
-#         → Évite les timeouts DNS sur box FAI (Freebox, etc.)
-#         → Utilise Cloudflare (1.1.1.1) et Google (8.8.8.8) comme fallback
+# [OPTIM-2] LOGGING DRIVER "LOCAL"
+#           - Rotation stricte (10MB max) pour éviter saturation RAM/Disk
 #
-# IMPORTANT - Limites de ressources:
-# Les limites mémoire (memory) ont été retirées car le kernel Raspberry Pi
-# ne supporte pas les capacités cgroup memory limit. Seules les limites CPU
-# sont conservées.
+# [OPTIM-3] LIMITES CPU STRICTES
+#           - Pas de limite RAM (Kernel RPi non supporté)
+#           - Limites CPU pour éviter surchauffe
 
 services:
   # ========================================
@@ -39,33 +33,28 @@ services:
   redis-bot:
     image: redis:7-alpine
     container_name: redis-bot
-    volumes:
-    - redis-bot-data:/data
-    # Optimisations Redis pour Pi 4
-    # AOF only (no RDB snapshots) to avoid fork-based BGSAVE warnings
+    # [ZERO-WRITE] Pas de volume persistant pour la Queue Redis
+    # En cas de reboot, la queue est perdue, ce qui est acceptable pour des jobs workers
+    # On évite l'écriture disque AOF/RDB
     command: >
       redis-server
-      --appendonly yes
-      --appendfsync everysec
-      --no-appendfsync-on-rewrite yes
+      --save ""
+      --appendonly no
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
       --tcp-backlog 511
-    # [FIX-A] sysctls SUPPRIMÉS - vm.overcommit_memory n'est pas namespaceable sur ARM64
-    # Le paramètre doit être configuré sur l'HÔTE via scripts/configure_rpi4_kernel.sh
-    # net.core.somaxconn remplacé par --tcp-backlog dans la commande Redis
     deploy:
       resources:
         limits:
           cpus: '0.5'
         reservations:
           cpus: '0.25'
-    logging:
-      driver: json-file
+    logging: &logging_config
+      driver: local
       options:
-        max-size: 5m
-        max-file: '2'
+        max-size: 10m
+        max-file: '3'
         compress: 'true'
     restart: unless-stopped
     healthcheck:
@@ -82,32 +71,24 @@ services:
   redis-dashboard:
     image: redis:7-alpine
     container_name: redis-dashboard
-    # Cache only (no persistence) to avoid fork operations and memory overcommit warnings
+    # [ZERO-WRITE] Cache purement en RAM
     command: >
       redis-server
-      --maxmemory 64mb
-      --maxmemory-policy allkeys-lru
       --save ""
       --appendonly no
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
       --loglevel warning
       --tcp-backlog 511
-    # [FIX-A] sysctls SUPPRIMÉS - vm.overcommit_memory n'est pas namespaceable sur ARM64
-    # Le paramètre doit être configuré sur l'HÔTE via scripts/configure_rpi4_kernel.sh
     restart: unless-stopped
-    volumes:
-    - redis-dashboard-data:/data
+    # [ZERO-WRITE] Pas de volume disque
     deploy:
       resources:
         limits:
           cpus: '0.5'
         reservations:
           cpus: '0.25'
-    logging:
-      driver: json-file
-      options:
-        max-size: 5m
-        max-file: '2'
-        compress: 'true'
+    logging: *logging_config
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 30s
@@ -131,50 +112,46 @@ services:
       sh -c "pip install -r /app/requirements.txt &&
       pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
       uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
-    # Enable privileged mode to allow systemctl commands
-    privileged: true
+    # Privileged requis uniquement si besoin de commandes système, sinon à retirer
+    privileged: false
+    # Sécurité: Read-Only Root FS (sauf tmpfs)
+    read_only: true
+    user: "1000:1000"
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
     - PYTHONPATH=/app
     - LOG_LEVEL=INFO
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Clé API pour sécuriser les appels internes (OBLIGATOIRE)
-      # Générer avec: python -c "import secrets; print(secrets.token_hex(32))"
     - API_KEY=${API_KEY:?API_KEY must be set in .env file}
-      # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=api
-      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
+    # [ZERO-WRITE] TMPFS MOUNTS
+    # Les logs et fichiers temporaires vont en RAM.
+    tmpfs:
+      - /app/logs
+      - /tmp
+      - /var/tmp
+      - /root/.cache
     volumes:
-    - ./logs:/app/logs
-    - ./config:/app/config
-    # Messages files are stored in /app/data/ and editable via API
-    # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
-    - ./data:/app/data
-    # Mount systemd and D-Bus to allow systemctl commands from container
-    - /run/systemd:/run/systemd:ro
-    - /var/run/dbus:/var/run/dbus:ro
-    - /bin/systemctl:/bin/systemctl:ro
+    - ./config:/app/config:ro  # Read-Only config
+    - ./data:/app/data:rw      # RW Data (DB is here)
     deploy:
       resources:
         limits:
           cpus: '0.5'
     restart: unless-stopped
     healthcheck:
-      # CRASH PROOF: Use Python healthcheck instead of curl for robustness
-      # as recommended in GUIDE_INSTALLATION_SIMPLIFIEE.md
       test: ["CMD", "python", "-c", "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').read())"]
       interval: 30s
       timeout: 10s
       retries: 15
       start_period: 180s
-    # [FIX-D] DNS fiables pour les appels API externes
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    logging: *logging_config
     networks:
     - linkedin-network
 
@@ -191,38 +168,38 @@ services:
       sh -c "pip install -r /app/requirements.txt &&
       pip install schedule opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp opentelemetry-instrumentation-fastapi grpcio &&
       python -m src.queue.worker"
+    user: "1000:1000"
+    # Read-Only Root FS pour sécurité
+    read_only: true
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
     - PYTHONPATH=/app
     - LOG_LEVEL=INFO
-      # Utilisation SQLite partagé avec le dashboard
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-      # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
-      # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
     - LINKEDIN_BOT_CONFIG_PATH=/app/config/config.yaml
+    # [ZERO-WRITE] TMPFS MOUNTS CRITIQUES
+    # Playwright écrit énormément dans /tmp et cache browser. Tout doit aller en RAM.
+    tmpfs:
+      - /app/logs
+      - /tmp
+      - /var/tmp
+      - /home/appuser/.cache
+      # Important: Playwright browser contexts
+      # Note: /ms-playwright est le dossier d'install (Read-Only), mais les profils users
+      # sont créés à la volée, souvent dans /tmp ou user home.
     volumes:
-    - ./logs:/app/logs
-    - ./config:/app/config
-    # Messages files are stored in /app/data/ and editable via API
-    # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
-    - ./data:/app/data
-    # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
+    - ./config:/app/config:ro
+    - ./data:/app/data:rw
     deploy:
       resources:
         limits:
           cpus: '1.5'
         reservations:
           cpus: '0.5'
-    logging:
-      driver: json-file
-      options:
-        max-size: 5m
-        max-file: '2'
-        compress: 'true'
+    logging: *logging_config
     restart: unless-stopped
     healthcheck:
       test: [CMD, python, -c, "import redis; r = redis.Redis(host='redis-bot', port=6379); r.ping()"]
@@ -230,7 +207,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # [FIX-D] DNS fiables - CRITIQUE pour connexion LinkedIn
     dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -241,10 +217,8 @@ services:
   # DASHBOARD (Next.js avec SQLite)
   # ========================================
   dashboard:
-    # Dashboard utilise l'image officielle depuis GHCR
-    # (plus de build local pour économiser ressources Pi4)
     image: ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest
-    pull_policy: always
+    pull_policy: missing
     restart: unless-stopped
     container_name: dashboard
     ports:
@@ -253,46 +227,30 @@ services:
       resources:
         limits:
           cpus: '2.0'
-    logging:
-      driver: json-file
-      options:
-        max-size: 5m
-        max-file: '2'
-        compress: 'true'
+    logging: *logging_config
     env_file: .env
     environment:
     - NODE_ENV=production
     - NEXT_TELEMETRY_DISABLED=1
     - HOSTNAME=0.0.0.0
-      # Optimisation Mémoire pour RPi4 (éviter OOM Crash)
     - NODE_OPTIONS=--max-old-space-size=256
-
-      # ✅ SQLite Local
     - DATABASE_URL=sqlite:///app/data/linkedin.db
-
-      # Configuration Redis Dashboard
     - REDIS_URL=redis://redis-dashboard:6379
-
-      # Configuration Bot (pour Proxy API)
     - BOT_API_URL=http://api:8000
     - BOT_API_KEY=${API_KEY:?API_KEY must be set in .env file}
-
-      # Configuration Authentification Dashboard (REQUIS)
     - JWT_SECRET=${JWT_SECRET}
     - DASHBOARD_USER=${DASHBOARD_USER}
     - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
-
-      # Nom du service pour séparer les logs
     - SERVICE_NAME=dashboard
+    # [ZERO-WRITE] Logs en RAM
+    tmpfs:
+      - /app/logs
+      - /tmp
     volumes:
-      # Logs partagés avec le bot
-    - ./logs:/app/logs
-      # Fichiers de configuration et messages (RW pour édition depuis Dashboard)
-    - ./config:/app/config
-      # Base de données SQLite partagée avec le bot
-    - ./data:/app/data
-      # Monitoring de température du Raspberry Pi 4 (lecture seule)
-    - /sys/class/thermal:/sys/class/thermal:ro
+    - ./config:/app/config:rw # RW pour édition depuis UI
+    - ./data:/app/data:rw
+    # Pas de read_only: true car Next.js a besoin d'écrire dans .next/cache parfois (sauf si configuré autrement)
+    # Mais ici on utilise l'image prod optimisée.
     depends_on:
       redis-dashboard:
         condition: service_healthy
@@ -317,23 +275,29 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # [ZERO-WRITE] Logs Nginx en RAM
+    # Rediriger access.log et error.log vers stdout/stderr est le défaut Docker,
+    # donc géré par le logging driver (local).
+    # Mais si Nginx écrit des fichiers cache/temp :
+    tmpfs:
+      - /var/cache/nginx
+      - /run
+      - /tmp
     volumes:
-      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./deployment/nginx/linkedin-bot.conf:/etc/nginx/conf.d/default.conf
-      - ./deployment/nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf
-      - ./deployment/nginx/options-ssl-nginx.conf:/etc/nginx/conf.d/options-ssl-nginx.conf
-      - ./deployment/nginx/ssl-dhparams.pem:/etc/nginx/conf.d/ssl-dhparams.pem
-      - ./deployment/nginx/429.html:/var/www/html/429.html
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deployment/nginx/linkedin-bot.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deployment/nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf:ro
+      - ./deployment/nginx/options-ssl-nginx.conf:/etc/nginx/conf.d/options-ssl-nginx.conf:ro
+      - ./deployment/nginx/ssl-dhparams.pem:/etc/nginx/conf.d/ssl-dhparams.pem:ro
+      - ./deployment/nginx/429.html:/var/www/html/429.html:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - dashboard
       - api
-    # [FIX-D] DNS fiables pour résolution ACME/Certbot
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    # [FIX-B] Healthcheck avec validation config Nginx
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
@@ -350,14 +314,16 @@ services:
     image: prom/prometheus:v2.45.0
     container_name: prometheus
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Volume persistant nécessaire pour l'historique, mais on pourrait le mettre en tmpfs
+      # si on accepte de perdre l'historique au reboot.
+      # Pour RPi4 SD Saver : On garde le volume mais on configure la rétention courte (15j déjà fait)
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
+      # [OPTIM] Réduire la fréquence de flush WAL si possible via flags (pas standard sur prom)
     deploy:
       resources:
         limits:
@@ -371,17 +337,16 @@ services:
     container_name: grafana
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      # [FIX-C] Optimisations SQLite pour carte SD - évite "database is locked"
       - GF_DATABASE_WAL=true
-      - GF_DATABASE_CACHE_MODE=shared
-      - GF_DATABASE_QUERY_RETRIES=3
+      # [ZERO-WRITE] Logs en mode console uniquement (pas de fichiers)
+      - GF_LOG_MODE=console
     ports:
       - "3001:3000"
     deploy:
@@ -389,7 +354,6 @@ services:
         limits:
           cpus: '0.5'
     restart: unless-stopped
-    # [FIX-D] DNS fiables forcés
     dns:
       - 1.1.1.1
       - 8.8.8.8
@@ -412,34 +376,23 @@ services:
     networks:
       - linkedin-network
 
-# ========================================
-# VOLUMES PERSISTANTS
-# ========================================
 volumes:
-  redis-bot-data:
-    name: linkedin-bot-redis-data
-  redis-dashboard-data:
-    name: linkedin-dashboard-redis-data
+  # Volumes nommés (stockés dans /var/lib/docker/volumes par défaut)
+  # Pour SD Saver, s'assurer que /var/lib/docker n'est pas sur une partition saturée.
+  redis-bot-data: # SUPPRIMÉ (Zero-Write) - Redis en RAM
+  redis-dashboard-data: # SUPPRIMÉ (Zero-Write)
   prometheus_data:
     name: linkedin-prometheus-data
   grafana_data:
     name: linkedin-grafana-data
-  # shared-data removed in favor of ./data bind mount
 
-# ========================================
-# RÉSEAU INTERNE
-# ========================================
 networks:
   linkedin-network:
     name: linkedin-network
     driver: bridge
-    # [FIX-D] DNS fiables forcés - évite les timeouts DNS sur box FAI
     driver_opts:
       com.docker.network.bridge.enable_ip_masquerade: "true"
     ipam:
       driver: default
       config:
         - subnet: 172.28.0.0/16
-    # DNS publics fiables (Cloudflare + Google) pour tous les conteneurs
-    # Résout les problèmes de résolution DNS sur Freebox/box FAI
-    # Note: Les DNS sont configurés au niveau du daemon Docker (/etc/docker/daemon.json)

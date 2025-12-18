@@ -10,7 +10,7 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Permet de déclencher manuellement
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -57,6 +57,26 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # 1. TEST BUILD & SANITY CHECK (Avant Push)
+      # On build et on load l'image dans le runner pour la tester
+      - name: Build and Load (Test)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.multiarch
+          platforms: linux/arm64
+          load: true # Charge l'image dans le daemon Docker local
+          tags: test-bot-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify Image Integrity
+        run: |
+          echo "Running Sanity Check on built image..."
+          # On tente d'importer le module principal. Si ça crash (erreur de syntaxe, dep manquante), le build fail.
+          docker run --rm --platform linux/arm64 test-bot-image:latest python -c "import src.api.app; print('Import OK')"
+
+      # 2. FINAL BUILD & PUSH (Si Check OK)
       - name: Build and push Bot Worker image
         uses: docker/build-push-action@v5
         with:

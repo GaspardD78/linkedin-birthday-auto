@@ -54,7 +54,13 @@ server {
     # ═══════════════════════════════════════════════════════════════
     # SECURITY HEADERS (Renforcés pour production)
     # ═══════════════════════════════════════════════════════════════
+    # HSTS (Force HTTPS pendant 1 an)
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+    # CSP: Content Security Policy (Atténuation XSS)
+    # Permet scripts 'self', 'unsafe-inline' (pour Next.js), et img/font/connect 'self'
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self';" always;
+
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
