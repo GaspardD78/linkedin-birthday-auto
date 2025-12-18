@@ -13,11 +13,24 @@ Automate repetitive LinkedIn tasks: birthday wishes, targeted profile visits, in
 
 ---
 
+## 🔴 ⚠️ CRITICAL - SECURITY AUDIT APPLIED (2025-12-18)
+
+**BREAKING CHANGES:** Three new mandatory environment variables are now REQUIRED:
+- ✅ **`AUTH_ENCRYPTION_KEY`** - Fernet encryption key (44 chars) - **CRITICAL for credential security**
+- ✅ **`JWT_SECRET`** - Session token key (min 32 chars) - **REQUIRED for dashboard**
+- ✅ **`API_KEY`** - API authentication (auto-generated, must be strong)
+
+**👉 BEFORE INSTALLING**, read this guide: [`docs/SECURITY_REQUIREMENTS_2025-12-18.md`](docs/SECURITY_REQUIREMENTS_2025-12-18.md)
+
+Applications **will FAIL TO START** without these properly configured.
+
+---
+
 ## 🎯 Quick Navigation
 
-**⚠️ NEW: This README was revised on 2025-12-18**
-
-- 📚 **Full Documentation:** See [`docs/KNOWLEDGE_BASE_v1.1.md`](docs/KNOWLEDGE_BASE_v1.1.md) — **THE source of truth**
+**📚 Documentation Updated:**
+- See [`docs/INDEX.md`](docs/INDEX.md) for complete documentation map
+- See [`docs/KNOWLEDGE_BASE_v1.1.md`](docs/KNOWLEDGE_BASE_v1.1.md) — **THE source of truth**
 - 🚀 **Quick Setup:** Jump to [Installation](#-installation)
 - 📖 **Architecture Docs:** See Knowledge Base, Part B
 - 🔧 **Operations Manual:** See Knowledge Base, Part D (SOP)
@@ -116,24 +129,31 @@ cp .env.pi4.example .env
 nano .env
 ```
 
-**Required variables:**
+**CRITICAL: Required secrets (see [SECURITY_REQUIREMENTS_2025-12-18.md](docs/SECURITY_REQUIREMENTS_2025-12-18.md) for detailed instructions):**
 ```bash
-API_KEY=<generate-new-secret>              # 32 hex chars
-JWT_SECRET=<generate-new-secret>           # 32 hex chars
-DASHBOARD_PASSWORD=<bcrypt-hash>           # See note below
-LINKEDIN_COOKIES=<path-or-json>            # Can be set later
+AUTH_ENCRYPTION_KEY=<fernet-key-44-chars>  # ⚠️ CRITICAL - Generate with: python -m src.utils.encryption
+JWT_SECRET=<32+-chars-minimum>             # Required for dashboard sessions
+API_KEY=<strong-random-key>                # Auto-generated if missing
+DASHBOARD_USER=admin                       # Dashboard login
+DASHBOARD_PASSWORD=<strong-password>       # Dashboard password
+LINKEDIN_COOKIES=<path-or-json>            # Can be set later via dashboard
 ```
 
-**Generate secrets:**
+**Step-by-step secret generation:**
 ```bash
-# Generate API_KEY
-python3 -c "import secrets; print(secrets.token_hex(16))"
+# 1. Generate AUTH_ENCRYPTION_KEY (CRITICAL - LinkedIn credentials encryption)
+cd linkedin-birthday-auto
+python -m src.utils.encryption
+# Output: AUTH_ENCRYPTION_KEY=gAAAAABl...[64 base64 chars]...xyz==
 
-# Generate JWT_SECRET (same)
-python3 -c "import secrets; print(secrets.token_hex(16))"
+# 2. Generate JWT_SECRET (session token signing)
+python3 -c "import secrets; print(f'JWT_SECRET={secrets.token_hex(32)}')"
 
-# Hash password (you'll need to do this via Docker after build)
-# Or use the setup.sh script (it handles this)
+# 3. Generate strong password
+python3 -c "import secrets; print(f'DASHBOARD_PASSWORD={secrets.token_urlsafe(32)}')"
+
+# 4. Add all to .env file
+nano .env
 ```
 
 ### Step 4: Run Setup Script
