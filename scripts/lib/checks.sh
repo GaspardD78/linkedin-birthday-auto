@@ -167,7 +167,7 @@ check_config_files() {
     log_success "✓ Template .env trouvé"
 
     # Vérifier docker-compose
-    if [[ ! -f "docker-compose.pi4-standalone.yml" ]]; then
+    if [[ ! -f "docker-compose.yml" ]]; then
         log_error "Fichier docker-compose introuvable"
         return 1
     fi
