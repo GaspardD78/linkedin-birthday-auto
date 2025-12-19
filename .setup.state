@@ -1,56 +1,13 @@
 {
-  "id": "20251219_112726_12272",
-  "version": "4.0-hybrid",
-  "timestamp": "2025-12-19T11:27:26+00:00",
-  "pid": 12272,
-  "user": "root",
-  "host": "runsc",
+  "version": "4.0",
+  "started_at": "2025-12-19T11:54:10Z",
   "status": "failed",
-  "phases": {
+  "checkpoints": {
     "prerequisites": {
       "status": "failed",
-      "timestamp": "2025-12-19T11:27:30+00:00",
-      "duration_seconds": 0
-    },
-    "backup": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
-    },
-    "docker_config": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
-    },
-    "env_setup": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
-    },
-    "https_config": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
-    },
-    "docker_deploy": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
-    },
-    "validation": {
-      "status": "pending",
-      "timestamp": null,
-      "duration_seconds": 0
+      "timestamp": "2025-12-19T11:54:14.651712Z"
     }
   },
-  "errors": [],
-  "warnings": [],
-  "config": {
-    "domain": null,
-    "https_mode": null,
-    "backup_configured": false,
-    "api_key_generated": false,
-    "password_set": false
-  },
-  "timestamp_end": "2025-12-19T11:27:30+00:00"
+  "config": {},
+  "completed_at": "2025-12-19T11:54:14.707554Z"
 }
