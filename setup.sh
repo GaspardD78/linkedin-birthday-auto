@@ -325,49 +325,58 @@ if grep -q "^DOMAIN=" "$ENV_FILE" 2>/dev/null; then
     log_info "Domaine détecté: $DOMAIN"
 fi
 
-# 3.2 Gestion Mot de Passe (Optimisée)
-if grep -q "CHANGEZ_MOI" "$ENV_FILE" || grep -q "^DASHBOARD_PASSWORD=[^$]" "$ENV_FILE"; then
-    echo -e "${BOLD}>>> Configuration du Mot de Passe Dashboard${NC}"
-    echo -n "Entrez le nouveau mot de passe : "
-    read -rs PASS_INPUT
-    echo ""
+# 3.2 Gestion Mot de Passe (Idempotent - ne demande qu'une fois)
+# Condition pour demander le mot de passe:
+# - Si "CHANGEZ_MOI" existe (placeholder non configuré)
+# - OU si pas de hash bcrypt valide (^DASHBOARD_PASSWORD=$2[aby]$)
+# - Sinon: skip (configuration valide + idempotente)
+if grep -q "CHANGEZ_MOI" "$ENV_FILE" || ! grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE"; then
+    # Vérifier si password est déjà un hash bcrypt (peut arriver lors d'un re-run après succès)
+    if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE"; then
+        log_info "Mot de passe Dashboard déjà configuré (hash bcrypt détecté). Skip."
+    else
+        echo -e "${BOLD}>>> Configuration du Mot de Passe Dashboard${NC}"
+        echo -n "Entrez le nouveau mot de passe : "
+        read -rs PASS_INPUT
+        echo ""
 
-    if [[ -n "$PASS_INPUT" ]]; then
-        log_info "Hachage sécurisé du mot de passe..."
+        if [[ -n "$PASS_INPUT" ]]; then
+            log_info "Hachage sécurisé du mot de passe..."
 
-        # UTILISATION IMAGE DASHBOARD (Déjà présente ou sera pullée)
-        # Évite de puller node:20-alpine séparément
-        DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+            # UTILISATION IMAGE DASHBOARD (Déjà présente ou sera pullée)
+            # Évite de puller node:20-alpine séparément
+            DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
 
-        # Pré-pull de l'image dashboard si nécessaire pour le hachage
-        if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-             log_info "Téléchargement de l'image dashboard pour outils crypto..."
-             docker pull -q "$DASHBOARD_IMG"
-        fi
-
-        # Hachage via Node dans le conteneur dashboard (natif ARM64)
-        HASH_OUTPUT=$(docker run --rm \
-            --entrypoint node \
-            -e PWD_INPUT="$PASS_INPUT" \
-            "$DASHBOARD_IMG" \
-            -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null)
-
-        if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
-            SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
-            ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
-            sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"
-            log_success "Mot de passe mis à jour et haché."
-        else
-            log_error "Échec du hachage. Sortie: $HASH_OUTPUT"
-            # Fallback Python Host si container fail
-            if cmd_exists python3; then
-                 log_warn "Tentative fallback Python (insecure: crypt standard)..."
-                 # Note: crypt n'est pas bcrypt, mais mieux que rien.
-                 # Mais le dashboard attend du bcrypt. Donc échec critique préférable.
-                 log_error "Impossible de hasher le mot de passe avec bcrypt."
-                 exit 1
+            # Pré-pull de l'image dashboard si nécessaire pour le hachage
+            if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
+                 log_info "Téléchargement de l'image dashboard pour outils crypto..."
+                 docker pull -q "$DASHBOARD_IMG"
             fi
-            exit 1
+
+            # Hachage via Node dans le conteneur dashboard (natif ARM64)
+            HASH_OUTPUT=$(docker run --rm \
+                --entrypoint node \
+                -e PWD_INPUT="$PASS_INPUT" \
+                "$DASHBOARD_IMG" \
+                -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null)
+
+            if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
+                SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
+                ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
+                sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"
+                log_success "Mot de passe mis à jour et haché."
+            else
+                log_error "Échec du hachage. Sortie: $HASH_OUTPUT"
+                # Fallback Python Host si container fail
+                if cmd_exists python3; then
+                     log_warn "Tentative fallback Python (insecure: crypt standard)..."
+                     # Note: crypt n'est pas bcrypt, mais mieux que rien.
+                     # Mais le dashboard attend du bcrypt. Donc échec critique préférable.
+                     log_error "Impossible de hasher le mot de passe avec bcrypt."
+                     exit 1
+                fi
+                exit 1
+            fi
         fi
     fi
 fi

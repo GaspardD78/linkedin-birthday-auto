@@ -90,9 +90,12 @@ bots:
 
 ## 📚 Documentation
 
+*   [**Améliorations de Sécurité (Jan 2025)**](docs/SECURITY_ENHANCEMENTS_2025.md) : Corrections critiques implémentées (Grafana, Docker Socket Proxy, Rate Limiting Persistant).
+*   [**Améliorations Setup.sh (Jan 2025)**](docs/SETUP_IMPROVEMENTS.md) : Rendre le script idempotent et automatisable.
 *   [**Guide de Dépannage (Troubleshooting)**](docs/TROUBLESHOOTING.md) : Si quelque chose ne va pas.
 *   [**Sécurité & Hardening**](docs/SECURITY.md) : Détails sur la protection des données.
 *   [**Architecture Technique**](docs/ARCHITECTURE.md) : Pour les développeurs curieux.
+*   [**Rapport d'Audit Complet (Jan 2025)**](docs/AUDIT_REPORT_2025-01.md) : Analyse détaillée du code et recommandations.
 
 ---
 
