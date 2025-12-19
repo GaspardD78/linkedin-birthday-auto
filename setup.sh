@@ -34,13 +34,56 @@ cd "$SCRIPT_DIR"
 PROJECT_ROOT="$SCRIPT_DIR"
 export PROJECT_ROOT
 
+# === VERROU DE FICHIER (ÉVITER EXÉCUTIONS MULTIPLES) ===
+
+readonly LOCK_FILE="/tmp/linkedin-bot-setup.lock"
+readonly LOCK_FD=200
+
+# Couleurs pour les messages (avant le sourcing de common.sh)
+readonly _RED='\033[0;31m'
+readonly _YELLOW='\033[1;33m'
+readonly _NC='\033[0m'
+
+# Fonction de nettoyage du verrou
+cleanup_lock() {
+    if [[ -f "$LOCK_FILE" ]]; then
+        rm -f "$LOCK_FILE" 2>/dev/null || true
+    fi
+}
+
+# Acquérir le verrou exclusif
+acquire_lock() {
+    exec 200>"$LOCK_FILE"
+
+    if ! flock -n 200; then
+        local lock_pid
+        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
+
+        echo -e "\n${_RED}[ERROR]${_NC} Une autre instance de setup.sh est déjà en cours d'exécution (PID: $lock_pid)"
+        echo -e "${_YELLOW}[INFO]${_NC} Si vous êtes certain qu'aucun setup n'est actif, supprimez le verrou:"
+        echo -e "  rm -f $LOCK_FILE"
+        exit 1
+    fi
+
+    # Écrire le PID dans le fichier de verrou
+    echo $$ >&200
+
+    # Nettoyer le verrou à la sortie
+    trap cleanup_lock EXIT
+}
+
+# Acquérir le verrou avant de continuer
+acquire_lock
+
 # === OPTIONS DE LIGNE DE COMMANDE ===
 
-CHECK_ONLY="${1:---check-only}"
-DRY_RUN="${2:---dry-run}"
+# Initialiser les flags à false par défaut
+CHECK_ONLY=false
+DRY_RUN=false
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
 VERBOSE="${VERBOSE:-false}"
-RESUME_MODE="${RESUME_MODE:-false}"
+RESUME_MODE=false
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 # Traiter les arguments
 while [[ $# -gt 0 ]]; do
@@ -58,7 +101,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --resume        Reprendre après erreur"
             exit 0
             ;;
-        *) shift ;;
+        *)
+            log_error "Option inconnue: $1"
+            echo "Utilisez --help pour voir les options disponibles"
+            exit 1
+            ;;
     esac
 done
 
@@ -191,11 +238,37 @@ log_step "PHASE 4: Configuration Sécurisée"
 
 # Ensure bcrypt is available for password hashing
 log_info "Vérification des dépendances Python pour la sécurité..."
-if ! python3 -c "import bcrypt" 2>/dev/null; then
-    log_info "Installation bcrypt pour le hashage de mot de passe..."
+
+check_bcrypt_available() {
+    python3 -c "import bcrypt; import sys; sys.exit(0)" 2>/dev/null
+    return $?
+}
+
+if ! check_bcrypt_available; then
+    log_warn "bcrypt n'est pas installé - tentative d'installation..."
+
+    # Essayer d'installer bcrypt de manière sûre
     if cmd_exists python3; then
-        python3 -m pip install -q bcrypt --break-system-packages 2>/dev/null || true
+        # Essayer avec pip install user
+        if python3 -m pip install --user -q bcrypt 2>/dev/null; then
+            log_success "✓ bcrypt installé (--user)"
+        # Essayer avec --break-system-packages si pip user échoue (Debian 12+)
+        elif python3 -m pip install -q bcrypt --break-system-packages 2>/dev/null; then
+            log_success "✓ bcrypt installé (--break-system-packages)"
+        else
+            log_warn "⚠️  Impossible d'installer bcrypt automatiquement"
+            log_warn "Alternative: Installez bcrypt manuellement:"
+            log_warn "  sudo apt-get install -y python3-bcrypt"
+            log_warn "  OU: python3 -m pip install --user bcrypt"
+        fi
     fi
+
+    # Vérifier à nouveau après installation
+    if ! check_bcrypt_available; then
+        log_warn "⚠️  bcrypt toujours indisponible - le hashage utilisera une méthode alternative"
+    fi
+else
+    log_success "✓ bcrypt disponible"
 fi
 
 # Créer .env s'il n'existe pas
@@ -208,13 +281,22 @@ fi
 # Configuration du mot de passe dashboard
 log_info "Configuration mot de passe dashboard..."
 
+# Détecter si un hash bcrypt existe (supporte $ simple et $$ doublé)
+# Formats bcrypt: $2a$, $2b$, $2x$, $2y$ ou $$2a$$, $$2b$$, $$2x$$, $$2y$$
 HAS_BCRYPT_HASH=false
-if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE" 2>/dev/null; then
+if grep -qE "^DASHBOARD_PASSWORD=\\\$\\\$?2[abxy]\\\$\\\$?" "$ENV_FILE" 2>/dev/null; then
     HAS_BCRYPT_HASH=true
+    log_info "✓ Hash bcrypt détecté dans .env"
 fi
 
+# Vérifier si le mot de passe doit être configuré
 NEEDS_PASSWORD=false
-if grep -q "CHANGEZ_MOI" "$ENV_FILE" || [[ "$HAS_BCRYPT_HASH" == "false" ]]; then
+CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
+
+if [[ -z "$CURRENT_PASSWORD" ]] || \
+   grep -q "CHANGEZ_MOI" "$ENV_FILE" 2>/dev/null || \
+   [[ "$CURRENT_PASSWORD" == "CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT" ]] || \
+   [[ "$HAS_BCRYPT_HASH" == "false" ]]; then
     NEEDS_PASSWORD=true
 fi
 
@@ -284,23 +366,60 @@ fi
 
 log_step "PHASE 4.5: Permissions & Volumes"
 
-mkdir -p data logs config certbot/conf certbot/www
-touch data/messages.txt data/late_messages.txt
-[[ ! -f data/linkedin.db ]] && touch data/linkedin.db
+# Créer les répertoires nécessaires
+mkdir -p data logs config certbot/conf certbot/www deployment/nginx
 
-# Appliquer permissions
-if [[ -w "." ]]; then
-    if [[ "$EUID" -ne 1000 ]]; then
-        check_sudo || true
-        sudo chown -R 1000:1000 data logs config 2>/dev/null || true
-    fi
-else
-    check_sudo || true
-    sudo chown -R 1000:1000 data logs config 2>/dev/null || true
+# Créer les fichiers de base s'ils n'existent pas
+touch data/messages.txt data/late_messages.txt 2>/dev/null || true
+[[ ! -f data/linkedin.db ]] && touch data/linkedin.db 2>/dev/null || true
+
+# Appliquer permissions de manière robuste
+log_info "Configuration des permissions pour Docker (UID 1000)..."
+
+# Vérifier si nous avons besoin de sudo
+NEED_SUDO=false
+if [[ ! -w data ]] || [[ ! -w logs ]] || [[ ! -w config ]]; then
+    NEED_SUDO=true
 fi
 
-chmod -R 775 data logs config
-log_success "✓ Permissions appliquées"
+# Fonction pour appliquer les permissions
+apply_permissions() {
+    local use_sudo="$1"
+
+    if [[ "$use_sudo" == "true" ]]; then
+        check_sudo
+        sudo chown -R 1000:1000 data logs config certbot 2>/dev/null || {
+            log_warn "Impossible de changer le propriétaire (ignoré si vous êtes déjà UID 1000)"
+        }
+        sudo chmod -R 775 data logs config 2>/dev/null || {
+            log_error "Impossible de modifier les permissions"
+            return 1
+        }
+    else
+        chown -R 1000:1000 data logs config certbot 2>/dev/null || {
+            log_warn "Impossible de changer le propriétaire (ignoré si vous êtes déjà UID 1000)"
+        }
+        chmod -R 775 data logs config 2>/dev/null || {
+            log_error "Impossible de modifier les permissions"
+            return 1
+        }
+    fi
+
+    return 0
+}
+
+# Appliquer les permissions
+if ! apply_permissions "$NEED_SUDO"; then
+    log_error "Échec de la configuration des permissions"
+    exit 1
+fi
+
+# Vérifier que les permissions sont correctes
+if [[ ! -w data ]] || [[ ! -w logs ]] || [[ ! -w config ]]; then
+    log_warn "Les permissions ne sont pas optimales mais on continue..."
+else
+    log_success "✓ Permissions appliquées (UID 1000, mode 775)"
+fi
 
 # === PHASE 5: BOOTSTRAP SSL ===
 

@@ -82,21 +82,24 @@ check_docker_environment() {
 
     if ! cmd_exists docker; then
         log_error "Docker n'est pas installé"
+        log_error "Installez Docker: curl -fsSL https://get.docker.com | sh"
         return 1
     fi
     log_success "✓ Docker installé"
 
     if ! docker info > /dev/null 2>&1; then
         log_error "Docker daemon n'est pas actif"
+        log_error "Essayez: sudo systemctl start docker && sudo systemctl enable docker"
         return 1
     fi
     log_success "✓ Docker daemon actif"
 
-    if ! cmd_exists docker; then
-        log_error "docker-compose n'est pas disponible"
+    if ! docker compose version > /dev/null 2>&1; then
+        log_error "docker compose n'est pas disponible"
+        log_error "Docker Compose plugin est requis (installé avec Docker Engine v20.10+)"
         return 1
     fi
-    log_success "✓ docker-compose disponible"
+    log_success "✓ docker compose disponible"
 
     return 0
 }
