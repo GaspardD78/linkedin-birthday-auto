@@ -12,7 +12,7 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 
 ## ✨ Fonctionnalités Clés
 
-*   **⚡ Optimisé RPi4** : Consommation RAM minimale (~600MB), gestion ZRAM/Swap automatique, Docker multi-arch (ARM64).
+*   **⚡ Optimisé RPi4** : Limites RAM strictes par service (~3.7GB total sur 4GB), prévention OOM kills, gestion ZRAM/Swap automatique, Docker multi-arch (ARM64).
 *   **🎂 Birthday Bot** : Envoi de messages personnalisés (Jour J ou rattrapage).
 *   **🔍 Visitor Bot** : Visite automatique de profils ciblés (Mode Recruteur, Filtres Booléens).
 *   **🛡️ Sécurité Renforcée (V3.3+)** :
@@ -64,6 +64,20 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 ---
 
 ## 🆕 Nouveautés Jan 2025
+
+### 🚀 Version 4.1 (Décembre 2025) - Stabilité & Automatisation
+
+**Résolution de la dette technique pour production sur Raspberry Pi 4 :**
+
+*   **🛡️ Limites RAM Strictes** : Protection contre les OOM Kills avec allocation mémoire optimisée (~3.7GB/4GB)
+*   **🔐 Hashage Mot de Passe Robuste** : 3 stratégies en cascade (Docker bcryptjs → htpasswd → OpenSSL) sans dépendance Python
+*   **🔄 Renouvellement SSL Automatique** : Script + Cron job pour renouveler les certificats Let's Encrypt sans intervention
+*   **✅ CI/CD Amélioré** : Healthchecks post-build pour valider les images Docker avant déploiement
+*   **📦 Docker Compose Standardisé** : Renommage `docker-compose.yml` pour simplification
+
+👉 **Détails complets** : Voir [CHANGELOG.md](CHANGELOG.md)
+
+### Version 4.0 (Janvier 2025) - Assistants Interactifs
 
 Le script setup.sh inclut maintenant plusieurs assistants interactifs pour faciliter l'installation et la sécurité :
 
@@ -192,12 +206,17 @@ bots:
 
 **Voir les logs en temps réel :**
 ```bash
-docker compose -f docker-compose.pi4-standalone.yml logs -f
+docker compose logs -f
 ```
 
 **Redémarrer les services :**
 ```bash
-docker compose -f docker-compose.pi4-standalone.yml restart
+docker compose restart
+```
+
+**Activer le monitoring (optionnel) :**
+```bash
+docker compose --profile monitoring up -d
 ```
 
 **Mettre à jour le bot :**

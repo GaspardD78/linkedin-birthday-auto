@@ -69,6 +69,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Test Bot Worker image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Testing bot worker image..."
+          docker run --rm --platform linux/arm64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BOT }}:latest \
+            python --version
+          echo "✓ Bot worker image health check passed"
+
   build-dashboard:
     name: Build Dashboard (ARM64)
     runs-on: ubuntu-latest
@@ -119,3 +128,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Test Dashboard image
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Testing dashboard image..."
+          docker run --rm --platform linux/arm64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DASHBOARD }}:latest \
+            node --version
+          echo "✓ Dashboard image health check passed"

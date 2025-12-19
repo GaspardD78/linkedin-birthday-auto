@@ -121,7 +121,7 @@ source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state
 
 # === VARIABLES DE CONFIGURATION ===
 
-readonly COMPOSE_FILE="docker-compose.pi4-standalone.yml"
+readonly COMPOSE_FILE="docker-compose.yml"
 readonly ENV_FILE=".env"
 readonly ENV_TEMPLATE=".env.pi4.example"
 readonly NGINX_TEMPLATE="deployment/nginx/linkedin-bot.conf.template"
@@ -238,40 +238,9 @@ docker_cleanup || true
 
 log_step "PHASE 4: Configuration Sécurisée"
 
-# Ensure bcrypt is available for password hashing
-log_info "Vérification des dépendances Python pour la sécurité..."
-
-check_bcrypt_available() {
-    python3 -c "import bcrypt; import sys; sys.exit(0)" 2>/dev/null
-    return $?
-}
-
-if ! check_bcrypt_available; then
-    log_warn "bcrypt n'est pas installé - tentative d'installation..."
-
-    # Essayer d'installer bcrypt de manière sûre
-    if cmd_exists python3; then
-        # Essayer avec pip install user
-        if python3 -m pip install --user -q bcrypt 2>/dev/null; then
-            log_success "✓ bcrypt installé (--user)"
-        # Essayer avec --break-system-packages si pip user échoue (Debian 12+)
-        elif python3 -m pip install -q bcrypt --break-system-packages 2>/dev/null; then
-            log_success "✓ bcrypt installé (--break-system-packages)"
-        else
-            log_warn "⚠️  Impossible d'installer bcrypt automatiquement"
-            log_warn "Alternative: Installez bcrypt manuellement:"
-            log_warn "  sudo apt-get install -y python3-bcrypt"
-            log_warn "  OU: python3 -m pip install --user bcrypt"
-        fi
-    fi
-
-    # Vérifier à nouveau après installation
-    if ! check_bcrypt_available; then
-        log_warn "⚠️  bcrypt toujours indisponible - le hashage utilisera une méthode alternative"
-    fi
-else
-    log_success "✓ bcrypt disponible"
-fi
+# Note: Le hashage de mot de passe utilise désormais le conteneur Docker du dashboard
+# Aucune dépendance Python (bcrypt) n'est requise sur l'hôte
+log_info "Le hashage de mot de passe utilisera le conteneur Docker (bcryptjs)"
 
 # Créer .env s'il n'existe pas
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -499,6 +468,38 @@ case "$choice" in
 esac
 
 setup_state_set_config "https_mode" "$HTTPS_MODE"
+
+# === PHASE 5.3: CONFIGURATION CRON RENOUVELLEMENT SSL ===
+
+if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
+    log_step "PHASE 5.3: Configuration Renouvellement SSL Automatique"
+
+    if prompt_yes_no "Configurer le renouvellement automatique des certificats SSL (cron) ?" "y"; then
+        # Vérifier si le cron job existe déjà
+        CRON_JOB="0 3 * * * $PROJECT_ROOT/scripts/renew_certificates.sh >> /var/log/certbot-renew.log 2>&1"
+
+        if crontab -l 2>/dev/null | grep -qF "renew_certificates.sh"; then
+            log_info "✓ Cron job SSL déjà configuré"
+        else
+            log_info "Ajout du cron job pour le renouvellement SSL..."
+
+            # Créer le fichier de log si nécessaire
+            sudo touch /var/log/certbot-renew.log 2>/dev/null || true
+            sudo chown "$(whoami):$(whoami)" /var/log/certbot-renew.log 2>/dev/null || true
+
+            # Ajouter au crontab
+            (crontab -l 2>/dev/null || true; echo "$CRON_JOB") | crontab -
+
+            log_success "✓ Cron job configuré (tous les jours à 3h du matin)"
+            log_info "Le renouvellement automatique vérifiera si les certificats expirent dans < 30 jours"
+        fi
+    else
+        log_warn "Renouvellement automatique non configuré"
+        log_info "Vous pouvez le configurer manuellement plus tard avec:"
+        log_info "  crontab -e"
+        log_info "  Ajouter: 0 3 * * * $PROJECT_ROOT/scripts/renew_certificates.sh >> /var/log/certbot-renew.log 2>&1"
+    fi
+fi
 
 # === PHASE 6: DÉPLOIEMENT DOCKER ===
 
