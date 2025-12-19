@@ -156,11 +156,25 @@ change_password() {
         return 1
     fi
 
-    log_success "Mot de passe modifié et stocké dans .env (avec $$ doublés)"
-    log_info "  Hash: ${SAFE_HASH:0:20}... (premiers 20 chars)"
+    log_success "Mot de passe modifié et stocké dans .env"
 
     # Logging sécurisé (pas le mot de passe!)
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe modifié" >> "$HISTORY_LOG"
+
+    # Afficher le résumé sécurisé
+    echo ""
+    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}${GREEN}✓ MOT DE PASSE MODIFIÉ AVEC SUCCÈS${NC}"
+    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  ${BOLD}Mot de passe (en clair):${NC} ${RED}${NEW_PASS}${NC}"
+    echo -e "  ${BOLD}Hash (bcrypt):${NC} ${GREEN}${HASH_OUTPUT}${NC}"
+    echo ""
+    echo -e "  ⚠️  ${YELLOW}SAUVEGARDEZ CES INFORMATIONS${NC}"
+    echo -e "  ℹ️  Le hash est stocké dans .env (chiffré)"
+    echo ""
+    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
 
     # Redémarrage dashboard
     if docker compose -f "$COMPOSE_FILE" ps dashboard 2>/dev/null | grep -q "Up"; then
@@ -233,14 +247,20 @@ reset_password() {
     echo -e "${BOLD}${GREEN}✓ MOT DE PASSE TEMPORAIRE GÉNÉRÉ${NC}"
     echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "  ${RED}${BOLD}${TEMP_PASS}${NC}"
+    echo -e "  ${BOLD}Mot de passe (en clair):${NC} ${RED}${BOLD}${TEMP_PASS}${NC}"
+    echo -e "  ${BOLD}Hash (bcrypt):${NC} ${GREEN}${HASH_OUTPUT}${NC}"
     echo ""
-    echo -e "  ⚠️  SAUVEGARDEZ CE MOT DE PASSE MAINTENANT !"
-    echo -e "  ⚠️  IL NE SERA PAS AFFICHÉ À NOUVEAU."
+    echo -e "  ⚠️  SAUVEGARDEZ CES INFORMATIONS MAINTENANT !"
+    echo -e "  ⚠️  ILS NE SERONT PAS AFFICHÉS À NOUVEAU."
     echo ""
     echo -e "  Après connexion:"
     echo -e "    1. Changez le mot de passe via le dashboard, ou"
     echo -e "    2. Relancez ce script et choisissez 'Changer le mot de passe'"
+    echo ""
+    echo -e "  En cas de problème de login/mot de passe:"
+    echo -e "    - Vérifiez le mot de passe en clair ci-dessus"
+    echo -e "    - Vérifiez le hash dans .env: grep DASHBOARD_PASSWORD .env"
+    echo -e "    - Consultez: docs/PASSWORD_MANAGEMENT_GUIDE.md"
     echo ""
     echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
     echo ""

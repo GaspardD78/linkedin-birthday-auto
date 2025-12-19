@@ -105,3 +105,33 @@ install_python_packages() {
         log_success "✓ bcrypt déjà installé"
     fi
 }
+
+# === RCLONE INSTALLATION ===
+
+install_rclone() {
+    log_info "Installation de rclone pour sauvegardes Google Drive..."
+
+    if cmd_exists rclone; then
+        log_success "✓ rclone est déjà installé ($(rclone version | head -1))"
+        return 0
+    fi
+
+    check_sudo
+
+    # Installation via le dépôt officiel rclone
+    log_info "Téléchargement de rclone..."
+    curl -fsSL https://rclone.org/install.sh -o install-rclone.sh
+
+    log_info "Exécution du script d'installation rclone..."
+    sudo bash install-rclone.sh
+
+    rm -f install-rclone.sh
+
+    if cmd_exists rclone; then
+        log_success "✓ rclone installé avec succès ($(rclone version | head -1))"
+        return 0
+    else
+        log_error "Échec de l'installation de rclone"
+        return 1
+    fi
+}
