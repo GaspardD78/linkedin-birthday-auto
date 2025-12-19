@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 // Types
 export interface BotStatus {
   active: boolean;
@@ -67,10 +69,8 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
      if (res.status === 401) {
          // Notifier user avant redirect
          if (typeof window !== 'undefined') {
-             console.error('⚠️  Session expirée, redirection vers login dans 2s...');
-
-             // TODO: Remplacer par toast notification si bibliothèque disponible
-             // toast.error('Session expirée, redirection...')
+             toast.error('Session expirée, redirection vers login...');
+             toast.error('Session expirée, redirection vers login...');
 
              setTimeout(() => {
                  window.location.href = '/login';
