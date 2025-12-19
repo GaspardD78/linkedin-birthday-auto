@@ -151,6 +151,7 @@ docker_compose_up() {
     local detached="${2:-true}"
     local monitoring="${3:-false}"
     local cmd="docker compose -f $compose_file"
+    local error_log="/tmp/setup_docker_up.err"
 
     # Ajouter le profil monitoring si activé
     if [[ "$monitoring" == "true" ]]; then
@@ -158,13 +159,78 @@ docker_compose_up() {
         cmd="$cmd --profile monitoring"
     fi
 
-    log_info "Démarrage des conteneurs Docker..."
-
-    if [[ "$detached" == "true" ]]; then
-        $cmd up -d
+    # Récupérer la liste des services à démarrer
+    local services
+    if [[ "$monitoring" == "true" ]]; then
+        services=$(docker compose -f "$compose_file" --profile monitoring config --services 2>/dev/null)
     else
-        $cmd up
+        services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
     fi
+
+    local total_services
+    total_services=$(echo "$services" | wc -l)
+
+    log_info "Démarrage de ${total_services} conteneurs Docker..."
+
+    # Démarrer les conteneurs
+    if [[ "$detached" == "true" ]]; then
+        if ! $cmd up -d 2>"$error_log"; then
+            log_error "Échec du démarrage des conteneurs"
+            if [[ -s "$error_log" ]]; then
+                cat "$error_log" | sed 's/^/  /'
+            fi
+            rm -f "$error_log"
+            return 1
+        fi
+    else
+        if ! $cmd up 2>"$error_log"; then
+            log_error "Échec du démarrage des conteneurs"
+            rm -f "$error_log"
+            return 1
+        fi
+    fi
+    rm -f "$error_log"
+
+    # Afficher la progression du démarrage de chaque service
+    local current=0
+    local spinchars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+    echo -e "${BLUE}│${NC} Attente du démarrage des services..."
+
+    while IFS= read -r service; do
+        [[ -z "$service" ]] && continue
+        current=$((current + 1))
+
+        local max_wait=30
+        local waited=0
+        local spin_idx=0
+
+        echo -ne "${BLUE}│${NC}   [${current}/${total_services}] ${service} "
+
+        while [[ $waited -lt $max_wait ]]; do
+            # Vérifier si le conteneur est running
+            local status
+            status=$(docker compose -f "$compose_file" ps "$service" --format "{{.Status}}" 2>/dev/null | head -1)
+
+            if [[ "$status" == *"Up"* ]] || [[ "$status" == *"running"* ]]; then
+                echo -e "\r${BLUE}│${NC}   [${current}/${total_services}] ${service} ${GREEN}✓ running${NC}    "
+                break
+            elif [[ "$status" == *"Exit"* ]] || [[ "$status" == *"exited"* ]]; then
+                echo -e "\r${BLUE}│${NC}   [${current}/${total_services}] ${service} ${RED}✗ exited${NC}    "
+                break
+            fi
+
+            # Afficher le spinner
+            spin_idx=$(( (spin_idx+1) % ${#spinchars} ))
+            echo -ne "\r${BLUE}│${NC}   [${current}/${total_services}] ${service} ${YELLOW}${spinchars:$spin_idx:1}${NC} starting... "
+            sleep 0.5
+            waited=$((waited + 1))
+        done
+
+        if [[ $waited -ge $max_wait ]]; then
+            echo -e "\r${BLUE}│${NC}   [${current}/${total_services}] ${service} ${YELLOW}⏳ timeout${NC}    "
+        fi
+    done <<< "$services"
 
     log_success "✓ Conteneurs démarrés"
     return 0
