@@ -14,8 +14,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_BOT: ${{ toLower(format('{0}-bot', github.repository)) }}
-  IMAGE_NAME_DASHBOARD: ${{ toLower(format('{0}-dashboard', github.repository)) }}
+  IMAGE_NAME_BOT: ${{ lower(format('{0}-bot', github.repository)) }}
+  IMAGE_NAME_DASHBOARD: ${{ lower(format('{0}-dashboard', github.repository)) }}
 
 jobs:
   build-bot-worker:
