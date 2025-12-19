@@ -539,23 +539,47 @@ else
     setup_state_set_config "monitoring_enabled" "false"
 fi
 
-# Valider docker-compose
+# Initialiser la barre de progression pour la phase 6
+progress_init "Déploiement Docker" 4
+
+# Étape 1: Validation docker-compose
+progress_step "Validation du fichier docker-compose"
 if ! docker_compose_validate "$COMPOSE_FILE"; then
+    progress_fail "Fichier docker-compose invalide"
+    progress_end
     log_error "Docker-compose validation échouée"
     exit 1
 fi
+progress_done "Configuration valide"
 
-# Pull images
+# Étape 2: Pull des images Docker
+progress_step "Téléchargement des images Docker"
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
+    progress_fail "Impossible de télécharger les images"
+    progress_end
     log_error "Pull images échoué"
     exit 1
 fi
+progress_done "Images téléchargées"
 
-# Démarrer les conteneurs
+# Étape 3: Démarrage des conteneurs
+progress_step "Démarrage des conteneurs"
 if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
+    progress_fail "Échec du démarrage"
+    progress_end
     log_error "Démarrage des conteneurs échoué"
     exit 1
 fi
+progress_done "Conteneurs démarrés"
+
+# Étape 4: Vérification post-démarrage
+progress_step "Vérification des conteneurs"
+sleep 3
+RUNNING_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
+TOTAL_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
+progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
+
+progress_end
 
 # === PHASE 7: VALIDATION ===
 

@@ -30,6 +30,100 @@ log_step() {
     sleep 2
 }
 
+# === PROGRESS INDICATORS ===
+
+# Variables globales pour le suivi de progression
+PROGRESS_CURRENT=0
+PROGRESS_TOTAL=0
+PROGRESS_PHASE=""
+
+# Initialise une nouvelle séquence de progression
+# Usage: progress_init "Phase Name" 5
+progress_init() {
+    PROGRESS_PHASE="$1"
+    PROGRESS_TOTAL="$2"
+    PROGRESS_CURRENT=0
+    echo -e "\n${BOLD}${BLUE}┌─ ${PROGRESS_PHASE} (0/${PROGRESS_TOTAL})${NC}"
+}
+
+# Avance à l'étape suivante avec description
+# Usage: progress_step "Description de l'étape"
+progress_step() {
+    local description="$1"
+    PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+
+    # Générer la barre de progression
+    local bar_width=30
+    local filled=$((PROGRESS_CURRENT * bar_width / PROGRESS_TOTAL))
+    local empty=$((bar_width - filled))
+    local percent=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
+
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+
+    echo -e "${BLUE}│${NC} ${DIM}[${PROGRESS_CURRENT}/${PROGRESS_TOTAL}]${NC} ${description}"
+    echo -e "${BLUE}│${NC} ${GREEN}${bar}${NC} ${percent}%"
+}
+
+# Marque l'étape actuelle comme terminée avec succès
+# Usage: progress_done "Message optionnel"
+progress_done() {
+    local message="${1:-Terminé}"
+    echo -e "${BLUE}│${NC}   ${GREEN}✓${NC} ${message}"
+}
+
+# Marque l'étape actuelle comme échouée
+# Usage: progress_fail "Message d'erreur"
+progress_fail() {
+    local message="${1:-Échec}"
+    echo -e "${BLUE}│${NC}   ${RED}✗${NC} ${message}"
+}
+
+# Termine la séquence de progression
+# Usage: progress_end
+progress_end() {
+    if [[ $PROGRESS_CURRENT -eq $PROGRESS_TOTAL ]]; then
+        echo -e "${BOLD}${GREEN}└─ ${PROGRESS_PHASE} terminé avec succès ✓${NC}\n"
+    else
+        echo -e "${BOLD}${YELLOW}└─ ${PROGRESS_PHASE} incomplet (${PROGRESS_CURRENT}/${PROGRESS_TOTAL})${NC}\n"
+    fi
+}
+
+# Affiche un spinner pendant une opération
+# Usage: run_with_spinner "message" command args...
+run_with_spinner() {
+    local message="$1"
+    shift
+    local spinchars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local pid
+    local i=0
+
+    # Démarrer la commande en arrière-plan
+    "$@" &
+    pid=$!
+
+    # Afficher le spinner
+    echo -ne "${BLUE}│${NC} ${message} "
+    while kill -0 $pid 2>/dev/null; do
+        i=$(( (i+1) % ${#spinchars} ))
+        echo -ne "\r${BLUE}│${NC} ${message} ${YELLOW}${spinchars:$i:1}${NC} "
+        sleep 0.1
+    done
+
+    # Vérifier le code de retour
+    wait $pid
+    local exit_code=$?
+
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "\r${BLUE}│${NC} ${message} ${GREEN}✓${NC}  "
+    else
+        echo -e "\r${BLUE}│${NC} ${message} ${RED}✗${NC}  "
+    fi
+
+    return $exit_code
+}
+
 # === UTILITY FUNCTIONS ===
 
 cmd_exists() {
