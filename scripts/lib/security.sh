@@ -17,48 +17,57 @@ hash_and_store_password() {
         return 1
     fi
 
-    # Utiliser python pour générer un bcrypt hash sécurisé
-    local hashed_password
+    local hashed_password=""
 
-    # On passe le mot de passe via pipe au script python pour éviter les fuites et problèmes d'heredoc
-    local python_script="
-import bcrypt
-import sys
+    # STRATÉGIE 1: Utiliser le script Node.js du dashboard (via conteneur Docker)
+    # C'est la méthode la plus propre car elle réutilise le code existant
+    if cmd_exists docker && docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
+        log_info "Hashage via conteneur Docker (bcryptjs)..."
 
-try:
-    # Lire stdin binaire pour éviter problèmes d'encodage et strip le newline
-    password = sys.stdin.buffer.read().strip()
-    if not password:
-        sys.exit(1)
+        # Lancer conteneur éphémère avec le script hash_password.js
+        hashed_password=$(echo -n "$password" | docker run --rm -i \
+            --entrypoint node \
+            ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
+            /app/scripts/hash_password.js --quiet 2>/dev/null | head -n1)
 
-    hashed = bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))
-    print(hashed.decode('utf-8'))
-except Exception:
-    sys.exit(1)
-"
+        if [[ -n "$hashed_password" ]]; then
+            log_success "✓ Hash généré via conteneur Docker"
+        fi
+    fi
 
-    # Exécution sécurisée
-    hashed_password=$(echo -n "$password" | python3 -c "$python_script" 2>/dev/null)
+    # STRATÉGIE 2: Fallback sur htpasswd avec bcrypt (si disponible sur l'hôte)
+    if [[ -z "$hashed_password" ]] && cmd_exists htpasswd; then
+        log_info "Fallback: hashage via htpasswd (bcrypt)..."
 
-    if [[ -z "$hashed_password" ]]; then
-        log_warn "Échec bcrypt standard, tentative fallback..."
+        # htpasswd -nbB génère un hash bcrypt
+        local htpasswd_output
+        htpasswd_output=$(htpasswd -nbB dummy "$password" 2>/dev/null)
 
-        # Fallback: passlib (si installé)
-        local passlib_script="
-from passlib.context import CryptContext
-import sys
-try:
-    ctx = CryptContext(schemes=['bcrypt'])
-    password = sys.stdin.read().strip()
-    print(ctx.hash(password))
-except Exception:
-    sys.exit(1)
-"
-        hashed_password=$(echo -n "$password" | python3 -c "$passlib_script" 2>/dev/null)
+        if [[ -n "$htpasswd_output" ]]; then
+            # Format: dummy:$2y$05$... → on extrait juste le hash
+            hashed_password=$(echo "$htpasswd_output" | cut -d':' -f2)
+            log_success "✓ Hash généré via htpasswd"
+        fi
+    fi
+
+    # STRATÉGIE 3: Fallback sur OpenSSL SHA-512 (compatible Unix)
+    # Note: Ce n'est PAS bcrypt, mais le dashboard accepte ce format en fallback
+    if [[ -z "$hashed_password" ]] && cmd_exists openssl; then
+        log_warn "Fallback: hashage via OpenSSL (SHA-512, moins sécurisé que bcrypt)..."
+
+        # Générer un hash SHA-512 avec salt
+        hashed_password=$(openssl passwd -6 "$password" 2>/dev/null)
+
+        if [[ -n "$hashed_password" ]]; then
+            log_warn "⚠️  Hash SHA-512 utilisé (pas bcrypt). Considérez installer Docker pour bcrypt."
+        fi
     fi
 
     if [[ -z "$hashed_password" ]]; then
         log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
+        log_error "Solutions:"
+        log_error "  1. Installez Docker: sudo apt install docker.io"
+        log_error "  2. Installez htpasswd: sudo apt install apache2-utils"
         return 1
     fi
 
@@ -68,7 +77,6 @@ except Exception:
     doubled_hash="${hashed_password//\$/\$\$}"
 
     # Échapper les caractères spéciaux pour sed (/ et & et |)
-    # Nous utilisons | comme séparateur dans setup.sh et ici
     local escaped_hash
     escaped_hash=$(printf '%s\n' "$doubled_hash" | sed 's:[\/&|]:\\&:g')
 
@@ -79,7 +87,7 @@ except Exception:
         echo "DASHBOARD_PASSWORD=${escaped_hash}" >> "$env_file"
     fi
 
-    log_success "✓ Mot de passe hashé et stocké (hash bcrypt avec $$ doublés)"
+    log_success "✓ Mot de passe hashé et stocké dans $env_file"
     return 0
 }
 

@@ -32,9 +32,9 @@
 #         → Utilise Cloudflare (1.1.1.1) et Google (8.8.8.8) comme fallback
 #
 # IMPORTANT - Limites de ressources:
-# Les limites mémoire (memory) ont été retirées car le kernel Raspberry Pi
-# ne supporte pas les capacités cgroup memory limit. Seules les limites CPU
-# sont conservées.
+# Optimisé pour Raspberry Pi 4 (4GB RAM)
+# Les limites mémoire sont strictes pour éviter les OOM Kills
+# Total alloué: ~3.7GB (marge de 300MB pour l'OS)
 
 services:
   # ========================================
@@ -52,7 +52,7 @@ services:
       --appendonly yes
       --appendfsync everysec
       --no-appendfsync-on-rewrite yes
-      --maxmemory 256mb
+      --maxmemory 128mb
       --maxmemory-policy allkeys-lru
       --loglevel warning
       --tcp-backlog 511
@@ -63,8 +63,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 128M
         reservations:
           cpus: '0.25'
+          memory: 64M
     logging:
       driver: json-file
       options:
@@ -104,8 +106,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 128M
         reservations:
           cpus: '0.25'
+          memory: 64M
     logging:
       driver: json-file
       options:
@@ -150,6 +154,9 @@ services:
       resources:
         limits:
           cpus: '0.25'
+          memory: 64M
+        reservations:
+          memory: 32M
     logging:
       driver: json-file
       options:
@@ -202,6 +209,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     restart: unless-stopped
     healthcheck:
       # Use Python to test HTTP health endpoint and verify status code 200
@@ -251,8 +262,10 @@ services:
       resources:
         limits:
           cpus: '1.5'
+          memory: 1400M
         reservations:
           cpus: '0.5'
+          memory: 800M
     logging:
       driver: json-file
       options:
@@ -289,6 +302,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
+          memory: 896M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: json-file
       options:
@@ -301,7 +318,7 @@ services:
     - NEXT_TELEMETRY_DISABLED=1
     - HOSTNAME=0.0.0.0
       # Optimisation Mémoire pour RPi4 (éviter OOM Crash)
-    - NODE_OPTIONS=--max-old-space-size=256
+    - NODE_OPTIONS=--max-old-space-size=800
 
       # ✅ SQLite Local
     - DATABASE_URL=sqlite:///app/data/linkedin.db
@@ -362,6 +379,14 @@ services:
       - ./deployment/nginx/429.html:/var/www/html/429.html
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 64M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
     depends_on:
       - dashboard
       - api
@@ -399,6 +424,10 @@ services:
       resources:
         limits:
           cpus: '1.0'
+          memory: 384M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     restart: unless-stopped
     networks:
       - linkedin-network
@@ -425,6 +454,10 @@ services:
       resources:
         limits:
           cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     restart: unless-stopped
     # [FIX-D] DNS fiables forcés
     dns:
@@ -447,6 +480,10 @@ services:
       resources:
         limits:
           cpus: '0.25'
+          memory: 32M
+        reservations:
+          cpus: '0.1'
+          memory: 16M
     networks:
       - linkedin-network
 
