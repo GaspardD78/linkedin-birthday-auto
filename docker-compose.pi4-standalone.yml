@@ -1,6 +1,6 @@
 # Docker Compose pour Raspberry Pi 4 - Configuration Standalone
 # Tout-en-un : Bot Worker + Dashboard + Redis + Nginx (Proxy)
-# Pas de dépendance externe (Synology MySQL/NFS retiré)
+# Autonome : Aucune dépendance externe (NAS/MySQL)
 #
 # Architecture simplifiée:
 # - Pi4 : Bot Worker + Dashboard + Redis + SQLite + Nginx
