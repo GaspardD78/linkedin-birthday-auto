@@ -113,6 +113,7 @@ done
 
 # Charger les libs dans l'ordre (dependencies) - utiliser chemins absolus
 source "$SCRIPT_DIR/scripts/lib/common.sh" || { echo "ERROR: Failed to load common.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/installers.sh" || { echo "ERROR: Failed to load installers.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/security.sh" || { echo "ERROR: Failed to load security.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/docker.sh" || { echo "ERROR: Failed to load docker.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/checks.sh" || { echo "ERROR: Failed to load checks.sh"; exit 1; }
@@ -185,7 +186,7 @@ fi
 
 log_step "PHASE 1: Vérifications Pré-Déploiement"
 
-if ! check_all_prerequisites "$COMPOSE_FILE"; then
+if ! ensure_prerequisites "$COMPOSE_FILE"; then
     log_error "Vérifications échouées"
     setup_state_checkpoint "prerequisites" "failed"
     exit 1

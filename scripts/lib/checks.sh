@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
 # LINKEDIN AUTO - CHECKS LIBRARY (v4.0)
-# System prerequisite checks
+# System prerequisite checks and installation hooks
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -15,18 +15,19 @@ readonly HEALTH_INTERVAL=10
 
 # === MAIN CHECK FUNCTION ===
 
-check_all_prerequisites() {
+ensure_prerequisites() {
     local compose_file="$1"
+    local check_only_mode="${CHECK_ONLY:-false}"
 
-    log_step "VÉRIFICATIONS PRÉ-DÉPLOIEMENT"
+    log_step "VÉRIFICATIONS & INSTALLATIONS"
 
     # Vérifier les prérequis système
-    if ! check_system_requirements; then
+    if ! ensure_system_requirements "$check_only_mode"; then
         return 1
     fi
 
     # Vérifier l'environnement Docker
-    if ! check_docker_environment; then
+    if ! ensure_docker_environment "$check_only_mode"; then
         return 1
     fi
 
@@ -40,13 +41,14 @@ check_all_prerequisites() {
         return 1
     fi
 
-    log_success "✓ Toutes les vérifications passées"
+    log_success "✓ Tous les prérequis sont satisfaits"
     return 0
 }
 
 # === SYSTEM REQUIREMENTS ===
 
-check_system_requirements() {
+ensure_system_requirements() {
+    local check_only="$1"
     log_info "Vérification des prérequis système..."
 
     # Vérifier la mémoire
@@ -54,50 +56,97 @@ check_system_requirements() {
     total_memory=$(get_total_memory_gb)
     if [[ $total_memory -lt $MIN_MEMORY_GB ]]; then
         log_error "Mémoire insuffisante: ${total_memory}GB (minimum: ${MIN_MEMORY_GB}GB)"
+        # La mémoire physique ne peut pas être "installée", donc échec
         return 1
     fi
     log_success "✓ Mémoire: ${total_memory}GB (OK)"
 
-    # Vérifier curl
-    if ! cmd_exists curl; then
-        log_error "curl n'est pas installé"
-        return 1
-    fi
-    log_success "✓ curl installé"
+    # Vérifier dépendances manquantes
+    local missing_deps=false
+    for cmd in curl openssl git jq python3; do
+        if ! cmd_exists "$cmd"; then
+            missing_deps=true
+            break
+        fi
+    done
 
-    # Vérifier openssl
-    if ! cmd_exists openssl; then
-        log_error "openssl n'est pas installé"
-        return 1
+    if [[ "$missing_deps" == "true" ]]; then
+        if [[ "$check_only" == "true" ]]; then
+             log_error "Dépendances système manquantes (curl, openssl, git, jq, python3)."
+             return 1
+        fi
+
+        # Installer les dépendances
+        install_system_packages
+        install_python_packages
+    else
+        log_success "✓ Outils système installés (curl, openssl, git, jq, python3)"
+
+        # Vérifier paquets python même si python3 existe
+        if [[ "$check_only" != "true" ]]; then
+            install_python_packages
+        fi
     fi
-    log_success "✓ openssl installé"
 
     return 0
 }
 
 # === DOCKER ENVIRONMENT ===
 
-check_docker_environment() {
+ensure_docker_environment() {
+    local check_only="$1"
     log_info "Vérification de l'environnement Docker..."
 
     if ! cmd_exists docker; then
-        log_error "Docker n'est pas installé"
-        log_error "Installez Docker: curl -fsSL https://get.docker.com | sh"
-        return 1
+        if [[ "$check_only" == "true" ]]; then
+            log_error "Docker n'est pas installé"
+            return 1
+        fi
+        install_docker
     fi
     log_success "✓ Docker installé"
 
+    # Vérifier si l'utilisateur est dans le groupe docker
+    if ! groups "$USER" | grep -q "docker"; then
+        if [[ "$check_only" == "true" ]]; then
+             log_warn "L'utilisateur $USER n'est pas dans le groupe docker."
+        else
+             configure_docker_permissions
+        fi
+    fi
+
     if ! docker info > /dev/null 2>&1; then
-        log_error "Docker daemon n'est pas actif"
-        log_error "Essayez: sudo systemctl start docker && sudo systemctl enable docker"
-        return 1
+        # Essayer avec sudo si nécessaire (si le groupe vient d'être ajouté)
+        if sudo docker info > /dev/null 2>&1; then
+             log_warn "Docker accessible via sudo uniquement (re-login nécessaire)."
+        else
+             log_error "Docker daemon n'est pas actif."
+             if [[ "$check_only" != "true" ]]; then
+                  log_info "Tentative de démarrage de Docker..."
+                  check_sudo
+                  sudo systemctl start docker && sudo systemctl enable docker
+                  sleep 3
+             else
+                  return 1
+             fi
+        fi
     fi
     log_success "✓ Docker daemon actif"
 
     if ! docker compose version > /dev/null 2>&1; then
         log_error "docker compose n'est pas disponible"
-        log_error "Docker Compose plugin est requis (installé avec Docker Engine v20.10+)"
-        return 1
+        if [[ "$check_only" != "true" ]]; then
+             log_info "Tentative d'installation du plugin Docker Compose..."
+             check_sudo
+             sudo apt-get install -y docker-compose-plugin -qq || true
+             if ! docker compose version > /dev/null 2>&1; then
+                 log_error "Impossible d'installer Docker Compose."
+                 return 1
+             fi
+             log_success "✓ Docker Compose installé"
+        else
+             return 1
+        fi
     fi
     log_success "✓ docker compose disponible"
 
