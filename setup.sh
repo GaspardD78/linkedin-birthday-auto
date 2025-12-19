@@ -53,7 +53,17 @@ cleanup_lock() {
 
 # Acquérir le verrou exclusif
 acquire_lock() {
-    exec 200>"$LOCK_FILE"
+    # Si le fichier de verrou existe mais n'est pas accessible, le supprimer
+    if [[ -f "$LOCK_FILE" ]] && ! [[ -w "$LOCK_FILE" ]]; then
+        rm -f "$LOCK_FILE" 2>/dev/null || true
+    fi
+
+    exec 200>"$LOCK_FILE" 2>/dev/null || {
+        echo -e "\n${_RED}[ERROR]${_NC} Impossible d'accéder au verrou $LOCK_FILE"
+        echo -e "${_YELLOW}[INFO]${_NC} Essayez de nettoyer le verrou:"
+        echo -e "  sudo rm -f $LOCK_FILE"
+        exit 1
+    }
 
     if ! flock -n 200; then
         local lock_pid
