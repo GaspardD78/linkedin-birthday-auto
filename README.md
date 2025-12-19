@@ -38,15 +38,56 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 
 ---
 
-## 🚀 Installation Rapide (Recommandée)
+## 🚀 Installation Rapide
 
-**Pré-requis :** Raspberry Pi 4 (4GB RAM minimum conseillé), Raspberry Pi OS 64-bit (Lite ou Desktop).
-**Système :** `git` et `docker` installés (le script peut installer Docker pour vous).
+**Pré-requis :**
+- Raspberry Pi 4 (4GB RAM minimum conseillé, 8GB recommandé)
+- Raspberry Pi OS 64-bit (Lite ou Desktop)
+- Connexion Internet stable
 
-1.  **Cloner le dépôt :**
+**Note:** Le script peut installer Docker automatiquement. Git n'est pas inclus nativement sur Raspberry Pi OS Lite.
+
+### Installation Avec Git (Méthode Recommandée)
+
+1.  **Installer Git (si pas déjà installé) :**
+    ```bash
+    sudo apt update
+    sudo apt install git -y
+    ```
+
+2.  **Cloner le dépôt :**
     ```bash
     git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
     cd linkedin-birthday-auto
+    ```
+
+3.  **Lancer l'installateur :**
+    ```bash
+    chmod +x setup.sh
+    ./setup.sh
+    ```
+    *Le script gère tout : vérification mémoire/swap, configuration Docker, création certificats SSL temporaires, et lancement des conteneurs.*
+
+4.  **Accéder au Dashboard :**
+    *   Ouvrez votre navigateur : `https://<IP_DE_VOTRE_RPI>` (ou le domaine configuré).
+    *   Acceptez le certificat auto-signé (si vous n'avez pas encore configuré Let's Encrypt).
+    *   Connectez-vous (login par défaut affiché à la fin du script).
+
+### Installation Sans Git (Raspberry Pi OS Lite)
+
+Si vous ne souhaitez pas installer Git, vous pouvez télécharger le projet directement :
+
+1.  **Télécharger le projet :**
+    ```bash
+    mkdir -p ~/linkedin-birthday-auto
+    cd ~/linkedin-birthday-auto
+    wget https://github.com/GaspardD78/linkedin-birthday-auto/archive/refs/heads/main.zip -O linkedin-bot.zip
+    sudo apt install unzip -y
+    unzip linkedin-bot.zip
+    mv linkedin-birthday-auto-main/* .
+    mv linkedin-birthday-auto-main/.* . 2>/dev/null || true
+    rmdir linkedin-birthday-auto-main
+    rm linkedin-bot.zip
     ```
 
 2.  **Lancer l'installateur :**
@@ -54,12 +95,10 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
     chmod +x setup.sh
     ./setup.sh
     ```
-    *Le script gère tout : vérification mémoire/swap, configuration Docker, création certificats SSL temporaires, et lancement des conteneurs.*
 
-3.  **Accéder au Dashboard :**
-    *   Ouvrez votre navigateur : `https://<IP_DE_VOTRE_RPI>` (ou le domaine configuré).
-    *   Acceptez le certificat auto-signé (si vous n'avez pas encore configuré Let's Encrypt).
-    *   Connectez-vous (login par défaut affiché à la fin du script).
+3.  **Accéder au Dashboard** (même procédure qu'avec Git)
+
+**👉 Guide complet pour Raspberry Pi OS Lite :** [docs/RASPBERRY_PI_DEPLOYMENT.md](docs/RASPBERRY_PI_DEPLOYMENT.md)
 
 ---
 
@@ -169,6 +208,7 @@ bots:
 ### 🆕 Nouvelles Documentations (Jan 2025)
 
 *   [**Quick Start Guide**](docs/QUICK_START_2025.md) : Pour démarrer rapidement (5 min de lecture)
+*   [**🍓 Guide Raspberry Pi OS Lite**](docs/RASPBERRY_PI_DEPLOYMENT.md) : Installation complète sur Raspberry Pi OS Lite 64-bit (avec ou sans git)
 *   [**Guide Configuration HTTPS**](docs/SETUP_HTTPS_GUIDE.md) : Détails sur les 4 options HTTPS + Let's Encrypt
 *   [**Guide Sauvegardes Google Drive**](docs/SETUP_BACKUP_GUIDE.md) : Setup rclone, cron, test restore
 *   [**Guide Gestion Mot de Passe**](docs/PASSWORD_MANAGEMENT_GUIDE.md) : Change/reset/recover mot de passe
@@ -201,8 +241,26 @@ docker compose -f docker-compose.pi4-standalone.yml restart
 ```
 
 **Mettre à jour le bot :**
+
+Avec Git:
 ```bash
 git pull
+./setup.sh
+```
+
+Sans Git (téléchargement manuel):
+```bash
+# Sauvegarder la config
+cp .env .env.backup
+cp -r config config.backup
+
+# Télécharger la dernière version
+wget https://github.com/GaspardD78/linkedin-birthday-auto/archive/refs/heads/main.zip -O update.zip
+unzip -o update.zip
+rsync -av --exclude='.env' --exclude='config/' linkedin-birthday-auto-main/ .
+rm -rf linkedin-birthday-auto-main update.zip
+
+# Relancer le setup
 ./setup.sh
 ```
 
