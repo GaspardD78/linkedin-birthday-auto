@@ -134,7 +134,8 @@ source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state
 readonly COMPOSE_FILE="docker-compose.yml"
 readonly ENV_FILE=".env"
 readonly ENV_TEMPLATE=".env.pi4.example"
-readonly NGINX_TEMPLATE="deployment/nginx/linkedin-bot.conf.template"
+readonly NGINX_TEMPLATE_HTTPS="deployment/nginx/linkedin-bot-https.conf.template"
+readonly NGINX_TEMPLATE_LAN="deployment/nginx/linkedin-bot-lan.conf.template"
 readonly NGINX_CONFIG="deployment/nginx/linkedin-bot.conf"
 readonly DOMAIN_DEFAULT="gaspardanoukolivier.freeboxos.fr"
 readonly LOCAL_IP="192.168.1.145"
@@ -402,44 +403,12 @@ else
     log_success "✓ Permissions appliquées (UID 1000, mode 775)"
 fi
 
-# === PHASE 5: BOOTSTRAP SSL ===
+# === PHASE 5: CONFIGURATION HTTPS (REORDERED BEFORE NGINX) ===
 
-log_step "PHASE 5: Préparation SSL"
+log_step "PHASE 5: Configuration HTTPS"
 
 CERT_DIR="certbot/conf/live/${DOMAIN}"
-if [[ ! -f "$CERT_DIR/fullchain.pem" ]] || [[ ! -f "$CERT_DIR/privkey.pem" ]]; then
-    log_warn "Certificats temporaires générés..."
-    mkdir -p "$CERT_DIR"
-
-    if cmd_exists openssl; then
-        openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
-            -keyout "$CERT_DIR/privkey.pem" \
-            -out "$CERT_DIR/fullchain.pem" \
-            -subj "/CN=${DOMAIN}/O=Temporary Certificate/C=FR" 2>/dev/null
-
-        chmod 644 "$CERT_DIR/fullchain.pem"
-        chmod 600 "$CERT_DIR/privkey.pem"
-        log_success "✓ Certificats temporaires créés"
-    fi
-fi
-
-# === PHASE 5.1: CONFIGURATION NGINX ===
-
-log_step "PHASE 5.1: Configuration Nginx"
-
-if [[ -f "$NGINX_TEMPLATE" ]]; then
-    export DOMAIN
-    if ! envsubst '${DOMAIN}' < "$NGINX_TEMPLATE" > "$NGINX_CONFIG"; then
-        log_error "Impossible de générer config Nginx"
-        exit 1
-    fi
-    chmod 644 "$NGINX_CONFIG"
-    log_success "✓ Configuration Nginx générée"
-fi
-
-# === PHASE 5.2: CONFIGURATION HTTPS ===
-
-log_step "PHASE 5.2: Configuration HTTPS"
+mkdir -p "$CERT_DIR"
 
 choice=$(prompt_menu "Scénario HTTPS" \
     "🏠 LAN uniquement (HTTP, pas HTTPS)" \
@@ -469,6 +438,7 @@ case "$choice" in
             log_success "✓ Certificats importés"
         else
             log_error "Fichiers certificats non trouvés"
+            exit 1
         fi
         ;;
     4)
@@ -478,6 +448,51 @@ case "$choice" in
 esac
 
 setup_state_set_config "https_mode" "$HTTPS_MODE"
+
+# === PHASE 5.1: BOOTSTRAP SSL & CONFIGURATION NGINX ===
+
+log_step "PHASE 5.1: Préparation SSL et Configuration Nginx"
+
+# Créer certificats temporaires si nécessaire (pour tous les modes sauf manual)
+if [[ "$HTTPS_MODE" != "manual" ]]; then
+    if [[ ! -f "$CERT_DIR/fullchain.pem" ]] || [[ ! -f "$CERT_DIR/privkey.pem" ]]; then
+        log_info "Génération de certificats temporaires..."
+
+        if cmd_exists openssl; then
+            openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+                -keyout "$CERT_DIR/privkey.pem" \
+                -out "$CERT_DIR/fullchain.pem" \
+                -subj "/CN=${DOMAIN}/O=Temporary Certificate/C=FR" 2>/dev/null
+
+            chmod 644 "$CERT_DIR/fullchain.pem"
+            chmod 600 "$CERT_DIR/privkey.pem"
+            log_success "✓ Certificats temporaires créés"
+        fi
+    fi
+fi
+
+# Sélectionner le template nginx approprié
+if [[ "$HTTPS_MODE" == "lan" ]]; then
+    NGINX_TEMPLATE="$NGINX_TEMPLATE_LAN"
+    log_info "Utilisation du template Nginx: MODE LAN (HTTP only)"
+else
+    NGINX_TEMPLATE="$NGINX_TEMPLATE_HTTPS"
+    log_info "Utilisation du template Nginx: MODE HTTPS"
+fi
+
+# Générer la configuration nginx
+if [[ -f "$NGINX_TEMPLATE" ]]; then
+    export DOMAIN
+    if ! envsubst '${DOMAIN}' < "$NGINX_TEMPLATE" > "$NGINX_CONFIG"; then
+        log_error "Impossible de générer config Nginx"
+        exit 1
+    fi
+    chmod 644 "$NGINX_CONFIG"
+    log_success "✓ Configuration Nginx générée (${HTTPS_MODE})"
+else
+    log_error "Template Nginx introuvable: $NGINX_TEMPLATE"
+    exit 1
+fi
 
 # === PHASE 5.3: CONFIGURATION CRON RENOUVELLEMENT SSL ===
 
