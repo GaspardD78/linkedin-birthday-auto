@@ -2103,6 +2103,96 @@ class Database:
             )
             return cursor.rowcount > 0
 
+    @retry_on_lock()
+    def check_integrity(self) -> dict:
+        """
+        Vérifie l'intégrité de la base de données SQLite.
+        Utilise PRAGMA integrity_check pour détecter les corruptions.
+
+        Returns:
+            dict avec les résultats : {'ok': bool, 'message': str, 'details': list}
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA integrity_check")
+                results = cursor.fetchall()
+
+                # Si tout est OK, on reçoit un seul résultat "ok"
+                if len(results) == 1 and results[0][0] == "ok":
+                    logger.info("Database integrity check passed")
+                    return {
+                        "ok": True,
+                        "message": "Database integrity check passed",
+                        "details": []
+                    }
+                else:
+                    # Il y a des problèmes d'intégrité
+                    problems = [row[0] for row in results]
+                    logger.error(f"Database integrity issues detected: {problems}")
+                    return {
+                        "ok": False,
+                        "message": "Database integrity check failed",
+                        "details": problems
+                    }
+        except Exception as e:
+            logger.error(f"Error running integrity check: {e}")
+            return {
+                "ok": False,
+                "message": f"Integrity check error: {str(e)}",
+                "details": []
+            }
+
+    @retry_on_lock()
+    def cleanup_old_logs(self, days_to_keep: int = 30) -> dict:
+        """
+        Nettoie les anciennes entrées de logs (errors et notification_logs).
+        Évite la croissance indéfinie des tables de logs.
+
+        Args:
+            days_to_keep: Nombre de jours à conserver (défaut: 30)
+
+        Returns:
+            dict avec les statistiques : {'errors_deleted': int, 'notifications_deleted': int}
+        """
+        try:
+            cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+            cutoff_iso = cutoff_date.isoformat()
+
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Nettoyer les erreurs anciennes
+                cursor.execute(
+                    "DELETE FROM errors WHERE occurred_at < ?",
+                    (cutoff_iso,)
+                )
+                errors_deleted = cursor.rowcount
+
+                # Nettoyer les notifications anciennes
+                cursor.execute(
+                    "DELETE FROM notification_logs WHERE created_at < ?",
+                    (cutoff_iso,)
+                )
+                notifications_deleted = cursor.rowcount
+
+                logger.info(
+                    f"Cleanup completed: {errors_deleted} errors, "
+                    f"{notifications_deleted} notifications removed (before {cutoff_iso})"
+                )
+
+                return {
+                    "errors_deleted": errors_deleted,
+                    "notifications_deleted": notifications_deleted
+                }
+        except Exception as e:
+            logger.error(f"Error during log cleanup: {e}")
+            return {
+                "errors_deleted": 0,
+                "notifications_deleted": 0,
+                "error": str(e)
+            }
+
 
 # Fonction utilitaire pour obtenir l'instance de base de données (thread-safe)
 _db_instance = None
