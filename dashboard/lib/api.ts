@@ -70,7 +70,6 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
          // Notifier user avant redirect
          if (typeof window !== 'undefined') {
              toast.error('Session expirée, redirection vers login...');
-             toast.error('Session expirée, redirection vers login...');
 
              setTimeout(() => {
                  window.location.href = '/login';
@@ -105,10 +104,7 @@ async function post(url: string, body: any, headers: Record<string, string> = {}
       if (res.status === 401) {
          // Notifier user avant redirect
          if (typeof window !== 'undefined') {
-             console.error('⚠️  Session expirée, redirection vers login dans 2s...');
-
-             // TODO: Remplacer par toast notification si bibliothèque disponible
-             // toast.error('Session expirée, redirection...')
+             toast.error('Session expirée, redirection vers login dans 2s...');
 
              setTimeout(() => {
                  window.location.href = '/login';
