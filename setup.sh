@@ -189,6 +189,15 @@ docker_cleanup || true
 
 log_step "PHASE 4: Configuration Sécurisée"
 
+# Ensure bcrypt is available for password hashing
+log_info "Vérification des dépendances Python pour la sécurité..."
+if ! python3 -c "import bcrypt" 2>/dev/null; then
+    log_info "Installation bcrypt pour le hashage de mot de passe..."
+    if cmd_exists python3; then
+        python3 -m pip install -q bcrypt --break-system-packages 2>/dev/null || true
+    fi
+fi
+
 # Créer .env s'il n'existe pas
 if [[ ! -f "$ENV_FILE" ]]; then
     log_info "Création $ENV_FILE depuis template..."
