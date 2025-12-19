@@ -381,6 +381,255 @@ get_total_memory_gb() {
 }
 
 # ==============================================================================
+# NOUVELLES FONCTIONS - HTTPS, GOOGLE DRIVE, SÉCURITÉ
+# ==============================================================================
+
+configure_https_menu() {
+    local choice
+    log_step "Configuration HTTPS / SSL / TLS"
+
+    choice=$(prompt_menu \
+        "Quel scénario HTTPS s'applique à vous ?" \
+        "🏠 LAN uniquement (HTTP, pas HTTPS nécessaire)" \
+        "🌐 Domaine avec Let's Encrypt (production recommandée)" \
+        "🔒 Certificats existants (import)" \
+        "⚙️  Configuration manuelle (gérerez après setup)")
+
+    case "$choice" in
+        1)
+            log_warn "⚠️  HTTPS désactivé (LAN uniquement)"
+            log_info "  Accès : http://$(hostname -I | awk '{print $1}' 2>/dev/null || echo 'localhost'):3000"
+            log_warn "  ⚠️  POUR PRODUCTION SUR INTERNET : Utilisez Let's Encrypt (option 2)"
+            HTTPS_MODE="lan"
+            ;;
+        2)
+            log_info "Let's Encrypt activé. Utilisez setup_letsencrypt.sh après le setup initial."
+            log_info "  ./scripts/setup_letsencrypt.sh"
+            HTTPS_MODE="letsencrypt"
+            ;;
+        3)
+            log_step "Import de Certificats Existants"
+            read -p "Chemin fullchain.pem : " CERT_FILE
+            read -p "Chemin privkey.pem : " KEY_FILE
+
+            if [[ ! -f "$CERT_FILE" ]] || [[ ! -f "$KEY_FILE" ]]; then
+                log_error "Fichiers certificats non trouvés."
+                return 1
+            fi
+
+            mkdir -p "certbot/conf/live/${DOMAIN}"
+            cp "$CERT_FILE" "certbot/conf/live/${DOMAIN}/fullchain.pem"
+            cp "$KEY_FILE" "certbot/conf/live/${DOMAIN}/privkey.pem"
+            chmod 600 "certbot/conf/live/${DOMAIN}/privkey.pem"
+            chmod 644 "certbot/conf/live/${DOMAIN}/fullchain.pem"
+
+            log_success "Certificats importés."
+            HTTPS_MODE="existing"
+            ;;
+        4)
+            log_warn "Configuration manuelle HTTPS sélectionnée."
+            log_info "Vous êtes responsable de placer les certificats dans : certbot/conf/live/${DOMAIN}/"
+            HTTPS_MODE="manual"
+            ;;
+    esac
+
+    return 0
+}
+
+configure_google_drive_menu() {
+    local choice
+    log_step "PHASE 5.1 : Configuration Sauvegardes Google Drive"
+
+    choice=$(prompt_menu \
+        "Activation des Sauvegardes Google Drive" \
+        "Oui, activer avec chiffrement (recommandé)" \
+        "Oui, activer sans chiffrement" \
+        "Non, configurer plus tard")
+
+    if [[ "$choice" == "1" ]] || [[ "$choice" == "2" ]]; then
+
+        log_info "Installation/vérification rclone..."
+
+        if ! cmd_exists rclone; then
+            log_warn "rclone non installé. Installation..."
+            check_sudo
+            sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+        fi
+
+        log_success "✓ rclone disponible"
+
+        # Vérifier remote existant
+        EXISTING_REMOTE=$(rclone listremotes 2>/dev/null | head -1 | sed 's/://')
+
+        if [[ -z "$EXISTING_REMOTE" ]]; then
+            log_warn "Aucun remote rclone configuré."
+            log_info "Lancement configuration interactive Google Drive..."
+
+            if prompt_yes_no "Continuer la configuration rclone ?" "y"; then
+                rclone config
+                EXISTING_REMOTE=$(rclone listremotes 2>/dev/null | head -1 | sed 's/://')
+
+                if [[ -z "$EXISTING_REMOTE" ]]; then
+                    log_error "Configuration rclone échouée ou annulée."
+                    log_warn "Vous pouvez configurer manuellement plus tard: rclone config"
+                    BACKUP_CONFIGURED="false"
+                    return 0
+                fi
+            else
+                log_info "Configuration rclone annulée. Vous pourrez la configurer plus tard."
+                BACKUP_CONFIGURED="false"
+                return 0
+            fi
+        else
+            log_success "✓ Remote rclone détecté: $EXISTING_REMOTE"
+        fi
+
+        BACKUP_REMOTE="$EXISTING_REMOTE"
+
+        # Cron setup
+        CRON_ENTRY="0 2 * * * cd ${SCRIPT_DIR} && ./scripts/backup_to_gdrive.sh >> logs/cron.log 2>&1"
+
+        if ! (crontab -l 2>/dev/null | grep -q "backup_to_gdrive.sh"); then
+            log_info "Ajout cron quotidien (02:00)..."
+
+            if (echo "$(crontab -l 2>/dev/null || true)"; echo "$CRON_ENTRY") | crontab - 2>/dev/null; then
+                log_success "✓ Cron ajouté (backup quotidien 02:00)"
+            else
+                log_warn "Impossible d'ajouter cron automatiquement."
+                log_info "Vous pouvez le faire manuellement: crontab -e"
+                log_info "Ligne à ajouter: $CRON_ENTRY"
+            fi
+        else
+            log_success "✓ Cron backup déjà configuré"
+        fi
+
+        # Test backup (optionnel)
+        if prompt_yes_no "Effectuer un test backup maintenant ?" "n"; then
+            log_info "Lancement test backup..."
+            if bash ./scripts/backup_to_gdrive.sh >/dev/null 2>&1; then
+                log_success "✓ Test backup réussi"
+            else
+                log_error "Test backup échoué. Vérifiez :"
+                log_error "  - Configuration rclone: rclone listremotes"
+                log_error "  - Logs: cat logs/backup_gdrive.log"
+            fi
+        fi
+
+        log_success "✓ Sauvegardes Google Drive configurées"
+        BACKUP_CONFIGURED="true"
+    else
+        log_warn "Sauvegardes Google Drive non activées"
+        log_info "Vous pouvez les configurer plus tard: rclone config"
+        BACKUP_CONFIGURED="false"
+    fi
+
+    echo "$BACKUP_CONFIGURED" > ".backup_configured"
+    return 0
+}
+
+generate_security_report() {
+    local score_current=0
+    local score_total=4
+
+    echo ""
+    log_step "🔒 RÉSUMÉ SÉCURITÉ & CONFIGURATION"
+    echo ""
+
+    # --- Check 1: Mot de passe Dashboard ---
+    echo -n "  1. Mot de passe Dashboard... "
+    if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE" 2>/dev/null; then
+        echo -e "${GREEN}✓ OK${NC} (hash bcrypt détecté)"
+        ((score_current++))
+    elif grep -q "CHANGEZ_MOI\|your_password\|12345" "$ENV_FILE" 2>/dev/null; then
+        echo -e "${RED}✗ CRITIQUE${NC} (mot de passe par défaut)"
+    else
+        echo -e "${YELLOW}⚠ INCONNU${NC} (format non reconnu)"
+    fi
+
+    # --- Check 2: HTTPS ---
+    echo -n "  2. HTTPS... "
+    if [[ -f "certbot/conf/live/${DOMAIN}/fullchain.pem" ]]; then
+        if openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout >/dev/null 2>&1; then
+            CERT_ISSUER=$(openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout -text 2>/dev/null | grep "Issuer:" | head -1 | sed 's/.*Issuer: //')
+
+            if [[ "$CERT_ISSUER" =~ "Let's Encrypt" ]]; then
+                echo -e "${GREEN}✓ PRODUCTION${NC} (Let's Encrypt)"
+                ((score_current++))
+            elif [[ "$CERT_ISSUER" =~ "Temporary" ]]; then
+                echo -e "${YELLOW}⚠ DÉVELOPPEMENT${NC} (Self-signed)"
+            else
+                echo -e "${GREEN}✓ OK${NC} (Certificat valide)"
+                ((score_current++))
+            fi
+        fi
+    else
+        echo -e "${YELLOW}⚠ SELF-SIGNED${NC} (temporaire)"
+    fi
+
+    # --- Check 3: Sauvegardes ---
+    echo -n "  3. Sauvegardes Google Drive... "
+    if [[ -f ".backup_configured" ]] && grep -q "true" ".backup_configured" 2>/dev/null; then
+        echo -e "${GREEN}✓ OK${NC} (configurées)"
+        ((score_current++))
+    else
+        echo -e "${YELLOW}⚠ OPTIONNEL${NC} (non configurées)"
+    fi
+
+    # --- Check 4: .env secrets ---
+    echo -n "  4. Fichier .env secrets... "
+    ENV_ISSUES=0
+    if grep -iE "PASSWORD=.*[a-zA-Z0-9]{1,10}$|PASSWORD=12345|PASSWORD=admin" "$ENV_FILE" 2>/dev/null | grep -v "DASHBOARD_PASSWORD=\$2"; then
+        ((ENV_ISSUES++))
+    fi
+    if grep -iE "API_KEY=.*your_|API_KEY=test" "$ENV_FILE" 2>/dev/null; then
+        ((ENV_ISSUES++))
+    fi
+
+    if [[ $ENV_ISSUES -eq 0 ]]; then
+        echo -e "${GREEN}✓ OK${NC} (pas de secrets en clair)"
+        ((score_current++))
+    else
+        echo -e "${RED}✗ ATTENTION${NC} ($ENV_ISSUES potentiellement visibles)"
+    fi
+
+    # --- Résumé ---
+    echo ""
+    echo "  ═══════════════════════════════════════════"
+    echo "  SCORE SÉCURITÉ : $score_current / $score_total"
+    echo "  ═══════════════════════════════════════════"
+    echo ""
+
+    if [[ $score_current -eq 4 ]]; then
+        echo -e "  ${GREEN}🎉 EXCELLENT - Production Ready${NC}"
+    elif [[ $score_current -ge 3 ]]; then
+        echo -e "  ${YELLOW}✓ BON - Améliorations recommandées${NC}"
+    else
+        echo -e "  ${RED}⚠️  À AMÉLIORER - Actions requises${NC}"
+    fi
+
+    echo ""
+}
+
+show_postsetup_menu() {
+    echo ""
+    log_step "Scripts Disponibles Post-Setup"
+
+    echo -e "\n${BOLD}Pour modifier la configuration après le setup :${NC}\n"
+    echo "  • ${BOLD}Mot de passe Dashboard${NC}"
+    echo "    ./scripts/manage_dashboard_password.sh"
+    echo ""
+    echo "  • ${BOLD}Certificat Let's Encrypt${NC}"
+    echo "    ./scripts/setup_letsencrypt.sh"
+    echo ""
+    echo "  • ${BOLD}Sauvegardes Google Drive${NC}"
+    echo "    rclone config"
+    echo ""
+    echo "  • ${BOLD}Santé Système${NC}"
+    echo "    ./scripts/monitor_pi4_health.sh"
+    echo ""
+}
+
+# ==============================================================================
 # PHASE 1 : PRÉ-REQUIS & SÉCURITÉ SYSTÈME
 # ==============================================================================
 log_step "PHASE 1 : Vérifications Système & Hardware"
@@ -700,6 +949,14 @@ if [[ -f "$NGINX_TEMPLATE" ]]; then
 fi
 
 # ==============================================================================
+# PHASE 4.7 : CONFIGURATION HTTPS
+# ==============================================================================
+configure_https_menu || {
+    log_error "Configuration HTTPS échouée"
+    exit 1
+}
+
+# ==============================================================================
 # PHASE 5 : DÉPLOIEMENT
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
@@ -722,6 +979,14 @@ docker compose -f "$COMPOSE_FILE" up -d --remove-orphans || {
     log_error "Impossible de démarrer les conteneurs"
     log_info "Logs pour diagnostic :"
     docker compose -f "$COMPOSE_FILE" logs --tail=30 2>/dev/null || true
+    exit 1
+}
+
+# ==============================================================================
+# PHASE 5.1 : SAUVEGARDES GOOGLE DRIVE
+# ==============================================================================
+configure_google_drive_menu || {
+    log_error "Configuration Google Drive échouée"
     exit 1
 }
 
@@ -762,6 +1027,11 @@ wait_for_service "dashboard" "http://localhost:3000/api/system/health" || { log_
 [[ -x "./scripts/cleanup_chromium_zombies.sh" ]] && ./scripts/cleanup_chromium_zombies.sh 2>/dev/null
 
 # ==============================================================================
+# RAPPORT SÉCURITÉ
+# ==============================================================================
+generate_security_report
+
+# ==============================================================================
 # RAPPORT FINAL
 # ==============================================================================
 log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
@@ -786,3 +1056,8 @@ ${BOLD}${BLUE}└─────────────────────
 
 ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 "
+
+# Afficher les scripts post-setup
+show_postsetup_menu
+
+log_success "✓ Setup Terminé avec Succès !"
