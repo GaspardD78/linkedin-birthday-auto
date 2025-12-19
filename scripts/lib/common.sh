@@ -114,20 +114,20 @@ prompt_menu() {
     local choice
     local timeout=30
 
-    echo -e "\n${BOLD}${BLUE}${title}${NC}\n"
+    echo -e "\n${BOLD}${BLUE}${title}${NC}\n" >&2
 
     local i=1
     for option in "${options[@]}"; do
-        echo "  ${BOLD}${i})${NC} ${option}"
+        echo "  ${BOLD}${i})${NC} ${option}" >&2
         i=$((i + 1))
     done
 
-    echo -ne "\n${YELLOW}Votre choix [1-$#] (timeout ${timeout}s) : ${NC}"
+    echo -ne "\n${YELLOW}Votre choix [1-$#] (timeout ${timeout}s) : ${NC}" >&2
 
-    read -r -t "$timeout" choice || { log_error "Timeout"; return 1; }
+    read -r -t "$timeout" choice || { log_error "Timeout" >&2; return 1; }
 
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt $# ]]; then
-        log_error "Choix invalide. Veuillez entrer un nombre entre 1 et $#"
+        log_error "Choix invalide. Veuillez entrer un nombre entre 1 et $#" >&2
         return 2
     fi
 
