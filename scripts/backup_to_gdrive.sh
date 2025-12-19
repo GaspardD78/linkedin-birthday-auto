@@ -179,5 +179,64 @@ log INFO "Nettoyage local terminé."
 rclone delete "${GDRIVE_REMOTE}:${REMOTE_DIR}" --min-age ${RETENTION_DAYS}d --verbose 2>&1 | tee -a "$LOG_FILE"
 log INFO "Nettoyage distant terminé."
 
+# ═══════════════════════════════════════════════════════════════════
+# NOTIFICATIONS SLACK (OPTIONNEL)
+# ═══════════════════════════════════════════════════════════════════
+
+SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
+if [[ -n "$SLACK_WEBHOOK" ]]; then
+    log INFO "📤 Envoi notification Slack..."
+
+    SLACK_MESSAGE="{
+        \"text\": \"✅ Backup LinkedIn Bot terminé avec succès\",
+        \"attachments\": [{
+            \"color\": \"good\",
+            \"fields\": [
+                {\"title\": \"Archive\", \"value\": \"$BACKUP_NAME ($ARCHIVE_SIZE)\", \"short\": true},
+                {\"title\": \"Remote\", \"value\": \"${GDRIVE_REMOTE}:${REMOTE_DIR}\", \"short\": true},
+                {\"title\": \"Timestamp\", \"value\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"short\": true},
+                {\"title\": \"Rétention\", \"value\": \"${RETENTION_DAYS} jours\", \"short\": true}
+            ]
+        }]
+    }"
+
+    if curl -X POST -H 'Content-type: application/json' \
+        --data "$SLACK_MESSAGE" \
+        "$SLACK_WEBHOOK" 2>/dev/null; then
+        log INFO "Notification Slack envoyée."
+    else
+        log WARN "Échec notification Slack."
+    fi
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# TEST RESTORE ALÉATOIRE (1er du mois)
+# ═══════════════════════════════════════════════════════════════════
+
+if [[ $(date +%d) == "01" ]]; then
+    log INFO "🔄 Test restore mensuel..."
+
+    RESTORE_TEST_DIR="/tmp/linkedin_restore_test_$$"
+    mkdir -p "$RESTORE_TEST_DIR"
+
+    LATEST_BACKUP=$(rclone ls "${GDRIVE_REMOTE}:${REMOTE_DIR}" 2>/dev/null | tail -1 | awk '{print $2}')
+
+    if [[ -n "$LATEST_BACKUP" ]]; then
+        if rclone copy "${GDRIVE_REMOTE}:${REMOTE_DIR}/${LATEST_BACKUP}" "$RESTORE_TEST_DIR/" 2>&1 | tee -a "$LOG_FILE"; then
+            if tar -tzf "$RESTORE_TEST_DIR/$LATEST_BACKUP" &>/dev/null; then
+                log INFO "✅ Test restore réussi pour $LATEST_BACKUP"
+            else
+                log ERROR "❌ Archive corrompue: $LATEST_BACKUP"
+            fi
+        else
+            log ERROR "❌ Erreur download pour test restore"
+        fi
+    else
+        log WARN "Aucun backup disponible pour test restore"
+    fi
+
+    rm -rf "$RESTORE_TEST_DIR"
+fi
+
 log INFO "🎉 Backup terminé avec succès."
 exit 0

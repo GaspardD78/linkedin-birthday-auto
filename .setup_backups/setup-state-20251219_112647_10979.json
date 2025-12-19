@@ -1,0 +1,62 @@
+{
+  "id": "20251219_112647_10979",
+  "version": "4.0-hybrid",
+  "timestamp": "2025-12-19T11:26:47+00:00",
+  "pid": 10979,
+  "user": "root",
+  "host": "runsc",
+  "status": "failed",
+  "phases": {
+    "prerequisites": {
+      "status": "failed",
+      "timestamp": "2025-12-19T11:26:48+00:00",
+      "duration_seconds": 1
+    },
+    "backup": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    },
+    "docker_config": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    },
+    "env_setup": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    },
+    "https_config": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    },
+    "docker_deploy": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    },
+    "validation": {
+      "status": "pending",
+      "timestamp": null,
+      "duration_seconds": 0
+    }
+  },
+  "errors": [
+    {
+      "timestamp": "2025-12-19T11:26:48+00:00",
+      "phase": "prerequisites",
+      "message": "Phase 'prerequisites' failed with exit code 127"
+    }
+  ],
+  "warnings": [],
+  "config": {
+    "domain": null,
+    "https_mode": null,
+    "backup_configured": false,
+    "api_key_generated": false,
+    "password_set": false
+  },
+  "timestamp_end": "2025-12-19T11:26:48+00:00"
+}
