@@ -19,6 +19,8 @@ hash_and_store_password() {
 
     # Utiliser python pour générer un bcrypt hash sécurisé
     local hashed_password
+
+    # Try bcrypt first
     hashed_password=$(python3 -c "
 import bcrypt
 import sys
@@ -26,10 +28,27 @@ password = '$password'.encode('utf-8')
 hashed = bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))
 print(hashed.decode('utf-8'))
 " 2>/dev/null) || {
-        # Si python3 avec bcrypt ne fonctionne pas, utiliser htpasswd comme fallback
-        hashed_password=$(echo "$password" | htpasswd -iBBC 2>/dev/null) || {
-            log_error "Impossible de hasher le mot de passe (ni bcrypt ni htpasswd disponibles)"
-            return 1
+        # Try passlib's bcrypt if bcrypt is not available
+        hashed_password=$(python3 -c "
+from passlib.context import CryptContext
+ctx = CryptContext(schemes=['bcrypt'])
+password = '$password'
+hashed = ctx.encrypt(password)
+print(hashed)
+" 2>/dev/null) || {
+            # Fallback to htpasswd
+            hashed_password=$(echo "$password" | htpasswd -iBBC 2>/dev/null) || {
+                # Fallback to Python crypt module for basic hashing
+                hashed_password=$(python3 -c "
+import crypt
+password = '$password'
+hashed = crypt.crypt(password, crypt.METHOD_SHA512)
+print(hashed)
+" 2>/dev/null) || {
+                    log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
+                    return 1
+                }
+            }
         }
     }
 

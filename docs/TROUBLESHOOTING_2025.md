@@ -132,6 +132,43 @@ docker info | grep -A 5 "DNS"
 
 ---
 
+### ❌ "Password hashing failed" (Setup Phase 4)
+
+**Message d'erreur:**
+```
+[ERROR] Impossible de hasher le mot de passe (aucune méthode disponible)
+[ERROR] Setup échoué (Code 1)
+```
+
+**Causes possibles :**
+1. Python `bcrypt` module not installed
+2. No fallback hashing tools available (htpasswd, crypt)
+3. All hashing methods failed
+
+**Solutions progressives:**
+
+```bash
+# 1. Relancer setup (auto-installs bcrypt v4.0+):
+./setup.sh
+
+# 2. Si erreur persiste, installer manuellement:
+python3 -m pip install -q bcrypt --break-system-packages
+
+# 3. Vérifier crypt module:
+python3 -c "import crypt; print('crypt available')"
+
+# 4. Installer Apache utils (fallback):
+sudo apt-get update
+sudo apt-get install -y apache2-utils
+
+# 5. Relancer setup:
+./setup.sh --resume
+```
+
+**Note:** v4.0+ auto-installs bcrypt, so this should not happen. See docs/PASSWORD_HASHING_ROBUSTNESS_2025.md for details.
+
+---
+
 ## 🐳 Déploiement Docker
 
 ### ❌ "Docker pull timeout"
@@ -668,6 +705,8 @@ docker ps -a
 | HTTPS | docs/SETUP_HTTPS_GUIDE.md |
 | Backup | docs/SETUP_BACKUP_GUIDE.md |
 | Password | docs/PASSWORD_MANAGEMENT_GUIDE.md |
+| Password Hashing (v4.0+) | docs/PASSWORD_HASHING_ROBUSTNESS_2025.md |
+| Password Hashing Details | docs/SETUP_SCRIPT_PASSWORD_HASHING.md |
 | Security | docs/SECURITY.md |
 | Architecture | docs/ARCHITECTURE.md |
 
