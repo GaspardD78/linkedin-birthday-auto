@@ -153,3 +153,7 @@ test_export.json
 
 # Phase 1 - Dashboard exports
 export_*.json
+
+# Setup state files
+.setup.state
+.setup_backups/
