@@ -1,6 +1,10 @@
 # 🍓 Guide de Déploiement Raspberry Pi OS Lite 64-bit
 
-Guide complet pour installer **LinkedIn Birthday Auto Bot** sur **Raspberry Pi OS Lite 64-bit** sans dépendance Git.
+Guide complet pour installer **LinkedIn Birthday Auto Bot** sur **Raspberry Pi OS Lite 64-bit**.
+
+> **⚠️ Note Importante:** Git n'est **pas installé nativement** sur Raspberry Pi OS Lite.
+> La méthode recommandée nécessite d'installer Git comme première étape (voir [Installation Standard](#-installation-standard-méthode-recommandée)).
+> Des méthodes alternatives sans Git sont disponibles pour les cas spécifiques.
 
 ---
 
@@ -8,8 +12,8 @@ Guide complet pour installer **LinkedIn Birthday Auto Bot** sur **Raspberry Pi O
 
 1. [Prérequis Matériels](#-prérequis-matériels)
 2. [Installation du Système](#-installation-du-système)
-3. [Méthode 1: Installation avec Git (Recommandée)](#-méthode-1-installation-avec-git-recommandée)
-4. [Méthode 2: Installation sans Git (OS Lite)](#-méthode-2-installation-sans-git-os-lite)
+3. [Installation Standard avec Git (Recommandée)](#-installation-standard-méthode-recommandée)
+4. [Installation Alternative sans Git](#-installation-alternative-sans-git)
 5. [Configuration Post-Installation](#-configuration-post-installation)
 6. [Optimisations pour Raspberry Pi](#-optimisations-pour-raspberry-pi)
 7. [Dépannage](#-dépannage)
@@ -31,6 +35,21 @@ Guide complet pour installer **LinkedIn Birthday Auto Bot** sur **Raspberry Pi O
 - **Carte microSD** - 64GB+ (SanDisk Extreme ou Samsung EVO Plus)
 - **Refroidissement** - Ventilateur ou dissipateurs passifs
 - **Connexion réseau** - Ethernet pour stabilité
+
+---
+
+## 🎯 Vue d'Ensemble: Étapes d'Installation
+
+Voici les étapes complètes pour déployer le bot sur Raspberry Pi OS Lite 64-bit:
+
+1. **Installer Raspberry Pi OS Lite 64-bit** sur la carte SD
+2. **Premier démarrage** et mise à jour système
+3. **⚠️ ÉTAPE IMPORTANTE: Installer Git** (non natif sur OS Lite)
+4. **Cloner le projet** depuis GitHub avec Git
+5. **Lancer le script setup.sh** qui gère tout automatiquement
+6. **Accéder au dashboard** et configurer
+
+**Durée totale estimée:** 15-20 minutes (selon vitesse Internet)
 
 ---
 
@@ -85,35 +104,61 @@ sudo reboot
 
 ---
 
-## 🚀 Méthode 1: Installation avec Git (Recommandée)
+## 🚀 Installation Standard (Méthode Recommandée)
 
-Si vous pouvez installer Git (connexion Internet disponible), c'est la méthode la plus simple:
+### Étape Préalable: Installer Git
 
-### Installer Git
+**⚠️ IMPORTANT:** Git n'est **pas installé nativement** sur Raspberry Pi OS Lite 64-bit. Il faut l'installer en premier.
 
 ```bash
+# Mettre à jour les paquets
+sudo apt update
+
+# Installer Git
 sudo apt install git -y
+
+# Vérifier l'installation
+git --version
+# Devrait afficher: git version 2.x.x
 ```
 
-### Cloner et Installer
+### Cloner et Installer le Projet
 
 ```bash
-# Cloner le dépôt
+# Cloner le dépôt depuis GitHub
 git clone https://github.com/GaspardD78/linkedin-birthday-auto.git
+
+# Entrer dans le répertoire
 cd linkedin-birthday-auto
 
-# Lancer l'installation
+# Rendre le script d'installation exécutable
 chmod +x setup.sh
+
+# Lancer l'installation automatique
 ./setup.sh
 ```
 
-**Suivez les instructions interactives** du script setup.sh (voir section Configuration).
+**Le script setup.sh gère automatiquement:**
+- ✅ Installation de Docker (si non présent)
+- ✅ Configuration mémoire/swap optimale
+- ✅ Création des volumes et permissions
+- ✅ Configuration HTTPS (interactif)
+- ✅ Configuration sauvegardes Google Drive (interactif)
+- ✅ Lancement des conteneurs
+- ✅ Rapport de sécurité
+
+**Suivez les instructions interactives** du script setup.sh (voir section [Configuration Post-Installation](#️-configuration-post-installation)).
 
 ---
 
-## 📦 Méthode 2: Installation sans Git (OS Lite)
+## 📦 Installation Alternative: Sans Git
 
-Si Git n'est pas disponible ou que vous préférez ne pas l'installer:
+**Cas d'usage:** Environnements sans accès Internet, déploiements air-gapped, ou contraintes spécifiques.
+
+> **Note:** La méthode standard avec Git (ci-dessus) est **fortement recommandée** car elle simplifie les mises à jour futures.
+> N'utilisez les méthodes ci-dessous que si vous avez des contraintes spécifiques.
+
+Si Git n'est vraiment pas disponible ou que vous ne pouvez pas l'installer:
 
 ### Option A: Téléchargement Direct via wget/curl
 
@@ -407,15 +452,24 @@ tar czf ~/backups/config-$(date +%Y%m%d-%H%M%S).tar.gz config/ .env
 
 ## 🆕 Mise à Jour du Bot
 
-### Avec Git (Si installé)
+### Méthode Standard (Avec Git - Recommandée)
+
+**C'est pourquoi Git est recommandé:** La mise à jour est triviale!
 
 ```bash
+# Se placer dans le répertoire du projet
 cd ~/linkedin-birthday-auto
+
+# Récupérer les dernières modifications
 git pull
+
+# Relancer le setup (idempotent, ne casse rien)
 ./setup.sh
 ```
 
-### Sans Git (Méthode manuelle)
+✅ **Simple, rapide et sûr!**
+
+### Méthode Alternative (Sans Git)
 
 ```bash
 # 1. Sauvegarder la configuration actuelle
@@ -440,6 +494,21 @@ rm -rf linkedin-birthday-auto-main update.zip
 ---
 
 ## 🔍 Dépannage
+
+### Problème: Git non trouvé
+
+**Symptôme:** `bash: git: command not found` lors du clone
+
+```bash
+# Solution: Installer Git (requis sur Raspberry Pi OS Lite)
+sudo apt update
+sudo apt install git -y
+
+# Vérifier l'installation
+git --version
+```
+
+**Rappel:** Git n'est **pas natif** sur Raspberry Pi OS Lite, il doit être installé manuellement.
 
 ### Problème: Docker non trouvé
 
@@ -615,19 +684,28 @@ Pour plus de détails, consultez:
 
 ## ✅ Checklist Installation Complète
 
+### Préparation Système
 - [ ] Raspberry Pi OS Lite 64-bit installé et à jour
 - [ ] Connexion réseau stable configurée
-- [ ] Docker installé et fonctionnel
-- [ ] Projet téléchargé et extrait
+- [ ] **Git installé** (`sudo apt install git -y`)
+
+### Installation du Projet
+- [ ] Projet cloné depuis GitHub (`git clone`)
 - [ ] Script `setup.sh` exécuté avec succès
+- [ ] Docker installé et fonctionnel (automatique via setup.sh)
+### Configuration Applicative
 - [ ] Dashboard accessible via navigateur
-- [ ] Mot de passe Dashboard sécurisé
+- [ ] Connecté avec login/mot de passe
+- [ ] Mot de passe Dashboard changé (sécurisé)
 - [ ] Compte LinkedIn configuré dans les settings
 - [ ] Bots configurés (Birthday/Visitor)
+
+### Sécurité & Production
 - [ ] HTTPS configuré (Let's Encrypt ou certificats)
-- [ ] Sauvegardes Google Drive configurées (optionnel)
+- [ ] Sauvegardes Google Drive configurées (optionnel mais recommandé)
 - [ ] Firewall configuré (UFW)
 - [ ] Monitoring système en place
+- [ ] Rapport sécurité: score 3-4 / 4
 
 ---
 
