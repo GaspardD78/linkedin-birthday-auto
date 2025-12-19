@@ -20,46 +20,45 @@ hash_and_store_password() {
     # Utiliser python pour générer un bcrypt hash sécurisé
     local hashed_password
 
-    # Try bcrypt first - SÉCURISÉ contre injection avec heredoc et sys.stdin
-    hashed_password=$(python3 <<'PYTHON_EOF'
+    # On passe le mot de passe via pipe au script python pour éviter les fuites et problèmes d'heredoc
+    local python_script="
 import bcrypt
 import sys
 
-# Lire le mot de passe depuis stdin de manière sécurisée
-password = sys.stdin.read().strip().encode('utf-8')
-hashed = bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))
-print(hashed.decode('utf-8'))
-PYTHON_EOF
-echo -n "$password") 2>/dev/null || {
-        # Try passlib's bcrypt if bcrypt is not available
-        hashed_password=$(python3 <<'PYTHON_EOF'
-from passlib.context import CryptContext
-import sys
+try:
+    # Lire stdin binaire pour éviter problèmes d'encodage et strip le newline
+    password = sys.stdin.buffer.read().strip()
+    if not password:
+        sys.exit(1)
 
-ctx = CryptContext(schemes=['bcrypt'])
-password = sys.stdin.read().strip()
-hashed = ctx.hash(password)
-print(hashed)
-PYTHON_EOF
-echo -n "$password") 2>/dev/null || {
-            # Fallback to Python crypt module for basic hashing
-            hashed_password=$(python3 <<'PYTHON_EOF'
-import crypt
-import sys
+    hashed = bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))
+    print(hashed.decode('utf-8'))
+except Exception:
+    sys.exit(1)
+"
 
-password = sys.stdin.read().strip()
-hashed = crypt.crypt(password, crypt.METHOD_SHA512)
-print(hashed)
-PYTHON_EOF
-echo -n "$password") 2>/dev/null || {
-                log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
-                return 1
-            }
-        }
-    }
+    # Exécution sécurisée
+    hashed_password=$(echo -n "$password" | python3 -c "$python_script" 2>/dev/null)
 
     if [[ -z "$hashed_password" ]]; then
-        log_error "Hash généré est vide"
+        log_warn "Échec bcrypt standard, tentative fallback..."
+
+        # Fallback: passlib (si installé)
+        local passlib_script="
+from passlib.context import CryptContext
+import sys
+try:
+    ctx = CryptContext(schemes=['bcrypt'])
+    password = sys.stdin.read().strip()
+    print(ctx.hash(password))
+except Exception:
+    sys.exit(1)
+"
+        hashed_password=$(echo -n "$password" | python3 -c "$passlib_script" 2>/dev/null)
+    fi
+
+    if [[ -z "$hashed_password" ]]; then
+        log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
         return 1
     fi
 
@@ -68,9 +67,10 @@ echo -n "$password") 2>/dev/null || {
     local doubled_hash
     doubled_hash="${hashed_password//\$/\$\$}"
 
-    # Échapper les caractères spéciaux pour sed (/ et &)
+    # Échapper les caractères spéciaux pour sed (/ et & et |)
+    # Nous utilisons | comme séparateur dans setup.sh et ici
     local escaped_hash
-    escaped_hash=$(printf '%s\n' "$doubled_hash" | sed 's:[\/&]:\\&:g')
+    escaped_hash=$(printf '%s\n' "$doubled_hash" | sed 's:[\/&|]:\\&:g')
 
     # Remplacer dans le fichier .env
     if grep -q "^DASHBOARD_PASSWORD=" "$env_file"; then
@@ -87,17 +87,20 @@ echo -n "$password") 2>/dev/null || {
 
 generate_api_key() {
     # Générer une clé API robuste (32 bytes aléatoires en base64)
-    openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    # tr -d '\n' pour s'assurer que c'est sur une seule ligne
+    { openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))"; } | tr -d '\n'
 }
 
 generate_jwt_secret() {
     # Générer un secret JWT robuste (64 bytes aléatoires en base64)
-    openssl rand -base64 64 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+    # tr -d '\n' pour s'assurer que c'est sur une seule ligne
+    { openssl rand -base64 64 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(64))"; } | tr -d '\n'
 }
 
 escape_sed_string() {
     local string="$1"
-    printf '%s\n' "$string" | sed 's:[\/&]:\\&:g'
+    # Échapper /, &, et | car | est souvent utilisé comme séparateur sed
+    printf '%s\n' "$string" | sed 's:[\/&|]:\\&:g'
 }
 
 # === SECURITY AUDIT ===
