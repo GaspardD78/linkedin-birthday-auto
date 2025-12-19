@@ -64,12 +64,12 @@ done
 
 # === SOURCING DES LIBRARIES ===
 
-# Charger les libs dans l'ordre (dependencies)
-source scripts/lib/common.sh || { echo "ERROR: Failed to load common.sh"; exit 1; }
-source scripts/lib/security.sh || { log_error "Failed to load security.sh"; exit 1; }
-source scripts/lib/docker.sh || { log_error "Failed to load docker.sh"; exit 1; }
-source scripts/lib/checks.sh || { log_error "Failed to load checks.sh"; exit 1; }
-source scripts/lib/state.sh || { log_error "Failed to load state.sh"; exit 1; }
+# Charger les libs dans l'ordre (dependencies) - utiliser chemins absolus
+source "$SCRIPT_DIR/scripts/lib/common.sh" || { echo "ERROR: Failed to load common.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/security.sh" || { echo "ERROR: Failed to load security.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/docker.sh" || { echo "ERROR: Failed to load docker.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/checks.sh" || { echo "ERROR: Failed to load checks.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state.sh"; exit 1; }
 
 # === VARIABLES DE CONFIGURATION ===
 
@@ -135,10 +135,15 @@ fi
 
 # === PHASE 1: VÉRIFICATIONS ===
 
-if ! with_phase "prerequisites" check_all_prerequisites "$COMPOSE_FILE"; then
+log_step "PHASE 1: Vérifications Pré-Déploiement"
+
+if ! check_all_prerequisites "$COMPOSE_FILE"; then
     log_error "Vérifications échouées"
+    setup_state_checkpoint "prerequisites" "failed"
     exit 1
 fi
+
+setup_state_checkpoint "prerequisites" "completed"
 
 # Si --check-only, arrêter ici
 if [[ "$CHECK_ONLY" == "true" ]]; then
@@ -148,17 +153,27 @@ fi
 
 # === PHASE 2: BACKUP & CONFIGURATION ===
 
-if ! with_phase "backup" backup_file "$ENV_FILE" "before setup"; then
+log_step "PHASE 2: Backup"
+
+if ! backup_file "$ENV_FILE" "before setup" >/dev/null; then
     log_error "Backup .env échoué"
+    setup_state_checkpoint "backup" "failed"
     exit 1
 fi
+
+setup_state_checkpoint "backup" "completed"
 
 # === PHASE 3: CONFIGURATION DOCKER ===
 
-if ! with_phase "docker_config" docker_check_all_prerequisites; then
+log_step "PHASE 3: Configuration Docker"
+
+if ! docker_check_all_prerequisites; then
     log_error "Docker checks échouées"
+    setup_state_checkpoint "docker_config" "failed"
     exit 1
 fi
+
+setup_state_checkpoint "docker_config" "completed"
 
 # Configure Docker IPv4 et DNS fiables
 log_info "Configuration Docker pour RPi4..."
