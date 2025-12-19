@@ -219,17 +219,21 @@ PHASE 4.5: Volumes & Permissions
   └─ Apply 1000:1000 ownership
   └─ chmod 775
 
-PHASE 5: Bootstrap SSL
-  └─ Create temporary self-signed certs
-
-PHASE 5.1: Nginx Config
-  └─ envsubst ${DOMAIN} in template
-
-PHASE 5.2: HTTPS Config Menu
+PHASE 5: HTTPS Configuration (reordered)
+  └─ Ask user for HTTPS mode (BEFORE Nginx generation)
   └─ LAN only (HTTP)
   └─ Let's Encrypt (production)
   └─ Existing certs (import)
   └─ Manual (later)
+
+PHASE 5.1: Bootstrap SSL & Nginx Config
+  └─ Create temporary self-signed certs (if needed)
+  └─ Select appropriate Nginx template (HTTP or HTTPS)
+  └─ envsubst ${DOMAIN} in template
+  └─ Generate deployment/nginx/linkedin-bot.conf
+
+PHASE 5.3: SSL Auto-Renewal (if Let's Encrypt mode)
+  └─ Configure cron job for certificate renewal
 
 PHASE 6: Docker Deploy
   └─ docker_compose_validate()
@@ -256,22 +260,66 @@ Chaque phase est **idempotente** et peut être skippée si déjà complétée.
 
 ---
 
+## 🔐 HTTPS Configuration Improvements (Phase 5 Enhancement)
+
+### Problem Fixed
+Previously, setup.sh generated Nginx configuration BEFORE asking the user about HTTPS mode. This meant:
+- LAN-only deployments still expected HTTPS certificates ❌
+- No template selection based on mode ❌
+- Incorrect warning: "HTTPS disabled (LAN only)" while config expected certificates ❌
+
+### Solution Implemented
+**Reordered execution and mode-based templates:**
+
+1. **Phase 5: Configuration HTTPS** (moved before Nginx)
+   - Ask user for HTTPS mode upfront
+   - Modes: LAN, Let's Encrypt, Existing Certs, Manual
+
+2. **Phase 5.1: Bootstrap & Nginx Config Generation**
+   - Generate temporary certs (if needed)
+   - Select appropriate template:
+     - `linkedin-bot-lan.conf.template` → HTTP only
+     - `linkedin-bot-https.conf.template` → Full HTTPS
+   - Apply domain substitution and generate config
+
+3. **Phase 5.3: Optional Auto-Renewal** (if Let's Encrypt)
+   - Configure cron job for daily certificate renewal
+
+### Files Changed
+- ✅ setup.sh: Reordered phases, template selection logic
+- ✅ deployment/nginx/linkedin-bot-https.conf.template (renamed, enhanced)
+- ✅ deployment/nginx/linkedin-bot-lan.conf.template (new, HTTP-only)
+- ✅ docs/HTTPS_CONFIGURATION.md (new, comprehensive guide)
+
+### Benefits
+- ✅ LAN-only mode no longer expects HTTPS ✓
+- ✅ Correct Nginx config generated for each mode ✓
+- ✅ Better separation of concerns (template per mode) ✓
+- ✅ More intuitive setup flow ✓
+- ✅ Clearer user feedback (shows which template is used) ✓
+
+---
+
 ## 📂 Fichiers Créés/Modifiés
 
 ### Créés
 ```
-scripts/lib/common.sh       (200 L) ✅ Loaded
-scripts/lib/security.sh     (350 L) ✅ Loaded
-scripts/lib/docker.sh       (350 L) ✅ Loaded
-scripts/lib/checks.sh       (380 L) ✅ Loaded
-scripts/lib/state.sh        (300 L) ✅ Loaded
-SETUP_V4_IMPROVEMENTS.md    (this file)
-setup.sh.v3.1.bak           (backup)
+scripts/lib/common.sh                        (200 L) ✅ Loaded
+scripts/lib/security.sh                      (350 L) ✅ Loaded
+scripts/lib/docker.sh                        (350 L) ✅ Loaded
+scripts/lib/checks.sh                        (380 L) ✅ Loaded
+scripts/lib/state.sh                         (300 L) ✅ Loaded
+deployment/nginx/linkedin-bot-lan.conf.template       (130 L) ✅ New
+docs/HTTPS_CONFIGURATION.md                  (350 L) ✅ New (HTTPS guide)
+SETUP_V4_IMPROVEMENTS.md                     (this file)
+setup.sh.v3.1.bak                            (backup)
 ```
 
 ### Modifiés
 ```
-setup.sh                    (1063 L → 470 L, -55% ✅)
+setup.sh                                     (1063 L → 520 L, -51% ✅)
+deployment/nginx/linkedin-bot-https.conf.template    (Renamed + enhanced)
+SETUP_V4_IMPROVEMENTS.md                     (Updated with Phase 5 changes)
 ```
 
 ### Générés à Runtime
