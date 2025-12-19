@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import subprocess
 import os
 import re
@@ -12,16 +12,35 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/automation", tags=["Automation Control"])
 
-# Liste des services systemd gérés (immuable pour sécurité)
+# Map internal service names to Container names or Systemd services
+# Priority: 1. Docker Container, 2. Systemd Service
 MANAGED_SERVICES = MappingProxyType({
-    "monitor": "linkedin-bot-monitor.timer",
-    "backup": "linkedin-bot-backup.timer",
-    "cleanup": "linkedin-bot-cleanup.timer",
-    "main": "linkedin-bot.service"
+    "monitor": {
+        "type": "systemd",
+        "target": "linkedin-bot-monitor.timer",
+        "desc": "Surveillance système"
+    },
+    "backup": {
+        "type": "systemd",
+        "target": "linkedin-bot-backup.timer",
+        "desc": "Sauvegarde BDD"
+    },
+    "cleanup": {
+        "type": "systemd",
+        "target": "linkedin-bot-cleanup.timer",
+        "desc": "Nettoyage"
+    },
+    "main": {
+        "type": "docker",
+        "target": "bot-worker",  # Container name
+        "desc": "Worker Bot Principal"
+    },
+    "dashboard": {
+        "type": "docker",
+        "target": "dashboard",   # Container name
+        "desc": "Interface Web"
+    }
 })
-
-# Pattern de validation pour les noms de services (sécurité)
-SAFE_SERVICE_PATTERN = re.compile(r'^[a-z0-9\-\.]+\.(?:service|timer)$')
 
 # Models
 class ServiceStatus(BaseModel):
@@ -34,217 +53,172 @@ class ServiceStatus(BaseModel):
 
 class ServicesStatusResponse(BaseModel):
     services: List[ServiceStatus]
-    is_systemd_available: bool
+    mode: str  # 'docker' or 'systemd'
 
 class ServiceActionRequest(BaseModel):
-    service: str = Field(..., description="Service key (monitor, backup, cleanup, main)")
-    action: str = Field(..., description="Action to perform (start, stop, enable, disable)")
+    service: str = Field(..., description="Service key (monitor, backup, cleanup, main, dashboard)")
+    action: str = Field(..., description="Action to perform (start, stop, restart)")
 
-# Helper functions
-def is_systemd_available() -> bool:
-    """Check if systemd is available on the system."""
+# --- Docker Management Logic ---
+
+def get_docker_client():
+    """Lazy load docker client to avoid import errors if not installed."""
     try:
-        result = subprocess.run(
-            ["systemctl", "--version"],
-            capture_output=True,
-            timeout=5
-        )
-        return result.returncode == 0
+        import docker
+        return docker.from_env()
+    except ImportError:
+        logger.error("Docker python library not found.")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to connect to Docker socket: {e}")
+        return None
+
+def manage_docker_container(container_name: str, action: str) -> bool:
+    """Manage a Docker container (start, stop, restart)."""
+    client = get_docker_client()
+    if not client:
+        return False
+
+    try:
+        container = client.containers.get(container_name)
+        if action == "start":
+            container.start()
+        elif action == "stop":
+            container.stop()
+        elif action == "restart":
+            container.restart()
+        else:
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"Docker action {action} failed for {container_name}: {e}")
+        return False
+
+def get_container_status(container_name: str) -> Dict:
+    """Get status of a Docker container."""
+    client = get_docker_client()
+    if not client:
+        return {"active": False, "enabled": False, "status": "Docker API Error"}
+
+    try:
+        container = client.containers.get(container_name)
+        state = container.status  # running, exited, etc.
+        return {
+            "active": state == "running",
+            "enabled": True, # Containers in compose are 'enabled'
+            "status": f"{state} ({container.short_id})"
+        }
+    except Exception:
+        return {"active": False, "enabled": False, "status": "Not Found"}
+
+# --- Systemd Management Logic (Fallback/Hybrid) ---
+
+def is_systemd_available() -> bool:
+    try:
+        # Check if we are in a container without systemd access
+        if not os.path.exists("/run/systemd/system"):
+            return False
+        subprocess.run(["systemctl", "--version"], capture_output=True, timeout=2)
+        return True
     except Exception:
         return False
 
-def get_service_status(service_name: str) -> Dict:
-    """Get the status of a systemd service/timer."""
+def execute_systemd_action(service_name: str, action: str) -> bool:
+    # Whitelist validation
+    if not re.match(r'^[a-z0-9\-\.]+$', service_name): return False
+    valid_actions = {"start", "stop", "restart", "enable", "disable"}
+    if action not in valid_actions: return False
+
+    cmd = ["sudo", "systemctl", action, service_name]
     try:
-        # Check if service is active
-        active_result = subprocess.run(
-            ["systemctl", "is-active", service_name],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        is_active = active_result.stdout.strip() == "active"
-
-        # Check if service is enabled
-        enabled_result = subprocess.run(
-            ["systemctl", "is-enabled", service_name],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        is_enabled = enabled_result.stdout.strip() == "enabled"
-
-        # Get detailed status
-        status_result = subprocess.run(
-            ["systemctl", "status", service_name],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        status_text = status_result.stdout.strip()
-
-        return {
-            "active": is_active,
-            "enabled": is_enabled,
-            "status": status_text[:200] if status_text else "N/A"  # Limit status text
-        }
-    except subprocess.TimeoutExpired:
-        logger.warning(f"Timeout checking status for {service_name}")
-        return {"active": False, "enabled": False, "status": "Timeout"}
+        subprocess.run(cmd, check=True, timeout=10)
+        return True
     except Exception as e:
-        logger.error(f"Error getting status for {service_name}: {e}", exc_info=True)
-        return {"active": False, "enabled": False, "status": f"Error: {str(e)}"}
-
-def execute_service_action(service_name: str, action: str) -> bool:
-    """Execute a systemd action on a service."""
-    # Validation stricte de l'action (whitelist)
-    valid_actions = {"start", "stop", "enable", "disable", "restart"}
-    if action not in valid_actions:
-        raise ValueError(f"Invalid action: {action}")
-
-    # Validation stricte du service name (protection contre injection)
-    if not SAFE_SERVICE_PATTERN.match(service_name):
-        raise ValueError(f"Invalid service name pattern: {service_name}")
-
-    try:
-        # Try without sudo first (works in Docker with privileged mode)
-        # If that fails, try with sudo (works on host with sudoers config)
-        commands = [
-            ["systemctl", action, service_name],
-            ["sudo", "systemctl", action, service_name]
-        ]
-
-        for cmd in commands:
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-
-                if result.returncode == 0:
-                    logger.info(f"Successfully executed {action} on {service_name} using: {' '.join(cmd)}")
-                    return True
-                else:
-                    logger.debug(f"Command {' '.join(cmd)} failed: {result.stderr}")
-            except FileNotFoundError:
-                # Command not found, try next one
-                continue
-            except subprocess.TimeoutExpired:
-                logger.warning(f"Timeout executing {' '.join(cmd)}")
-                continue
-
-        logger.error(f"Failed to {action} {service_name} with all attempted commands")
-        return False
-    except Exception as e:
-        logger.error(f"Error executing {action} on {service_name}: {e}", exc_info=True)
+        logger.error(f"Systemd action failed: {e}")
         return False
 
-# API Routes
+def get_systemd_status(service_name: str) -> Dict:
+    try:
+        active = subprocess.run(["systemctl", "is-active", service_name], capture_output=True, text=True).stdout.strip() == "active"
+        enabled = subprocess.run(["systemctl", "is-enabled", service_name], capture_output=True, text=True).stdout.strip() == "enabled"
+        return {"active": active, "enabled": enabled, "status": "active" if active else "inactive"}
+    except Exception:
+        return {"active": False, "enabled": False, "status": "Error"}
+
+# --- Routes ---
+
 @router.get("/services/status", response_model=ServicesStatusResponse)
 async def get_services_status(authenticated: bool = Depends(verify_api_key)):
-    """Get status of all managed automation services."""
-    systemd_available = is_systemd_available()
+    """Get status of managed services (Docker containers or Systemd units)."""
 
-    if not systemd_available:
-        logger.info("Systemd is not available - using Docker/RQ worker mode")
-        # In Docker mode, return RQ worker status as "services"
-        try:
-            from src.api.routes.bot_control import redis_conn
-            from rq import Worker, Queue
-
-            if not redis_conn:
-                return ServicesStatusResponse(
-                    services=[],
-                    is_systemd_available=False
-                )
-
-            # Get RQ workers status
-            workers = Worker.all(connection=redis_conn)
-            queue = Queue("linkedin-bot", connection=redis_conn)
-
-            services = []
-
-            # Create a virtual "service" for RQ workers
-            if workers:
-                for idx, worker in enumerate(workers):
-                    worker_state = worker.get_state()
-                    is_active = worker_state in ["busy", "idle"]
-                    current_job = worker.get_current_job()
-
-                    # Format job ID safely
-                    job_info = "idle"
-                    if current_job:
-                        try:
-                            job_info = current_job.id[:8] if hasattr(current_job, 'id') else "processing"
-                        except Exception:
-                            job_info = "processing"
-
-                    services.append(ServiceStatus(
-                        name=f"rq_worker_{idx}",
-                        display_name=f"Worker RQ {idx + 1}",
-                        active=is_active,
-                        enabled=True,  # Workers are always "enabled" in Docker
-                        status=f"{worker_state} - Jobs: ✓{worker.successful_job_count} ✗{worker.failed_job_count}",
-                        description=f"Worker RQ pour tâches asynchrones ({job_info})"
-                    ))
-
-            # Add queue status as a service
-            queued_jobs = queue.count
-            services.append(ServiceStatus(
-                name="rq_queue",
-                display_name="File d'attente",
-                active=True,
-                enabled=True,
-                status=f"{queued_jobs} job(s) en attente",
-                description="File d'attente Redis pour les tâches LinkedIn"
-            ))
-
-            return ServicesStatusResponse(
-                services=services,
-                is_systemd_available=False  # Indicate Docker mode
-            )
-
-        except Exception as e:
-            logger.error(f"Error getting RQ workers status: {e}", exc_info=True)
-            return ServicesStatusResponse(
-                services=[],
-                is_systemd_available=False
-            )
-
-    # Systemd mode (Raspberry Pi)
     services = []
+    has_systemd = is_systemd_available()
 
-    # Service descriptions
-    descriptions = {
-        "monitor": "Surveillance système toutes les heures",
-        "backup": "Sauvegarde quotidienne à 3h00",
-        "cleanup": "Nettoyage hebdomadaire le dimanche à 2h00",
-        "main": "Service principal LinkedIn Bot"
-    }
+    # Try to import Redis connection to check workers
+    try:
+        from src.api.routes.bot_control import get_redis_queue
+        # We don't need the queue here, just checking import
+    except ImportError:
+        pass
 
-    display_names = {
-        "monitor": "Monitoring",
-        "backup": "Backup",
-        "cleanup": "Cleanup",
-        "main": "Bot Principal"
-    }
+    for key, config in MANAGED_SERVICES.items():
+        # Handle Systemd services in Docker environment
+        if config["type"] == "systemd" and not has_systemd:
+            # Instead of hiding them, we show them as "Host Managed" or "Unavailable"
+            # This preserves UI structure
+            services.append(ServiceStatus(
+                name=key,
+                display_name=key.capitalize(),
+                active=True, # Assume active if we can't check
+                enabled=True,
+                status="Géré par l'hôte (Logs only)",
+                description=f"{config['desc']} (Mode Docker)"
+            ))
+            continue
 
-    for key, service_name in MANAGED_SERVICES.items():
-        status = get_service_status(service_name)
+        status = {}
+        if config["type"] == "docker":
+            status = get_container_status(config["target"])
+        elif config["type"] == "systemd":
+            status = get_systemd_status(config["target"])
+
         services.append(ServiceStatus(
             name=key,
-            display_name=display_names.get(key, key),
+            display_name=key.capitalize(),
             active=status["active"],
             enabled=status["enabled"],
             status=status["status"],
-            description=descriptions.get(key, "")
+            description=config["desc"]
         ))
+
+    # --- RESTORED: RQ Worker Status injection ---
+    # In pure Docker mode, users expect to see "RQ Worker" status
+    if not has_systemd:
+        try:
+             # Lazy import to avoid circular dep
+             from src.api.routes.bot_control import redis_pool
+             from rq import Worker
+             from redis import Redis
+
+             r = Redis(connection_pool=redis_pool)
+             workers = Worker.all(connection=r)
+
+             for idx, worker in enumerate(workers):
+                 state = worker.get_state()
+                 services.append(ServiceStatus(
+                    name=f"rq_worker_{idx}",
+                    display_name=f"Worker RQ {worker.name[-6:]}",
+                    active=state in ["busy", "idle"],
+                    enabled=True,
+                    status=f"{state.upper()} (Jobs: {worker.successful_job_count})",
+                    description="Processus de fond"
+                 ))
+        except Exception as e:
+            logger.warning(f"Could not inject RQ worker status: {e}")
 
     return ServicesStatusResponse(
         services=services,
-        is_systemd_available=True
+        mode="hybrid" if has_systemd else "docker"
     )
 
 @router.post("/services/action")
@@ -252,62 +226,49 @@ async def execute_service_action_endpoint(
     request: ServiceActionRequest,
     authenticated: bool = Depends(verify_api_key)
 ):
-    """Execute an action on a systemd service."""
-    if not is_systemd_available():
-        raise HTTPException(
-            status_code=503,
-            detail="Systemd is not available on this system"
-        )
-
+    """Execute action on service."""
     if request.service not in MANAGED_SERVICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid service: {request.service}. Valid services: {list(MANAGED_SERVICES.keys())}"
-        )
+        raise HTTPException(status_code=400, detail="Invalid service")
 
-    service_name = MANAGED_SERVICES[request.service]
+    config = MANAGED_SERVICES[request.service]
 
-    try:
-        success = execute_service_action(service_name, request.action)
+    # Block systemd actions in Docker mode
+    if config["type"] == "systemd" and not is_systemd_available():
+         raise HTTPException(status_code=501, detail="Action impossible sur ce service depuis le conteneur API (Géré par l'hôte)")
 
-        if not success:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to {request.action} {service_name}"
-            )
+    success = False
 
-        return {
-            "status": "success",
-            "message": f"Successfully executed {request.action} on {request.service}",
-            "service": request.service,
-            "action": request.action
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error in service action: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    if config["type"] == "docker":
+        success = manage_docker_container(config["target"], request.action)
+    elif config["type"] == "systemd":
+        success = execute_systemd_action(config["target"], request.action)
 
+    if not success:
+        raise HTTPException(status_code=500, detail="Action failed")
+
+    return {"status": "success", "service": request.service, "action": request.action}
+
+# --- RESTORED: Specific Workers Endpoint ---
 @router.get("/workers/status")
 async def get_workers_status(authenticated: bool = Depends(verify_api_key)):
-    """Get status of RQ workers."""
+    """Get granular status of RQ workers."""
     try:
-        # Import Redis connection from bot_control
-        from src.api.routes.bot_control import redis_conn
-
-        if not redis_conn:
-            raise HTTPException(status_code=503, detail="Redis not available")
-
-        # Get worker information from RQ
+        from src.api.routes.bot_control import redis_pool
         from rq import Worker
-        workers = Worker.all(connection=redis_conn)
+        from redis import Redis
+
+        r = Redis(connection_pool=redis_pool)
+        workers = Worker.all(connection=r)
 
         worker_info = []
         for worker in workers:
+            current_job = worker.get_current_job()
+            job_id = current_job.id if current_job else None
+
             worker_info.append({
                 "name": worker.name,
                 "state": worker.get_state(),
-                "current_job": worker.get_current_job_id(),
+                "current_job": job_id,
                 "successful_jobs": worker.successful_job_count,
                 "failed_jobs": worker.failed_job_count,
                 "total_working_time": worker.total_working_time
