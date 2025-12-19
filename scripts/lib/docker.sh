@@ -21,16 +21,21 @@ docker_check_all_prerequisites() {
     # Vérifier que le daemon Docker est actif
     if ! docker info > /dev/null 2>&1; then
         log_error "Docker daemon n'est pas actif"
+        log_error "Essayez: sudo systemctl start docker"
         return 1
     fi
     log_success "✓ Docker daemon actif"
 
-    # Vérifier que docker-compose est installé
-    if ! cmd_exists docker; then
-        log_error "docker-compose n'est pas disponible"
+    # Vérifier que docker compose est disponible (plugin intégré)
+    if ! docker compose version > /dev/null 2>&1; then
+        log_error "docker compose n'est pas disponible"
+        log_error "Docker Compose plugin est requis (installé avec Docker Engine moderne)"
         return 1
     fi
-    log_success "✓ docker-compose disponible"
+
+    local compose_version
+    compose_version=$(docker compose version --short 2>/dev/null || echo "unknown")
+    log_success "✓ docker compose disponible (v${compose_version})"
 
     return 0
 }
@@ -158,18 +163,36 @@ docker_compose_up() {
 }
 
 docker_cleanup() {
-    log_info "Nettoyage des ressources Docker..."
+    log_info "Nettoyage des ressources Docker (conteneurs et images uniquement)..."
 
-    # Supprimer les conteneurs arrêtés
-    docker container prune -f 2>/dev/null || true
+    # Supprimer les conteneurs arrêtés de ce projet uniquement
+    log_info "  - Nettoyage conteneurs arrêtés..."
+    docker container prune -f --filter "label=com.docker.compose.project=linkedin-birthday-auto" 2>/dev/null || \
+        docker container prune -f 2>/dev/null || true
 
-    # Supprimer les images sans tag
+    # Supprimer les images sans tag (dangereuses uniquement)
+    log_info "  - Nettoyage images sans tag..."
     docker image prune -f 2>/dev/null || true
 
-    # Supprimer les volumes non utilisés
-    docker volume prune -f 2>/dev/null || true
+    # NE PAS supprimer les volumes automatiquement pour éviter perte de données
+    # Les utilisateurs peuvent le faire manuellement avec:
+    #   docker volume prune -f
 
-    log_success "✓ Nettoyage Docker terminé"
+    log_success "✓ Nettoyage Docker terminé (volumes préservés)"
+    return 0
+}
+
+docker_cleanup_volumes() {
+    # Fonction séparée pour nettoyer les volumes (non appelée automatiquement)
+    log_warn "⚠️  Nettoyage des volumes Docker (ATTENTION: perte de données possible)"
+
+    if prompt_yes_no "Êtes-vous sûr de vouloir supprimer les volumes non utilisés ?" "n"; then
+        docker volume prune -f 2>/dev/null || true
+        log_success "✓ Volumes nettoyés"
+    else
+        log_info "Nettoyage des volumes annulé"
+    fi
+
     return 0
 }
 

@@ -20,50 +20,66 @@ hash_and_store_password() {
     # Utiliser python pour générer un bcrypt hash sécurisé
     local hashed_password
 
-    # Try bcrypt first
-    hashed_password=$(python3 -c "
+    # Try bcrypt first - SÉCURISÉ contre injection avec heredoc et sys.stdin
+    hashed_password=$(python3 <<'PYTHON_EOF'
 import bcrypt
 import sys
-password = '$password'.encode('utf-8')
+
+# Lire le mot de passe depuis stdin de manière sécurisée
+password = sys.stdin.read().strip().encode('utf-8')
 hashed = bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))
 print(hashed.decode('utf-8'))
-" 2>/dev/null) || {
+PYTHON_EOF
+echo -n "$password") 2>/dev/null || {
         # Try passlib's bcrypt if bcrypt is not available
-        hashed_password=$(python3 -c "
+        hashed_password=$(python3 <<'PYTHON_EOF'
 from passlib.context import CryptContext
+import sys
+
 ctx = CryptContext(schemes=['bcrypt'])
-password = '$password'
-hashed = ctx.encrypt(password)
+password = sys.stdin.read().strip()
+hashed = ctx.hash(password)
 print(hashed)
-" 2>/dev/null) || {
-            # Fallback to htpasswd
-            hashed_password=$(echo "$password" | htpasswd -iBBC 2>/dev/null) || {
-                # Fallback to Python crypt module for basic hashing
-                hashed_password=$(python3 -c "
+PYTHON_EOF
+echo -n "$password") 2>/dev/null || {
+            # Fallback to Python crypt module for basic hashing
+            hashed_password=$(python3 <<'PYTHON_EOF'
 import crypt
-password = '$password'
+import sys
+
+password = sys.stdin.read().strip()
 hashed = crypt.crypt(password, crypt.METHOD_SHA512)
 print(hashed)
-" 2>/dev/null) || {
-                    log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
-                    return 1
-                }
+PYTHON_EOF
+echo -n "$password") 2>/dev/null || {
+                log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
+                return 1
             }
         }
     }
 
-    # Échapper les caractères spéciaux pour sed
+    if [[ -z "$hashed_password" ]]; then
+        log_error "Hash généré est vide"
+        return 1
+    fi
+
+    # CRITIQUE: Doubler les $ pour Docker Compose et shells
+    # $2b$12$abc... → $$2b$$12$$abc...
+    local doubled_hash
+    doubled_hash="${hashed_password//\$/\$\$}"
+
+    # Échapper les caractères spéciaux pour sed (/ et &)
     local escaped_hash
-    escaped_hash=$(printf '%s\n' "$hashed_password" | sed 's:[\/&]:\\&:g')
+    escaped_hash=$(printf '%s\n' "$doubled_hash" | sed 's:[\/&]:\\&:g')
 
     # Remplacer dans le fichier .env
     if grep -q "^DASHBOARD_PASSWORD=" "$env_file"; then
         sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${escaped_hash}|" "$env_file"
     else
-        echo "DASHBOARD_PASSWORD=${hashed_password}" >> "$env_file"
+        echo "DASHBOARD_PASSWORD=${escaped_hash}" >> "$env_file"
     fi
 
-    log_success "✓ Mot de passe hashé et stocké"
+    log_success "✓ Mot de passe hashé et stocké (hash bcrypt avec $$ doublés)"
     return 0
 }
 
