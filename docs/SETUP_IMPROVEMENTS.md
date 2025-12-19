@@ -1,8 +1,24 @@
-# Améliorations Setup.sh - Idempotence et UX
+# Améliorations Setup.sh - Idempotence, UX & Sécurité Hash
 
 **Date:** 2025-01-19
 **Version:** v3.3+
-**Focus:** Rendre setup.sh réexécutable sans interactions redondantes
+**Focus:**
+- Rendre setup.sh réexécutable sans interactions redondantes
+- Améliorer l'interaction utilisateur avec des menus clairs
+- Documenter le hachage bcrypt et le doublage des `$`
+
+---
+
+## 📖 RÉFÉRENCE COMPLÈTE
+
+Pour une documentation détaillée et complète sur le hachage du mot de passe, consultez :
+👉 **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING.md)**
+
+Ce document couvre :
+- Le processus complet de hachage bcrypt
+- Pourquoi les `$` sont doublés dans `.env`
+- Les menus d'interaction utilisateur
+- Des exemples pratiques et troubleshooting
 
 ---
 
@@ -202,12 +218,87 @@ sed -i 's|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=myplaintext|' .env
 
 ---
 
+## ⚠️ Important : Doublage des `$` dans le Hash Bcrypt
+
+### Qu'est-ce qu'on fait ?
+
+Lorsque le script écrit le mot de passe haché dans `.env`, il **double tous les caractères `$`** du hash bcrypt.
+
+**Avant (hash brut généré) :**
+```
+$2b$12$EBpvXzNy2TxUz7r3Q5m9I.u3R4K7p2L6M8wQ5x9F3dG6h4j2k
+```
+
+**Après (dans .env) :**
+```
+$$2b$$12$$EBpvXzNy2TxUz7r3Q5m9I.u3R4K7p2L6M8wQ5x9F3dG6h4j2k
+```
+
+### Pourquoi c'est nécessaire ?
+
+Le caractère `$` est spécial dans les fichiers shell : il déclenche l'**expansion de variables**.
+
+Sans le doublage :
+```bash
+# .env contient :
+DASHBOARD_PASSWORD=$2b$12$...
+
+# Shell interprète ceci comme :
+DASHBOARD_PASSWORD=<valeur de 2b> <valeur de 12> ...  ← ERREUR !
+```
+
+Avec le doublage :
+```bash
+# .env contient :
+DASHBOARD_PASSWORD=$$2b$$12$$...
+
+# Shell interprète $$ comme un seul $, donc :
+DASHBOARD_PASSWORD=$2b$12$...  ← CORRECT ✓
+```
+
+### Comment le Script le Fait ?
+
+Ligne 502 dans `setup.sh` :
+```bash
+SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
+```
+
+Cela remplace chaque `$` par `$$` automatiquement.
+
+### Ce que Vous Devez Savoir
+
+✅ **NORMAL :** Voir des `$$` dans le fichier `.env`
+```bash
+DASHBOARD_PASSWORD=$$2b$$12$$...
+```
+
+❌ **NE PAS FAIRE :** Modifier les `$$` manuellement
+```bash
+# MAUVAIS - ne faites pas ça !
+sed -i 's/\$\$/\$/g' .env   # ← supprime les doublons
+
+# Le mot de passe ne fonctionnera plus !
+```
+
+✅ **SI VOUS DEVEZ RECONFIGURER :** Utilisez le script
+```bash
+sed -i 's|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=CHANGEZ_MOI|' .env
+./setup.sh
+```
+
+### Documentation Complète
+
+Voir : **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING.md)** pour tous les détails techniques.
+
+---
+
 ## Références
 
 - Audit Report: [docs/AUDIT_REPORT_2025-01.md](./AUDIT_REPORT_2025-01.md)
 - Security Enhancements: [docs/SECURITY_ENHANCEMENTS_2025.md](./SECURITY_ENHANCEMENTS_2025.md)
+- Password Hashing Details: **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING.md)** ⭐ NEW
 - Setup Guide: [docs/RASPBERRY_PI_DOCKER_SETUP.md](./RASPBERRY_PI_DOCKER_SETUP.md)
 
 ---
 
-*Document généré le 2025-01-19 par Claude Code - Setup Improvements*
+*Document généré le 2025-01-19 par Claude Code - Setup Improvements v3.3+*

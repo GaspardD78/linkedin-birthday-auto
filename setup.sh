@@ -60,6 +60,96 @@ check_sudo() {
     fi
 }
 
+# --- Fonctions d'Interaction Utilisateur ---
+
+# Pose une question yes/no avec timeout
+# Usage: prompt_yes_no "Voulez-vous continuer ?" [default]
+# default: "y" pour yes par défaut, "n" pour no par défaut, ou "" pour pas de défaut
+prompt_yes_no() {
+    local question="$1"
+    local default="${2:-}"
+    local timeout=30
+    local reply
+
+    if [[ "$default" == "y" ]]; then
+        echo -ne "${YELLOW}${question} [Y/n] : ${NC}"
+    elif [[ "$default" == "n" ]]; then
+        echo -ne "${YELLOW}${question} [y/N] : ${NC}"
+    else
+        echo -ne "${YELLOW}${question} [y/n] : ${NC}"
+    fi
+
+    read -r -t "$timeout" reply || reply="$default"
+
+    if [[ -z "$reply" && -z "$default" ]]; then
+        log_error "Pas de réponse (timeout ${timeout}s)"
+        return 1
+    fi
+
+    case "$reply" in
+        [Yy]|"") [[ "$default" != "n" ]] && return 0 || return 1 ;;
+        [Nn]|"") [[ "$default" == "n" ]] && return 0 || return 1 ;;
+        *) log_error "Réponse invalide. Veuillez répondre par 'y' ou 'n'"; return 2 ;;
+    esac
+}
+
+# Affiche un menu numéroté et attend un choix
+# Usage: prompt_menu "Titre" "Option 1" "Option 2" "Option 3"
+# Returns: l'index de l'option choisie (1-based)
+prompt_menu() {
+    local title="$1"
+    shift
+    local options=("$@")
+    local choice
+    local timeout=30
+
+    echo -e "\n${BOLD}${BLUE}${title}${NC}\n"
+
+    local i=1
+    for option in "${options[@]}"; do
+        echo "  ${BOLD}${i})${NC} ${option}"
+        i=$((i + 1))
+    done
+
+    echo -ne "\n${YELLOW}Votre choix [1-$#] (timeout ${timeout}s) : ${NC}"
+
+    read -r -t "$timeout" choice || { log_error "Timeout"; return 1; }
+
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt $# ]]; then
+        log_error "Choix invalide. Veuillez entrer un nombre entre 1 et $#"
+        return 2
+    fi
+
+    echo "$choice"
+    return 0
+}
+
+# Menu spécifique pour la configuration du mot de passe dashboard
+# Returns: "new" (nouveau), "keep" (garder), "cancel" (annuler)
+prompt_password_action() {
+    local has_existing="$1"  # true ou false
+    local choice
+
+    if [[ "$has_existing" == "true" ]]; then
+        choice=$(prompt_menu \
+            "Configuration du Mot de Passe Dashboard" \
+            "Définir/Changer le mot de passe maintenant" \
+            "Garder le mot de passe existant" \
+            "Annuler la configuration pour l'instant")
+    else
+        choice=$(prompt_menu \
+            "Configuration du Mot de Passe Dashboard" \
+            "Définir un nouveau mot de passe" \
+            "Annuler la configuration pour l'instant")
+    fi
+
+    case "$choice" in
+        1) echo "new" ;;
+        2) [[ "$has_existing" == "true" ]] && echo "keep" || echo "cancel" ;;
+        3) echo "cancel" ;;
+    esac
+}
+
 configure_docker_ipv4() {
     local daemon_json="/etc/docker/daemon.json"
     local needs_restart=false
@@ -325,59 +415,121 @@ if grep -q "^DOMAIN=" "$ENV_FILE" 2>/dev/null; then
     log_info "Domaine détecté: $DOMAIN"
 fi
 
-# 3.2 Gestion Mot de Passe (Idempotent - ne demande qu'une fois)
-# Condition pour demander le mot de passe:
-# - Si "CHANGEZ_MOI" existe (placeholder non configuré)
-# - OU si pas de hash bcrypt valide (^DASHBOARD_PASSWORD=$2[aby]$)
-# - Sinon: skip (configuration valide + idempotente)
-if grep -q "CHANGEZ_MOI" "$ENV_FILE" || ! grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE"; then
-    # Vérifier si password est déjà un hash bcrypt (peut arriver lors d'un re-run après succès)
-    if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE"; then
-        log_info "Mot de passe Dashboard déjà configuré (hash bcrypt détecté). Skip."
+# ============================================================================
+# 3.2 GESTION MOT DE PASSE DASHBOARD (Idempotent & Sécurisé)
+# ============================================================================
+#
+# NOTES IMPORTANTES SUR LE HACHAGE :
+#
+# 1. HASH BCRYPT ET CARACTÈRES SPÉCIAUX ($)
+#    Les hashes bcrypt contiennent des caractères $ (ex: $2b$12$...).
+#    Dans un fichier shell .env, les $ peuvent être interprétés comme
+#    des EXPANSIONS DE VARIABLES (ex: $VAR → valeur de VAR).
+#
+# 2. SOLUTION : DOUBLAGE DES $
+#    Avant d'écrire dans .env, chaque $ du hash est doublé ($ → $$).
+#    Exemple:
+#      Hash brut : $2b$12$abcdef$ghijkl$123456789...
+#      Dans .env : $$2b$$12$$abcdef$$ghijkl$$123456789...
+#
+#    Lors de la lecture par l'application, le shell/parseur interprète
+#    $$ comme un seul $, donc l'app reçoit le hash original correct.
+#
+# 3. PROCESSUS DANS CE SCRIPT :
+#    a) Générer le hash bcrypt avec bcryptjs (via Docker)
+#    b) Doubler les $ pour la sécurité shell (sed 's/\$/\$\$/g')
+#    c) Échapper les / et & pour sed (sed 's/[\/&]/\\&/g')
+#    d) Écrire dans .env avec sed (syntaxe: sed -i "s|pattern|replacement|")
+#    e) L'app relit .env → shell interprète $$ comme $, app reçoit hash correct
+#
+# 4. IDEMPOTENCE :
+#    - Premier lancement : demande le mot de passe
+#    - Re-lancement avec hash valide : SKIP (pas de redémande)
+#    - Reset : remplacer DASHBOARD_PASSWORD=CHANGEZ_MOI puis relancer
+#
+# ============================================================================
+
+# Déterminer s'il y a déjà un mot de passe configuré
+HAS_BCRYPT_HASH=false
+if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE"; then
+    HAS_BCRYPT_HASH=true
+fi
+
+# Déterminer s'il faut demander un nouveau mot de passe
+NEEDS_PASSWORD_CONFIG=false
+if grep -q "CHANGEZ_MOI" "$ENV_FILE" || [[ "$HAS_BCRYPT_HASH" == "false" ]]; then
+    NEEDS_PASSWORD_CONFIG=true
+fi
+
+if [[ "$NEEDS_PASSWORD_CONFIG" == "true" ]]; then
+    if [[ "$HAS_BCRYPT_HASH" == "true" ]]; then
+        # Hash valide détecté mais CHANGEZ_MOI existe aussi (scénario rare)
+        ACTION=$(prompt_password_action "true")
     else
-        echo -e "${BOLD}>>> Configuration du Mot de Passe Dashboard${NC}"
-        echo -n "Entrez le nouveau mot de passe : "
-        read -rs PASS_INPUT
-        echo ""
+        # Pas de hash valide détecté
+        ACTION=$(prompt_password_action "false")
+    fi
 
-        if [[ -n "$PASS_INPUT" ]]; then
-            log_info "Hachage sécurisé du mot de passe..."
+    case "$ACTION" in
+        new)
+            echo -e "\n${BOLD}Entrez le nouveau mot de passe dashboard :${NC}"
+            echo -n "Mot de passe (caché) : "
+            read -rs PASS_INPUT
+            echo ""
 
-            # UTILISATION IMAGE DASHBOARD (Déjà présente ou sera pullée)
-            # Évite de puller node:20-alpine séparément
-            DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+            if [[ -n "$PASS_INPUT" ]]; then
+                log_info "Hachage sécurisé du mot de passe avec bcryptjs..."
 
-            # Pré-pull de l'image dashboard si nécessaire pour le hachage
-            if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-                 log_info "Téléchargement de l'image dashboard pour outils crypto..."
-                 docker pull -q "$DASHBOARD_IMG"
-            fi
+                # Image dashboard pour le hachage (compatibilité ARM64 RPi4)
+                DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
 
-            # Hachage via Node dans le conteneur dashboard (natif ARM64)
-            HASH_OUTPUT=$(docker run --rm \
-                --entrypoint node \
-                -e PWD_INPUT="$PASS_INPUT" \
-                "$DASHBOARD_IMG" \
-                -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null)
-
-            if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
-                SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
-                ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
-                sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"
-                log_success "Mot de passe mis à jour et haché."
-            else
-                log_error "Échec du hachage. Sortie: $HASH_OUTPUT"
-                # Fallback Python Host si container fail
-                if cmd_exists python3; then
-                     log_warn "Tentative fallback Python (insecure: crypt standard)..."
-                     # Note: crypt n'est pas bcrypt, mais mieux que rien.
-                     # Mais le dashboard attend du bcrypt. Donc échec critique préférable.
-                     log_error "Impossible de hasher le mot de passe avec bcrypt."
-                     exit 1
+                # Pull si nécessaire
+                if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
+                    log_info "Téléchargement de l'image dashboard pour outils crypto..."
+                    docker pull -q "$DASHBOARD_IMG"
                 fi
-                exit 1
+
+                # Générer le hash bcrypt via Node.js dans le conteneur
+                HASH_OUTPUT=$(docker run --rm \
+                    --entrypoint node \
+                    -e PWD_INPUT="$PASS_INPUT" \
+                    "$DASHBOARD_IMG" \
+                    -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null)
+
+                if [[ "$HASH_OUTPUT" =~ ^\$2 ]]; then
+                    # ================== DOUBLAGE DES $ ==================
+                    # Remplacer chaque $ par $$ pour éviter l'expansion shell
+                    SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
+                    # Échapper les / et & pour sed (caractères spéciaux en sed)
+                    ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
+                    # ====================================================
+
+                    # Écrire le hash sécurisé dans .env
+                    sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"
+                    log_success "✓ Mot de passe haché et stocké dans .env (avec $$ doublés pour sécurité shell)"
+                    log_info "  Hash: ${SAFE_HASH:0:20}... (doublage des $)"
+                else
+                    log_error "Échec du hachage bcrypt. Sortie: $HASH_OUTPUT"
+                    log_error "Vérifiez que l'image dashboard est disponible."
+                    exit 1
+                fi
+            else
+                log_warn "Mot de passe vide. Configuration annulée."
             fi
-        fi
+            ;;
+
+        keep)
+            log_info "✓ Mot de passe existant conservé (hash bcrypt valide détecté)"
+            ;;
+
+        cancel)
+            log_warn "Configuration du mot de passe annulée. Vous pouvez le configurer manuellement plus tard."
+            log_info "Pour configurer : sed -i 's|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=CHANGEZ_MOI|' .env && ./setup.sh"
+            ;;
+    esac
+else
+    if [[ "$HAS_BCRYPT_HASH" == "true" ]]; then
+        log_info "✓ Mot de passe Dashboard déjà configuré (hash bcrypt détecté). Skip."
     fi
 fi
 
