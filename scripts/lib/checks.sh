@@ -8,7 +8,7 @@ set -euo pipefail
 
 # === CONSTANTS ===
 
-readonly MIN_MEMORY_GB=6
+readonly MIN_MEMORY_GB=3
 readonly DISK_THRESHOLD_PERCENT=20
 readonly HEALTH_TIMEOUT=300
 readonly HEALTH_INTERVAL=10

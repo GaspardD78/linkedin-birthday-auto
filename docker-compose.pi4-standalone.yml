@@ -385,6 +385,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.45.0
     container_name: prometheus
+    profiles: ["monitoring"]
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -405,6 +406,7 @@ services:
   grafana:
     image: grafana/grafana:10.0.3
     container_name: grafana
+    profiles: ["monitoring"]
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
@@ -434,6 +436,7 @@ services:
   node-exporter:
     image: prom/node-exporter:v1.6.1
     container_name: node-exporter
+    profiles: ["monitoring"]
     command:
       - '--path.rootfs=/host'
     pid: host

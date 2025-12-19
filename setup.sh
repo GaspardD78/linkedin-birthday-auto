@@ -133,6 +133,7 @@ readonly LOCAL_IP="192.168.1.145"
 DOMAIN="$DOMAIN_DEFAULT"
 HTTPS_MODE="letsencrypt"
 BACKUP_CONFIGURED="false"
+MONITORING_ENABLED="false"
 
 # === GESTION D'ERREURS AMÉLIORÉE ===
 
@@ -502,6 +503,15 @@ setup_state_set_config "https_mode" "$HTTPS_MODE"
 
 log_step "PHASE 6: Déploiement Docker"
 
+# Demander pour le monitoring
+if prompt_yes_no "Activer le monitoring complet (Grafana/Prometheus) ? [Mémoire +500MB]" "n"; then
+    MONITORING_ENABLED="true"
+    setup_state_set_config "monitoring_enabled" "true"
+else
+    MONITORING_ENABLED="false"
+    setup_state_set_config "monitoring_enabled" "false"
+fi
+
 # Valider docker-compose
 if ! docker_compose_validate "$COMPOSE_FILE"; then
     log_error "Docker-compose validation échouée"
@@ -515,7 +525,7 @@ if ! docker_pull_with_retry "$COMPOSE_FILE"; then
 fi
 
 # Démarrer les conteneurs
-if ! docker_compose_up "$COMPOSE_FILE" true; then
+if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
     log_error "Démarrage des conteneurs échoué"
     exit 1
 fi

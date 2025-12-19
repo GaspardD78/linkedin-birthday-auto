@@ -149,13 +149,21 @@ docker_pull_with_retry() {
 docker_compose_up() {
     local compose_file="$1"
     local detached="${2:-true}"
+    local monitoring="${3:-false}"
+    local cmd="docker compose -f $compose_file"
+
+    # Ajouter le profil monitoring si activé
+    if [[ "$monitoring" == "true" ]]; then
+        log_info "Démarrage avec monitoring activé..."
+        cmd="$cmd --profile monitoring"
+    fi
 
     log_info "Démarrage des conteneurs Docker..."
 
     if [[ "$detached" == "true" ]]; then
-        docker compose -f "$compose_file" up -d
+        $cmd up -d
     else
-        docker compose -f "$compose_file" up
+        $cmd up
     fi
 
     log_success "✓ Conteneurs démarrés"
