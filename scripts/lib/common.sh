@@ -93,7 +93,15 @@ prompt_yes_no() {
         echo -ne "${YELLOW}${question} [y/n] : ${NC}"
     fi
 
-    read -r -t "$timeout" reply || reply="$default"
+    # Vérifier si stdin est un TTY (mode interactif)
+    if [[ ! -t 0 ]]; then
+        # Non-interactif: utiliser la valeur par défaut ou "n"
+        reply="${default:-n}"
+        log_warn "Mode non-interactif, utilisation de la réponse par défaut: $reply" >&2
+    else
+        # Mode interactif: lire avec timeout
+        read -r -t "$timeout" reply || reply="$default"
+    fi
 
     if [[ -z "$reply" && -z "$default" ]]; then
         log_error "Pas de réponse (timeout ${timeout}s)"
@@ -122,9 +130,23 @@ prompt_menu() {
         i=$((i + 1))
     done
 
+    # Vérifier si stdin est un TTY (mode interactif)
+    if [[ ! -t 0 ]]; then
+        # Non-interactif: utiliser le premier choix par défaut
+        log_warn "Mode non-interactif détecté, utilisation de la première option" >&2
+        echo "1"
+        return 0
+    fi
+
     echo -ne "\n${YELLOW}Votre choix [1-$#] (timeout ${timeout}s) : ${NC}" >&2
 
-    read -r -t "$timeout" choice || { log_error "Timeout" >&2; return 1; }
+    # Lire l'entrée avec timeout
+    if ! read -r -t "$timeout" choice; then
+        # Timeout: utiliser le premier choix par défaut
+        log_warn "Timeout (${timeout}s), utilisation de la première option" >&2
+        echo "1"
+        return 0
+    fi
 
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt $# ]]; then
         log_error "Choix invalide. Veuillez entrer un nombre entre 1 et $#" >&2
