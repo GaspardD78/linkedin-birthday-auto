@@ -15,7 +15,10 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 *   **⚡ Optimisé RPi4** : Consommation RAM minimale (~600MB), gestion ZRAM/Swap automatique, Docker multi-arch (ARM64).
 *   **🎂 Birthday Bot** : Envoi de messages personnalisés (Jour J ou rattrapage).
 *   **🔍 Visitor Bot** : Visite automatique de profils ciblés (Mode Recruteur, Filtres Booléens).
-*   **🛡️ Sécurité** : Pas de mot de passe stocké (Cookies uniquement), Rate Limiting, HTTPS (Nginx), Isolation Docker.
+*   **🛡️ Sécurité Renforcée (V3.3)** :
+    *   **Conteneurs non-privilégiés** : L'API n'a plus d'accès root à l'hôte.
+    *   **Docker Socket Proxy** : Gestion sécurisée des services via l'API Docker.
+    *   **Isolation Réseau** : DNS fiables (Cloudflare/Google) forcés et hardening Nginx.
 *   **📊 Dashboard** : Interface Web Next.js pour le pilotage, les logs et les statistiques.
 *   **🔄 Résilient** : Retry automatique, gestion des timeouts réseaux, base de données SQLite WAL robuste.
 
@@ -24,6 +27,7 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 ## 🚀 Installation Rapide (Recommandée)
 
 **Pré-requis :** Raspberry Pi 4 (4GB RAM minimum conseillé), Raspberry Pi OS 64-bit (Lite ou Desktop).
+**Système :** `git` et `docker` installés (le script peut installer Docker pour vous).
 
 1.  **Cloner le dépôt :**
     ```bash
@@ -36,7 +40,7 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
     chmod +x setup.sh
     ./setup.sh
     ```
-    *Le script va tout gérer : vérification système, configuration Docker, création des certificats SSL, et lancement.*
+    *Le script gère tout : vérification mémoire/swap, configuration Docker, création certificats SSL temporaires, et lancement des conteneurs.*
 
 3.  **Accéder au Dashboard :**
     *   Ouvrez votre navigateur : `https://<IP_DE_VOTRE_RPI>` (ou le domaine configuré).
@@ -45,15 +49,15 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture V3.3
 
-Le projet utilise une architecture micro-services via Docker Compose :
+Le projet utilise une architecture micro-services sécurisée via Docker Compose :
 
-*   **Bot Worker** (Python/Playwright) : Exécute les tâches d'automatisation.
-*   **API** (FastAPI) : Interface de contrôle et pont entre le Dashboard et le Worker.
-*   **Dashboard** (Next.js) : Interface utilisateur.
-*   **Redis** : File d'attente des tâches.
-*   **Nginx** : Reverse Proxy (SSL, Rate Limiting).
+*   **Bot Worker** (Python/Playwright) : Exécute les tâches d'automatisation dans un environnement isolé.
+*   **API** (FastAPI) : Interface de contrôle, communique avec Docker via socket pour gérer les bots.
+*   **Dashboard** (Next.js) : Interface utilisateur moderne.
+*   **Redis** : File d'attente des tâches et cache.
+*   **Nginx** : Reverse Proxy (SSL, Rate Limiting, HTTP/2).
 *   **SQLite** : Stockage persistant léger et performant (fichier local).
 
 Pour plus de détails, voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

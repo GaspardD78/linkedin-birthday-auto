@@ -1,6 +1,6 @@
 # 🛡️ POLITIQUE DE SÉCURITÉ ET HARDENING
 
-**Version:** 2.0 (2025-12-18)
+**Version:** 3.3 (2025-01-20)
 **Statut:** Production (RPi4 Optimized)
 
 Ce document détaille les mécanismes de sécurité mis en œuvre pour protéger le système d'automatisation LinkedIn, particulièrement dans un contexte d'auto-hébergement sur Raspberry Pi 4.
@@ -33,13 +33,15 @@ Implémenté à deux niveaux :
 
 ## 2. Sécurité Infrastructure (Docker & OS)
 
-### 2.1 Utilisateurs Non-Privilégiés
+### 2.1 Utilisateurs Non-Privilégiés (V3.3 UPDATE)
+*   **API Sécurisée :** Le conteneur API ne tourne plus en mode `privileged`. Il utilise la socket Docker (`/var/run/docker.sock`) montée avec des droits restreints pour gérer les redémarrages de conteneurs, au lieu d'accéder au système hôte complet via `systemctl`.
 *   Les conteneurs `api` et `bot-worker` s'exécutent avec l'utilisateur `appuser` (UID 1000), aligné sur l'utilisateur par défaut du Raspberry Pi.
 *   Le conteneur `dashboard` (Next.js) s'exécute avec l'utilisateur `node` (UID 1000).
 *   **Bénéfice :** En cas de compromission d'un conteneur, l'attaquant n'a pas les droits root sur l'hôte.
 
 ### 2.2 Isolation Réseau
 *   Un réseau Docker dédié `linkedin-network` (bridge) isole les conteneurs.
+*   **DNS Sécurisé :** Les conteneurs utilisent explicitement les DNS Cloudflare (1.1.1.1) et Google (8.8.8.8) pour éviter les détournements DNS ou les pannes de résolveurs FAI.
 *   Seuls les ports nécessaires sont exposés :
     *   `80/443` (Nginx) : Public (ou LAN)
     *   `3000` (Dashboard) : Interne (exposé localement pour debug, proxifié par Nginx)

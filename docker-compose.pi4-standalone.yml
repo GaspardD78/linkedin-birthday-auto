@@ -15,8 +15,12 @@
 # - Verification: ./scripts/verify_rpi_docker.sh
 #
 # ═══════════════════════════════════════════════════════════════════════════
-# AUDIT V3.2 - CORRECTIONS CRITIQUES RPi4 (2025-01)
+# AUDIT V3.3 - CORRECTIONS SÉCURITÉ & STABILITÉ (2025-01)
 # ═══════════════════════════════════════════════════════════════════════════
+#
+# [SEC-1] SUPPRESSION 'privileged: true' sur l'API
+#         → L'API n'a plus besoin d'accès root au système hôte
+#         → Gestion des conteneurs via socket Docker (/var/run/docker.sock)
 #
 # [FIX-A] sysctls vm.overcommit_memory SUPPRIMÉ des conteneurs
 #         → Ce paramètre kernel n'est PAS namespaceable sur ARM64
@@ -128,8 +132,8 @@ services:
       redis-bot:
         condition: service_healthy
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
-    # Enable privileged mode to allow systemctl commands
-    privileged: true
+    # [SEC-1] Désactivation du mode privileged (Inutile avec la socket docker)
+    privileged: false
     environment:
     - REDIS_HOST=redis-bot
     - REDIS_PORT=6379
@@ -151,10 +155,8 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - ./data:/app/data
-    # Mount systemd and D-Bus to allow systemctl commands from container
-    - /run/systemd:/run/systemd:ro
-    - /var/run/dbus:/var/run/dbus:ro
-    - /bin/systemctl:/bin/systemctl:ro
+    # [SEC-1] Montage de la socket Docker pour permettre à l'API de gérer les conteneurs (restart)
+    - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       resources:
         limits:
