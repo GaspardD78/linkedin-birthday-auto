@@ -138,6 +138,7 @@ jobs:
         run: |
           echo "Testing dashboard image..."
           docker run --rm --platform linux/arm64 \
+            --entrypoint node \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DASHBOARD }}:latest \
-            node --version
+            --version
           echo "✓ Dashboard image health check passed"
