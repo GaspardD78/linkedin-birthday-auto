@@ -308,6 +308,9 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
                     log_error "Impossible de hasher le mot de passe"
                     exit 1
                 }
+                # Sauvegarder le mot de passe en clair temporairement pour le rapport final
+                # (sera supprimé après affichage)
+                export SETUP_PASSWORD_PLAINTEXT="$PASS_INPUT"
                 setup_state_set_config "password_set" "true"
             fi
             ;;
@@ -605,16 +608,69 @@ log_success "✓ Services validés"
 log_step "PHASE 8: Configuration Sauvegardes Google Drive (Optionnel)"
 
 if prompt_yes_no "Configurer sauvegardes Google Drive ?" "n"; then
+    # Vérifier ou installer rclone
+    if ! cmd_exists rclone; then
+        log_warn "rclone n'est pas installé"
+        if prompt_yes_no "Installer rclone maintenant ?" "y"; then
+            log_info "Installation de rclone..."
+            if install_rclone; then
+                log_success "✓ rclone installé avec succès"
+            else
+                log_error "Impossible d'installer rclone"
+                log_info "Installation manuelle: https://rclone.org/install/"
+                prompt_yes_no "Continuer sans sauvegardes ?" "y" && BACKUP_CONFIGURED="false"
+            fi
+        else
+            log_warn "rclone non installé. Les sauvegardes Google Drive seront désactivées."
+            BACKUP_CONFIGURED="false"
+        fi
+    fi
+
+    # Configurer rclone si installé
     if cmd_exists rclone; then
-        log_info "Configuration rclone..."
-        rclone config
-        BACKUP_CONFIGURED="true"
-        setup_state_set_config "backup_configured" "true"
+        log_step "Configuration rclone"
+
+        cat <<EOF
+${BOLD}${BLUE}
+═══════════════════════════════════════════════════════════════════════════════
+  CONFIGURATION RCLONE - GOOGLE DRIVE
+═══════════════════════════════════════════════════════════════════════════════
+
+Étapes:
+  1. Un navigateur s'ouvrira pour vous authentifier avec Google
+  2. Autorisez l'accès à Google Drive
+  3. Copiez le code d'authentification dans le terminal
+  4. Nommez la configuration 'gdrive' (recommandé pour les sauvegardes)
+
+Documentation: https://rclone.org/drive/
+
+${NC}
+EOF
+
+        read -p "Appuyez sur Entrée pour commencer la configuration rclone..."
+
+        if rclone config; then
+            # Vérifier que la configuration est valide
+            if rclone listremotes | grep -q .; then
+                BACKUP_CONFIGURED="true"
+                setup_state_set_config "backup_configured" "true"
+                log_success "✓ Configuration rclone réussie"
+                log_info "Remotes disponibles: $(rclone listremotes | tr '\n' ', ' | sed 's/,$//')"
+            else
+                log_warn "⚠️  Aucun remote rclone détecté après configuration"
+                BACKUP_CONFIGURED="false"
+            fi
+        else
+            log_warn "Configuration rclone annulée"
+            BACKUP_CONFIGURED="false"
+        fi
     else
-        log_warn "rclone non installé, skippé"
+        BACKUP_CONFIGURED="false"
+        log_warn "rclone non disponible, sauvegardes désactivées"
     fi
 else
-    log_info "Sauvegardes non configurées (vous pouvez les ajouter plus tard)"
+    log_info "Sauvegardes Google Drive non configurées (vous pouvez les ajouter plus tard via: ./setup.sh)"
+    BACKUP_CONFIGURED="false"
 fi
 
 # === AUDIT SÉCURITÉ FINAL ===
@@ -629,6 +685,18 @@ log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
 
 LOCAL_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
 DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
+DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
+
+# Préparer l'affichage du mot de passe/hash
+if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
+    PASSWORD_DISPLAY="${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
+    HASH_DISPLAY="${GREEN}${DASHBOARD_HASH}${NC}"
+    PASSWORD_NOTE="  ⚠️  ${YELLOW}SAUVEGARDEZ CES IDENTIFIANTS MAINTENANT !${NC}"
+else
+    PASSWORD_DISPLAY="${YELLOW}[configuré lors du setup]${NC}"
+    HASH_DISPLAY="${YELLOW}[voir .env]${NC}"
+    PASSWORD_NOTE=""
+fi
 
 cat <<EOF
 
@@ -641,15 +709,18 @@ ${BOLD}${BLUE}└─────────────────────
   ├─ HTTP local        : http://${LOCAL_IP}:3000
   └─ Grafana monitoring : http://${LOCAL_IP}:3001
 
-  ${BOLD}🔐 Authentification${NC}
+  ${BOLD}🔐 Authentification Dashboard${NC}
   ├─ Utilisateur       : ${GREEN}${DASHBOARD_USER}${NC}
-  └─ Mot de passe      : [vous l'avez entré]
+  ├─ Mot de passe      : ${PASSWORD_DISPLAY}
+  ├─ Hash (bcrypt)     : ${HASH_DISPLAY}
+  └─ ${PASSWORD_NOTE}
 
   ${BOLD}📊 Infrastructure${NC}
   ├─ Domaine          : ${DOMAIN}
   ├─ IP locale        : ${LOCAL_IP}
   ├─ Conteneurs       : $(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
-  └─ HTTPS mode       : ${HTTPS_MODE}
+  ├─ HTTPS mode       : ${HTTPS_MODE}
+  └─ Sauvegardes      : $([ "$BACKUP_CONFIGURED" == "true" ] && echo "${GREEN}Activées${NC}" || echo "${YELLOW}Non configurées${NC}")
 
   ${BOLD}🔧 Commandes utiles${NC}
   ├─ Logs              : docker compose -f $COMPOSE_FILE logs -f
@@ -662,13 +733,22 @@ ${BOLD}${BLUE}└─────────────────────
   ${BOLD}📚 Documentation${NC}
   ├─ Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md
   ├─ Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md
+  ├─ Passwords: docs/PASSWORD_MANAGEMENT_GUIDE.md
   ├─ Security: docs/SECURITY_AUDIT.md
   └─ État du setup: .setup.state
+
+  ${BOLD}🆘 En cas de problème de login${NC}
+  ├─ Vérifiez le .env: grep DASHBOARD_PASSWORD .env
+  ├─ Réinitialiser: ./scripts/manage_dashboard_password.sh
+  └─ Consultez: docs/PASSWORD_MANAGEMENT_GUIDE.md
 
 ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 
 ✓ ${GREEN}Setup v4.0 réussi${NC} - Accédez au dashboard pour finaliser la configuration!
 
 EOF
+
+# Nettoyer le mot de passe en clair de la mémoire
+unset SETUP_PASSWORD_PLAINTEXT
 
 exit 0
