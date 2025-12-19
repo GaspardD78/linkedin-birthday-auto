@@ -14,8 +14,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_BOT: ${{ lower(format('{0}-bot', github.repository)) }}
-  IMAGE_NAME_DASHBOARD: ${{ lower(format('{0}-dashboard', github.repository)) }}
 
 jobs:
   build-bot-worker:
@@ -28,6 +26,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set image name to lowercase
+        run: echo "IMAGE_NAME_BOT=$(echo '${{ github.repository }}-bot' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -88,6 +89,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set image name to lowercase
+        run: echo "IMAGE_NAME_DASHBOARD=$(echo '${{ github.repository }}-dashboard' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
