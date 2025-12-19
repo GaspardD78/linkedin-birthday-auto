@@ -1,66 +1,24 @@
 # ═══════════════════════════════════════════════════════════════════
-# Configuration Nginx - LinkedIn Birthday Auto Bot
+# Configuration Nginx - LinkedIn Birthday Auto Bot (MODE LAN - HTTP ONLY)
 # Template dynamique généré par setup.sh
 # ═══════════════════════════════════════════════════════════════════
 #
 # IMPORTANT: Ne pas éditer ce fichier directement.
-# Modifications à faire dans deployment/nginx/linkedin-bot.conf.template
+# Modifications à faire dans deployment/nginx/linkedin-bot-lan.conf.template
+#
+# MODE: LAN only - HTTP sur port 80 (pas de HTTPS)
+# Utiliser cette config pour un accès interne uniquement
 #
 # Variables injectées: ${DOMAIN}
 # ═══════════════════════════════════════════════════════════════════
 
 # ═══════════════════════════════════════════════════════════════════
-# SERVEUR HTTP (Port 80)
-# Gère les challenges ACME et redirige vers HTTPS si disponible
+# SERVEUR HTTP (Port 80) - LAN ONLY
 # ═══════════════════════════════════════════════════════════════════
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
-
-    # ACME Challenge pour Let's Encrypt (Certbot)
-    # Doit être accessible en HTTP pour la validation
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-        allow all;
-    }
-
-    # Redirection HTTPS (si certificats présents)
-    # Sinon ce bloc sert le contenu directement
-    location / {
-        return 301 https://$server_name$request_uri;
-    }
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# SERVEUR HTTPS (Port 443)
-# Proxy sécurisé vers les services internes
-# ═══════════════════════════════════════════════════════════════════
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${DOMAIN} www.${DOMAIN};
-
-    # ═══════════════════════════════════════════════════════════════
-    # CERTIFICATS SSL
-    # ═══════════════════════════════════════════════════════════════
-    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-
-    # Configuration SSL moderne (compatibilité et sécurité)
-    include /etc/nginx/conf.d/options-ssl-nginx.conf;
-    ssl_dhparam /etc/nginx/conf.d/ssl-dhparams.pem;
-
-    # ═══════════════════════════════════════════════════════════════
-    # SECURITY HEADERS (Renforcés pour production)
-    # ═══════════════════════════════════════════════════════════════
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-    add_header X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex, nocache" always;
+    server_name ${DOMAIN} www.${DOMAIN} localhost;
 
     # ═══════════════════════════════════════════════════════════════
     # LOGGING
