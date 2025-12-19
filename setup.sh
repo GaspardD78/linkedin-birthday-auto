@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+# --- Déterminer le répertoire de base du script (utiliser avant tout cd) ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # --- Couleurs ---
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -276,27 +280,70 @@ docker_pull_with_retry() {
     local max_retries=4
     local base_delay=2
     local services
-    services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
+    local error_log="/tmp/setup_docker_services.err"
 
-    if [[ -z "$services" ]]; then
-        log_error "Impossible de lire la liste des services depuis $compose_file"
+    # ============ VÉRIFICATION PRÉ-PULL ============
+    log_info "Vérification du fichier docker-compose..."
+
+    # 1️⃣ Vérifier que le fichier existe
+    if [[ ! -f "$compose_file" ]]; then
+        log_error "Fichier docker-compose introuvable: $(cd . && pwd)/$compose_file"
+        log_info "Chemin absolu attendu: $SCRIPT_DIR/$compose_file"
         return 1
     fi
+    log_info "✓ Fichier trouvé: $compose_file"
+
+    # 2️⃣ Vérifier la validité YAML avec docker compose config
+    log_info "Validation YAML du fichier docker-compose..."
+    if ! docker compose -f "$compose_file" config > /dev/null 2>"$error_log"; then
+        log_error "Le fichier $compose_file est invalide (YAML malformé)"
+        log_error "Détails de l'erreur :"
+        cat "$error_log" | sed 's/^/  /'
+        rm -f "$error_log"
+        return 1
+    fi
+    log_info "✓ YAML valide"
+
+    # 3️⃣ Récupérer la liste des services (SANS supprimer les erreurs)
+    log_info "Lecture de la liste des services..."
+    services=$(docker compose -f "$compose_file" config --services 2>"$error_log")
+    local docker_exit_code=$?
+
+    # Vérifier le code de retour ET que la liste n'est pas vide
+    if [[ $docker_exit_code -ne 0 ]] || [[ -z "$services" ]]; then
+        log_error "Impossible de lire la liste des services depuis $compose_file"
+        if [[ -s "$error_log" ]]; then
+            log_error "Message d'erreur Docker :"
+            cat "$error_log" | sed 's/^/  /'
+        fi
+        log_info "Conseil : Vérifier que docker compose est disponible et fonctionnel"
+        log_info "  $ docker compose -f $compose_file config --services"
+        rm -f "$error_log"
+        return 1
+    fi
+    rm -f "$error_log"
+
+    # ============ PULL DES IMAGES ============
+    log_info "Téléchargement des images Docker..."
 
     local total_services
     total_services=$(echo "$services" | wc -l)
     local current=0
 
     while IFS= read -r service; do
+        # Ignorer les lignes vides
+        [[ -z "$service" ]] && continue
+
         current=$((current + 1))
         echo -n "[${current}/${total_services}] Pull de l'image pour '${service}' "
         local retry_count=0
         local success=false
 
         while [[ $retry_count -lt $max_retries ]]; do
-            if docker compose -f "$compose_file" pull --quiet "$service" 2>&1; then
+            if docker compose -f "$compose_file" pull --quiet "$service" 2>"$error_log"; then
                 echo -e "${GREEN}✓${NC}"
                 success=true
+                rm -f "$error_log"
                 break
             else
                 retry_count=$((retry_count + 1))
@@ -309,11 +356,19 @@ docker_pull_with_retry() {
                 fi
             fi
         done
+
         if [[ "$success" != "true" ]]; then
             log_error "Échec du pull pour le service '$service'."
+            if [[ -s "$error_log" ]]; then
+                log_error "Détails :"
+                cat "$error_log" | sed 's/^/  /'
+            fi
+            rm -f "$error_log"
             return 1
         fi
     done <<< "$services"
+
+    log_success "Toutes les images ont été téléchargées avec succès."
     return 0
 }
 
@@ -649,14 +704,26 @@ fi
 # ==============================================================================
 log_step "PHASE 5 : Lancement des Services"
 
-log_info "Pull des images..."
+log_info "Répertoire de travail: $(pwd)"
+log_info "Fichier docker-compose: $COMPOSE_FILE"
+
+# Étape 1 : Téléchargement des images
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
-    log_error "Impossible de télécharger les images."
+    log_error "Échec du téléchargement des images. Vérifiez :"
+    log_info "  - La connectivité réseau"
+    log_info "  - L'accès à Docker et docker-compose"
+    log_info "  - La disponibilité des registries Docker"
     exit 1
 fi
 
+# Étape 2 : Démarrage des conteneurs
 log_info "Démarrage des conteneurs..."
-docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans || {
+    log_error "Impossible de démarrer les conteneurs"
+    log_info "Logs pour diagnostic :"
+    docker compose -f "$COMPOSE_FILE" logs --tail=30 2>/dev/null || true
+    exit 1
+}
 
 # ==============================================================================
 # PHASE 6 : VALIDATION

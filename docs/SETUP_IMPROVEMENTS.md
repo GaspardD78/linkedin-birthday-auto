@@ -9,7 +9,20 @@
 
 ---
 
-## 📖 RÉFÉRENCE COMPLÈTE
+## 📖 RÉFÉRENCES COMPLÈTES
+
+### 🔧 Corrections et Améliorations de la PHASE 5
+
+Pour la documentation détaillée sur les corrections du déploiement Docker et la lecture des services, consultez :
+👉 **[docs/PHASE5_DOCKER_PULL_FIX.md](./PHASE5_DOCKER_PULL_FIX.md)** ⭐ **NOUVEAU**
+
+Ce document couvre :
+- Les problèmes diagnostiqués dans la PHASE 5
+- La refactorisation complète de `docker_pull_with_retry()`
+- Le déterminisme des chemins et robustesse
+- Guide complet de dépannage avec exemples
+
+### 🔐 Sécurité et Hachage du Mot de Passe
 
 Pour une documentation détaillée et complète sur le hachage du mot de passe, consultez :
 👉 **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING.md)**
@@ -294,6 +307,7 @@ Voir : **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING
 
 ## Références
 
+- **PHASE 5 Docker Pull Fix**: **[docs/PHASE5_DOCKER_PULL_FIX.md](./PHASE5_DOCKER_PULL_FIX.md)** ⭐ **NEW** (2025-12-19)
 - Audit Report: [docs/AUDIT_REPORT_2025-01.md](./AUDIT_REPORT_2025-01.md)
 - Security Enhancements: [docs/SECURITY_ENHANCEMENTS_2025.md](./SECURITY_ENHANCEMENTS_2025.md)
 - Password Hashing Details: **[docs/SETUP_SCRIPT_PASSWORD_HASHING.md](./SETUP_SCRIPT_PASSWORD_HASHING.md)** ⭐ NEW
