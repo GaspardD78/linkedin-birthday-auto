@@ -244,8 +244,8 @@ crontab -e
 ## 🎓 Ressources
 
 - **CHANGELOG complet** : [CHANGELOG.md](../CHANGELOG.md)
-- **Documentation Troubleshooting** : [TROUBLESHOOTING_2025.md](TROUBLESHOOTING_2025.md)
-- **Guide SSL** : [SETUP_HTTPS_GUIDE.md](SETUP_HTTPS_GUIDE.md)
+- **Documentation Troubleshooting** : [TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
+- **Guide SSL** : [HTTPS_CONFIGURATION.md](../HTTPS_CONFIGURATION.md)
 - **Support GitHub** : [Issues](https://github.com/GaspardD78/linkedin-birthday-auto/issues)
 
 ---

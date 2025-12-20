@@ -458,4 +458,4 @@ rclone ls gdrive:LinkedInBot_Backups
 
 ---
 
-**Besoin d'aide?** Consultez [docs/TROUBLESHOOTING_2025.md](TROUBLESHOOTING_2025.md)
+**Besoin d'aide?** Consultez [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)
