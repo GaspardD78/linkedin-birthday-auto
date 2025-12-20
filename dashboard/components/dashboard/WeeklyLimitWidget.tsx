@@ -22,7 +22,6 @@ export function WeeklyLimitWidget() {
           setWeeklyCount(data.wishes_sent_week || 0)
         }
       } catch (e) {
-        console.error("Failed to fetch weekly stats", e)
       } finally {
         setLoading(false)
       }

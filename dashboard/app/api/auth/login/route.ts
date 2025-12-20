@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
       { status: 401 }
     );
   } catch (error) {
-    console.error("[Login Error]", error);
     const errorMessage = error instanceof Error ? error.message : "Erreur serveur";
 
     // Return more descriptive error for configuration issues

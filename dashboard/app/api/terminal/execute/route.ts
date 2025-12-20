@@ -100,7 +100,6 @@ Use the dashboard UI for other operations.`
       command: baseCommand
     })
   } catch (e) {
-    console.error('Failed to execute command:', e)
     return NextResponse.json({ error: 'Failed to execute command' }, { status: 500 })
   }
 }

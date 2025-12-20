@@ -26,7 +26,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(data, { status: 200 });
   } catch (error) {
-    console.error('Auth upload proxy error:', error);
     return NextResponse.json({ detail: 'Internal server error' }, { status: 500 });
   }
 }

@@ -25,7 +25,6 @@ export async function GET() {
       last_modified: data.last_modified || new Date().toISOString()
     })
   } catch (e) {
-    console.error('Failed to fetch config file:', e)
     return NextResponse.json({ error: 'Failed to fetch config file' }, { status: 500 })
   }
 }
@@ -62,7 +61,6 @@ export async function PUT(req: Request) {
       message: 'Configuration saved successfully'
     })
   } catch (e) {
-    console.error('Failed to save config file:', e)
     return NextResponse.json({ error: 'Failed to save config file' }, { status: 500 })
   }
 }

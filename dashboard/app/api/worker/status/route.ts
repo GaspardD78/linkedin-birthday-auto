@@ -10,7 +10,6 @@ const redis = new Redis({
   port: parseInt(process.env.BOT_REDIS_PORT || '6379'),
   // Gérer les erreurs de connexion pour ne pas faire crasher le dashboard
   errorHandler: (error) => {
-    console.warn('[Worker Status] Redis connection error:', error.message);
     return null; // Supprime les erreurs de reconnexion dans les logs
   },
 });
@@ -49,7 +48,6 @@ export async function GET() {
   } catch (error) {
     // Si Redis n'est pas accessible, retourner un état par défaut
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[Worker Status] Failed to fetch worker status:', errorMessage);
 
     return NextResponse.json(
       {

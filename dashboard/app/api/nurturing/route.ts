@@ -16,7 +16,6 @@ export async function GET(request: NextRequest) {
 
     // Get segments list by default
     const targetUrl = `${apiUrl}/nurturing/segments`;
-    console.log(`[PROXY] Forwarding GET to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'GET',
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Nurturing Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

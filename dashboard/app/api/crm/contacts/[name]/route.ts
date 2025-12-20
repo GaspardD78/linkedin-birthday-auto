@@ -20,7 +20,6 @@ export async function GET(
     const contactName = encodeURIComponent(params.name);
     const searchParams = request.nextUrl.searchParams.toString();
     const targetUrl = `${apiUrl}/crm/contacts/${contactName}${searchParams ? `?${searchParams}` : ''}`;
-    console.log(`[PROXY] Forwarding GET to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'GET',
@@ -43,7 +42,6 @@ export async function GET(
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Contact Detail Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

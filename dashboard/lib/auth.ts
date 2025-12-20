@@ -2,6 +2,11 @@ import "server-only"; // Garantit que ce code ne s'exécute JAMAIS côté client
 import { SignJWT, jwtVerify } from "jose";
 import { compareSync } from "bcryptjs";
 
+interface SessionPayload {
+  username: string
+  [key: string]: string | number | boolean
+}
+
 // Lazy initialization to avoid failing during Next.js build time
 // The validation will only occur when these functions are actually called at runtime
 function getKey(): Uint8Array {
@@ -14,7 +19,7 @@ function getKey(): Uint8Array {
   return new TextEncoder().encode(SECRET_KEY);
 }
 
-export async function signSession(payload: any) {
+export async function signSession(payload: SessionPayload) {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -67,13 +72,10 @@ export function validateUserCredentials(username: string, password: string): boo
     try {
       return compareSync(password, DEFAULT_PASSWORD);
     } catch (error) {
-      console.error('❌ [SECURITY] Bcrypt comparison failed:', error);
       return false;
     }
   } else {
     // Fallback pour rétrocompatibilité (mot de passe en clair)
-    console.warn('⚠️  [SECURITY WARNING] DASHBOARD_PASSWORD is not bcrypt-hashed! Please hash it with: npm run hash-password');
-    console.warn('⚠️  Plain-text password comparison is INSECURE and deprecated.');
     return password === DEFAULT_PASSWORD;
   }
 }

@@ -43,7 +43,6 @@ export function AutomationServicesControl() {
       const data = await getAutomationServicesStatus()
       setStatus(data)
     } catch (error) {
-      console.error("Failed to fetch automation services status", error)
     }
   }
 

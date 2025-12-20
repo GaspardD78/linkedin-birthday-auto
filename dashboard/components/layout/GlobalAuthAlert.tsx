@@ -22,7 +22,6 @@ export function GlobalAuthAlert() {
             setShow(false)
         }
       } catch (e) {
-        console.error(e)
       } finally {
         setLoading(false)
       }

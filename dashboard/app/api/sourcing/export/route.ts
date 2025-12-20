@@ -15,7 +15,6 @@ export async function POST(request: NextRequest) {
     }
 
     const targetUrl = `${apiUrl}/sourcing/export/csv`;
-    console.log(`[PROXY] Forwarding POST to: ${targetUrl}`);
 
     const body = await request.text();
 
@@ -49,7 +48,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[PROXY] Export Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)
@@ -71,7 +69,6 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams.toString();
     const targetUrl = `${apiUrl}/sourcing/export/csv${searchParams ? `?${searchParams}` : ''}`;
-    console.log(`[PROXY] Forwarding GET to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'GET',
@@ -100,7 +97,6 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[PROXY] Export Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

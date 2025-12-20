@@ -44,7 +44,6 @@ async function fetchWorkerStatus(): Promise<WorkerStatusData> {
     }
     return await response.json();
   } catch (error) {
-    console.error("Failed to fetch worker status:", error);
     // Retourner un état d'erreur clair
     return {
       status: 'inconnu',
@@ -74,7 +73,6 @@ export function BotStatusWidget() {
         setCurrentJobs(data.started || [])
       }
     } catch (error) {
-      console.error("Failed to fetch current jobs:", error)
     }
   }
 

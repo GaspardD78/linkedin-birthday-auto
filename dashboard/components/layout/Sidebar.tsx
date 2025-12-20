@@ -38,7 +38,6 @@ export function Sidebar() {
       router.push("/login")
       router.refresh()
     } catch (error) {
-      console.error("Logout failed", error)
     }
   }
 

@@ -17,7 +17,6 @@ export function StatsWidget() {
         setError(null) // Clear error on success
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
-        console.error("Failed to fetch stats", error)
         setError(errorMsg)
       }
     }

@@ -220,7 +220,6 @@ export default function SourcingPage() {
         setCampaigns(data || [])
       }
     } catch (err) {
-      console.error("Failed to load campaigns:", err)
     } finally {
       setLoadingCampaigns(false)
     }
@@ -238,7 +237,6 @@ export default function SourcingPage() {
         setStats(data)
       }
     } catch (err) {
-      console.error("Failed to load stats:", err)
     }
   }, [filters.campaignId])
 

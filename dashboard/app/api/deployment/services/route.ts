@@ -16,7 +16,6 @@ export async function GET() {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[DEPLOYMENT] Services status error:', response.status, errorText);
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
@@ -24,7 +23,6 @@ export async function GET() {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[DEPLOYMENT] Services status failed:', error);
     return NextResponse.json({
       error: 'Internal Server Error',
       details: error instanceof Error ? error.message : 'Unknown error'

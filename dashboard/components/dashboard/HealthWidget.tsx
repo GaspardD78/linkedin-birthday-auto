@@ -17,7 +17,6 @@ export function SystemHealthWidget() {
         setError(null) // Clear error on success
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Erreur de connexion système"
-        console.error("Failed to fetch health stats", error)
         setError(errorMsg)
       }
     }

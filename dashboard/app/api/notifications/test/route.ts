@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       message: 'Test notification sent (mock - implement backend endpoint for real notifications)'
     })
   } catch (e) {
-    console.error('Failed to send test notification:', e)
     return NextResponse.json({ error: 'Failed to send test notification' }, { status: 500 })
   }
 }

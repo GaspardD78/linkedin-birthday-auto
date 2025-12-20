@@ -22,6 +22,14 @@ interface LogEntry {
   event: string
 }
 
+interface HistoryItem {
+  date: string
+  messages?: number
+  late_messages?: number
+  visits?: number
+  errors?: number
+}
+
 export function ActivityMonitor() {
   const [activityData, setActivityData] = useState<ActivityData[]>([])
   const [recentLogs, setRecentLogs] = useState<string[]>([])
@@ -36,7 +44,7 @@ export function ActivityMonitor() {
         if (activityRes.ok) {
           const historyData = await activityRes.json()
           if (historyData.activity && Array.isArray(historyData.activity)) {
-            const chartData: ActivityData[] = historyData.activity.map((item: any) => {
+            const chartData: ActivityData[] = historyData.activity.map((item: HistoryItem) => {
               const dateObj = new Date(item.date + 'T00:00:00')
               const dateStr = dateObj.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
               return {
@@ -57,7 +65,7 @@ export function ActivityMonitor() {
           setRecentLogs(logsData.logs || [])
         }
       } catch (error) {
-        console.error("Failed to fetch activity data:", error)
+        // Silently fail - activity data is not critical
       } finally {
         setLoading(false)
       }
@@ -77,23 +85,28 @@ export function ActivityMonitor() {
 
       let levelColor = 'text-slate-400'
       let bgColor = 'hover:bg-slate-800/50'
+      let borderColor = 'hover:border-slate-500'
 
       if (level.includes('ERROR') || level.includes('CRITICAL')) {
         levelColor = 'text-red-400'
         bgColor = 'hover:bg-red-900/20'
+        borderColor = 'hover:border-red-500'
       } else if (level.includes('WARNING') || level.includes('WARN')) {
         levelColor = 'text-amber-400'
         bgColor = 'hover:bg-amber-900/20'
+        borderColor = 'hover:border-amber-500'
       } else if (level.includes('SUCCESS')) {
         levelColor = 'text-emerald-400'
         bgColor = 'hover:bg-emerald-900/20'
+        borderColor = 'hover:border-emerald-500'
       } else if (level.includes('INFO')) {
         levelColor = 'text-blue-400'
         bgColor = 'hover:bg-blue-900/20'
+        borderColor = 'hover:border-blue-500'
       }
 
       return (
-        <div className={`px-3 py-2 rounded transition-colors ${bgColor} border-l-2 border-transparent hover:border-l-2 hover:border-${levelColor.split('-')[1]}-500`}>
+        <div className={`px-3 py-2 rounded transition-colors ${bgColor} border-l-2 border-transparent ${borderColor}`}>
           <div className="flex items-start gap-3">
             <span className="text-slate-500 text-[10px] font-mono min-w-[60px]">
               {timestamp.slice(11, 19)}
@@ -261,7 +274,7 @@ export function ActivityMonitor() {
             <div className="bg-slate-950 rounded-lg p-4 font-mono text-xs space-y-1 max-h-[400px] overflow-y-auto border border-slate-800">
               {recentLogs.length > 0 ? (
                 recentLogs.map((log, idx) => (
-                  <div key={idx}>
+                  <div key={`log-${idx}-${log.substring(0, 20)}`}>
                     {formatLogLine(log)}
                   </div>
                 ))

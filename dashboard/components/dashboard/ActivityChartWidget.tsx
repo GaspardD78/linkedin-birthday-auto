@@ -45,11 +45,9 @@ export function ActivityChartWidget() {
             setData(generateEmptyData())
           }
         } else {
-          console.error("Failed to fetch activity data", await res.text())
           setData(generateEmptyData())
         }
       } catch (e) {
-        console.error("Failed to fetch activity data", e)
         setData(generateEmptyData())
       } finally {
         setLoading(false)

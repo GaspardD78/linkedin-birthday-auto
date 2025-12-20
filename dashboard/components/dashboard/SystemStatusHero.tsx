@@ -40,7 +40,6 @@ async function fetchWorkerStatus(): Promise<WorkerStatusData> {
     }
     return await response.json()
   } catch (error) {
-    console.error("Failed to fetch worker status:", error)
     return {
       status: 'inconnu',
       pending_tasks: 0,
@@ -57,7 +56,6 @@ async function fetchCookiesStatus(): Promise<CookiesStatus> {
     }
     return await response.json()
   } catch (error) {
-    console.error("Failed to fetch cookies status:", error)
     return { valid: true, last_updated: new Date().toISOString() }
   }
 }
@@ -86,7 +84,6 @@ export function SystemStatusHero() {
       setWorkerStatus(worker)
       setCookiesStatus(cookies)
     } catch (error) {
-      console.error("Failed to fetch status data:", error)
     }
   }
 

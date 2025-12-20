@@ -28,7 +28,6 @@ export default function CampaignsPage() {
       const data = await getCampaigns()
       setCampaigns(data)
     } catch (error) {
-      console.error("Failed to fetch campaigns", error)
       toast.error("Failed to load campaigns")
     } finally {
       setLoading(false)

@@ -16,7 +16,6 @@ async function handleProxy(request: NextRequest, id: string, action: string) {
     }
 
     const targetUrl = `${apiUrl}/campaigns/${id}/${action}`;
-    console.log(`[PROXY] Forwarding ${request.method} to: ${targetUrl}`);
 
     const headers: Record<string, string> = {
       'X-API-Key': apiKey,

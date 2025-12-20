@@ -5,14 +5,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, job_type, dry_run, process_late, limit } = body;
 
-    console.log('📡 [PROXY] Requête reçue du dashboard:', { action, job_type, dry_run, process_late, limit });
 
     // URL interne Docker (CRITIQUE: ne jamais utiliser localhost)
     const apiUrl = process.env.BOT_API_URL || 'http://api:8000';
     const apiKey = process.env.BOT_API_KEY;
 
     if (!apiKey) {
-      console.error('❌ [SECURITY] BOT_API_KEY environment variable is not set!');
       return NextResponse.json({
         error: 'Server configuration error',
         detail: 'BOT_API_KEY is required but not configured'
@@ -30,14 +28,12 @@ export async function POST(request: Request) {
         process_late: process_late ?? false,
         max_days_late: body.max_days_late ?? 10
       };
-      console.log('🎂 [PROXY] Appel Birthday Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'start' && job_type === 'visit') {
       endpoint = '/bot/start/visitor';
       payload = {
         dry_run: dry_run ?? true,
         limit: limit ?? 10
       };
-      console.log('🔍 [PROXY] Appel Visitor Bot:', `${apiUrl}${endpoint}`, payload);
     } else if (action === 'stop') {
       endpoint = '/bot/stop';
       payload = {};
@@ -52,13 +48,10 @@ export async function POST(request: Request) {
         payload.job_id = body.job_id;
       }
 
-      console.log('🛑 [PROXY] Appel Stop Bot:', `${apiUrl}${endpoint}`, payload);
     } else {
-      console.error('❌ [PROXY] Action invalide:', { action, job_type });
       return NextResponse.json({ error: "Invalid action or job_type" }, { status: 400 });
     }
 
-    console.log('🚀 [PROXY] Envoi vers API Python:', `${apiUrl}${endpoint}`);
 
     const response = await fetch(`${apiUrl}${endpoint}`, {
       method: 'POST',
@@ -71,7 +64,6 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [PROXY] Erreur API:', response.status, errorText);
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
@@ -83,7 +75,6 @@ export async function POST(request: Request) {
       try {
         data = await response.json();
       } catch (parseError) {
-        console.error('❌ [PROXY] Failed to parse JSON despite content-type header');
         return NextResponse.json({
           error: 'Backend returned malformed JSON'
         }, { status: 500 });
@@ -91,18 +82,15 @@ export async function POST(request: Request) {
     } else {
       // Backend returned non-JSON (probably HTML error page)
       const textResponse = await response.text();
-      console.error('❌ [PROXY] Backend returned non-JSON:', textResponse.substring(0, 500));
       return NextResponse.json({
         error: 'Backend returned invalid response (not JSON)',
         detail: textResponse.substring(0, 500)
       }, { status: 500 });
     }
 
-    console.log('✅ [PROXY] Réponse de l\'API:', data);
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('❌ [PROXY] Erreur fatale:', error);
     return NextResponse.json({
       error: 'Internal Server Error',
       details: error instanceof Error ? error.message : 'Unknown error'

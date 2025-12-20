@@ -54,7 +54,6 @@ export function WorkerManagementPanel() {
       setWorkersStatus(workers)
       setActiveJobs(botStatus.active_jobs || [])
     } catch (error) {
-      console.error("Failed to fetch workers status", error)
     }
   }
 
@@ -319,8 +318,8 @@ export function WorkerManagementPanel() {
               <Users className="h-4 w-4 text-cyan-500" />
               Détails des Workers
             </h3>
-            {workersStatus.workers.map((worker, index) => (
-              <Card key={index} className="bg-slate-800/50 border-slate-700">
+            {workersStatus.workers.map((worker) => (
+              <Card key={worker.name} className="bg-slate-800/50 border-slate-700">
                 <CardContent className="pt-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
