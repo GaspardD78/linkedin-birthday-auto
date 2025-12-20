@@ -43,7 +43,10 @@ async function main() {
 
   // Vérifier si mode silencieux (pour automatisation)
   const quietMode = args.includes('--quiet') || args.includes('-q');
-  const passwordArg = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
+
+  // Support passwords starting with - by explicitly filtering out known flags
+  const knownFlags = ['--quiet', '-q'];
+  const passwordArg = args.find(arg => !knownFlags.includes(arg));
 
   if (passwordArg) {
     // Mode avec argument
