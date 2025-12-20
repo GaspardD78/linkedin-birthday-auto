@@ -29,7 +29,7 @@ export default function ConfigEditorPage() {
           <li>Les modifications prennent effet immédiatement</li>
           <li>Une configuration invalide peut empêcher les bots de fonctionner</li>
           <li>Téléchargez une sauvegarde avant de faire des modifications importantes</li>
-          <li>Consultez la documentation si vous n'êtes pas sûr d'une valeur</li>
+          <li>Consultez la documentation si vous n&apos;êtes pas sûr d&apos;une valeur</li>
         </ul>
       </div>
     </div>

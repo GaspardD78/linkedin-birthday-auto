@@ -29,6 +29,14 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       })
 
+      // Vérification du type de contenu (pour éviter le crash sur erreur HTML Nginx)
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Réponse non-JSON reçue:", text);
+        throw new Error(`Erreur serveur (${res.status}): La réponse n'est pas au format JSON valide.`);
+      }
+
       const data = await res.json()
 
       if (res.ok && data.success) {
@@ -38,7 +46,9 @@ export default function LoginPage() {
         setError(data.message || "Erreur de connexion")
       }
     } catch (err) {
-      setError("Erreur de connexion au serveur")
+      const errorMessage = err instanceof Error ? err.message : "Erreur de connexion au serveur";
+      console.error("Erreur login:", err);
+      setError(errorMessage);
     } finally {
       setLoading(false)
     }

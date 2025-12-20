@@ -66,7 +66,7 @@ export function JobForm({ job, onSuccess, onCancel }: JobFormProps) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "L'expression cron est requise."
+        description: "L&apos;expression cron est requise."
       })
       return
     }
@@ -158,7 +158,7 @@ export function JobForm({ job, onSuccess, onCancel }: JobFormProps) {
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <CardTitle className="text-slate-200">Planification</CardTitle>
-          <CardDescription>Définissez quand le job doit s'exécuter</CardDescription>
+          <CardDescription>Définissez quand le job doit s&apos;exécuter</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">

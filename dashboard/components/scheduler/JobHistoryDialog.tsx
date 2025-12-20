@@ -81,7 +81,7 @@ export function JobHistoryDialog({ jobId, jobName, onClose }: JobHistoryDialogPr
         <CardHeader className="border-b border-slate-800">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-slate-200">Historique d'Exécution</CardTitle>
+              <CardTitle className="text-slate-200">Historique d&apos;Exécution</CardTitle>
               <p className="text-sm text-slate-400 mt-1">{jobName}</p>
             </div>
             <Button
@@ -98,7 +98,7 @@ export function JobHistoryDialog({ jobId, jobName, onClose }: JobHistoryDialogPr
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-              <span className="ml-3 text-slate-400">Chargement de l'historique...</span>
+              <span className="ml-3 text-slate-400">Chargement de l&apos;historique...</span>
             </div>
           ) : error ? (
             <div className="text-center py-12">

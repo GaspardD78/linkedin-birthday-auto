@@ -27,7 +27,7 @@ export function EnhancedStatsWidget() {
         setStats(data)
         setError(null)
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
+        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l&apos;API"
         setError(errorMsg)
       }
     }
@@ -110,7 +110,7 @@ export function EnhancedStatsWidget() {
       icon: Mail,
       gradient: "from-purple-500 to-indigo-600",
       textColor: "text-purple-100",
-      description: `+${stats.wishes_sent_today} aujourd'hui`
+      description: `+${stats.wishes_sent_today} aujourd&apos;hui`
     },
     {
       title: "Profils visités",
@@ -118,7 +118,7 @@ export function EnhancedStatsWidget() {
       icon: Eye,
       gradient: "from-teal-500 to-emerald-500",
       textColor: "text-teal-100",
-      description: `+${stats.profiles_visited_today} aujourd'hui`
+      description: `+${stats.profiles_visited_today} aujourd&apos;hui`
     },
     {
       title: "Contacts uniques",

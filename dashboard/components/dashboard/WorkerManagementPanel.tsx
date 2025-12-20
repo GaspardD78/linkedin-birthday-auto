@@ -89,7 +89,7 @@ export function WorkerManagementPanel() {
     try {
       await stopBot("", "") // Empty parameters = stop all
       toast({
-        title: "Arrêt d'urgence",
+        title: "Arrêt d&apos;urgence",
         description: "Tous les workers ont été arrêtés",
       })
       await refreshStatus()
@@ -188,7 +188,7 @@ export function WorkerManagementPanel() {
                 ) : (
                   <StopCircle className="h-4 w-4 mr-2" />
                 )}
-                Arrêt d'urgence
+                Arrêt d&apos;urgence
               </Button>
             )}
           </div>
@@ -374,7 +374,7 @@ export function WorkerManagementPanel() {
                 Aucun worker actif
               </h4>
               <p className="text-xs text-amber-200/80">
-                Aucun worker RQ n'est actuellement en cours d'exécution.
+                Aucun worker RQ n&apos;est actuellement en cours d&apos;exécution.
                 Vérifiez que le service worker est démarré.
               </p>
             </div>

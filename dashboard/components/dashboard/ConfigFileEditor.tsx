@@ -309,7 +309,7 @@ export function ConfigFileEditor() {
         <div className="text-xs text-slate-500 pt-2 border-t border-slate-800">
           <p><strong>💡 Conseils :</strong></p>
           <ul className="list-disc list-inside mt-1 space-y-1">
-            <li>Utilisez 2 espaces pour l'indentation (pas de tabulations)</li>
+            <li>Utilisez 2 espaces pour l&apos;indentation (pas de tabulations)</li>
             <li>Les lignes commençant par # sont des commentaires</li>
             <li>Sauvegardez régulièrement vos modifications</li>
             <li>Téléchargez une copie de sauvegarde avant les modifications importantes</li>

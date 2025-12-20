@@ -33,7 +33,7 @@ interface JobDetails {
   started_at?: string
 }
 
-// Fonction pour récupérer le statut du worker depuis l'API
+// Fonction pour récupérer le statut du worker depuis l&apos;API
 async function fetchWorkerStatus(): Promise<WorkerStatusData> {
   try {
     const response = await fetch('/api/worker/status', {
@@ -46,7 +46,7 @@ async function fetchWorkerStatus(): Promise<WorkerStatusData> {
     }
     return await response.json();
   } catch (error) {
-    // Retourner un état d'erreur clair
+    // Retourner un état d&apos;erreur clair
     return {
       status: 'inconnu',
       pending_tasks: 0,
@@ -90,7 +90,7 @@ export function BotStatusWidget() {
     fetchData(); // Appel initial
     const interval = setInterval(fetchData, 5000); // Rafraîchir toutes les 5 secondes
 
-    return () => clearInterval(interval); // Nettoyage de l'intervalle
+    return () => clearInterval(interval); // Nettoyage de l&apos;intervalle
   }, []);
 
   const handleRefresh = async () => {
@@ -219,7 +219,7 @@ export function BotStatusWidget() {
             </div>
           )}
 
-          {/* Indicateur visuel de l'état */}
+          {/* Indicateur visuel de l&apos;état */}
           <div className="flex items-center justify-center gap-2 pt-2 border-t border-slate-800">
             {status.status === 'actif' && (
               <div className="flex items-center gap-2 text-xs text-blue-400">

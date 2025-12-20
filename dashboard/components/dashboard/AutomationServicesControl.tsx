@@ -80,7 +80,7 @@ export function AutomationServicesControl() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-slate-200">
             <Server className="h-5 w-5 text-purple-500" />
-            Services d'Automatisation
+            Services d&apos;Automatisation
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -98,7 +98,7 @@ export function AutomationServicesControl() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-slate-200">
             <Server className="h-5 w-5 text-purple-500" />
-            Services d'Automatisation
+            Services d&apos;Automatisation
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -109,8 +109,8 @@ export function AutomationServicesControl() {
                 Mode Docker détecté
               </h4>
               <p className="text-xs text-blue-200/80">
-                Les services d'automatisation sont gérés par RQ Workers dans Docker.
-                Aucun worker actif n'a été détecté. Vérifiez que le service worker est démarré.
+                Les services d&apos;automatisation sont gérés par RQ Workers dans Docker.
+                Aucun worker actif n&apos;a été détecté. Vérifiez que le service worker est démarré.
               </p>
             </div>
           </div>
@@ -319,7 +319,7 @@ export function AutomationServicesControl() {
 
   // Determine mode-specific display text
   const isDockerMode = !status.is_systemd_available
-  const title = isDockerMode ? "Workers d'Automatisation (Docker)" : "Services d'Automatisation"
+  const title = isDockerMode ? "Workers d&apos;Automatisation (Docker)" : "Services d&apos;Automatisation"
   const description = isDockerMode
     ? "Workers RQ pour tâches asynchrones (birthday messages, profile visits)"
     : "Gestion des services systemd (monitoring, backup, cleanup)"

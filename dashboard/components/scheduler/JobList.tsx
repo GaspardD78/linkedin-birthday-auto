@@ -154,7 +154,7 @@ export function JobList({ onCreateJob, onEditJob, refreshTrigger }: JobListProps
           <Calendar className="h-16 w-16 mx-auto mb-4 text-slate-600" />
           <h3 className="text-xl font-semibold text-slate-300 mb-2">Aucun job programmé</h3>
           <p className="text-slate-400 mb-6">
-            Créez votre premier job d'automatisation pour planifier l'exécution de vos bots.
+            Créez votre premier job d&apos;automatisation pour planifier l&apos;exécution de vos bots.
           </p>
           <Button onClick={onCreateJob} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="h-4 w-4 mr-2" />

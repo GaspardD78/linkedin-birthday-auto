@@ -95,7 +95,7 @@ export function MessagesEditor() {
         <TabsContent value="standard" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Messages d'anniversaire</CardTitle>
+              <CardTitle>Messages d&apos;anniversaire</CardTitle>
               <CardDescription>
                 Un message par ligne. Le bot choisira aléatoirement un message.
                 Utilisez {"{name}"} pour insérer le prénom.

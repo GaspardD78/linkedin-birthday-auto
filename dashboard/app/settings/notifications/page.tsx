@@ -137,7 +137,7 @@ export default function NotificationsPage() {
             Configuration Email
           </CardTitle>
           <CardDescription>
-            Recevez des notifications par email en cas d'événement important
+            Recevez des notifications par email en cas d&apos;événement important
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -189,7 +189,7 @@ export default function NotificationsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-cyan-500" />
-            Types d'Alertes
+            Types d&apos;Alertes
           </CardTitle>
           <CardDescription>
             Sélectionnez les événements pour lesquels vous souhaitez être notifié
@@ -201,7 +201,7 @@ export default function NotificationsPage() {
               <AlertCircle className="h-5 w-5 text-red-500" />
               <div>
                 <Label htmlFor="notify-error" className="cursor-pointer">Erreurs critiques</Label>
-                <p className="text-xs text-slate-500">Échecs d'exécution, erreurs API, etc.</p>
+                <p className="text-xs text-slate-500">Échecs d&apos;exécution, erreurs API, etc.</p>
               </div>
             </div>
             <Switch
@@ -231,7 +231,7 @@ export default function NotificationsPage() {
               <Bell className="h-5 w-5 text-blue-500" />
               <div>
                 <Label htmlFor="notify-start" className="cursor-pointer">Démarrage des bots</Label>
-                <p className="text-xs text-slate-500">Notification lors du lancement d'un bot</p>
+                <p className="text-xs text-slate-500">Notification lors du lancement d&apos;un bot</p>
               </div>
             </div>
             <Switch
@@ -246,7 +246,7 @@ export default function NotificationsPage() {
               <Bell className="h-5 w-5 text-slate-500" />
               <div>
                 <Label htmlFor="notify-stop" className="cursor-pointer">Arrêt des bots</Label>
-                <p className="text-xs text-slate-500">Notification lors de l'arrêt d'un bot</p>
+                <p className="text-xs text-slate-500">Notification lors de l&apos;arrêt d&apos;un bot</p>
               </div>
             </div>
             <Switch
@@ -299,7 +299,7 @@ export default function NotificationsPage() {
       <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
         <h3 className="text-sm font-semibold text-blue-400 mb-2">💡 Conseils</h3>
         <ul className="text-xs text-blue-200/80 space-y-1 list-disc list-inside">
-          <li>Activez au minimum les notifications d'erreur pour être alerté rapidement</li>
+          <li>Activez au minimum les notifications d&apos;erreur pour être alerté rapidement</li>
           <li>Testez la configuration email pour vérifier que tout fonctionne</li>
           <li>Les notifications sont également affichées dans le dashboard en temps réel</li>
         </ul>

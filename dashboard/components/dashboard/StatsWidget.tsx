@@ -16,7 +16,7 @@ export function StatsWidget() {
         setStats(data)
         setError(null) // Clear error on success
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
+        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l&apos;API"
         setError(errorMsg)
       }
     }

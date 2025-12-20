@@ -87,7 +87,7 @@ export function BirthdaySettings({ config, updateConfig }: BirthdaySettingsProps
           {(limits.weekly_message_limit > 100) && (
              <div className="flex items-start gap-2 p-2 bg-amber-950/50 border border-amber-700 rounded text-xs text-amber-300">
                 <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span>Attention : > 100 messages/semaine augmente le risque de détection.</span>
+                <span>Attention : &gt; 100 messages/semaine augmente le risque de détection.</span>
              </div>
           )}
         </CardContent>
