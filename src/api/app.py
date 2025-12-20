@@ -22,6 +22,7 @@ import redis
 from src.api.security import verify_api_key, API_KEY_NAME
 from src.core.database import get_database
 from src.utils.logging import setup_logging
+from src.utils.data_files import initialize_data_files
 
 # Configure logging using structlog
 setup_logging(log_file="logs/linkedin_bot.log")
@@ -65,6 +66,9 @@ async def lifespan(app: FastAPI):
     if not os.path.exists(log_file):
         with open(log_file, "w") as f:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [INFO] Log file initialized\n")
+
+    # Initialisation des fichiers de données (messages.txt, late_messages.txt)
+    initialize_data_files()
 
     # Initialisation de la BDD
     try:
