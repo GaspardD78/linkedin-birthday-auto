@@ -36,19 +36,26 @@ hash_and_store_password() {
             # NOTE: On passe le mot de passe en argument pour le mode non-interactif
             # On utilise set +e pour éviter que l'échec de docker ne tue le script
             set +e
-            # On monte le script local pour bénéficier des correctifs récents
-            hashed_password=$(docker run --rm \
-                -v "$PROJECT_ROOT/dashboard/scripts/hash_password.js:/app/scripts/hash_password.js" \
+
+            # Vérifier si le script local existe pour le monter (sinon, utiliser celui de l'image)
+            local docker_cmd="docker run --rm"
+            if [[ -f "$PROJECT_ROOT/dashboard/scripts/hash_password.js" ]]; then
+                # Monter le script local pour bénéficier des correctifs récents
+                docker_cmd="$docker_cmd -v $PROJECT_ROOT/dashboard/scripts/hash_password.js:/app/scripts/hash_password.js"
+            fi
+
+            # Exécuter le hashage avec le mot de passe échappé pour éviter les problèmes de caractères spéciaux
+            hashed_password=$($docker_cmd \
                 --entrypoint node \
                 ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-                /app/scripts/hash_password.js "$password" --quiet 2>/dev/null | head -n1)
+                /app/scripts/hash_password.js "$password" --quiet 2>/dev/null | head -n1 | tr -d '\n\r')
             local exit_code=$?
             set -e
 
-            if [[ $exit_code -eq 0 ]] && [[ -n "$hashed_password" ]]; then
-                log_success "✓ Hash généré via conteneur Docker"
+            if [[ $exit_code -eq 0 ]] && [[ -n "$hashed_password" ]] && [[ "$hashed_password" =~ ^\$2[abxy]\$ ]]; then
+                log_success "✓ Hash bcrypt généré via conteneur Docker"
             else
-                log_warn "Échec du hashage via Docker (Code $exit_code). Tentative de fallback..."
+                log_warn "Échec du hashage via Docker (Code $exit_code, hash: ${hashed_password:-vide}). Tentative de fallback..."
                 hashed_password=""
             fi
         fi

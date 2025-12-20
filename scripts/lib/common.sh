@@ -1,36 +1,139 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# LINKEDIN AUTO - COMMON LIBRARY (v4.0)
-# Logging, utility functions, and user interaction
+# LINKEDIN AUTO - COMMON LIBRARY (v5.0 - SUPER ORCHESTRATEUR)
+# Logging dual-output, UI immersive, spinners, progress bars, et utilitaires
+# Expert DevOps avec obsession UX/DX
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-# === COLORS & FORMATTING ===
+# === COLORS & FORMATTING (Améliorés avec émojis) ===
 
 readonly BLUE='\033[0;34m'
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
 readonly RED='\033[0;31m'
+readonly CYAN='\033[0;36m'
+readonly MAGENTA='\033[0;35m'
 readonly NC='\033[0m'
 readonly BOLD='\033[1m'
 readonly DIM='\033[2m'
+readonly UNDERLINE='\033[4m'
 
-# === LOGGING FUNCTIONS ===
+# === LOGGING DUAL-OUTPUT (SCREEN + FILE) ===
 
-log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+SETUP_LOG_FILE="${SETUP_LOG_FILE:-}"
+LOGGING_INITIALIZED=false
 
-log_step() {
-    echo -e "\n${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${BLUE}  $1${NC}"
-    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}\n"
-    sleep 2
+# Initialiser le logging dual-output (exec tee)
+setup_logging() {
+    local log_dir="${1:-logs}"
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+
+    # Créer le répertoire de logs si nécessaire
+    mkdir -p "$log_dir"
+
+    # Définir le fichier de log avec timestamp
+    SETUP_LOG_FILE="${log_dir}/setup_install_${timestamp}.log"
+
+    # Rediriger stdout et stderr vers tee (dual output)
+    # Cela capture TOUT ce qui s'affiche à l'écran dans le fichier
+    exec > >(tee -a "$SETUP_LOG_FILE")
+    exec 2>&1
+
+    LOGGING_INITIALIZED=true
+
+    # Enregistrer l'environnement
+    echo "═══════════════════════════════════════════════════════════════" >> "$SETUP_LOG_FILE"
+    echo "SETUP LOG - $(date '+%Y-%m-%d %H:%M:%S')" >> "$SETUP_LOG_FILE"
+    echo "Host: $(hostname)" >> "$SETUP_LOG_FILE"
+    echo "User: $(whoami)" >> "$SETUP_LOG_FILE"
+    echo "Working Directory: $(pwd)" >> "$SETUP_LOG_FILE"
+    echo "═══════════════════════════════════════════════════════════════" >> "$SETUP_LOG_FILE"
+    echo "" >> "$SETUP_LOG_FILE"
 }
 
-# === PROGRESS INDICATORS ===
+# Fonction pour afficher le chemin du log
+get_log_file() {
+    echo "${SETUP_LOG_FILE:-Logging non initialisé}"
+}
+
+# === LOGGING FUNCTIONS (Améliorées avec émojis) ===
+
+log_info()    { echo -e "${BLUE}ℹ [INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}✓ [OK]${NC} $1"; }
+log_warn()    { echo -e "${YELLOW}⚠ [WARN]${NC} $1"; }
+log_error()   { echo -e "${RED}✗ [ERROR]${NC} $1"; }
+log_debug()   { echo -e "${DIM}[DEBUG]${NC} $1"; }
+
+log_step() {
+    echo ""
+    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}${BLUE}  🚀 $1${NC}"
+    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# Bannière de bienvenue (Super Orchestrateur)
+show_welcome_banner() {
+    local version="${1:-5.0}"
+    local project_name="${2:-LinkedIn Birthday Auto}"
+
+    cat << "EOF"
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║     █████╗ ██╗   ██╗████████╗ ██████╗       ██████╗  ██████╗ ████████╗  ║
+║    ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗      ██╔══██╗██╔═══██╗╚══██╔══╝  ║
+║    ███████║██║   ██║   ██║   ██║   ██║█████╗██████╔╝██║   ██║   ██║     ║
+║    ██╔══██║██║   ██║   ██║   ██║   ██║╚════╝██╔══██╗██║   ██║   ██║     ║
+║    ██║  ██║╚██████╔╝   ██║   ╚██████╔╝      ██████╔╝╚██████╔╝   ██║     ║
+║    ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝       ╚═════╝  ╚═════╝    ╚═╝     ║
+║                                                                           ║
+EOF
+
+    echo -e "${BOLD}${BLUE}║           🎂 LINKEDIN BIRTHDAY AUTO - SUPER ORCHESTRATEUR 🎂          ║${NC}"
+    echo -e "${BOLD}${BLUE}╚═══════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${CYAN}  Version      : ${BOLD}${version}${NC}"
+    echo -e "${CYAN}  Plateforme   : ${BOLD}Raspberry Pi 4 (ARM64)${NC}"
+    echo -e "${CYAN}  Architecture : ${BOLD}Docker Compose Standalone${NC}"
+    echo -e "${CYAN}  Date         : ${BOLD}$(date '+%Y-%m-%d %H:%M:%S')${NC}"
+    echo ""
+    echo -e "${GREEN}  ✓ Installation fiable et robuste${NC}"
+    echo -e "${GREEN}  ✓ Configuration Cloud guidée (Headless)${NC}"
+    echo -e "${GREEN}  ✓ Audit final complet${NC}"
+    echo -e "${GREEN}  ✓ Logs centralisés${NC}"
+    echo ""
+    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# Bannière de fin (Résumé)
+show_completion_banner() {
+    local status="${1:-success}" # success | warning | error
+    local message="${2:-Installation terminée}"
+
+    echo ""
+    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════════════${NC}"
+
+    case "$status" in
+        success)
+            echo -e "${BOLD}${GREEN}  ✓ $message${NC}"
+            ;;
+        warning)
+            echo -e "${BOLD}${YELLOW}  ⚠ $message${NC}"
+            ;;
+        error)
+            echo -e "${BOLD}${RED}  ✗ $message${NC}"
+            ;;
+    esac
+
+    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# === PROGRESS INDICATORS (Barres de progression améliorées) ===
 
 # Variables globales pour le suivi de progression
 PROGRESS_CURRENT=0
@@ -43,7 +146,7 @@ progress_init() {
     PROGRESS_PHASE="$1"
     PROGRESS_TOTAL="$2"
     PROGRESS_CURRENT=0
-    echo -e "\n${BOLD}${BLUE}┌─ ${PROGRESS_PHASE} (0/${PROGRESS_TOTAL})${NC}"
+    echo -e "\n${BOLD}${BLUE}┌─ 🔄 ${PROGRESS_PHASE} (0/${PROGRESS_TOTAL})${NC}"
 }
 
 # Avance à l'étape suivante avec description
@@ -52,8 +155,8 @@ progress_step() {
     local description="$1"
     PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
 
-    # Générer la barre de progression
-    local bar_width=30
+    # Générer la barre de progression avec émojis
+    local bar_width=40
     local filled=$((PROGRESS_CURRENT * bar_width / PROGRESS_TOTAL))
     local empty=$((bar_width - filled))
     local percent=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
@@ -62,8 +165,9 @@ progress_step() {
     for ((i=0; i<filled; i++)); do bar+="█"; done
     for ((i=0; i<empty; i++)); do bar+="░"; done
 
-    echo -e "${BLUE}│${NC} ${DIM}[${PROGRESS_CURRENT}/${PROGRESS_TOTAL}]${NC} ${description}"
-    echo -e "${BLUE}│${NC} ${GREEN}${bar}${NC} ${percent}%"
+    echo -e "${BLUE}│${NC}"
+    echo -e "${BLUE}│${NC} ${BOLD}${DIM}[${PROGRESS_CURRENT}/${PROGRESS_TOTAL}]${NC} ${description}"
+    echo -e "${BLUE}│${NC} ${GREEN}${bar}${NC} ${BOLD}${percent}%${NC}"
 }
 
 # Marque l'étape actuelle comme terminée avec succès
@@ -84,11 +188,13 @@ progress_fail() {
 # Usage: progress_end
 progress_end() {
     if [[ $PROGRESS_CURRENT -eq $PROGRESS_TOTAL ]]; then
-        echo -e "${BOLD}${GREEN}└─ ${PROGRESS_PHASE} terminé avec succès ✓${NC}\n"
+        echo -e "${BOLD}${GREEN}└─ ✓ ${PROGRESS_PHASE} terminé avec succès${NC}\n"
     else
-        echo -e "${BOLD}${YELLOW}└─ ${PROGRESS_PHASE} incomplet (${PROGRESS_CURRENT}/${PROGRESS_TOTAL})${NC}\n"
+        echo -e "${BOLD}${YELLOW}└─ ⚠ ${PROGRESS_PHASE} incomplet (${PROGRESS_CURRENT}/${PROGRESS_TOTAL})${NC}\n"
     fi
 }
+
+# === SPINNERS (Indicateurs de chargement) ===
 
 # Affiche un spinner pendant une opération
 # Usage: run_with_spinner "message" command args...
@@ -107,7 +213,7 @@ run_with_spinner() {
     echo -ne "${BLUE}│${NC} ${message} "
     while kill -0 $pid 2>/dev/null; do
         i=$(( (i+1) % ${#spinchars} ))
-        echo -ne "\r${BLUE}│${NC} ${message} ${YELLOW}${spinchars:$i:1}${NC} "
+        echo -ne "\r${BLUE}│${NC} ${message} ${CYAN}${spinchars:$i:1}${NC} "
         sleep 0.1
     done
 
@@ -122,6 +228,50 @@ run_with_spinner() {
     fi
 
     return $exit_code
+}
+
+# Spinner simple pour les opérations courtes
+# Usage: simple_spinner &lt;durée_secondes&gt; "message"
+simple_spinner() {
+    local duration="$1"
+    local message="${2:-Chargement}"
+    local spinchars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    local elapsed=0
+
+    echo -ne "${CYAN}${message} ${NC}"
+    while [[ $elapsed -lt $duration ]]; do
+        i=$(( (i+1) % ${#spinchars} ))
+        echo -ne "\r${CYAN}${message} ${spinchars:$i:1}${NC} "
+        sleep 0.1
+        elapsed=$((elapsed + 1))
+    done
+    echo -e "\r${CYAN}${message} ${GREEN}✓${NC}  "
+}
+
+# === BARRE DE PROGRESSION POUR TÂCHES LONGUES (ex: Docker Pull) ===
+
+# Affiche une barre de progression animée
+# Usage: show_progress_bar &lt;current&gt; &lt;total&gt; "message"
+show_progress_bar() {
+    local current="$1"
+    local total="$2"
+    local message="${3:-Progression}"
+    local bar_width=50
+
+    local filled=$((current * bar_width / total))
+    local empty=$((bar_width - filled))
+    local percent=$((current * 100 / total))
+
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+
+    echo -ne "\r${BLUE}│${NC} ${message}: ${GREEN}${bar}${NC} ${BOLD}${percent}%${NC} (${current}/${total}) "
+
+    if [[ $current -eq $total ]]; then
+        echo -e "${GREEN}✓${NC}"
+    fi
 }
 
 # === UTILITY FUNCTIONS ===
@@ -143,6 +293,44 @@ get_total_memory_gb() {
     swap_kb=$(grep SwapTotal /proc/meminfo | awk '{print $2}')
     total_kb=$((ram_kb + swap_kb))
     echo $((total_kb / 1024 / 1024))
+}
+
+# === VÉRIFICATIONS RÉSEAU ===
+
+# Vérifier la connectivité internet (plusieurs méthodes)
+check_internet_connectivity() {
+    log_info "Vérification de la connectivité internet..."
+
+    local test_hosts=("1.1.1.1" "8.8.8.8" "google.com")
+    local connected=false
+
+    for host in "${test_hosts[@]}"; do
+        if ping -c 1 -W 2 "$host" &> /dev/null; then
+            connected=true
+            log_success "✓ Connectivité internet OK (via $host)"
+            return 0
+        fi
+    done
+
+    if [[ "$connected" == "false" ]]; then
+        log_error "Aucune connectivité internet détectée"
+        log_error "Veuillez vérifier votre connexion réseau"
+        return 1
+    fi
+}
+
+# Vérifier la résolution DNS
+check_dns_resolution() {
+    log_info "Vérification de la résolution DNS..."
+
+    if nslookup google.com &> /dev/null || dig google.com &> /dev/null || host google.com &> /dev/null; then
+        log_success "✓ Résolution DNS fonctionnelle"
+        return 0
+    else
+        log_error "Résolution DNS échouée"
+        log_warn "DNS peut être mal configuré. Vérifiez /etc/resolv.conf"
+        return 1
+    fi
 }
 
 # === BACKUP & FILE OPERATIONS ===
@@ -251,6 +439,24 @@ prompt_menu() {
     return 0
 }
 
+# === PAUSE POUR LAISSER L'UTILISATEUR LIRE ===
+
+# Pause avec message et délai
+pause_with_message() {
+    local message="${1:-Appuyez sur Entrée pour continuer}"
+    local auto_continue_delay="${2:-0}" # 0 = pas d'auto-continue
+
+    echo ""
+    echo -e "${CYAN}${message}${NC}"
+
+    if [[ $auto_continue_delay -gt 0 ]]; then
+        echo -e "${DIM}(Auto-continue dans ${auto_continue_delay}s)${NC}"
+        read -t "$auto_continue_delay" -p "" || true
+    else
+        read -p ""
+    fi
+}
+
 # === KERNEL & SYSTEM CONFIG ===
 
 configure_kernel_params() {
@@ -261,7 +467,7 @@ configure_kernel_params() {
         if grep -q "vm.overcommit_memory" "$sysctl_file" && \
            grep -q "net.core.somaxconn" "$sysctl_file" && \
            grep -q "vm.swappiness" "$sysctl_file"; then
-            log_info "Paramètres kernel déjà configurés."
+            log_info "✓ Paramètres kernel déjà configurés."
             return 0
         fi
     fi
@@ -279,13 +485,13 @@ net.ipv4.tcp_keepalive_intvl = 60
 net.ipv4.tcp_keepalive_probes = 5
 EOF
     sudo sysctl -p "$sysctl_file" > /dev/null 2>&1
-    log_success "Paramètres kernel configurés (overcommit_memory=1, swappiness=10)."
+    log_success "✓ Paramètres kernel configurés (overcommit_memory=1, swappiness=10)."
 }
 
 configure_zram() {
     log_info "Configuration ZRAM (Swap compressé en RAM)..."
     if lsblk | grep -q "zram0"; then
-        log_info "ZRAM déjà configuré et actif"
+        log_info "✓ ZRAM déjà configuré et actif"
         return 0
     fi
     if ! modprobe zram 2>/dev/null; then
@@ -325,7 +531,7 @@ EOF
         sudo systemctl enable zram-swap.service
     fi
 
-    log_success "ZRAM activé (1GB) et rendu persistant."
+    log_success "✓ ZRAM activé (1GB) et rendu persistant."
 }
 
 configure_docker_ipv4() {
@@ -342,7 +548,7 @@ configure_docker_ipv4() {
     if [[ -f "$daemon_json" ]]; then
         if grep -q '"ip6tables": false' "$daemon_json" 2>/dev/null && \
            grep -q '"dns"' "$daemon_json" 2>/dev/null; then
-            log_info "Docker déjà configuré (IPv4 + DNS fiables)."
+            log_info "✓ Docker déjà configuré (IPv4 + DNS fiables)."
             return 0
         fi
     fi
@@ -369,6 +575,6 @@ configure_docker_ipv4() {
         log_info "Redémarrage du daemon Docker..."
         sudo systemctl restart docker
         sleep 3
-        log_success "Docker redémarré avec IPv4 + DNS fiables."
+        log_success "✓ Docker redémarré avec IPv4 + DNS fiables."
     fi
 }

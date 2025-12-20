@@ -530,6 +530,145 @@ audit_logs() {
     log_info "════════════════════════════════════════════════════════"
 }
 
+# === ATTENTE ACTIVE DES CONTENEURS HEALTHY ===
+
+# Attendre que tous les conteneurs soient "healthy" ou "running"
+# Usage: wait_for_containers_healthy &lt;compose_file&gt; &lt;max_wait_seconds&gt;
+wait_for_containers_healthy() {
+    local compose_file="${1:-docker-compose.yml}"
+    local max_wait="${2:-120}" # 2 minutes par défaut
+    local elapsed=0
+    local check_interval=5
+
+    log_info "════════════════════════════════════════════════════════"
+    log_info "⏳ ATTENTE DES CONTENEURS (HEALTHY/RUNNING)"
+    log_info "════════════════════════════════════════════════════════"
+
+    # Récupérer la liste des services
+    local services
+    services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
+
+    if [[ -z "$services" ]]; then
+        log_error "Impossible de lire les services depuis $compose_file"
+        return 1
+    fi
+
+    local total_services
+    total_services=$(echo "$services" | wc -l)
+
+    log_info "Services à vérifier: $total_services"
+    echo ""
+
+    while [[ $elapsed -lt $max_wait ]]; do
+        local all_healthy=true
+        local healthy_count=0
+        local starting_count=0
+        local unhealthy_count=0
+
+        while IFS= read -r service; do
+            [[ -z "$service" ]] && continue
+
+            local container_id
+            container_id=$(docker compose -f "$compose_file" ps -q "$service" 2>/dev/null)
+
+            if [[ -z "$container_id" ]]; then
+                log_warn "  [$service] Conteneur non démarré"
+                all_healthy=false
+                continue
+            fi
+
+            # Vérifier le statut du conteneur
+            local container_state
+            container_state=$(docker inspect -f '{{.State.Status}}' "$container_id" 2>/dev/null || echo "unknown")
+
+            if [[ "$container_state" != "running" ]]; then
+                log_warn "  [$service] État: $container_state (attendu: running)"
+                all_healthy=false
+                continue
+            fi
+
+            # Vérifier le healthcheck si disponible
+            local health_status
+            health_status=$(docker inspect -f '{{.State.Health.Status}}' "$container_id" 2>/dev/null || echo "none")
+
+            case "$health_status" in
+                healthy)
+                    healthy_count=$((healthy_count + 1))
+                    log_success "  [$service] ✓ healthy"
+                    ;;
+                starting)
+                    starting_count=$((starting_count + 1))
+                    log_info "  [$service] ⏳ starting... (${elapsed}s/${max_wait}s)"
+                    all_healthy=false
+                    ;;
+                unhealthy)
+                    unhealthy_count=$((unhealthy_count + 1))
+                    log_error "  [$service] ✗ unhealthy"
+                    all_healthy=false
+                    ;;
+                none)
+                    # Pas de healthcheck, considérer comme OK si running
+                    healthy_count=$((healthy_count + 1))
+                    log_success "  [$service] ✓ running (no healthcheck)"
+                    ;;
+                *)
+                    log_warn "  [$service] État inconnu: $health_status"
+                    all_healthy=false
+                    ;;
+            esac
+
+        done <<< "$services"
+
+        if [[ "$all_healthy" == "true" ]]; then
+            echo ""
+            log_success "✓ Tous les conteneurs sont opérationnels ($healthy_count/$total_services)"
+            log_info "════════════════════════════════════════════════════════"
+            return 0
+        fi
+
+        # Afficher un résumé
+        echo ""
+        log_info "  Résumé: ${GREEN}$healthy_count healthy${NC} | ${YELLOW}$starting_count starting${NC} | ${RED}$unhealthy_count unhealthy${NC}"
+        log_info "  ⏳ Attente... (${elapsed}s/${max_wait}s)"
+        echo ""
+
+        sleep "$check_interval"
+        elapsed=$((elapsed + check_interval))
+    done
+
+    # Timeout atteint
+    log_error "⏱ Timeout atteint (${max_wait}s) - Certains conteneurs ne sont pas healthy"
+    log_info "════════════════════════════════════════════════════════"
+    return 1
+}
+
+# Attendre qu'une URL API réponde avec un code HTTP 200
+# Usage: wait_for_api_endpoint &lt;service_name&gt; &lt;url&gt; &lt;max_wait_seconds&gt;
+wait_for_api_endpoint() {
+    local service_name="$1"
+    local url="$2"
+    local max_wait="${3:-60}"
+    local elapsed=0
+    local check_interval=3
+
+    log_info "Attente de $service_name sur $url..."
+
+    while [[ $elapsed -lt $max_wait ]]; do
+        if curl -sf "$url" > /dev/null 2>&1; then
+            log_success "✓ $service_name est accessible (HTTP 200 OK)"
+            return 0
+        fi
+
+        elapsed=$((elapsed + check_interval))
+        echo -ne "\r  ⏳ Attente de $service_name... (${elapsed}s/${max_wait}s)"
+        sleep "$check_interval"
+    done
+
+    echo ""
+    log_error "✗ $service_name n'est pas accessible après ${max_wait}s"
+    return 1
+}
+
 # === MAIN AUDIT FUNCTION ===
 
 run_full_audit() {
@@ -551,7 +690,19 @@ run_full_audit() {
     AUDIT_WARNINGS_LIST=()
     AUDIT_FAILURES_LIST=()
 
-    # Exécuter tous les audits
+    # 1. Attendre que les conteneurs soient healthy (NOUVEAU)
+    if ! wait_for_containers_healthy "$compose_file" 120; then
+        log_warn "Certains conteneurs ne sont pas healthy, mais on continue l'audit..."
+    fi
+
+    # 2. Attendre que les API soient accessibles (NOUVEAU)
+    echo ""
+    log_info "Vérification des endpoints API..."
+    wait_for_api_endpoint "API" "http://localhost:8000/health" 60 || true
+    wait_for_api_endpoint "Dashboard" "http://localhost:3000/api/system/health" 60 || true
+    echo ""
+
+    # 3. Exécuter tous les audits
     audit_security "$env_file"
     audit_services "$compose_file"
     audit_api_routes
