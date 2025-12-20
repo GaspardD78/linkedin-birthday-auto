@@ -123,26 +123,46 @@ change_password() {
 
     log_info "Hachage sécurisé du mot de passe..."
 
-    # Hash via Docker + bcryptjs
-    DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+    # STRATÉGIE 1: Hash via Docker Node.js alpine (ARM64-compatible)
+    local node_script='const bcrypt = require("bcryptjs");
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (password) => {
+  const hash = bcrypt.hashSync(password.trim(), 12);
+  console.log(hash);
+  rl.close();
+});'
 
-    if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-        log_info "Téléchargement image dashboard pour hachage..."
-        if ! docker pull -q "$DASHBOARD_IMG" 2>/dev/null; then
-            log_error "Impossible de télécharger l'image dashboard"
-            return 1
+    HASH_OUTPUT=$(echo "$NEW_PASS" | docker run --rm -i \
+        --platform linux/arm64 \
+        node:20-alpine \
+        sh -c 'npm install --silent bcryptjs >/dev/null 2>&1 && node -e "'"${node_script}"'"' \
+        2>/dev/null | head -n1 | tr -d '\n\r' || true)
+
+    # STRATÉGIE 2: Fallback sur image dashboard si stratégie 1 échoue
+    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
+        log_warn "Fallback: tentative avec image dashboard..."
+        DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+
+        if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
+            log_info "Téléchargement image dashboard pour hachage..."
+            if ! docker pull --platform linux/arm64 -q "$DASHBOARD_IMG" 2>/dev/null; then
+                log_error "Impossible de télécharger l'image dashboard"
+                return 1
+            fi
         fi
+
+        HASH_OUTPUT=$(docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint node \
+            -e PWD_INPUT="$NEW_PASS" \
+            "$DASHBOARD_IMG" \
+            -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
     fi
 
-    HASH_OUTPUT=$(docker run --rm \
-        --entrypoint node \
-        -e PWD_INPUT="$NEW_PASS" \
-        "$DASHBOARD_IMG" \
-        -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
-
     if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_error "Échec du hachage bcrypt"
-        log_error "Sortie: $HASH_OUTPUT"
+        log_error "Échec du hachage bcrypt (toutes stratégies)"
+        log_error "Sortie: ${HASH_OUTPUT:-vide}"
         return 1
     fi
 
@@ -210,24 +230,45 @@ reset_password() {
 
     log_info "Hachage du mot de passe temporaire..."
 
-    DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+    # STRATÉGIE 1: Hash via Docker Node.js alpine (ARM64-compatible)
+    local node_script='const bcrypt = require("bcryptjs");
+const readline = require("readline");
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (password) => {
+  const hash = bcrypt.hashSync(password.trim(), 12);
+  console.log(hash);
+  rl.close();
+});'
 
-    if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-        log_info "Téléchargement image dashboard..."
-        if ! docker pull -q "$DASHBOARD_IMG" 2>/dev/null; then
-            log_error "Impossible de télécharger l'image dashboard"
-            return 1
+    HASH_OUTPUT=$(echo "$TEMP_PASS" | docker run --rm -i \
+        --platform linux/arm64 \
+        node:20-alpine \
+        sh -c 'npm install --silent bcryptjs >/dev/null 2>&1 && node -e "'"${node_script}"'"' \
+        2>/dev/null | head -n1 | tr -d '\n\r' || true)
+
+    # STRATÉGIE 2: Fallback sur image dashboard si stratégie 1 échoue
+    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
+        log_warn "Fallback: tentative avec image dashboard..."
+        DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
+
+        if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
+            log_info "Téléchargement image dashboard..."
+            if ! docker pull --platform linux/arm64 -q "$DASHBOARD_IMG" 2>/dev/null; then
+                log_error "Impossible de télécharger l'image dashboard"
+                return 1
+            fi
         fi
+
+        HASH_OUTPUT=$(docker run --rm \
+            --platform linux/arm64 \
+            --entrypoint node \
+            -e PWD_INPUT="$TEMP_PASS" \
+            "$DASHBOARD_IMG" \
+            -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
     fi
 
-    HASH_OUTPUT=$(docker run --rm \
-        --entrypoint node \
-        -e PWD_INPUT="$TEMP_PASS" \
-        "$DASHBOARD_IMG" \
-        -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
-
     if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_error "Échec du hachage bcrypt"
+        log_error "Échec du hachage bcrypt (toutes stratégies)"
         return 1
     fi
 
