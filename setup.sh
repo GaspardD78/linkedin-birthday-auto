@@ -299,19 +299,70 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
     case "$choice" in
         1)
             echo -e "\n${BOLD}Entrez le nouveau mot de passe:${NC}"
-            echo -n "Mot de passe (caché) : "
-            read -rs PASS_INPUT
+            echo -e "${DIM}Recommandations: min 12 caractères, majuscules, chiffres, symboles${NC}"
+
+            local password_valid=false
+            while [[ "$password_valid" != "true" ]]; do
+                echo -n "Mot de passe (caché) : "
+                read -rs PASS_INPUT
+                echo ""
+
+                if [[ -z "$PASS_INPUT" ]]; then
+                    log_error "Le mot de passe ne peut pas être vide"
+                    continue
+                fi
+
+                # Vérifier la force du mot de passe
+                local pass_len=${#PASS_INPUT}
+                local issues=""
+
+                if [[ $pass_len -lt 12 ]]; then
+                    issues="${issues}  ⚠️  Trop court (${pass_len}/12 caractères min)\n"
+                fi
+
+                if ! [[ "$PASS_INPUT" =~ [A-Z] ]]; then
+                    issues="${issues}  ⚠️  Pas de majuscules\n"
+                fi
+
+                if ! [[ "$PASS_INPUT" =~ [a-z] ]]; then
+                    issues="${issues}  ⚠️  Pas de minuscules\n"
+                fi
+
+                if ! [[ "$PASS_INPUT" =~ [0-9] ]]; then
+                    issues="${issues}  ⚠️  Pas de chiffres\n"
+                fi
+
+                if [[ -n "$issues" ]]; then
+                    log_warn "Mot de passe faible:"
+                    echo -e "$issues"
+                    if prompt_yes_no "Utiliser ce mot de passe quand même ?" "n"; then
+                        password_valid="true"
+                    fi
+                else
+                    log_success "✓ Mot de passe fort"
+                    password_valid="true"
+                fi
+            done
+
+            # Confirmer le mot de passe
+            echo -n "Confirmer le mot de passe (caché) : "
+            read -rs PASS_CONFIRM
             echo ""
 
-            if [[ -n "$PASS_INPUT" ]]; then
-                hash_and_store_password "$ENV_FILE" "$PASS_INPUT" || {
-                    log_error "Impossible de hasher le mot de passe"
-                    exit 1
-                }
-                # Sauvegarder le mot de passe en clair temporairement pour le rapport final
-                # (sera supprimé après affichage)
+            if [[ "$PASS_INPUT" != "$PASS_CONFIRM" ]]; then
+                log_error "Les mots de passe ne correspondent pas"
+                exit 1
+            fi
+
+            # Hasher et stocker
+            if hash_and_store_password "$ENV_FILE" "$PASS_INPUT"; then
+                # Sauvegarder temporairement pour affichage dans le rapport
                 export SETUP_PASSWORD_PLAINTEXT="$PASS_INPUT"
                 setup_state_set_config "password_set" "true"
+                log_success "✓ Mot de passe configuré avec succès"
+            else
+                log_error "Impossible de hasher le mot de passe"
+                exit 1
             fi
             ;;
         2)
@@ -430,19 +481,57 @@ case "$choice" in
         ;;
     3)
         log_step "Import de Certificats Existants"
-        read -p "Chemin fullchain.pem : " CERT_FILE
-        read -p "Chemin privkey.pem : " KEY_FILE
 
-        if [[ -f "$CERT_FILE" ]] && [[ -f "$KEY_FILE" ]]; then
-            cp "$CERT_FILE" "$CERT_DIR/fullchain.pem"
-            cp "$KEY_FILE" "$CERT_DIR/privkey.pem"
-            chmod 600 "$CERT_DIR/privkey.pem"
-            HTTPS_MODE="existing"
-            log_success "✓ Certificats importés"
-        else
-            log_error "Fichiers certificats non trouvés"
-            exit 1
-        fi
+        # Fonction de validation certificat PEM
+        validate_certificate() {
+            local cert_file="$1"
+            local cert_type="${2:-certificate}"
+
+            if [[ ! -f "$cert_file" ]]; then
+                log_error "Fichier non trouvé: $cert_file"
+                return 1
+            fi
+
+            # Vérifier que c'est un fichier PEM valide
+            if ! openssl x509 -in "$cert_file" -noout &>/dev/null && \
+               ! openssl pkey -in "$cert_file" -noout &>/dev/null; then
+                log_error "Fichier invalide (format PEM attendu): $cert_file"
+                return 1
+            fi
+
+            log_success "✓ $cert_type valide (PEM)"
+            return 0
+        }
+
+        local cert_valid=false
+        local key_valid=false
+
+        # Boucle de saisie avec validation
+        while [[ "$cert_valid" != "true" ]] || [[ "$key_valid" != "true" ]]; do
+            read -p "Chemin fullchain.pem : " CERT_FILE
+            if validate_certificate "$CERT_FILE" "Certificat"; then
+                cert_valid="true"
+            else
+                prompt_yes_no "Réessayer ?" "y" || exit 1
+                cert_valid="false"
+            fi
+        done
+
+        while [[ "$key_valid" != "true" ]]; do
+            read -p "Chemin privkey.pem : " KEY_FILE
+            if validate_certificate "$KEY_FILE" "Clé privée"; then
+                key_valid="true"
+            else
+                prompt_yes_no "Réessayer ?" "y" || exit 1
+                key_valid="false"
+            fi
+        done
+
+        cp "$CERT_FILE" "$CERT_DIR/fullchain.pem"
+        cp "$KEY_FILE" "$CERT_DIR/privkey.pem"
+        chmod 600 "$CERT_DIR/privkey.pem"
+        HTTPS_MODE="existing"
+        log_success "✓ Certificats importés avec succès"
         ;;
     4)
         HTTPS_MODE="manual"
@@ -647,8 +736,6 @@ Documentation: https://rclone.org/drive/
 ${NC}
 EOF
 
-        read -p "Appuyez sur Entrée pour commencer la configuration rclone..."
-
         if rclone config; then
             # Vérifier que la configuration est valide
             if rclone listremotes | grep -q .; then
@@ -748,7 +835,7 @@ ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━
 
 EOF
 
-# Nettoyer le mot de passe en clair de la mémoire
+# Nettoyer le mot de passe en clair de la mémoire après affichage
 unset SETUP_PASSWORD_PLAINTEXT
 
 exit 0
