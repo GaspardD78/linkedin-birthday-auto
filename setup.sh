@@ -307,7 +307,8 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
             echo -e "\n${BOLD}Entrez le nouveau mot de passe:${NC}"
             echo -e "${DIM}Recommandations: min 12 caractères, majuscules, chiffres, symboles${NC}"
 
-            local password_valid=false
+            # Fix: 'local' keyword is not allowed in global scope (outside functions)
+            password_valid=false
             while [[ "$password_valid" != "true" ]]; do
                 echo -n "Mot de passe (caché) : "
                 read -rs PASS_INPUT
@@ -319,8 +320,8 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
                 fi
 
                 # Vérifier la force du mot de passe
-                local pass_len=${#PASS_INPUT}
-                local issues=""
+                pass_len=${#PASS_INPUT}
+                issues=""
 
                 if [[ $pass_len -lt 12 ]]; then
                     issues="${issues}  ⚠️  Trop court (${pass_len}/12 caractères min)\n"
@@ -504,8 +505,9 @@ case "$choice" in
             return 0
         }
 
-        local cert_valid=false
-        local key_valid=false
+        # Fix: 'local' keyword is not allowed in global scope
+        cert_valid=false
+        key_valid=false
 
         # Boucle de saisie avec validation
         while [[ "$cert_valid" != "true" ]]; do
