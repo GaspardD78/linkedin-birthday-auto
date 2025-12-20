@@ -36,7 +36,9 @@ interface JobDetails {
 // Fonction pour récupérer le statut du worker depuis l'API
 async function fetchWorkerStatus(): Promise<WorkerStatusData> {
   try {
-    const response = await fetch('/api/worker/status', { cache: 'no-store' });
+    const response = await fetch('/api/worker/status', {
+      credentials: 'same-origin'
+    });
     if (!response.ok) {
       // Gérer les erreurs HTTP
       const errorData = await response.json();

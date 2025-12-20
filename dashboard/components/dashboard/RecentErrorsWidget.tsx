@@ -51,7 +51,9 @@ export function RecentErrorsWidget() {
 
   const fetchErrors = async () => {
     try {
-      const res = await fetch('/api/history?type=error&limit=10', { cache: 'no-store' })
+      const res = await fetch('/api/history?type=error&limit=10', {
+        credentials: 'same-origin'
+      })
       if (res.ok) {
         const data = await res.json()
         // Transform history data to errors

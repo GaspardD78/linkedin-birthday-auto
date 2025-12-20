@@ -40,7 +40,9 @@ export function ActivityMonitor() {
     const fetchData = async () => {
       try {
         // Fetch activity data
-        const activityRes = await fetch('/api/history?days=7', { cache: 'no-store' })
+        const activityRes = await fetch('/api/history?days=7', {
+          credentials: 'same-origin'
+        })
         if (activityRes.ok) {
           const historyData = await activityRes.json()
           if (historyData.activity && Array.isArray(historyData.activity)) {
@@ -59,7 +61,9 @@ export function ActivityMonitor() {
         }
 
         // Fetch recent logs
-        const logsRes = await fetch('/api/logs?limit=20', { cache: 'no-store' })
+        const logsRes = await fetch('/api/logs?limit=20', {
+          credentials: 'same-origin'
+        })
         if (logsRes.ok) {
           const logsData = await logsRes.json()
           setRecentLogs(logsData.logs || [])

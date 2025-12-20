@@ -24,7 +24,9 @@ interface WorkerStatusData {
 
 async function fetchWorkerStatus(): Promise<WorkerStatusData> {
   try {
-    const response = await fetch('/api/worker/status', { cache: 'no-store' });
+    const response = await fetch('/api/worker/status', {
+      credentials: 'same-origin'
+    });
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error || `HTTP error! status: ${response.status}`);

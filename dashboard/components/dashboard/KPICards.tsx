@@ -70,7 +70,9 @@ export function KPICards() {
     // Fetch unique contacts count
     const fetchContacts = async () => {
       try {
-        const res = await fetch('/api/contacts', { cache: 'no-store' })
+        const res = await fetch('/api/contacts', {
+          credentials: 'same-origin'
+        })
         if (res.ok) {
           const data = await res.json()
           setUniqueContacts(data.contacts?.length || 0)
@@ -83,7 +85,9 @@ export function KPICards() {
     // Fetch error count
     const fetchErrors = async () => {
       try {
-        const res = await fetch('/api/history?type=error', { cache: 'no-store' })
+        const res = await fetch('/api/history?type=error', {
+          credentials: 'same-origin'
+        })
         if (res.ok) {
           const data = await res.json()
           setErrorCount(data.history?.length || 0)
@@ -96,7 +100,9 @@ export function KPICards() {
     // Fetch weekly messages
     const fetchWeeklyMessages = async () => {
       try {
-        const res = await fetch('/api/history?days=7', { cache: 'no-store' })
+        const res = await fetch('/api/history?days=7', {
+          credentials: 'same-origin'
+        })
         if (res.ok) {
           const data = await res.json()
           const total = data.activity?.reduce((sum: number, day: ActivityDay) => sum + (day.messages || 0), 0) || 0
