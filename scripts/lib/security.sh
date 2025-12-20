@@ -21,92 +21,46 @@ hash_and_store_password() {
     local hashed_password=""
 
     # -------------------------------------------------------------------------
-    # Script JS robuste (lecture STDIN, pas d'arguments CLI)
-    # Ce script lit le mot de passe depuis STDIN pour éviter tout problème
-    # d'échappement de caractères dans les arguments du shell.
+    # STRATÉGIE ROBUSTE (ARM64 / Alpine)
+    # Utilisation de node:20-alpine pour légèreté et compatibilité.
+    # Installation de bcryptjs à la volée (pas de compilation C++).
+    # Passage du mot de passe par ENV pour sécurité (invisible dans ps).
     # -------------------------------------------------------------------------
-    local js_script="
-    const fs = require('fs');
-    try {
-        const input = fs.readFileSync(0, 'utf-8').trim();
-        if (!input) process.exit(1);
-        const bcrypt = require('bcryptjs');
-        console.log(bcrypt.hashSync(input, 12));
-    } catch (e) {
-        console.error(e.message);
-        process.exit(1);
-    }
-    "
 
-    # STRATÉGIE 1: Node.js 20 Slim (Officiel, ARM64 compatible)
-    # L'utilisateur a explicitement demandé l'usage de node:20-slim.
-    # Cette méthode installe bcryptjs à la volée.
     if cmd_exists docker; then
-        log_info "Hashage sécurisé (Docker node:20-slim)..."
+        log_info "Hashage sécurisé (Docker node:20-alpine)..."
 
         set +e # Désactiver exit-on-error temporairement pour capturer l'échec
 
-        # Exécution:
-        # 1. On passe le mot de passe via PIPE au conteneur (STDIN)
-        # 2. On passe le script JS via ENV (SCRIPT) pour éviter quoting hell dans sh -c
-        # 3. sh -c installe bcryptjs, écrit le script dans un fichier et l'exécute
         local output
-        output=$(echo -n "$password" | docker run --rm -i \
+        # Commande optimisée:
+        # --entrypoint /bin/sh : S'assure qu'on utilise un shell
+        # -e PASS_INPUT : Le mot de passe passe par ENV, pas par argument
+        # npm install ... : Installe bcryptjs dans le conteneur éphémère
+        output=$(docker run --rm \
             --platform linux/arm64 \
-            -e SCRIPT="$js_script" \
-            node:20-slim \
-            sh -c 'npm install --silent --no-save bcryptjs >/dev/null 2>&1 && echo "$SCRIPT" > /tmp/hash.js && node /tmp/hash.js' \
+            --entrypoint /bin/sh \
+            -e PASS_INPUT="$password" \
+            node:20-alpine \
+            -c "npm install bcryptjs --no-save --silent >/dev/null 2>&1 && node -e \"console.log(require('bcryptjs').hashSync(process.env.PASS_INPUT, 12))\"" \
             2>&1)
 
         local exit_code=$?
         set -e
 
-        # Vérification: on cherche une ligne qui ressemble à un hash bcrypt ($2a$..., $2b$...)
-        if [[ $exit_code -eq 0 ]]; then
-            hashed_password=$(echo "$output" | grep -E '^\$2[abxy]\$' | head -n1 || true)
-        fi
-
-        if [[ -n "$hashed_password" ]]; then
-            log_success "✓ Hash généré via node:20-slim"
+        # Vérification: on cherche un hash bcrypt valide
+        if [[ $exit_code -eq 0 ]] && [[ "$output" =~ ^\$2[abxy]\$ ]]; then
+            hashed_password=$(echo "$output" | tr -d '\r\n')
+            log_success "✓ Hash généré avec succès"
         else
-            # Diagnostic: Afficher les 100 premiers chars de l'erreur pour aider le debug
-            log_warn "Échec node:20-slim. Erreur: ${output:0:150}..."
-
-            # STRATÉGIE 2: Image Dashboard (bcryptjs pré-installé)
-            # Utile si npm install échoue (pas d'internet, etc.)
-            log_info "Tentative via image Dashboard (fallback)..."
-
-            # Pull silencieux si nécessaire
-            if ! docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1; then
-                docker pull --platform linux/arm64 ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1 || true
-            fi
-
-            set +e
-            output=$(echo -n "$password" | docker run --rm -i \
-                --platform linux/arm64 \
-                -w /app \
-                -e SCRIPT="$js_script" \
-                ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-                sh -c 'echo "$SCRIPT" > /tmp/hash.js && node /tmp/hash.js' \
-                2>&1)
-            exit_code=$?
-            set -e
-
-            if [[ $exit_code -eq 0 ]]; then
-                hashed_password=$(echo "$output" | grep -E '^\$2[abxy]\$' | head -n1 || true)
-            fi
-
-            if [[ -n "$hashed_password" ]]; then
-                log_success "✓ Hash généré via Dashboard"
-            else
-                log_error "Échec critique du hashage Docker."
-                log_error "Détails erreur: $output"
-                hashed_password="" # Ensure empty so we fall through
-            fi
+            log_error "Échec du hashage Docker."
+            log_error "Sortie: $output"
+            hashed_password=""
         fi
     fi
 
-    # STRATÉGIE 3: Fallback local (htpasswd)
+    # STRATÉGIE DE SECOURS: Fallback local (htpasswd)
+    # Utile si Docker ne fonctionne pas ou pas d'internet
     if [[ -z "$hashed_password" ]] && cmd_exists htpasswd; then
         log_info "Fallback: hashage via htpasswd (bcrypt)..."
         local htpasswd_output
@@ -116,7 +70,7 @@ hash_and_store_password() {
 
     # Check final failure
     if [[ -z "$hashed_password" ]]; then
-        log_error "Impossible de hasher le mot de passe (aucune méthode disponible)."
+        log_error "Impossible de hasher le mot de passe (méthodes Docker et htpasswd échouées)."
         return 1
     fi
 
@@ -137,7 +91,7 @@ hash_and_store_password() {
         echo "DASHBOARD_PASSWORD=${safe_val}" >> "$env_file"
     fi
 
-    log_success "✓ Mot de passe hashé et sécurisé ($$)"
+    log_success "✓ Mot de passe hashé et sécurisé dans .env"
     return 0
 }
 

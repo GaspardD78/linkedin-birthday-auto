@@ -1,13 +1,19 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
 # Script de Gestion du Mot de Passe Dashboard
-# LinkedIn Birthday Auto - Modification & Récupération sécurisée
+# LinkedIn Birthday Auto - Refactorisé pour ARM64/Pi4
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Ce script permet de :
 #   1. Changer le mot de passe du dashboard
 #   2. Réinitialiser le mot de passe (générer un aléatoire)
 #   3. Afficher le statut du mot de passe
+#
+# Améliorations v2 (DevOps):
+#   - Autonome (pas de dépendance à l'image dashboard ou Redis)
+#   - Compatible ARM64 (Raspberry Pi 4)
+#   - Utilise node:20-alpine officiel
+#   - Sécurisé (passage de secrets par ENV)
 #
 # Usage:
 #   ./scripts/manage_dashboard_password.sh
@@ -42,7 +48,7 @@ log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 cleanup() {
     local exit_code=$?
     if [[ $exit_code -ne 0 ]]; then
-        log_error "Script échoué (Code $exit_code)"
+        log_error "Script interrompu (Code $exit_code)"
     fi
 }
 trap cleanup EXIT
@@ -57,35 +63,84 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-cmd_exists() { command -v "$1" &> /dev/null; }
+# === HELPER: Génération Hash Bcrypt (Docker Lightweight) ===
+generate_bcrypt_hash() {
+    local clear_password="$1"
 
-# === FONCTION: Menu Principal ===
-prompt_menu() {
-    local title="$1"
-    shift
-    local options=("$@")
-    local choice
-    local timeout=30
-
-    echo -e "\n${BOLD}${BLUE}${title}${NC}\n"
-
-    local i=1
-    for option in "${options[@]}"; do
-        echo "  ${BOLD}${i})${NC} ${option}"
-        i=$((i + 1))
-    done
-
-    echo -ne "\n${YELLOW}Votre choix [1-$#] (timeout ${timeout}s) : ${NC}"
-
-    read -r -t "$timeout" choice || { log_error "Timeout"; return 1; }
-
-    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt $# ]]; then
-        log_error "Choix invalide. Veuillez entrer un nombre entre 1 et $#"
-        return 2
+    if [[ -z "$clear_password" ]]; then
+        log_error "Mot de passe vide fourni au générateur de hash."
+        return 1
     fi
 
-    echo "$choice"
+    # Vérifier Docker
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker n'est pas installé ou accessible."
+        return 1
+    fi
+
+    log_info "Génération du hash sécurisé (via node:20-alpine)..."
+
+    # Exécution dans un conteneur éphémère node:20-alpine
+    # - --platform linux/arm64 : Crucial pour RPi4
+    # - --rm : Nettoyage automatique
+    # - -e PASS_INPUT : Sécurité (évite l'argument CLI visible dans ps)
+    # - npm install bcryptjs : Installation à la volée (pure JS, pas de compilation C++)
+
+    local hash_output
+    hash_output=$(docker run --rm \
+        --platform linux/arm64 \
+        --entrypoint /bin/sh \
+        -e PASS_INPUT="$clear_password" \
+        node:20-alpine \
+        -c "npm install bcryptjs --no-save --silent >/dev/null 2>&1 && node -e \"console.log(require('bcryptjs').hashSync(process.env.PASS_INPUT, 10))\"") || {
+            log_error "Erreur lors de l'exécution du conteneur de hachage."
+            return 1
+        }
+
+    # Validation du format (doit commencer par $2a$, $2b$, $2x$ ou $2y$)
+    if [[ ! "$hash_output" =~ ^\$2[abxy]\$ ]]; then
+        log_error "Format de hash invalide retourné : '$hash_output'"
+        return 1
+    fi
+
+    echo "$hash_output"
+}
+
+# === HELPER: Mise à jour .env ===
+update_env_file() {
+    local hash="$1"
+
+    # Doubler les $ pour Docker Compose ($$ = $)
+    local safe_hash_compose="${hash//\$/\$\$}"
+
+    # Échapper pour sed (les slashs et esperluettes)
+    local sed_safe_hash=$(echo "$safe_hash_compose" | sed 's/[\/&]/\\&/g')
+
+    if ! sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${sed_safe_hash}|" "$ENV_FILE"; then
+        log_error "Impossible de modifier .env"
+        return 1
+    fi
+
     return 0
+}
+
+# === HELPER: Redémarrage Dashboard ===
+restart_dashboard() {
+    if [[ -f "$COMPOSE_FILE" ]]; then
+        if docker compose -f "$COMPOSE_FILE" ps dashboard 2>/dev/null | grep -q "Up"; then
+            log_info "Redémarrage du service dashboard..."
+            if docker compose -f "$COMPOSE_FILE" restart dashboard >/dev/null 2>&1; then
+                log_success "Dashboard redémarré. Nouveau mot de passe actif."
+            else
+                log_warn "Redémarrage automatique échoué."
+                log_info "Exécutez manuellement: docker compose -f $COMPOSE_FILE restart dashboard"
+            fi
+        else
+            log_warn "Le dashboard n'est pas démarré. (Pas de redémarrage nécessaire)"
+        fi
+    else
+         log_warn "Fichier docker-compose introuvable. Redémarrage sauté."
+    fi
 }
 
 # === FONCTION: Changer le Mot de Passe ===
@@ -121,102 +176,30 @@ change_password() {
         fi
     fi
 
-    log_info "Hachage sécurisé du mot de passe..."
+    local final_hash
+    final_hash=$(generate_bcrypt_hash "$NEW_PASS") || return 1
 
-    # STRATÉGIE 1: Hash via Docker Node.js alpine (ARM64-compatible)
-    local node_script='const bcrypt = require("bcryptjs");
-const readline = require("readline");
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (password) => {
-  const hash = bcrypt.hashSync(password.trim(), 12);
-  console.log(hash);
-  rl.close();
-});'
+    if update_env_file "$final_hash"; then
+        log_success "Mot de passe mis à jour dans .env"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe modifié" >> "$HISTORY_LOG"
 
-    HASH_OUTPUT=$(echo "$NEW_PASS" | docker run --rm -i \
-        --platform linux/arm64 \
-        node:20-alpine \
-        sh -c 'npm install --silent bcryptjs >/dev/null 2>&1 && node -e "'"${node_script}"'"' \
-        2>/dev/null | head -n1 | tr -d '\n\r' || true)
+        echo ""
+        echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+        echo -e "${BOLD}${GREEN}✓ SUCCÈS${NC}"
+        echo -e "  Hash (bcrypt): ${GREEN}${final_hash}${NC}"
+        echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+        echo ""
 
-    # STRATÉGIE 2: Fallback sur image dashboard si stratégie 1 échoue
-    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_warn "Fallback: tentative avec image dashboard..."
-        DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
-
-        if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-            log_info "Téléchargement image dashboard pour hachage..."
-            if ! docker pull --platform linux/arm64 -q "$DASHBOARD_IMG" 2>/dev/null; then
-                log_error "Impossible de télécharger l'image dashboard"
-                return 1
-            fi
-        fi
-
-        HASH_OUTPUT=$(docker run --rm \
-            --platform linux/arm64 \
-            --entrypoint node \
-            -e PWD_INPUT="$NEW_PASS" \
-            "$DASHBOARD_IMG" \
-            -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
-    fi
-
-    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_error "Échec du hachage bcrypt (toutes stratégies)"
-        log_error "Sortie: ${HASH_OUTPUT:-vide}"
-        return 1
-    fi
-
-    # Doublage des $ pour shell-safe
-    SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
-    ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
-
-    # Écrire dans .env
-    if ! sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"; then
-        log_error "Impossible de modifier .env"
-        return 1
-    fi
-
-    log_success "Mot de passe modifié et stocké dans .env"
-
-    # Logging sécurisé (pas le mot de passe!)
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe modifié" >> "$HISTORY_LOG"
-
-    # Afficher le résumé sécurisé
-    echo ""
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${GREEN}✓ MOT DE PASSE MODIFIÉ AVEC SUCCÈS${NC}"
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "  ${BOLD}Mot de passe (en clair):${NC} ${RED}${NEW_PASS}${NC}"
-    echo -e "  ${BOLD}Hash (bcrypt):${NC} ${GREEN}${HASH_OUTPUT}${NC}"
-    echo ""
-    echo -e "  ⚠️  ${YELLOW}SAUVEGARDEZ CES INFORMATIONS${NC}"
-    echo -e "  ℹ️  Le hash est stocké dans .env (chiffré)"
-    echo ""
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo ""
-
-    # Redémarrage dashboard
-    if docker compose -f "$COMPOSE_FILE" ps dashboard 2>/dev/null | grep -q "Up"; then
-        log_info "Redémarrage du dashboard..."
-        if docker compose -f "$COMPOSE_FILE" restart dashboard >/dev/null 2>&1; then
-            log_success "Dashboard redémarré. Nouveau mot de passe actif."
-        else
-            log_warn "Redémarrage dashboard échoué. Redémarrez manuellement:"
-            log_warn "  docker compose -f $COMPOSE_FILE restart dashboard"
-        fi
+        restart_dashboard
     else
-        log_warn "Dashboard n'est pas en cours d'exécution."
-        log_info "Redémarrez: docker compose -f $COMPOSE_FILE up -d"
+        return 1
     fi
-
-    return 0
 }
 
 # === FONCTION: Réinitialiser le Mot de Passe ===
 reset_password() {
     log_warn "⚠️  RÉINITIALISATION DU MOT DE PASSE"
-    log_info "Un mot de passe temporaire fort sera généré et affiché une seule fois."
+    log_info "Un mot de passe aléatoire fort sera généré."
     echo ""
 
     read -p "Êtes-vous sûr ? [y/N] : " -r confirm
@@ -226,97 +209,33 @@ reset_password() {
     fi
 
     # Générer mot de passe aléatoire fort (16 chars base64)
-    TEMP_PASS=$(openssl rand -base64 12)
+    local temp_pass
+    temp_pass=$(openssl rand -base64 12)
 
-    log_info "Hachage du mot de passe temporaire..."
+    local final_hash
+    final_hash=$(generate_bcrypt_hash "$temp_pass") || return 1
 
-    # STRATÉGIE 1: Hash via Docker Node.js alpine (ARM64-compatible)
-    local node_script='const bcrypt = require("bcryptjs");
-const readline = require("readline");
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (password) => {
-  const hash = bcrypt.hashSync(password.trim(), 12);
-  console.log(hash);
-  rl.close();
-});'
+    if update_env_file "$final_hash"; then
+        log_success "Mot de passe réinitialisé dans .env"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe réinitialisé" >> "$HISTORY_LOG"
 
-    HASH_OUTPUT=$(echo "$TEMP_PASS" | docker run --rm -i \
-        --platform linux/arm64 \
-        node:20-alpine \
-        sh -c 'npm install --silent bcryptjs >/dev/null 2>&1 && node -e "'"${node_script}"'"' \
-        2>/dev/null | head -n1 | tr -d '\n\r' || true)
+        echo ""
+        echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+        echo -e "${BOLD}${GREEN}✓ NOUVEAU MOT DE PASSE GÉNÉRÉ${NC}"
+        echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "  ${BOLD}Mot de passe (en clair):${NC} ${RED}${BOLD}${temp_pass}${NC}"
+        echo -e "  ${BOLD}Hash (bcrypt):${NC} ${GREEN}${final_hash}${NC}"
+        echo ""
+        echo -e "  ⚠️  SAUVEGARDEZ-LE MAINTENANT !"
+        echo ""
+        echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
+        echo ""
 
-    # STRATÉGIE 2: Fallback sur image dashboard si stratégie 1 échoue
-    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_warn "Fallback: tentative avec image dashboard..."
-        DASHBOARD_IMG="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
-
-        if ! docker image inspect "$DASHBOARD_IMG" >/dev/null 2>&1; then
-            log_info "Téléchargement image dashboard..."
-            if ! docker pull --platform linux/arm64 -q "$DASHBOARD_IMG" 2>/dev/null; then
-                log_error "Impossible de télécharger l'image dashboard"
-                return 1
-            fi
-        fi
-
-        HASH_OUTPUT=$(docker run --rm \
-            --platform linux/arm64 \
-            --entrypoint node \
-            -e PWD_INPUT="$TEMP_PASS" \
-            "$DASHBOARD_IMG" \
-            -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" 2>/dev/null || true)
-    fi
-
-    if [[ ! "$HASH_OUTPUT" =~ ^\$2 ]]; then
-        log_error "Échec du hachage bcrypt (toutes stratégies)"
+        restart_dashboard
+    else
         return 1
     fi
-
-    SAFE_HASH=$(echo "$HASH_OUTPUT" | sed 's/\$/\$\$/g')
-    ESCAPED_SAFE_HASH=$(echo "$SAFE_HASH" | sed 's/[\/&]/\\&/g')
-
-    if ! sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${ESCAPED_SAFE_HASH}|" "$ENV_FILE"; then
-        log_error "Impossible de modifier .env"
-        return 1
-    fi
-
-    # Logging sécurisé
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - Mot de passe réinitialisé" >> "$HISTORY_LOG"
-
-    echo ""
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${GREEN}✓ MOT DE PASSE TEMPORAIRE GÉNÉRÉ${NC}"
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "  ${BOLD}Mot de passe (en clair):${NC} ${RED}${BOLD}${TEMP_PASS}${NC}"
-    echo -e "  ${BOLD}Hash (bcrypt):${NC} ${GREEN}${HASH_OUTPUT}${NC}"
-    echo ""
-    echo -e "  ⚠️  SAUVEGARDEZ CES INFORMATIONS MAINTENANT !"
-    echo -e "  ⚠️  ILS NE SERONT PAS AFFICHÉS À NOUVEAU."
-    echo ""
-    echo -e "  Après connexion:"
-    echo -e "    1. Changez le mot de passe via le dashboard, ou"
-    echo -e "    2. Relancez ce script et choisissez 'Changer le mot de passe'"
-    echo ""
-    echo -e "  En cas de problème de login/mot de passe:"
-    echo -e "    - Vérifiez le mot de passe en clair ci-dessus"
-    echo -e "    - Vérifiez le hash dans .env: grep DASHBOARD_PASSWORD .env"
-    echo -e "    - Consultez: docs/PASSWORD_MANAGEMENT_GUIDE.md"
-    echo ""
-    echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
-    echo ""
-
-    # Redémarrage dashboard
-    if docker compose -f "$COMPOSE_FILE" ps dashboard 2>/dev/null | grep -q "Up"; then
-        log_info "Redémarrage du dashboard..."
-        if docker compose -f "$COMPOSE_FILE" restart dashboard >/dev/null 2>&1; then
-            log_success "Dashboard redémarré avec mot de passe temporaire."
-        else
-            log_warn "Redémarrage échoué. Redémarrez manuellement."
-        fi
-    fi
-
-    return 0
 }
 
 # === FONCTION: Afficher le Statut ===
@@ -325,11 +244,12 @@ show_status() {
     echo -e "${BOLD}Statut du Mot de Passe Dashboard${NC}"
     echo ""
 
-    if grep -q "^DASHBOARD_PASSWORD=\$2[aby]\$" "$ENV_FILE" 2>/dev/null; then
+    # Regex plus souple pour détecter les hash bcrypt (avec ou sans double $)
+    if grep -qE "^DASHBOARD_PASSWORD=(\$\$)?2[abxy]\$" "$ENV_FILE" 2>/dev/null; then
         HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
         HASH_SHORT="${HASH:0:30}..."
         echo -e "  ${GREEN}✓ Hash bcrypt présent${NC}"
-        echo -e "  Hash (premiers 30 chars): $HASH_SHORT"
+        echo -e "  Hash (aperçu): $HASH_SHORT"
 
         if [[ -f "$HISTORY_LOG" ]]; then
             LAST_CHANGE=$(tail -1 "$HISTORY_LOG" 2>/dev/null || echo "Inconnu")
@@ -338,19 +258,51 @@ show_status() {
     elif grep -q "CHANGEZ_MOI\|your_password\|12345" "$ENV_FILE" 2>/dev/null; then
         echo -e "  ${RED}✗ CONFIGURATION MANQUANTE${NC}"
         echo -e "  Mot de passe par défaut détecté."
-        echo -e "  Configurez: $0"
     else
         echo -e "  ${YELLOW}⚠️  FORMAT INCONNU${NC}"
-        echo -e "  Format mot de passe non reconnu. Vérifiez .env"
+        echo -e "  Format non reconnu dans .env"
     fi
 
     echo ""
 }
 
-# === MENU PRINCIPAL ===
+# === HELPER: Menu Input ===
+prompt_menu() {
+    local title="$1"
+    shift
+    local options=("$@")
+    local choice
+    local timeout=60
+
+    echo -e "\n${BOLD}${BLUE}${title}${NC}\n"
+
+    local i=1
+    for option in "${options[@]}"; do
+        echo "  ${BOLD}${i})${NC} ${option}"
+        i=$((i + 1))
+    done
+
+    echo -ne "\n${YELLOW}Votre choix [1-$#] : ${NC}"
+
+    if ! read -r -t "$timeout" choice; then
+         log_error "Timeout (60s)"
+         return 1
+    fi
+
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt $# ]]; then
+        log_error "Choix invalide."
+        return 2
+    fi
+
+    echo "$choice"
+    return 0
+}
+
+# === MAIN ===
+
 echo ""
 echo -e "${BOLD}${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${BLUE}║        Gestion du Mot de Passe Dashboard                  ║${NC}"
+echo -e "${BOLD}${BLUE}║        Gestion du Mot de Passe Dashboard (Pi4/ARM64)      ║${NC}"
 echo -e "${BOLD}${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
 
 choice=$(prompt_menu \
