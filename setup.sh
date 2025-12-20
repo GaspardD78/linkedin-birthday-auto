@@ -159,7 +159,7 @@ readonly NGINX_TEMPLATE_HTTPS="$SCRIPT_DIR/deployment/nginx/linkedin-bot-https.c
 readonly NGINX_TEMPLATE_LAN="$SCRIPT_DIR/deployment/nginx/linkedin-bot-lan.conf.template"
 readonly NGINX_CONFIG="$SCRIPT_DIR/deployment/nginx/linkedin-bot.conf"
 readonly DOMAIN_DEFAULT="gaspardanoukolivier.freeboxos.fr"
-readonly LOCAL_IP="192.168.1.145"
+LOCAL_IP="192.168.1.145"  # Not readonly - will be determined dynamically later
 
 # === GLOBAL VARIABLES (set during setup) ===
 
