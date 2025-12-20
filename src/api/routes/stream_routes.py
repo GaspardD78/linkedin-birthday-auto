@@ -8,7 +8,7 @@ from pathlib import Path
 from redis import Redis
 from rq import Queue
 from rq.registry import StartedJobRegistry
-from ..utils.logging import get_logger
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,6 +20,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 try:
     redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT, socket_connect_timeout=1)
+    redis_conn.ping()
 except Exception as e:
     logger.warning(f"Redis not available for streaming: {e}")
     redis_conn = None

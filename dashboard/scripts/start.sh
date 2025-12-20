@@ -31,6 +31,13 @@ while :; do
     sleep 2
 done
 
+# [FIX] Clean up potential stale Next.js cache artifacts that might cause "Failed to find Server Action"
+# This ensures that we don't serve mismatched action IDs from a previous run's cache layer if persistent.
+if [ -d ".next/cache" ]; then
+    echo "🧹 Cleaning .next/cache to prevent Server Action ID mismatches..."
+    rm -rf .next/cache
+fi
+
 # Optional: Run migrations if needed (placeholder as requested)
 # echo "🔄 Running database migrations..."
 # npx prisma migrate deploy || true
