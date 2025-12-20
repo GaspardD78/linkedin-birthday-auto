@@ -35,6 +35,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copie et installation des requirements Python
 COPY requirements.txt .
+
+# Copie des templates de messages (messages.txt et late_messages.txt)
+# Ces fichiers seront copiés dans /app/data/ lors du démarrage via initialize_data_files()
+COPY messages.txt late_messages.txt ./
+
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     # 🚀 CLEANUP: Supprimer les caches pip résiduels
