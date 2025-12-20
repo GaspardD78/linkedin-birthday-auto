@@ -2,7 +2,32 @@
 
 Dashboard web moderne pour gérer et monitorer le bot LinkedIn Birthday Auto.
 
-## 🚀 Démarrage Rapide
+---
+
+## ⚡ Démarrage Ultra-Rapide (Recommandé)
+
+Nouvelle à ce projet? Utilisez le script de déploiement automatisé:
+
+```bash
+cd dashboard
+
+# Pour développement local
+./deploy.sh dev
+
+# Pour Raspberry Pi
+./deploy.sh pi
+
+# Pour production avec Docker
+./deploy.sh production
+```
+
+**Voir [QUICKSTART.md](./QUICKSTART.md) pour plus de détails** sur les options de déploiement rapide.
+
+---
+
+## 🚀 Configuration Manuelle
+
+Préférez configurer manuellement? Voici les étapes:
 
 ### Prérequis
 

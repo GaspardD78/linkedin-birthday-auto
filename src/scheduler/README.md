@@ -288,6 +288,35 @@ tests/scheduler/test_models.py::TestScheduledJobConfig::test_visitor_bot_job PAS
 - For cron: use online cron validator
 - Check timezone (default: Europe/Paris)
 
+## API Documentation
+
+This module exposes HTTP API endpoints for managing scheduled jobs.
+
+**📖 Full API Documentation:** [docs/SCHEDULER_API.md](../../docs/SCHEDULER_API.md)
+
+The API documentation includes:
+- Complete endpoint reference (list, get, create, update, delete jobs)
+- Request/response examples in JSON
+- Authentication requirements
+- Error handling and status codes
+- Rate limiting and quotas
+
+### Quick API Examples
+
+```bash
+# List all jobs
+curl -H "X-API-Key: your-api-key" http://localhost:8000/scheduler/jobs
+
+# Get specific job
+curl -H "X-API-Key: your-api-key" http://localhost:8000/scheduler/jobs/{job_id}
+
+# Create new job
+curl -X POST -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d @job.json \
+  http://localhost:8000/scheduler/jobs
+```
+
 ## Future Enhancements
 
 - [ ] Webhook notifications on job completion

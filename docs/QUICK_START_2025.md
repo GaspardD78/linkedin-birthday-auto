@@ -252,7 +252,7 @@ RPi4 4GB minimum, mais si vous avez < 6GB total (RAM + SWAP):
 ./setup.sh
 
 # Ou manuellement:
-# Voir docs/TROUBLESHOOTING_2025.md
+# Voir docs/TROUBLESHOOTING.md
 ```
 
 ### Mot de passe oublié
@@ -273,10 +273,10 @@ Pour plus de détails, voir:
 
 | Document | Pour Quoi? |
 |----------|-----------|
-| `docs/SETUP_HTTPS_GUIDE.md` | Details config HTTPS |
+| `docs/HTTPS_CONFIGURATION.md` | Details config HTTPS |
 | `docs/SETUP_BACKUP_GUIDE.md` | Details sauvegardes |
 | `docs/PASSWORD_MANAGEMENT_GUIDE.md` | Gestion password |
-| `docs/TROUBLESHOOTING_2025.md` | Problèmes & solutions |
+| `docs/TROUBLESHOOTING.md` | Problèmes & solutions |
 | `docs/ARCHITECTURE.md` | Comment ça marche |
 | `docs/SECURITY.md` | Sécurité & hardening |
 
@@ -302,4 +302,4 @@ Votre LinkedIn Birthday Auto Bot est **installé et configuré**! 🚀
 
 ---
 
-**Besoin d'aide?** → [docs/TROUBLESHOOTING_2025.md](TROUBLESHOOTING_2025.md)
+**Besoin d'aide?** → [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)

@@ -91,7 +91,7 @@ Pendant le setup, choisissez votre scénario HTTPS :
 4) Configuration manuelle (vous gérez après setup)
 ```
 
-**👉 Guide complet :** [docs/SETUP_HTTPS_GUIDE.md](docs/SETUP_HTTPS_GUIDE.md)
+**👉 Guide complet :** [docs/HTTPS_CONFIGURATION.md](docs/HTTPS_CONFIGURATION.md)
 
 ### Phase 5.1 : Sauvegardes Google Drive
 Configuration automatisée des backups avec rclone :
@@ -183,22 +183,23 @@ bots:
 ### 🆕 Nouvelles Documentations (Jan 2025)
 
 *   [**Quick Start Guide**](docs/QUICK_START_2025.md) : Pour démarrer rapidement (5 min de lecture)
-*   [**Guide Configuration HTTPS**](docs/SETUP_HTTPS_GUIDE.md) : Détails sur les 4 options HTTPS + Let's Encrypt
+*   [**Guide Configuration HTTPS**](docs/HTTPS_CONFIGURATION.md) : Détails sur les 4 options HTTPS + Let's Encrypt
 *   [**Guide Sauvegardes Google Drive**](docs/SETUP_BACKUP_GUIDE.md) : Setup rclone, cron, test restore
 *   [**Guide Gestion Mot de Passe**](docs/PASSWORD_MANAGEMENT_GUIDE.md) : Change/reset/recover mot de passe
-*   [**Troubleshooting Complet**](docs/TROUBLESHOOTING_2025.md) : Solutions pour problèmes courants
+*   [**Troubleshooting Complet**](docs/TROUBLESHOOTING.md) : Solutions pour problèmes courants
 
 ### 📖 Documentation Générale
 
-*   [**Résumé Implémentation (Jan 2025)**](docs/IMPLEMENTATION_SUMMARY_2025.md) : Ce qui a été implémenté (statistiques + détails)
-*   [**Design Technique (Jan 2025)**](docs/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md) : Architecture détaillée des améliorations
-*   [**Analyse Historique (Jan 2025)**](docs/HISTORY_ANALYSIS_2025.md) : Contexte historique + leçons apprises
-*   [**Améliorations de Sécurité (Jan 2025)**](docs/SECURITY_ENHANCEMENTS_2025.md) : Corrections critiques implémentées (Grafana, Docker Socket Proxy, Rate Limiting Persistant).
-*   [**Améliorations Setup.sh (Jan 2025)**](docs/SETUP_IMPROVEMENTS.md) : Rendre le script idempotent et automatisable.
+*   [**Résumé Implémentation (Jan 2025)**](docs/archive/IMPLEMENTATION_SUMMARY_2025.md) : Ce qui a été implémenté (statistiques + détails)
+*   [**Design Technique (Jan 2025)**](docs/archive/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md) : Architecture détaillée des améliorations
+*   [**Analyse Historique (Jan 2025)**](docs/archive/HISTORY_ANALYSIS_2025.md) : Contexte historique + leçons apprises
+*   [**Améliorations de Sécurité (Jan 2025)**](docs/archive/SECURITY_ENHANCEMENTS_2025.md) : Corrections critiques implémentées (Grafana, Docker Socket Proxy, Rate Limiting Persistant).
+*   [**Améliorations Setup.sh (Jan 2025)**](docs/archive/SETUP_IMPROVEMENTS.md) : Rendre le script idempotent et automatisable.
 *   [**Sécurité & Hardening**](docs/SECURITY.md) : Détails sur la protection des données.
 *   [**Architecture Technique**](docs/ARCHITECTURE.md) : Pour les développeurs curieux.
-*   [**Rapport d'Audit Complet (Jan 2025)**](docs/AUDIT_REPORT_2025-01.md) : Analyse détaillée du code et recommandations.
-*   [**Guide de Dépannage (Troubleshooting)**](docs/TROUBLESHOOTING.md) : Problèmes généraux.
+*   [**Rapport d'Audit Complet (Jan 2025)**](docs/archive/AUDIT_REPORT_2025-01.md) : Analyse détaillée du code et recommandations.
+*   [**Index Documentation**](docs/INDEX.md) : Navigation complète de la documentation.
+*   [**Guide de Dépannage (Troubleshooting)**](docs/TROUBLESHOOTING.md) : Problèmes courants et solutions.
 
 ---
 
