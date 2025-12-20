@@ -310,118 +310,59 @@ if [[ ! -f "$ENV_FILE" ]]; then
     chmod 600 "$ENV_FILE"
 fi
 
-# Configuration du mot de passe dashboard
-log_info "Configuration mot de passe dashboard..."
+# PHASE 3 : Configuration Sécurisée Dashboard
+configure_dashboard_password() {
+    echo ">>> Configuration du Mot de Passe Dashboard"
 
-# Détecter si un hash bcrypt existe (supporte $ simple et $$ doublé)
-# Formats bcrypt: $2a$, $2b$, $2x$, $2y$ ou $$2a$$, $$2b$$, $$2x$$, $$2y$$
-HAS_BCRYPT_HASH=false
-if grep -qE "^DASHBOARD_PASSWORD=(\$\$)?2[abxy]\$" "$ENV_FILE" 2>/dev/null; then
-    HAS_BCRYPT_HASH=true
-    log_info "✓ Hash bcrypt détecté dans .env"
-fi
-
-# Vérifier si le mot de passe doit être configuré
-NEEDS_PASSWORD=false
-CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
-
-if [[ -z "$CURRENT_PASSWORD" ]] || \
-   grep -q "CHANGEZ_MOI" "$ENV_FILE" 2>/dev/null || \
-   [[ "$CURRENT_PASSWORD" == "CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT" ]]; then
-    NEEDS_PASSWORD=true
-fi
-
-if [[ "$NEEDS_PASSWORD" == "true" ]]; then
-    log_step "Mot de Passe Dashboard"
-
-    if [[ "$HAS_BCRYPT_HASH" == "true" ]]; then
-        choice=$(prompt_menu "Configuration du mot de passe" \
-            "Définir/Changer le mot de passe maintenant" \
-            "Garder le mot de passe existant" \
-            "Annuler pour l'instant")
-    else
-        choice=$(prompt_menu "Configuration du mot de passe" \
-            "Définir un nouveau mot de passe" \
-            "Annuler pour l'instant")
+    # Idempotence : skip si existe déjà
+    if [ -f .env ] && grep -q "^DASHBOARD_PASSWORD=" .env; then
+        echo "ℹ [INFO] Mot de passe existant détecté."
+        read -p "Modifier ? (y/N) : " -n 1 MODIFY_PWD
+        echo
+        [[ $MODIFY_PWD =~ ^[Yy] ]] || { echo "✓ [OK] Conservation."; return 0; }
     fi
 
-    case "$choice" in
-        1)
-            echo -e "\n${BOLD}Entrez le nouveau mot de passe:${NC}"
-            echo -e "${DIM}Recommandations: min 12 caractères, majuscules, chiffres, symboles${NC}"
+    # Input masqué + validation stricte
+    while true; do
+        read -s -p "Entrez mot de passe (>=8 caractères) : " PASSWORD
+        echo
+        [[ ${#PASSWORD} -ge 8 ]] && break
+        echo "✗ [ERROR] Trop court. Réessayez."
+    done
 
-            password_valid=false
-            while [[ "$password_valid" != "true" ]]; do
-                echo -n "Mot de passe (caché) : "
-                read -rs PASS_INPUT
-                echo ""
+    # Hash bcryptjs Docker (COMMANDE VALIDÉE MANUELLEMENT)
+    echo "ℹ [INFO] Hashage bcryptjs sécurisé (Docker ARM64)..."
+    HASH=$(docker run --rm --platform linux/arm64 node:20-alpine sh -c "
+    mkdir -p /app && cd /app &&
+    npm init -y --silent >/dev/null 2>&1 &&
+    npm i bcryptjs --no-save >/dev/null 2>&1 &&
+    node -e \"const b=require('bcryptjs'); b.hash('$PASSWORD',12).then(console.log).catch(console.error)\"
+    " 2>&1 | head -1)
 
-                if [[ -z "$PASS_INPUT" ]]; then
-                    log_error "Le mot de passe ne peut pas être vide"
-                    continue
-                fi
+    # Validation + fallback openssl SHA512
+    if [[ ! $HASH =~ ^\$2b\$ ]]; then
+        echo "⚠ [WARN] Docker échoué → Fallback openssl SHA512"
+        HASH=$(echo "$PASSWORD" | openssl passwd -6 -stdin 2>/dev/null | tr -d '\n')
+    fi
 
-                # Vérifier la force du mot de passe
-                pass_len=${#PASS_INPUT}
-                issues=""
+    [[ -z "$HASH" ]] && { echo "✗ [CRITIQUE] Hashage impossible."; exit 1; }
 
-                if [[ $pass_len -lt 12 ]]; then
-                    issues="${issues}  ⚠️  Trop court (${pass_len}/12 caractères min)\n"
-                fi
+    # DOUBLE TOUS LES $ → OBLIGATOIRE pour .env Bash
+    echo "🔧 Doublement systématique des \$ → .env safe"
+    HASH_ESCAPED=$(echo "$HASH" | sed 's/\$/$$/g')
+    echo "DASHBOARD_PASSWORD=\"$HASH_ESCAPED\"" >> .env
 
-                if ! [[ "$PASS_INPUT" =~ [A-Z] ]]; then
-                    issues="${issues}  ⚠️  Pas de majuscules\n"
-                fi
+    # Debug clair AVANT/APRÈS
+    echo "📋 Hash original : $HASH"
+    echo "📋 Hash échappé  : $HASH_ESCAPED"
+    echo "✓ [OK] Hash stocké sécurisé dans .env"
+    echo "ℹ [INFO] Ligne .env : $(grep DASHBOARD_PASSWORD .env)"
 
-                if ! [[ "$PASS_INPUT" =~ [a-z] ]]; then
-                    issues="${issues}  ⚠️  Pas de minuscules\n"
-                fi
-
-                if ! [[ "$PASS_INPUT" =~ [0-9] ]]; then
-                    issues="${issues}  ⚠️  Pas de chiffres\n"
-                fi
-
-                if [[ -n "$issues" ]]; then
-                    log_warn "Mot de passe faible:"
-                    echo -e "$issues"
-                    if prompt_yes_no "Utiliser ce mot de passe quand même ?" "n"; then
-                        password_valid="true"
-                    fi
-                else
-                    log_success "✓ Mot de passe fort"
-                    password_valid="true"
-                fi
-            done
-
-            # Confirmer le mot de passe
-            echo -n "Confirmer le mot de passe (caché) : "
-            read -rs PASS_CONFIRM
-            echo ""
-
-            if [[ "$PASS_INPUT" != "$PASS_CONFIRM" ]]; then
-                log_error "Les mots de passe ne correspondent pas"
-                exit 1
-            fi
-
-            # Hasher et stocker
-            if hash_and_store_password "$ENV_FILE" "$PASS_INPUT"; then
-                # Sauvegarder temporairement pour affichage dans le rapport
-                export SETUP_PASSWORD_PLAINTEXT="$PASS_INPUT"
-                setup_state_set_config "password_set" "true"
-                log_success "✓ Mot de passe configuré avec succès"
-            else
-                log_error "Impossible de hasher le mot de passe"
-                exit 1
-            fi
-            ;;
-        2)
-            log_info "✓ Mot de passe conservé"
-            ;;
-        3)
-            log_warn "Configuration annulée"
-            ;;
-    esac
-fi
+    # Maintain state compatibility
+    export SETUP_PASSWORD_PLAINTEXT="$PASSWORD"
+    setup_state_set_config "password_set" "true"
+}
+configure_dashboard_password
 
 # Générer API_KEY si nécessaire
 if grep -q "API_KEY=your_secure_random_key_here\|API_KEY=CHANGEZ_MOI" "$ENV_FILE"; then
