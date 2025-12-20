@@ -714,6 +714,73 @@ progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
 
 progress_end
 
+# === PHASE 6.5: POST-PROVISIONING SSL (Let's Encrypt automatique) ===
+
+if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
+    log_step "PHASE 6.5: Obtention des Certificats Let's Encrypt"
+
+    LETSENCRYPT_SCRIPT="./scripts/setup_letsencrypt.sh"
+
+    # Vérifier que le script existe et est exécutable
+    if [[ ! -f "$LETSENCRYPT_SCRIPT" ]]; then
+        log_error "Script Let's Encrypt introuvable: $LETSENCRYPT_SCRIPT"
+        log_warn "⚠️  Certificats temporaires actifs - Exécutez manuellement plus tard:"
+        log_warn "     chmod +x $LETSENCRYPT_SCRIPT && $LETSENCRYPT_SCRIPT"
+    elif [[ ! -x "$LETSENCRYPT_SCRIPT" ]]; then
+        log_warn "Script Let's Encrypt non exécutable, correction..."
+        chmod +x "$LETSENCRYPT_SCRIPT" || {
+            log_error "Impossible de rendre le script exécutable"
+            log_warn "⚠️  Certificats temporaires actifs - Correction manuelle requise:"
+            log_warn "     sudo chmod +x $LETSENCRYPT_SCRIPT && $LETSENCRYPT_SCRIPT"
+        }
+    fi
+
+    # Exécuter le script si disponible et exécutable (fail-safe)
+    if [[ -x "$LETSENCRYPT_SCRIPT" ]]; then
+        log_info "Tentative d'obtention du certificat Let's Encrypt..."
+        log_info "Cette opération peut prendre jusqu'à 2 minutes..."
+
+        # Exécuter avec capture du code de retour (ne pas planter le setup si échec)
+        if "$LETSENCRYPT_SCRIPT"; then
+            log_success "✓ Certificat Let's Encrypt obtenu avec succès"
+
+            # Recharger Nginx pour appliquer les nouveaux certificats (sans coupure)
+            log_info "Rechargement de la configuration Nginx..."
+            if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null; then
+                log_success "✓ Nginx rechargé - Certificat SSL production actif"
+            else
+                log_warn "⚠️  Impossible de recharger Nginx automatiquement"
+                log_info "Rechargez manuellement avec: docker compose -f $COMPOSE_FILE restart nginx"
+            fi
+        else
+            # Échec de l'obtention du certificat
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            log_warn "⚠️  ${YELLOW}${BOLD}AVERTISSEMENT:${NC}${YELLOW} Échec de l'obtention du certificat Let's Encrypt${NC}"
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            log_warn "🔒 Votre serveur reste accessible via ${BOLD}certificats auto-signés temporaires${NC}"
+            log_warn "   (navigateurs afficheront un avertissement de sécurité)"
+            echo ""
+            log_warn "📋 Causes possibles:"
+            log_warn "   • Port 80 bloqué ou inaccessible depuis internet"
+            log_warn "   • Domaine ${DOMAIN} ne pointe pas vers cette machine"
+            log_warn "   • Rate limit Let's Encrypt atteint (5 échecs/heure, 50 certs/semaine)"
+            log_warn "   • Serveur DNS non propagé (peut prendre jusqu'à 48h)"
+            echo ""
+            log_warn "🔧 Pour réessayer manuellement:"
+            log_warn "   ${BOLD}${CYAN}$LETSENCRYPT_SCRIPT${NC}"
+            echo ""
+            log_warn "📚 Documentation troubleshooting:"
+            log_warn "   docs/RASPBERRY_PI_TROUBLESHOOTING.md (section SSL)"
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+
+            # Attendre 2 secondes pour que l'utilisateur voie le message
+            sleep 2
+        fi
+    fi
+fi
+
 # === PHASE 7: VALIDATION (Utilise les nouvelles fonctions de audit.sh) ===
 
 log_step "PHASE 7: Validation du Déploiement"
