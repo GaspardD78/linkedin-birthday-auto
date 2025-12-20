@@ -130,14 +130,20 @@ source "$SCRIPT_DIR/scripts/lib/checks.sh" || { echo "ERROR: Failed to load chec
 source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/audit.sh" || { echo "ERROR: Failed to load audit.sh"; exit 1; }
 
+# Vérifier la disponibilité de Python3 (requis par state.sh)
+if ! cmd_exists python3; then
+    log_error "Python3 est requis pour le state management"
+    exit 1
+fi
+
 # === VARIABLES DE CONFIGURATION ===
 
-readonly COMPOSE_FILE="docker-compose.yml"
-readonly ENV_FILE=".env"
-readonly ENV_TEMPLATE=".env.pi4.example"
-readonly NGINX_TEMPLATE_HTTPS="deployment/nginx/linkedin-bot-https.conf.template"
-readonly NGINX_TEMPLATE_LAN="deployment/nginx/linkedin-bot-lan.conf.template"
-readonly NGINX_CONFIG="deployment/nginx/linkedin-bot.conf"
+readonly COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+readonly ENV_FILE="$SCRIPT_DIR/.env"
+readonly ENV_TEMPLATE="$SCRIPT_DIR/.env.pi4.example"
+readonly NGINX_TEMPLATE_HTTPS="$SCRIPT_DIR/deployment/nginx/linkedin-bot-https.conf.template"
+readonly NGINX_TEMPLATE_LAN="$SCRIPT_DIR/deployment/nginx/linkedin-bot-lan.conf.template"
+readonly NGINX_CONFIG="$SCRIPT_DIR/deployment/nginx/linkedin-bot.conf"
 readonly DOMAIN_DEFAULT="gaspardanoukolivier.freeboxos.fr"
 readonly LOCAL_IP="192.168.1.145"
 
@@ -267,7 +273,7 @@ log_info "Configuration mot de passe dashboard..."
 # Détecter si un hash bcrypt existe (supporte $ simple et $$ doublé)
 # Formats bcrypt: $2a$, $2b$, $2x$, $2y$ ou $$2a$$, $$2b$$, $$2x$$, $$2y$$
 HAS_BCRYPT_HASH=false
-if grep -qE "^DASHBOARD_PASSWORD=\\\$\\\$?2[abxy]\\\$\\\$?" "$ENV_FILE" 2>/dev/null; then
+if grep -qE "^DASHBOARD_PASSWORD=(\$\$)?2[abxy]\$" "$ENV_FILE" 2>/dev/null; then
     HAS_BCRYPT_HASH=true
     log_info "✓ Hash bcrypt détecté dans .env"
 fi
@@ -278,8 +284,7 @@ CURRENT_PASSWORD=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'
 
 if [[ -z "$CURRENT_PASSWORD" ]] || \
    grep -q "CHANGEZ_MOI" "$ENV_FILE" 2>/dev/null || \
-   [[ "$CURRENT_PASSWORD" == "CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT" ]] || \
-   [[ "$HAS_BCRYPT_HASH" == "false" ]]; then
+   [[ "$CURRENT_PASSWORD" == "CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT" ]]; then
     NEEDS_PASSWORD=true
 fi
 
@@ -508,13 +513,14 @@ case "$choice" in
         local key_valid=false
 
         # Boucle de saisie avec validation
-        while [[ "$cert_valid" != "true" ]] || [[ "$key_valid" != "true" ]]; do
+        while [[ "$cert_valid" != "true" ]]; do
             read -p "Chemin fullchain.pem : " CERT_FILE
             if validate_certificate "$CERT_FILE" "Certificat"; then
                 cert_valid="true"
             else
-                prompt_yes_no "Réessayer ?" "y" || exit 1
-                cert_valid="false"
+                if ! prompt_yes_no "Réessayer ?" "y"; then
+                    exit 1
+                fi
             fi
         done
 
@@ -523,8 +529,9 @@ case "$choice" in
             if validate_certificate "$KEY_FILE" "Clé privée"; then
                 key_valid="true"
             else
-                prompt_yes_no "Réessayer ?" "y" || exit 1
-                key_valid="false"
+                if ! prompt_yes_no "Réessayer ?" "y"; then
+                    exit 1
+                fi
             fi
         done
 
@@ -763,21 +770,31 @@ fi
 
 # === AUDIT COMPLET FINAL (SÉCURITÉ, SERVICES, BDD, ROUTES) ===
 
-run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
+if declare -f run_full_audit &>/dev/null; then
+    run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
+else
+    log_warn "Audit final non disponible (fonction manquante)"
+fi
 
 # === RAPPORT FINAL ===
 
 log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
 
-LOCAL_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+# Meilleure détection de l'IP locale (compatible Linux/macOS)
+LOCAL_IP=$(
+    hostname -I 2>/dev/null | awk '{print $1}' ||
+    ip addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -1 ||
+    echo "127.0.0.1"
+)
 DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
 DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
 
-# Préparer l'affichage du mot de passe/hash
+# Préparer l'affichage du mot de passe/hash (masquer le mot de passe en clair)
 if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
-    PASSWORD_DISPLAY="${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
+    # NE PAS afficher le mot de passe en clair pour des raisons de sécurité
+    PASSWORD_DISPLAY="${GREEN}[Configuré - voir message ci-dessous]${NC}"
     HASH_DISPLAY="${GREEN}${DASHBOARD_HASH}${NC}"
-    PASSWORD_NOTE="  ⚠️  ${YELLOW}SAUVEGARDEZ CES IDENTIFIANTS MAINTENANT !${NC}"
+    PASSWORD_NOTE="${BOLD}${RED}⚠️  MOT DE PASSE TEMPORAIRE (voir plus bas)${NC}"
 else
     PASSWORD_DISPLAY="${YELLOW}[configuré lors du setup]${NC}"
     HASH_DISPLAY="${YELLOW}[voir .env]${NC}"
@@ -833,6 +850,24 @@ ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ ${GREEN}Setup v4.0 réussi${NC} - Accédez au dashboard pour finaliser la configuration!
 
 EOF
+
+# Afficher le mot de passe temporaire UNE SEULE FOIS en dehors du rapport principal
+if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
+    echo ""
+    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${RED}🔐 MOT DE PASSE DASHBOARD TEMPORAIRE (À NOTER IMMÉDIATEMENT)${NC}"
+    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  Utilisateur : ${BOLD}${GREEN}${DASHBOARD_USER}${NC}"
+    echo -e "  Mot de passe: ${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
+    echo ""
+    echo -e "${YELLOW}⚠️  Ce mot de passe sera masqué après cette affichage${NC}"
+    echo -e "${YELLOW}⚠️  Sauvegardez-le maintenant ou utilisez:${NC}"
+    echo -e "  ./scripts/manage_dashboard_password.sh"
+    echo ""
+    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+fi
 
 # Nettoyer le mot de passe en clair de la mémoire après affichage
 unset SETUP_PASSWORD_PLAINTEXT
