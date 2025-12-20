@@ -50,7 +50,6 @@ export function DashboardHeader() {
           })
         }
       } catch (error) {
-        console.error('Failed to fetch health:', error)
       }
     }
 
@@ -62,7 +61,6 @@ export function DashboardHeader() {
           setWorkerStatus(data)
         }
       } catch (error) {
-        console.error('Failed to fetch worker status:', error)
       }
     }
 

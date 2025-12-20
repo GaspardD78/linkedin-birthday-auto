@@ -9,7 +9,6 @@ async function handleProxy(request: NextRequest, id: string) {
     const apiKey = process.env.BOT_API_KEY;
 
     if (!apiKey) {
-      console.error('[SECURITY] BOT_API_KEY environment variable is not set!');
       return NextResponse.json({
         error: 'Server configuration error',
         detail: 'BOT_API_KEY is required but not configured'
@@ -17,7 +16,6 @@ async function handleProxy(request: NextRequest, id: string) {
     }
 
     const targetUrl = `${apiUrl}/blacklist/${id}`;
-    console.log(`[PROXY] Forwarding ${request.method} to: ${targetUrl}`);
 
     const headers: Record<string, string> = {
       'X-API-Key': apiKey,
@@ -44,7 +42,6 @@ async function handleProxy(request: NextRequest, id: string) {
           fetchOptions.body = body;
         }
       } catch (e) {
-        console.warn('[PROXY] Could not read request body', e);
       }
     }
 
@@ -52,7 +49,6 @@ async function handleProxy(request: NextRequest, id: string) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[PROXY] Backend error (${response.status}): ${errorText.substring(0, 200)}`);
       return NextResponse.json({
         error: 'Backend API Error',
         detail: `API returned ${response.status}: ${response.statusText}`,
@@ -64,7 +60,6 @@ async function handleProxy(request: NextRequest, id: string) {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Internal Proxy Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

@@ -27,7 +27,6 @@ export async function POST(req: Request) {
       message: 'Test webhook sent (mock - implement backend endpoint for real webhooks)'
     })
   } catch (e) {
-    console.error('Failed to test webhook:', e)
     return NextResponse.json({ error: 'Failed to test webhook' }, { status: 500 })
   }
 }

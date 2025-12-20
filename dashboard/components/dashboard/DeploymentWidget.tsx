@@ -62,7 +62,6 @@ export function DeploymentWidget() {
         setServices(data.services || [])
       }
     } catch (error) {
-      console.error('Failed to fetch services status:', error)
     }
   }
 
@@ -75,7 +74,6 @@ export function DeploymentWidget() {
         setJobs(data)
       }
     } catch (error) {
-      console.error('Failed to fetch jobs:', error)
     }
   }
 
@@ -113,7 +111,6 @@ export function DeploymentWidget() {
         alert(`❌ Erreur : ${data.message || 'Une erreur est survenue'}`)
       }
     } catch (error) {
-      console.error('Maintenance action failed:', error)
       alert('❌ Erreur de communication avec le serveur')
     } finally {
       setActionLoading(null)
@@ -142,7 +139,6 @@ export function DeploymentWidget() {
         alert(`⚠️ ${data.message}\n\n${data.output || ''}`)
       }
     } catch (error) {
-      console.error('Deployment action failed:', error)
       alert('❌ Erreur de communication avec le serveur')
     } finally {
       setActionLoading(null)
@@ -196,8 +192,8 @@ export function DeploymentWidget() {
             <h3 className="font-semibold text-sm text-slate-200">Services Docker</h3>
           </div>
           <div className="space-y-2">
-            {services.map((service, index) => (
-              <div key={index} className="flex items-center justify-between text-sm">
+            {services.map((service) => (
+              <div key={service.name} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <StatusIcon status={service.status} />
                   <span className="text-slate-300">{service.name}</span>

@@ -71,7 +71,6 @@ export function SettingsForm() {
         })
         setYamlContent(newYaml)
     } catch (e) {
-        console.error("Failed to sync form to YAML", e)
     }
   }
 
@@ -86,7 +85,6 @@ export function SettingsForm() {
           setError(null)
       } catch (e) {
           // If YAML is invalid, we don't update the object state, letting the user fix it in the YAML tab
-          console.error("YAML invalid", e)
           setError("Syntaxe YAML invalide. Corrigez-la avant de revenir au mode visuel.")
       }
   }

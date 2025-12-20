@@ -30,7 +30,6 @@ export async function GET() {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[CRM Stats] Backend returned ${response.status}: ${response.statusText}`);
       // Zero-Crash Policy: Retourner structure valide avec stats à zéro
       return NextResponse.json({
         total_contacts: 0,
@@ -57,9 +56,7 @@ export async function GET() {
 
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[CRM Stats] Timeout 3s exceeded (RPi4 protection)');
     } else {
-      console.error('[CRM Stats] Unexpected error:', error);
     }
 
     // Zero-Crash Policy: Structure par défaut au lieu d'erreur 500

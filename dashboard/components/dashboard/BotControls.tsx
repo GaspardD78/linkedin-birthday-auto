@@ -38,7 +38,6 @@ export function BotControlsWidget() {
       const data = await getBotStatusDetailed()
       setStatus(data)
     } catch (error) {
-      console.error("Failed to fetch status", error)
     }
   }
 

@@ -26,7 +26,6 @@ export async function GET() {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[CONFIG] Failed to fetch YAML:', response.status, errorText);
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
@@ -60,7 +59,6 @@ export async function GET() {
     return NextResponse.json(structuredConfig);
 
   } catch (error) {
-    console.error('[CONFIG] Failed to parse configuration:', error);
     return NextResponse.json({
       error: 'Failed to load configuration',
       details: error instanceof Error ? error.message : 'Unknown error'

@@ -38,7 +38,6 @@ export function TaskStatusWidget() {
         setLastLog(`[${entry.level}] ${entry.message}`)
       }
     } catch (error) {
-      console.error("Failed to fetch task status", error)
     }
   }
 

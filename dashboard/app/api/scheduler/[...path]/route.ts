@@ -22,7 +22,6 @@ async function proxyToBackend(
 ): Promise<NextResponse> {
   // Validate API key
   if (!API_KEY) {
-    console.error('❌ [SCHEDULER] BOT_API_KEY not configured');
     return NextResponse.json(
       {
         error: 'Server configuration error',
@@ -40,7 +39,6 @@ async function proxyToBackend(
     });
   }
 
-  console.log(`📡 [SCHEDULER] ${method} ${url.pathname}${url.search}`);
 
   try {
     // Make request to backend
@@ -65,7 +63,6 @@ async function proxyToBackend(
     try {
       data = text ? JSON.parse(text) : {};
     } catch (e) {
-      console.error(`❌ [SCHEDULER] Failed to parse backend response: ${text.substring(0, 100)}...`);
       return NextResponse.json(
         {
           error: 'Invalid backend response',
@@ -78,13 +75,11 @@ async function proxyToBackend(
 
     // Log errors
     if (!response.ok) {
-      console.error(`❌ [SCHEDULER] Error ${response.status}:`, data);
     }
 
     // Return response with same status code
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error('❌ [SCHEDULER] Backend request failed:', error);
     return NextResponse.json(
       {
         error: 'Backend request failed',
@@ -136,7 +131,6 @@ export async function POST(
     // Body is optional or empty
   }
 
-  console.log(`📝 [SCHEDULER] POST body:`, body);
 
   return proxyToBackend('POST', path, body);
 }
@@ -154,7 +148,6 @@ export async function PUT(
   const path = params.path.join('/');
   const body = await request.json();
 
-  console.log(`📝 [SCHEDULER] PUT body:`, body);
 
   return proxyToBackend('PUT', path, body);
 }

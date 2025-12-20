@@ -55,7 +55,6 @@ async function fetchAPI<T>(
       const text = await response.text();
       // If we got HTML (likely a 404 or 500 error page from Next.js/Nginx)
       if (text.trim().startsWith('<')) {
-          console.error('API returned HTML instead of JSON:', text.substring(0, 100));
           throw new Error(`API Error: Endpoint returned HTML (Status ${response.status}). The service might be unavailable.`);
       }
       throw new Error(`Invalid response type: ${contentType}`);

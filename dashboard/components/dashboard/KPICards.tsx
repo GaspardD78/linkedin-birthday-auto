@@ -17,6 +17,10 @@ interface KPICard {
   }
 }
 
+interface ActivityDay {
+  messages: number
+}
+
 const colorClasses = {
   blue: {
     accent: 'bg-gradient-to-r from-blue-500 to-blue-600',
@@ -59,7 +63,6 @@ export function KPICards() {
         setError(null)
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
-        console.error("Failed to fetch stats", error)
         setError(errorMsg)
       }
     }
@@ -73,7 +76,7 @@ export function KPICards() {
           setUniqueContacts(data.contacts?.length || 0)
         }
       } catch (e) {
-        console.error("Failed to fetch contacts", e)
+        // Silently fail - contacts fetch is not critical
       }
     }
 
@@ -86,7 +89,7 @@ export function KPICards() {
           setErrorCount(data.history?.length || 0)
         }
       } catch (e) {
-        console.error("Failed to fetch errors", e)
+        // Silently fail - error count fetch is not critical
       }
     }
 
@@ -96,11 +99,11 @@ export function KPICards() {
         const res = await fetch('/api/history?days=7', { cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
-          const total = data.activity?.reduce((sum: number, day: any) => sum + (day.messages || 0), 0) || 0
+          const total = data.activity?.reduce((sum: number, day: ActivityDay) => sum + (day.messages || 0), 0) || 0
           setWeeklyMessages(total)
         }
       } catch (e) {
-        console.error("Failed to fetch weekly messages", e)
+        // Silently fail - weekly stats fetch is not critical
       }
     }
 
@@ -141,8 +144,8 @@ export function KPICards() {
         aria-label="Chargement des indicateurs clés"
         aria-busy="true"
       >
-        {Array(4).fill(0).map((_, index) => (
-          <Card key={index} className="bg-slate-900 border-slate-800 overflow-hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Card key={`skeleton-${index}`} className="bg-slate-900 border-slate-800 overflow-hidden">
             <CardContent className="p-6">
               <div className="h-4 bg-slate-700 rounded w-2/3 mb-4 animate-pulse"></div>
               <div className="h-8 bg-slate-700 rounded w-1/2 mb-2 animate-pulse"></div>
@@ -199,11 +202,11 @@ export function KPICards() {
 
   return (
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" aria-label="Indicateurs clés de performance">
-      {kpiCards.map((kpi, index) => {
+      {kpiCards.map((kpi) => {
         const colors = colorClasses[kpi.colorKey]
         return (
           <Card
-            key={index}
+            key={kpi.title}
             className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-300 hover:shadow-lg overflow-hidden group"
           >
             <CardContent className="p-6 relative">

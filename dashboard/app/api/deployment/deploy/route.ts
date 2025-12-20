@@ -16,7 +16,6 @@ export async function POST(request: Request) {
 
     const apiUrl = getApiUrl();
 
-    console.log('[DEPLOYMENT] Deploy action:', action, service);
 
     const response = await fetch(`${apiUrl}/deployment/deploy`, {
       method: 'POST',
@@ -26,16 +25,13 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[DEPLOYMENT] Deploy error:', response.status, errorText);
       return NextResponse.json({ error: errorText }, { status: response.status });
     }
 
     const data = await response.json();
-    console.log('[DEPLOYMENT] Deploy result:', data);
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[DEPLOYMENT] Deploy failed:', error);
     return NextResponse.json({
       error: 'Internal Server Error',
       details: error instanceof Error ? error.message : 'Unknown error'

@@ -42,7 +42,6 @@ export async function GET(request: Request) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`[CRM Activity] Backend returned ${response.status}: ${response.statusText}`);
       // Zero-Crash Policy: Retourner structure valide vide
       return NextResponse.json({
         events: [],
@@ -78,9 +77,7 @@ export async function GET(request: Request) {
 
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[CRM Activity] Timeout 3s exceeded (RPi4 protection)');
     } else {
-      console.error('[CRM Activity] Unexpected error:', error);
     }
 
     // Zero-Crash Policy: Structure par défaut

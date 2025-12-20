@@ -31,7 +31,6 @@ async function fetchWorkerStatus(): Promise<WorkerStatusData> {
     }
     return await response.json();
   } catch (error) {
-    console.error("Failed to fetch worker status:", error);
     return {
       status: 'inconnu',
       pending_tasks: 0,
@@ -59,7 +58,6 @@ export function PilotageOverview() {
         setSystemHealth(health)
         setWorkerStatus(worker)
       } catch (error) {
-        console.error("Failed to fetch overview data:", error)
       }
     }
 

@@ -42,7 +42,6 @@ export function LogsWidget() {
       const data = await response.json()
       setLogsConnected(data.connected)
     } catch (error) {
-      console.error("Failed to check logs status", error)
       setLogsConnected(false)
     }
   }
@@ -80,7 +79,6 @@ export function LogsWidget() {
         .map(parseLogLine)
       setParsedLogs(parsed)
     } catch (error) {
-      console.error("Failed to fetch logs", error)
       setLogs("❌ Error loading logs... Vérifiez que le bot est démarré.")
       setParsedLogs([])
     } finally {
@@ -274,7 +272,7 @@ export function LogsWidget() {
             <div className="space-y-1">
               {filteredLogs.map((log, index) => (
                 <div
-                  key={index}
+                  key={`log-${log.timestamp}-${log.level}-${index}`}
                   className="flex gap-2 py-1 px-2 rounded hover:bg-slate-800/50 transition-colors"
                 >
                   {/* Icône du niveau */}

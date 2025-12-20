@@ -19,7 +19,6 @@ export async function GET(
     }
 
     const targetUrl = `${apiUrl}/sourcing/campaigns/${params.id}`;
-    console.log(`[PROXY] Forwarding GET to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'GET',
@@ -42,7 +41,6 @@ export async function GET(
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Campaign Get Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)
@@ -68,7 +66,6 @@ export async function DELETE(
 
     const searchParams = request.nextUrl.searchParams.toString();
     const targetUrl = `${apiUrl}/sourcing/campaigns/${params.id}${searchParams ? `?${searchParams}` : ''}`;
-    console.log(`[PROXY] Forwarding DELETE to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'DELETE',
@@ -90,7 +87,6 @@ export async function DELETE(
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Campaign Delete Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

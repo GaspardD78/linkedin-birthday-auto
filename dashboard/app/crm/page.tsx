@@ -118,7 +118,6 @@ export default function CRMPage() {
         setStats(data)
       }
     } catch (err) {
-      console.error("Failed to load CRM stats:", err)
     }
   }, [])
 
@@ -168,7 +167,6 @@ export default function CRMPage() {
         setSelectedContact(data)
       }
     } catch (err) {
-      console.error("Failed to load contact detail:", err)
     } finally {
       setLoadingDetail(false)
     }

@@ -25,7 +25,6 @@ export function TopContactsWidget() {
           setContacts(data.contacts?.slice(0, 5) || [])
         }
       } catch (e) {
-        console.error("Failed to fetch top contacts", e)
       } finally {
         setLoading(false)
       }
@@ -71,8 +70,8 @@ export function TopContactsWidget() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {Array(5).fill(0).map((_, i) => (
-              <div key={i} className="flex items-center gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-slate-700"></div>
                 <div className="flex-1">
                   <div className="h-4 bg-slate-700 rounded w-3/4 mb-1"></div>
@@ -101,9 +100,9 @@ export function TopContactsWidget() {
           </div>
         ) : (
           <div className="space-y-3">
-            {contacts.map((contact, index) => (
+            {contacts.map((contact) => (
               <div
-                key={contact.id || index}
+                key={contact.id}
                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/50 transition-colors"
               >
                 {/* Avatar with initials */}

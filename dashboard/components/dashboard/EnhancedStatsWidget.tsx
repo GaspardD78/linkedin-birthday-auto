@@ -28,7 +28,6 @@ export function EnhancedStatsWidget() {
         setError(null)
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
-        console.error("Failed to fetch stats", error)
         setError(errorMsg)
       }
     }
@@ -42,7 +41,6 @@ export function EnhancedStatsWidget() {
           setUniqueContacts(data.contacts?.length || 0)
         }
       } catch (e) {
-        console.error("Failed to fetch contacts", e)
       }
     }
 
@@ -55,7 +53,6 @@ export function EnhancedStatsWidget() {
           setErrorCount(data.history?.length || 0)
         }
       } catch (e) {
-        console.error("Failed to fetch errors", e)
       }
     }
 
@@ -89,8 +86,8 @@ export function EnhancedStatsWidget() {
   if (!stats) {
     return (
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {Array(4).fill(0).map((_, index) => (
-          <Card key={index} className="bg-slate-900 border-slate-800 overflow-hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Card key={`skeleton-${index}`} className="bg-slate-900 border-slate-800 overflow-hidden">
             <CardContent className="p-6">
               <div className="h-4 bg-slate-700 rounded w-2/3 mb-4"></div>
               <div className="h-8 bg-slate-700 rounded w-1/2 mb-2"></div>
@@ -139,9 +136,9 @@ export function EnhancedStatsWidget() {
 
   return (
     <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-      {statCards.map((stat, index) => (
+      {statCards.map((stat) => (
         <Card
-          key={index}
+          key={stat.title}
           className={`bg-gradient-to-br ${stat.gradient} border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 overflow-hidden`}
         >
           <CardContent className="p-6 relative">

@@ -16,7 +16,6 @@ export function VisitorInsightsWidget() {
         const data = await getVisitorInsights(30) // Last 30 days
         setInsights(data)
       } catch (error) {
-        console.error("Failed to fetch visitor insights", error)
       } finally {
         setLoading(false)
       }

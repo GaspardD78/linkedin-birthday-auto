@@ -19,7 +19,6 @@ export async function POST(
     }
 
     const targetUrl = `${apiUrl}/sourcing/campaigns/${params.id}/stop`;
-    console.log(`[PROXY] Forwarding POST to: ${targetUrl}`);
 
     const response = await fetch(targetUrl, {
       method: 'POST',
@@ -41,7 +40,6 @@ export async function POST(
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('[PROXY] Campaign Stop Error:', error);
     return NextResponse.json({
       error: 'Internal Proxy Error',
       detail: error instanceof Error ? error.message : String(error)

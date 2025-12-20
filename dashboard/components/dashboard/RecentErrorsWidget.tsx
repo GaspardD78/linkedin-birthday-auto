@@ -28,8 +28,19 @@ interface ErrorEntry {
     source?: string
     action?: string
     url?: string
-    [key: string]: any
+    [key: string]: string | number | boolean | undefined
   }
+}
+
+interface HistoryError {
+  id?: number
+  timestamp?: string
+  type?: string
+  message?: string
+  details?: string
+  severity?: 'error' | 'warning' | 'critical'
+  stack?: string
+  context?: Record<string, unknown>
 }
 
 export function RecentErrorsWidget() {
@@ -44,7 +55,7 @@ export function RecentErrorsWidget() {
       if (res.ok) {
         const data = await res.json()
         // Transform history data to errors
-        const errorList = (data.history || []).slice(0, 10).map((item: any, index: number) => ({
+        const errorList = (data.history || []).slice(0, 10).map((item: HistoryError, index: number) => ({
           id: item.id || index,
           timestamp: item.timestamp || new Date().toISOString(),
           type: item.type || 'Unknown',
@@ -57,7 +68,6 @@ export function RecentErrorsWidget() {
         setErrors(errorList)
       }
     } catch (e) {
-      console.error("Failed to fetch errors", e)
     } finally {
       setLoading(false)
     }
@@ -139,8 +149,8 @@ ${error.context ? `\nContext: ${JSON.stringify(error.context, null, 2)}` : ''}
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {Array(3).fill(0).map((_, i) => (
-              <div key={i} className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="space-y-2">
                 <div className="h-4 bg-slate-700 rounded w-3/4"></div>
                 <div className="h-3 bg-slate-700 rounded w-full"></div>
               </div>
@@ -229,8 +239,8 @@ ${error.context ? `\nContext: ${JSON.stringify(error.context, null, 2)}` : ''}
       <CardContent>
         {loading ? (
           <div className="space-y-3">
-            {Array(3).fill(0).map((_, i) => (
-              <div key={i} className="space-y-2 p-3 rounded-lg bg-slate-800/30">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`loading-${i}`} className="space-y-2 p-3 rounded-lg bg-slate-800/30">
                 <div className="h-4 bg-slate-700 rounded w-3/4"></div>
                 <div className="h-3 bg-slate-700 rounded w-full"></div>
               </div>

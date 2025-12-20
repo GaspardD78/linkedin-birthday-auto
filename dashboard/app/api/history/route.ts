@@ -28,7 +28,6 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch activity history:', response.statusText);
       return NextResponse.json(
         { error: 'Bot API unreachable', detail: response.statusText },
         { status: 503 }
@@ -39,7 +38,6 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('Error fetching history:', error);
     return NextResponse.json(
       { error: 'Internal server error', detail: String(error) },
       { status: 500 }

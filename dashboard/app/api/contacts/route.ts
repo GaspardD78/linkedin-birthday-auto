@@ -48,7 +48,6 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[CRM Contacts] Backend returned ${response.status}: ${errorText}`);
       // Zero-Crash Policy: Retourner structure valide
       return NextResponse.json({
         contacts: [],
@@ -64,9 +63,7 @@ export async function GET(request: Request) {
 
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[CRM Contacts] Timeout 3s exceeded (RPi4 protection)');
     } else {
-      console.error('[CRM Contacts] Unexpected error:', error);
     }
 
     // Zero-Crash Policy: Structure par défaut

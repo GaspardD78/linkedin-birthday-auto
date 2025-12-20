@@ -45,7 +45,6 @@ export default function WebhooksPage() {
         setWebhooks(data.webhooks || [])
       }
     } catch (error) {
-      console.error('Failed to fetch webhooks:', error)
     } finally {
       setLoading(false)
     }

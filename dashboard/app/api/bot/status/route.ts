@@ -16,7 +16,6 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch bot status from API:', response.statusText);
       return NextResponse.json(
         {
           error: 'Bot API unreachable',
@@ -30,7 +29,6 @@ export async function GET() {
     return NextResponse.json(data);
 
   } catch (error) {
-    console.error('Error fetching bot status:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',

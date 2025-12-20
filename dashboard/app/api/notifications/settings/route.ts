@@ -26,7 +26,6 @@ export async function GET() {
       notify_on_cookies_expiry: true,
     })
   } catch (e) {
-    console.error('Failed to fetch notification settings:', e)
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
   }
 }
@@ -55,7 +54,6 @@ export async function PUT(req: Request) {
     // Settings can be stored in localStorage on the frontend for now
     return NextResponse.json({ success: true, message: 'Settings saved' })
   } catch (e) {
-    console.error('Failed to save notification settings:', e)
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })
   }
 }

@@ -17,7 +17,6 @@ export async function GET() {
     // Default empty webhooks if backend doesn't have this endpoint yet
     return NextResponse.json({ webhooks: [] })
   } catch (e) {
-    console.error('Failed to fetch webhooks:', e)
     return NextResponse.json({ error: 'Failed to fetch webhooks' }, { status: 500 })
   }
 }
@@ -45,7 +44,6 @@ export async function PUT(req: Request) {
     // If backend doesn't have this endpoint, just return success
     return NextResponse.json({ success: true, message: 'Webhooks saved' })
   } catch (e) {
-    console.error('Failed to save webhooks:', e)
     return NextResponse.json({ error: 'Failed to save webhooks' }, { status: 500 })
   }
 }

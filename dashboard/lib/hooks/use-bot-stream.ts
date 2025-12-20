@@ -36,19 +36,16 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
 
     // Création de la nouvelle connexion SSE
     const url = `/api/stream/events?service=${service}`;
-    console.log(`🔌 Connecting to EventStream: ${url}`);
 
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
 
     // Définir les handlers avec des références stables pour le nettoyage
     const handleOpen = () => {
-      console.log("✅ EventStream Connected");
       setConnected(true);
     };
 
     const handleError = (err: Event) => {
-      console.error("❌ EventStream Error:", err);
       setConnected(false);
       // EventSource tente de se reconnecter automatiquement
     };
@@ -70,7 +67,6 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
           return newLogs;
         });
       } catch (e) {
-        console.error("Error parsing log event:", e);
       }
     };
 
@@ -79,7 +75,6 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
         const data = JSON.parse(event.data);
         setStatus(data);
       } catch (e) {
-        console.error("Error parsing status event:", e);
       }
     };
 
@@ -90,7 +85,6 @@ export function useBotStream(service: string = 'worker'): UseBotStreamReturn {
     eventSource.addEventListener('status', handleStatus);
 
     return () => {
-      console.log("🔌 Closing EventStream - Removing listeners");
       // CRITIQUE: Supprimer les listeners AVANT de fermer pour éviter les fuites mémoire
       eventSource.removeEventListener('log', handleLog);
       eventSource.removeEventListener('status', handleStatus);

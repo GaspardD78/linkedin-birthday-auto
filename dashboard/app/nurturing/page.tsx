@@ -117,7 +117,6 @@ export default function NurturingPage() {
         setSelectedSegment(data)
       }
     } catch (err) {
-      console.error("Failed to load segment:", err)
     } finally {
       setLoadingSegment(false)
     }

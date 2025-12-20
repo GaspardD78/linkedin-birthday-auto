@@ -30,7 +30,6 @@ export function validateApiKey(): NextResponse | null {
   const apiKey = getApiKey();
 
   if (!apiKey) {
-    console.error('❌ [SECURITY] BOT_API_KEY environment variable is not set!');
     return NextResponse.json({
       error: 'Server configuration error',
       detail: 'BOT_API_KEY is required but not configured. Please set the environment variable.'

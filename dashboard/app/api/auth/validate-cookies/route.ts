@@ -43,7 +43,6 @@ export async function GET() {
     });
 
   } catch (error) {
-    console.error('[AUTH] Failed to validate cookies:', error);
 
     // Return a safe default instead of erroring
     return NextResponse.json({

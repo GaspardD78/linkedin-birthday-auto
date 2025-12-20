@@ -48,7 +48,6 @@ export default function NotificationsPage() {
         setSettings(data)
       }
     } catch (error) {
-      console.error('Failed to fetch notification settings:', error)
     } finally {
       setLoading(false)
     }
