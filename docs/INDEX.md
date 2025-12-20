@@ -18,7 +18,12 @@
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Spécifications techniques complètes
   - Architecture micro-services, bots détaillés, API routes, schéma base de données
-  - Pour comprendre le fonctionnement interne du système
+
+- **[SCHEDULER_API.md](SCHEDULER_API.md)** - Documentation API Scheduler (Jan 2025)
+  - Endpoints REST complets pour gérer les jobs
+  - Exemples requête/réponse JSON
+  - Authentification et rate limiting
+  - Voir aussi: [src/scheduler/README.md](../src/scheduler/README.md) pour l'architecture interne
 
 ---
 
