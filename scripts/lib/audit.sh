@@ -73,7 +73,7 @@ audit_security() {
     elif grep -q "^DASHBOARD_PASSWORD=\\\$\\\$2[abxy]\\\$" "$env_file" 2>/dev/null; then
         pwd_status=0
         pwd_msg="Hash bcrypt détecté (échappé)"
-    elif grep -q "^DASHBOARD_PASSWORD=\\\$6\\\$" "$env_file" 2>/dev/null; then
+    elif grep -q "^DASHBOARD_PASSWORD=\\\$\\\$6\\\$\\\$" "$env_file" 2>/dev/null; then
         pwd_status=1
         pwd_msg="SHA-512 (moins sécurisé que bcrypt)"
     elif grep -q "^DASHBOARD_PASSWORD=$\|CHANGEZ_MOI\|REPLACE_ME" "$env_file" 2>/dev/null; then
