@@ -354,8 +354,10 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
                 exit 1
             fi
 
-            # Hasher et stocker (sans sauvegarder le mot de passe en clair)
+            # Hasher et stocker
             if hash_and_store_password "$ENV_FILE" "$PASS_INPUT"; then
+                # Sauvegarder temporairement pour affichage dans le rapport
+                export SETUP_PASSWORD_PLAINTEXT="$PASS_INPUT"
                 setup_state_set_config "password_set" "true"
                 log_success "✓ Mot de passe configuré avec succès"
             else
@@ -773,10 +775,15 @@ DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2
 DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
 
 # Préparer l'affichage du mot de passe/hash
-# ✅ Le mot de passe en clair n'est jamais stocké (sécurité)
-PASSWORD_DISPLAY="${YELLOW}[configuré et sécurisé]${NC}"
-HASH_DISPLAY="${GREEN}[bcrypt, hash]${NC}"
-PASSWORD_NOTE="  ✓ ${GREEN}Mot de passe sécurisé par bcrypt${NC}"
+if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
+    PASSWORD_DISPLAY="${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
+    HASH_DISPLAY="${GREEN}${DASHBOARD_HASH}${NC}"
+    PASSWORD_NOTE="  ⚠️  ${YELLOW}SAUVEGARDEZ CES IDENTIFIANTS MAINTENANT !${NC}"
+else
+    PASSWORD_DISPLAY="${YELLOW}[configuré lors du setup]${NC}"
+    HASH_DISPLAY="${YELLOW}[voir .env]${NC}"
+    PASSWORD_NOTE=""
+fi
 
 cat <<EOF
 
@@ -827,5 +834,8 @@ ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ ${GREEN}Setup v4.0 réussi${NC} - Accédez au dashboard pour finaliser la configuration!
 
 EOF
+
+# Nettoyer le mot de passe en clair de la mémoire après affichage
+unset SETUP_PASSWORD_PLAINTEXT
 
 exit 0
