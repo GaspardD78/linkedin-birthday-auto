@@ -15,6 +15,7 @@ from playwright.sync_api import Locator
 from ..core.base_bot import BaseLinkedInBot, ContactData
 from ..core.database import get_database
 from ..monitoring.metrics import RUN_DURATION_SECONDS
+from ..monitoring.stats_writer import StatsWriter
 from ..services.notification_service import NotificationService
 from ..utils.exceptions import DailyLimitReachedError, MessageSendError, WeeklyLimitReachedError
 from ..utils.logging import get_logger
@@ -30,6 +31,7 @@ class BirthdayBot(BaseLinkedInBot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.db = None
+        self.stats_writer = StatsWriter(stats_dir=self.config.paths.logs_dir)
         self.run_stats = {
             "today_found": 0,
             "late_found": 0,
@@ -153,6 +155,17 @@ class BirthdayBot(BaseLinkedInBot):
             )
             logger.info("═" * 70)
 
+            # Record stats to JSON file
+            self.stats_writer.update_run(
+                status="success",
+                messages_sent=self.run_stats["sent"],
+                messages_failed=self.stats.get("errors", 0),
+                birthdays_today=self.run_stats["today_found"],
+                birthdays_late=self.run_stats["late_found"],
+                duration_seconds=duration,
+                errors=[]
+            )
+
             result = self._build_result(
                 messages_sent=self.run_stats["sent"],
                 contacts_processed=self.stats["contacts_processed"],
@@ -175,6 +188,17 @@ class BirthdayBot(BaseLinkedInBot):
             duration = time.time() - start_time
             error_message = str(e)
             logger.error(f"Fatal error in BirthdayBot: {error_message}", exc_info=True)
+
+            # Record error to JSON file
+            self.stats_writer.update_run(
+                status="failed",
+                messages_sent=self.run_stats["sent"],
+                messages_failed=self.stats.get("errors", 0),
+                birthdays_today=self.run_stats["today_found"],
+                birthdays_late=self.run_stats["late_found"],
+                duration_seconds=duration,
+                errors=[error_message]
+            )
 
             # Send error notification
             if notification_service:

@@ -405,85 +405,30 @@ services:
       - linkedin-network
 
   # ========================================
-  # MONITORING (Prometheus + Grafana)
+  # LOG VIEWER (Dozzle - remplace Prometheus/Grafana)
   # ========================================
-  prometheus:
-    image: prom/prometheus:v2.45.0
-    container_name: prometheus
-    profiles: ["monitoring"]
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 384M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
     restart: unless-stopped
-    networks:
-      - linkedin-network
-
-  grafana:
-    image: grafana/grafana:10.0.3
-    container_name: grafana
-    profiles: ["monitoring"]
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:?GRAFANA_USER must be set in .env file}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?GRAFANA_PASSWORD must be set in .env file}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-      # [FIX-C] Optimisations SQLite pour carte SD - évite "database is locked"
-      - GF_DATABASE_WAL=true
-      - GF_DATABASE_CACHE_MODE=shared
-      - GF_DATABASE_QUERY_RETRIES=3
     ports:
-      - "3001:3000"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-    restart: unless-stopped
-    # [FIX-D] DNS fiables forcés
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
-    networks:
-      - linkedin-network
-
-  node-exporter:
-    image: prom/node-exporter:v1.6.1
-    container_name: node-exporter
-    profiles: ["monitoring"]
-    command:
-      - '--path.rootfs=/host'
-    pid: host
-    restart: unless-stopped
+      - "8080:8080"
     volumes:
-      - '/:/host:ro,rslave'
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     deploy:
       resources:
         limits:
           cpus: '0.25'
-          memory: 32M
+          memory: 64M
         reservations:
           cpus: '0.1'
-          memory: 16M
+          memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+        compress: 'true'
     networks:
       - linkedin-network
 
@@ -495,11 +440,6 @@ volumes:
     name: linkedin-bot-redis-data
   redis-dashboard-data:
     name: linkedin-dashboard-redis-data
-  prometheus_data:
-    name: linkedin-prometheus-data
-  grafana_data:
-    name: linkedin-grafana-data
-  # shared-data removed in favor of ./data bind mount
 
 # ========================================
 # RÉSEAU INTERNE
