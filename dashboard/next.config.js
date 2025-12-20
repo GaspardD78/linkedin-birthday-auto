@@ -19,8 +19,11 @@ const nextConfig = {
   },
   experimental: {
     // Optimisations possibles pour build plus léger
-    optimizePackageImports: ['lucide-react', 'recharts'],
+    optimizePackageImports: ['lucide-react', 'recharts', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
   },
+  // Optimisations pour build time sur RPi4 avec peu de mémoire
+  swcMinify: true, // Utiliser SWC au lieu de Terser pour la minification (plus rapide)
+  compress: true, // Gzip compression côté serveur
   // REMOVED: Rewrite rule that was bypassing route handlers and their authentication
   // All API proxying is now handled by dedicated route handlers in app/api/*
   // which properly inject API keys for backend communication
@@ -64,7 +67,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+            value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none';"
           },
           {
             key: 'X-Robots-Tag',

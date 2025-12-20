@@ -78,12 +78,6 @@ async function get(url: string, headers: Record<string, string> = {}, responseTy
          throw new Error('Session expirée');
      }
      const error = await res.json().catch(() => ({ detail: res.statusText }));
-
-     // Resilience: On 404/502/503 during startup, return a handled error
-     // that widgets can catch and ignore instead of crashing.
-     if ([404, 502, 503].includes(res.status)) {
-     }
-
      throw new Error(error.detail || `Request failed: ${res.status}`);
   }
   return responseType === 'blob' ? res.blob() : res.json();

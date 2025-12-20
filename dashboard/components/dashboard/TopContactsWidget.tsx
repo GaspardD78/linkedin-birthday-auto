@@ -19,7 +19,9 @@ export function TopContactsWidget() {
   useEffect(() => {
     const fetchTopContacts = async () => {
       try {
-        const res = await fetch('/api/contacts?limit=5&sort=messages', { cache: 'no-store' })
+        const res = await fetch('/api/contacts?limit=5&sort=messages', {
+          credentials: 'same-origin'
+        })
         if (res.ok) {
           const data = await res.json()
           setContacts(data.contacts?.slice(0, 5) || [])

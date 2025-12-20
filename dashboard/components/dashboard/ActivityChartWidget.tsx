@@ -19,7 +19,9 @@ export function ActivityChartWidget() {
     const fetchActivityData = async () => {
       try {
         // Fetch activity for last 7 days from backend
-        const res = await fetch('/api/history?days=7', { cache: 'no-store' })
+        const res = await fetch('/api/history?days=7', {
+          credentials: 'same-origin'
+        })
 
         if (res.ok) {
           const historyData = await res.json()

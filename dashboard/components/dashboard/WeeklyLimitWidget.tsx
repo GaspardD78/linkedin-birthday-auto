@@ -15,7 +15,9 @@ export function WeeklyLimitWidget() {
     const fetchWeeklyStats = async () => {
       try {
         // Get stats from last 7 days
-        const res = await fetch('/api/stats', { cache: 'no-store' })
+        const res = await fetch('/api/stats', {
+          credentials: 'same-origin'
+        })
         if (res.ok) {
           const data = await res.json()
           // Use wishes_sent_week which returns messages from last 7 days
