@@ -148,6 +148,9 @@ services:
       - NODES=0
       - TASKS=0
       - SWARM=0
+      - TIMEOUT_CONNECT=50000
+      - TIMEOUT_CLIENT=50000
+      - TIMEOUT_SERVER=50000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     deploy:
@@ -257,6 +260,7 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - ./data:/app/data
+    stop_signal: SIGINT
     # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:
       resources:
