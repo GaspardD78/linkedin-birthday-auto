@@ -789,12 +789,12 @@ LOCAL_IP=$(
 DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
 DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
 
-# Préparer l'affichage du mot de passe/hash (masquer le mot de passe en clair)
+# Préparer l'affichage du mot de passe/hash
 if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
-    # NE PAS afficher le mot de passe en clair pour des raisons de sécurité
-    PASSWORD_DISPLAY="${GREEN}[Configuré - voir message ci-dessous]${NC}"
+    # Afficher le mot de passe en clair (RPi4 avec HTTPS sécurisé)
+    PASSWORD_DISPLAY="${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
     HASH_DISPLAY="${GREEN}${DASHBOARD_HASH}${NC}"
-    PASSWORD_NOTE="${BOLD}${RED}⚠️  MOT DE PASSE TEMPORAIRE (voir plus bas)${NC}"
+    PASSWORD_NOTE="${BOLD}${GREEN}✓ Mot de passe configuré${NC}"
 else
     PASSWORD_DISPLAY="${YELLOW}[configuré lors du setup]${NC}"
     HASH_DISPLAY="${YELLOW}[voir .env]${NC}"
@@ -851,25 +851,24 @@ ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━
 
 EOF
 
-# Afficher le mot de passe temporaire UNE SEULE FOIS en dehors du rapport principal
+# Afficher un rappel final avec les infos de connexion
 if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
     echo ""
-    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${RED}🔐 MOT DE PASSE DASHBOARD TEMPORAIRE (À NOTER IMMÉDIATEMENT)${NC}"
-    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}📝 IDENTIFIANTS DE CONNEXION DASHBOARD${NC}"
+    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo -e "  Utilisateur : ${BOLD}${GREEN}${DASHBOARD_USER}${NC}"
-    echo -e "  Mot de passe: ${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
+    echo -e "  URL                : ${GREEN}https://${DOMAIN}${NC}"
+    echo -e "  Utilisateur        : ${BOLD}${DASHBOARD_USER}${NC}"
+    echo -e "  Mot de passe       : ${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
     echo ""
-    echo -e "${YELLOW}⚠️  Ce mot de passe sera masqué après cette affichage${NC}"
-    echo -e "${YELLOW}⚠️  Sauvegardez-le maintenant ou utilisez:${NC}"
-    echo -e "  ./scripts/manage_dashboard_password.sh"
+    echo -e "${YELLOW}💾 Conseils:${NC}"
+    echo -e "  - Sauvegardez ces identifiants dans un gestionnaire de mots de passe"
+    echo -e "  - La connexion est sécurisée par HTTPS"
+    echo -e "  - Pour changer le mot de passe plus tard: ./scripts/manage_dashboard_password.sh"
     echo ""
-    echo -e "${BOLD}${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 fi
-
-# Nettoyer le mot de passe en clair de la mémoire après affichage
-unset SETUP_PASSWORD_PLAINTEXT
 
 exit 0
