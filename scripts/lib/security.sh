@@ -12,6 +12,7 @@ hash_and_store_password() {
     local env_file="$1"
     local password="$2"
 
+    # Validation du mot de passe
     if [[ -z "$password" ]]; then
         log_error "Mot de passe vide"
         return 1
@@ -19,133 +20,124 @@ hash_and_store_password() {
 
     local hashed_password=""
 
-    # STRATÉGIE 1: Utiliser une image Node.js légère officielle (ARM64-compatible)
-    # Cette méthode est la plus robuste pour Raspberry Pi 4
+    # -------------------------------------------------------------------------
+    # Script JS robuste (lecture STDIN, pas d'arguments CLI)
+    # Ce script lit le mot de passe depuis STDIN pour éviter tout problème
+    # d'échappement de caractères dans les arguments du shell.
+    # -------------------------------------------------------------------------
+    local js_script="
+    const fs = require('fs');
+    try {
+        const input = fs.readFileSync(0, 'utf-8').trim();
+        if (!input) process.exit(1);
+        const bcrypt = require('bcryptjs');
+        console.log(bcrypt.hashSync(input, 12));
+    } catch (e) {
+        console.error(e.message);
+        process.exit(1);
+    }
+    "
+
+    # STRATÉGIE 1: Node.js 20 Slim (Officiel, ARM64 compatible)
+    # L'utilisateur a explicitement demandé l'usage de node:20-slim.
+    # Cette méthode installe bcryptjs à la volée.
     if cmd_exists docker; then
-        log_info "Hashage via conteneur Docker Node.js (bcryptjs, ARM64)..."
+        log_info "Hashage sécurisé (Docker node:20-slim)..."
 
-        # Utiliser set +e pour gérer les erreurs sans tuer le script
-        set +e
+        set +e # Désactiver exit-on-error temporairement pour capturer l'échec
 
-        # Créer un script inline Node.js pour le hashage
-        # Le mot de passe est passé via stdin pour éviter sa visibilité dans 'ps'
-        local node_script='const bcrypt = require("bcryptjs");
-const readline = require("readline");
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (password) => {
-  const hash = bcrypt.hashSync(password.trim(), 12);
-  console.log(hash);
-  rl.close();
-});'
-
-        # Tenter le hashage avec image Node.js alpine (légère et compatible ARM64)
-        hashed_password=$(echo "$password" | docker run --rm -i \
+        # Exécution:
+        # 1. On passe le mot de passe via PIPE au conteneur (STDIN)
+        # 2. On passe le script JS via ENV (SCRIPT) pour éviter quoting hell dans sh -c
+        # 3. sh -c installe bcryptjs, écrit le script dans un fichier et l'exécute
+        local output
+        output=$(echo -n "$password" | docker run --rm -i \
             --platform linux/arm64 \
-            node:20-alpine \
-            sh -c 'npm install --silent bcryptjs >/dev/null 2>&1 && node -e "'"${node_script}"'"' \
-            2>/dev/null | head -n1 | tr -d '\n\r')
+            -e SCRIPT="$js_script" \
+            node:20-slim \
+            sh -c 'npm install --silent --no-save bcryptjs >/dev/null 2>&1 && echo "$SCRIPT" > /tmp/hash.js && node /tmp/hash.js' \
+            2>&1)
 
         local exit_code=$?
         set -e
 
-        if [[ $exit_code -eq 0 ]] && [[ -n "$hashed_password" ]] && [[ "$hashed_password" =~ ^\$2[abxy]\$ ]]; then
-            log_success "✓ Hash bcrypt généré via Docker (node:20-alpine ARM64)"
-        else
-            log_warn "Échec hashage Docker ARM64 (Code $exit_code). Tentative avec image dashboard..."
-            hashed_password=""
+        # Vérification: on cherche une ligne qui ressemble à un hash bcrypt ($2a$..., $2b$...)
+        if [[ $exit_code -eq 0 ]]; then
+            hashed_password=$(echo "$output" | grep -E '^\$2[abxy]\$' | head -n1 || true)
         fi
-    fi
-
-    # STRATÉGIE 2: Fallback sur l'image dashboard (avec spécification ARM64)
-    if [[ -z "$hashed_password" ]] && cmd_exists docker; then
-        set +e
-
-        # Vérifier si image dashboard existe, sinon la tirer
-        if ! docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
-            log_info "Téléchargement de l'image dashboard (première utilisation)..."
-            docker pull --platform linux/arm64 ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest 2>/dev/null || log_warn "Image dashboard non disponible"
-        fi
-
-        # Essayer le hashage via l'image dashboard
-        if docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
-            log_info "Hashage via conteneur dashboard (bcryptjs)..."
-
-            # Passer le mot de passe via variable d'environnement (plus sécurisé qu'argument)
-            hashed_password=$(docker run --rm \
-                --platform linux/arm64 \
-                --entrypoint node \
-                -e PWD_INPUT="$password" \
-                ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-                -e "console.log(require('bcryptjs').hashSync(process.env.PWD_INPUT, 12))" \
-                2>/dev/null | head -n1 | tr -d '\n\r')
-
-            local exit_code=$?
-            set -e
-
-            if [[ $exit_code -eq 0 ]] && [[ -n "$hashed_password" ]] && [[ "$hashed_password" =~ ^\$2[abxy]\$ ]]; then
-                log_success "✓ Hash bcrypt généré via image dashboard"
-            else
-                log_warn "Échec hashage via dashboard (Code $exit_code). Tentative de fallback..."
-                hashed_password=""
-            fi
-        fi
-
-        set -e
-    fi
-
-    # STRATÉGIE 2: Fallback sur htpasswd avec bcrypt (si disponible sur l'hôte)
-    if [[ -z "$hashed_password" ]] && cmd_exists htpasswd; then
-        log_info "Fallback: hashage via htpasswd (bcrypt)..."
-
-        # htpasswd -nbB génère un hash bcrypt
-        local htpasswd_output
-        htpasswd_output=$(htpasswd -nbB dummy "$password" 2>/dev/null)
-
-        if [[ -n "$htpasswd_output" ]]; then
-            # Format: dummy:$2y$05$... → on extrait juste le hash
-            hashed_password=$(echo "$htpasswd_output" | cut -d':' -f2)
-            log_success "✓ Hash généré via htpasswd"
-        fi
-    fi
-
-    # STRATÉGIE 3: Fallback sur OpenSSL SHA-512 (compatible Unix)
-    # Note: Ce n'est PAS bcrypt, mais le dashboard accepte ce format en fallback
-    if [[ -z "$hashed_password" ]] && cmd_exists openssl; then
-        log_warn "Fallback: hashage via OpenSSL (SHA-512, moins sécurisé que bcrypt)..."
-
-        # Générer un hash SHA-512 avec salt
-        hashed_password=$(openssl passwd -6 "$password" 2>/dev/null)
 
         if [[ -n "$hashed_password" ]]; then
-            log_warn "⚠️  Hash SHA-512 utilisé (pas bcrypt). Considérez installer Docker pour bcrypt."
+            log_success "✓ Hash généré via node:20-slim"
+        else
+            # Diagnostic: Afficher les 100 premiers chars de l'erreur pour aider le debug
+            log_warn "Échec node:20-slim. Erreur: ${output:0:150}..."
+
+            # STRATÉGIE 2: Image Dashboard (bcryptjs pré-installé)
+            # Utile si npm install échoue (pas d'internet, etc.)
+            log_info "Tentative via image Dashboard (fallback)..."
+
+            # Pull silencieux si nécessaire
+            if ! docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1; then
+                docker pull --platform linux/arm64 ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1 || true
+            fi
+
+            set +e
+            output=$(echo -n "$password" | docker run --rm -i \
+                --platform linux/arm64 \
+                -w /app \
+                -e SCRIPT="$js_script" \
+                ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
+                sh -c 'echo "$SCRIPT" > /tmp/hash.js && node /tmp/hash.js' \
+                2>&1)
+            exit_code=$?
+            set -e
+
+            if [[ $exit_code -eq 0 ]]; then
+                hashed_password=$(echo "$output" | grep -E '^\$2[abxy]\$' | head -n1 || true)
+            fi
+
+            if [[ -n "$hashed_password" ]]; then
+                log_success "✓ Hash généré via Dashboard"
+            else
+                log_error "Échec critique du hashage Docker."
+                log_error "Détails erreur: $output"
+                hashed_password="" # Ensure empty so we fall through
+            fi
         fi
     fi
 
+    # STRATÉGIE 3: Fallback local (htpasswd)
+    if [[ -z "$hashed_password" ]] && cmd_exists htpasswd; then
+        log_info "Fallback: hashage via htpasswd (bcrypt)..."
+        local htpasswd_output
+        htpasswd_output=$(htpasswd -nbB dummy "$password" 2>/dev/null)
+        hashed_password=$(echo "$htpasswd_output" | cut -d':' -f2)
+    fi
+
+    # Check final failure
     if [[ -z "$hashed_password" ]]; then
-        log_error "Impossible de hasher le mot de passe (aucune méthode disponible)"
-        log_error "Solutions:"
-        log_error "  1. Installez Docker: sudo apt install docker.io"
-        log_error "  2. Installez htpasswd: sudo apt install apache2-utils"
+        log_error "Impossible de hasher le mot de passe (aucune méthode disponible)."
         return 1
     fi
 
-    # CRITIQUE: Doubler les $ pour Docker Compose et shells
-    # $2b$12$abc... → $$2b$$12$$abc...
-    local doubled_hash
-    doubled_hash="${hashed_password//\$/\$\$}"
+    # -------------------------------------------------------------------------
+    # CRITIQUE: Échappement Docker Compose ($ -> $$)
+    # Le hash doit avoir ses $ doublés pour ne pas être interpolé par Docker Compose.
+    # Ex: $2b$12$... -> $$2b$$12$$...
+    # -------------------------------------------------------------------------
+    local doubled_hash="${hashed_password//\$/\$\$}"
 
-    # Échapper les caractères spéciaux pour sed (/ et & et |)
-    local escaped_hash
-    escaped_hash=$(printf '%s\n' "$doubled_hash" | sed 's:[\/&|]:\\&:g')
+    # Échapper pour sed (délimiteurs / & |)
+    local safe_val=$(printf '%s\n' "$doubled_hash" | sed 's:[&/|]:\\&:g')
 
-    # Remplacer dans le fichier .env
+    # Mise à jour du fichier .env
     if grep -q "^DASHBOARD_PASSWORD=" "$env_file"; then
-        sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${escaped_hash}|" "$env_file"
+        sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${safe_val}|" "$env_file"
     else
-        echo "DASHBOARD_PASSWORD=${escaped_hash}" >> "$env_file"
+        echo "DASHBOARD_PASSWORD=${safe_val}" >> "$env_file"
     fi
 
-    log_success "✓ Mot de passe hashé et stocké dans $env_file"
+    log_success "✓ Mot de passe hashé et sécurisé ($$)"
     return 0
 }
 
@@ -153,13 +145,11 @@ rl.on("line", (password) => {
 
 generate_api_key() {
     # Générer une clé API robuste (32 bytes aléatoires en base64)
-    # tr -d '\n' pour s'assurer que c'est sur une seule ligne
     { openssl rand -base64 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(32))"; } | tr -d '\n'
 }
 
 generate_jwt_secret() {
     # Générer un secret JWT robuste (64 bytes aléatoires en base64)
-    # tr -d '\n' pour s'assurer que c'est sur une seule ligne
     { openssl rand -base64 64 2>/dev/null || python3 -c "import secrets; print(secrets.token_urlsafe(64))"; } | tr -d '\n'
 }
 
