@@ -357,7 +357,7 @@ export default function SourcingPage() {
       })
       if (res.ok) loadCampaigns()
     } catch (err) {
-      setError("Erreur lors de l'arrêt")
+      setError("Erreur lors de l&apos;arrêt")
     }
   }
 
@@ -414,7 +414,7 @@ export default function SourcingPage() {
       a.remove()
 
     } catch (err) {
-      setError("Erreur lors de l'export CSV")
+      setError("Erreur lors de l&apos;export CSV")
     } finally {
       setExporting(false)
     }
@@ -901,7 +901,7 @@ export default function SourcingPage() {
                 className="bg-slate-800 border-slate-700 text-white"
               />
               <p className="text-xs text-slate-500">
-                Utilisez | pour OR (AWS|Azure), - pour exclure (-junior), " " pour phrases exactes
+                Utilisez | pour OR (AWS|Azure), - pour exclure (-junior), &quot; &quot; pour phrases exactes
               </p>
             </div>
 
@@ -956,7 +956,7 @@ export default function SourcingPage() {
             <div className="grid grid-cols-2 gap-4">
               {/* Years Experience */}
               <div className="space-y-2">
-                <Label className="text-slate-300">Années d'expérience</Label>
+                <Label className="text-slate-300">Années d&apos;expérience</Label>
                 <div className="flex gap-2">
                   <Input
                     type="number"

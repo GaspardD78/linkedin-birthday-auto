@@ -10,6 +10,11 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes logic
   if (!payload) {
+    // Si déjà sur /login, ne pas rediriger (évite boucle infinie)
+    if (request.nextUrl.pathname.startsWith("/login")) {
+      return NextResponse.next();
+    }
+
     const loginUrl = new URL("/login", request.url);
     // Redirect to login if trying to access protected route
     return NextResponse.redirect(loginUrl);

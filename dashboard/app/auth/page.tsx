@@ -71,7 +71,7 @@ export default function AuthPage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight mb-2">Connexion LinkedIn</h1>
           <p className="text-muted-foreground">
-            Importez votre session active pour permettre au bot d'agir en votre nom.
+            Importez votre session active pour permettre au bot d&apos;agir en votre nom.
           </p>
         </div>
       </div>

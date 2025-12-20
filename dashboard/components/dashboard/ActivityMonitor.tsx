@@ -156,7 +156,7 @@ export function ActivityMonitor() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold text-slate-200 flex items-center gap-2">
             <Activity className="h-5 w-5 text-cyan-500" />
-            Monitoring d'Activité
+            Monitoring d&apos;Activité
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-slate-700 text-slate-400">

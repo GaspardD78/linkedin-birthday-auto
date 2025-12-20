@@ -111,7 +111,7 @@ export default function BlacklistPage() {
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.detail || "Erreur lors de l'ajout")
+        throw new Error(data.detail || "Erreur lors de l&apos;ajout")
       }
 
       setSuccess("Contact ajouté à la blacklist")
@@ -401,8 +401,8 @@ export default function BlacklistPage() {
             <div>
               <p className="text-sm text-slate-300 font-medium">Comment fonctionne la blacklist ?</p>
               <p className="text-xs text-slate-500 mt-1">
-                Les contacts dans cette liste seront automatiquement ignorés lors de l'envoi de messages d'anniversaire.
-                Utilisez cette fonctionnalité pour exclure des concurrents, d'anciens collègues ou toute personne
+                Les contacts dans cette liste seront automatiquement ignorés lors de l&apos;envoi de messages d&apos;anniversaire.
+                Utilisez cette fonctionnalité pour exclure des concurrents, d&apos;anciens collègues ou toute personne
                 que vous ne souhaitez pas contacter automatiquement.
               </p>
             </div>
@@ -487,7 +487,7 @@ export default function BlacklistPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit2 className="h-5 w-5 text-blue-400" />
-              Modifier l'entrée
+              Modifier l&apos;entrée
             </DialogTitle>
             <DialogDescription className="text-slate-400">
               Modifiez les informations de ce contact dans la blacklist.

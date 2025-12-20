@@ -15,7 +15,7 @@ export default function MessagesPage() {
       id: 1,
       recipient: "Jean Dupont",
       role: "CTO @ TechCorp",
-      message: "Bonjour Jean, j'ai vu votre profil et...",
+      message: "Bonjour Jean, j&apos;ai vu votre profil et...",
       status: "sent",
       time: "10:30 AM",
       date: "Today"
@@ -24,7 +24,7 @@ export default function MessagesPage() {
       id: 2,
       recipient: "Marie Martin",
       role: "HR Director @ StartupFlow",
-      message: "Joyeux anniversaire Marie ! J'espère que...",
+      message: "Joyeux anniversaire Marie ! J&apos;espère que...",
       status: "queued",
       time: "11:00 AM",
       date: "Today"

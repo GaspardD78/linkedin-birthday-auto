@@ -62,7 +62,7 @@ export function KPICards() {
         setStats(data)
         setError(null)
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l'API"
+        const errorMsg = error instanceof Error ? error.message : "Échec de connexion à l&apos;API"
         setError(errorMsg)
       }
     }
@@ -167,7 +167,7 @@ export function KPICards() {
     {
       title: "Messages Envoyés",
       value: stats.wishes_sent_total.toString(),
-      subtitle: `+${stats.wishes_sent_today} aujourd'hui`,
+      subtitle: `+${stats.wishes_sent_today} aujourd&apos;hui`,
       icon: Mail,
       colorKey: "blue",
       trend: stats.wishes_sent_today > 0 ? {
@@ -178,7 +178,7 @@ export function KPICards() {
     {
       title: "Profils Visités",
       value: stats.profiles_visited_total.toString(),
-      subtitle: `+${stats.profiles_visited_today} aujourd'hui`,
+      subtitle: `+${stats.profiles_visited_today} aujourd&apos;hui`,
       icon: Eye,
       colorKey: "emerald",
       trend: stats.profiles_visited_today > 0 ? {

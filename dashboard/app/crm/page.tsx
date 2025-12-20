@@ -157,7 +157,7 @@ export default function CRMPage() {
     }
   }, [page, perPage, sortBy, sortOrder, search])
 
-  // Chargement du détail d'un contact
+  // Chargement du détail d&apos;un contact
   const loadContactDetail = async (contactName: string) => {
     setLoadingDetail(true)
     try {
@@ -193,7 +193,7 @@ export default function CRMPage() {
     const now = new Date()
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
 
-    if (diffDays === 0) return "Aujourd'hui"
+    if (diffDays === 0) return "Aujourd&apos;hui"
     if (diffDays === 1) return "Hier"
     if (diffDays < 7) return `Il y a ${diffDays} jours`
     if (diffDays < 30) return `Il y a ${Math.floor(diffDays / 7)} semaine(s)`
@@ -492,7 +492,7 @@ export default function CRMPage() {
                 <div>
                   <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
                     <Gift className="h-4 w-4 text-pink-400" />
-                    Messages d'anniversaire
+                    Messages d&apos;anniversaire
                   </h3>
                   {selectedContact.messages.length === 0 ? (
                     <p className="text-slate-400 text-sm">Aucun message</p>

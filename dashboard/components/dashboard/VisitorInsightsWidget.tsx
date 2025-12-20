@@ -53,7 +53,7 @@ export function VisitorInsightsWidget() {
             <div className="text-4xl font-bold text-white">{insights.avg_fit_score}</div>
             <div className="flex-1 space-y-1">
                 <Progress value={insights.avg_fit_score} className="h-2 bg-slate-800" />
-                <p className="text-xs text-slate-500">Target: > 70</p>
+                <p className="text-xs text-slate-500">Target: &gt; 70</p>
             </div>
           </div>
         </CardContent>

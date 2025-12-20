@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    // Met à jour l'état pour afficher le fallback UI au prochain render
+    // Met à jour l&apos;état pour afficher le fallback UI au prochain render
     return {
       hasError: true,
       error,
@@ -42,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    // Logger l'erreur
+    // Logger l&apos;erreur
 
     // Appeler le callback onError si fourni
     if (this.props.onError) {
@@ -59,7 +59,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      // Si un fallback personnalisé est fourni, l'utiliser
+      // Si un fallback personnalisé est fourni, l&apos;utiliser
       if (this.props.fallback) {
         return this.props.fallback;
       }
@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 Une erreur est survenue
               </h2>
               <p className="max-w-md text-sm text-red-700 dark:text-red-300">
-                {this.state.error?.message || "Une erreur inattendue s'est produite"}
+                {this.state.error?.message || "Une erreur inattendue s&apos;est produite"}
               </p>
             </div>
 
@@ -92,7 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="mt-4 w-full max-w-2xl text-left">
                 <summary className="cursor-pointer text-sm font-medium text-red-700 dark:text-red-300">
-                  Détails de l'erreur (dev only)
+                  Détails de l&apos;erreur (dev only)
                 </summary>
                 <pre className="mt-2 overflow-auto rounded-lg bg-red-100 p-4 text-xs text-red-900 dark:bg-red-900 dark:text-red-100">
                   {this.state.error.stack}

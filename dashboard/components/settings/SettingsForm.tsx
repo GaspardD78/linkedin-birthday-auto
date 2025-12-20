@@ -84,7 +84,7 @@ export function SettingsForm() {
           }))
           setError(null)
       } catch (e) {
-          // If YAML is invalid, we don't update the object state, letting the user fix it in the YAML tab
+          // If YAML is invalid, we don&apos;t update the object state, letting the user fix it in the YAML tab
           setError("Syntaxe YAML invalide. Corrigez-la avant de revenir au mode visuel.")
       }
   }
@@ -155,7 +155,7 @@ export function SettingsForm() {
     let current: any = newConfig
 
     for (let i = 0; i < path.length - 1; i++) {
-        // Create path if it doesn't exist (safety for optional fields)
+        // Create path if it doesn&apos;t exist (safety for optional fields)
         if (current[path[i]] === undefined) {
              current[path[i]] = {}
         }

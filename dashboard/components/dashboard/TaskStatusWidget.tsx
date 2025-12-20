@@ -31,7 +31,7 @@ export function TaskStatusWidget() {
       // Get last log line
       const logs = await getLogs(1) // Fetch only 1 line if API supports it, or fetch minimal
       // The current getLogs implementation might fetch all, so we take the last one.
-      // Optimization: In a real scenario, we'd want an API endpoint for just the last log.
+      // Optimization: In a real scenario, we&apos;d want an API endpoint for just the last log.
       // For now, we use existing getLogs.
       if (logs && logs.length > 0) {
         const entry = logs[logs.length - 1]

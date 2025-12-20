@@ -15,9 +15,13 @@ export async function POST(request: NextRequest) {
       const response = NextResponse.json({ success: true });
 
       // Set cookie
+      // Sécurité du cookie: Secure par défaut en production
+      const isProduction = process.env.NODE_ENV === "production";
+      const isSecure = process.env.SECURE_COOKIES === "true" || isProduction;
+
       response.cookies.set("session", token, {
         httpOnly: true,
-        secure: process.env.SECURE_COOKIES === "true",
+        secure: isSecure,
         sameSite: "lax",
         path: "/",
         maxAge: 60 * 60 * 24, // 24 hours

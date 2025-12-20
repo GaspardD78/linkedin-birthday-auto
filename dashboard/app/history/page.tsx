@@ -77,7 +77,7 @@ export default function HistoryPage() {
       {/* Navigation */}
       <PageNavigation
         title="Historique & Statistiques"
-        description="Suivi détaillé de l'activité quotidienne sur 30 jours"
+        description="Suivi détaillé de l&apos;activité quotidienne sur 30 jours"
         showBackButton={false}
       />
 
@@ -94,7 +94,7 @@ export default function HistoryPage() {
 
         <Card className="bg-slate-900 border-slate-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-400">À l'heure</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-400">À l&apos;heure</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-500">{stats.totalOnTime}</div>
@@ -160,7 +160,7 @@ export default function HistoryPage() {
                       ✉️ Messages Totaux
                     </th>
                     <th className="text-center py-3 px-4 text-sm font-semibold text-slate-300">
-                      ✅ À l'heure
+                      ✅ À l&apos;heure
                     </th>
                     <th className="text-center py-3 px-4 text-sm font-semibold text-slate-300">
                       ⏰ En retard

@@ -107,7 +107,7 @@ export default function TerminalPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Terminal Web</h1>
         <p className="text-muted-foreground mt-2">
-          Console d'urgence pour exécuter des commandes système.
+          Console d&apos;urgence pour exécuter des commandes système.
         </p>
       </div>
 
@@ -118,10 +118,10 @@ export default function TerminalPage() {
           <div>
             <h3 className="text-sm font-semibold text-amber-500 mb-2">⚠️ Utilisation Avancée</h3>
             <ul className="text-xs text-amber-200/80 space-y-1 list-disc list-inside">
-              <li>Ce terminal est réservé aux cas d'urgence</li>
+              <li>Ce terminal est réservé aux cas d&apos;urgence</li>
               <li>Seules certaines commandes prédéfinies sont autorisées pour des raisons de sécurité</li>
               <li>Toutes les commandes sont enregistrées dans les logs</li>
-              <li>Privilégiez l'interface graphique pour les opérations courantes</li>
+              <li>Privilégiez l&apos;interface graphique pour les opérations courantes</li>
             </ul>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default function TerminalPage() {
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
           <CardTitle className="text-lg">Commandes Rapides</CardTitle>
-          <CardDescription>Cliquez sur une commande pour l'exécuter</CardDescription>
+          <CardDescription>Cliquez sur une commande pour l&apos;exécuter</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -245,7 +245,7 @@ export default function TerminalPage() {
           {/* Help */}
           <div className="text-xs text-slate-500">
             <p><strong>Commandes disponibles :</strong> {predefinedCommands.map(c => c.cmd).join(', ')}</p>
-            <p className="mt-1">Tapez <code className="text-cyan-400">help</code> pour plus d'informations</p>
+            <p className="mt-1">Tapez <code className="text-cyan-400">help</code> pour plus d&apos;informations</p>
           </div>
         </CardContent>
       </Card>

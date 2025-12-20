@@ -61,7 +61,7 @@ export function BotControlsWidget() {
     try {
       if (type === 'birthday') {
         // Mode Standard: Respecte la configuration (process_today/late selon config)
-        // Mais ici, le bouton s'appelle "Bot Anniversaires" (Jour uniquement selon description)
+        // Mais ici, le bouton s&apos;appelle "Bot Anniversaires" (Jour uniquement selon description)
         // On force processLate: false pour être cohérent avec le bouton UI
         await startBot({ dryRun, processLate: false })
       } else if (type === 'unlimited') {
@@ -69,7 +69,7 @@ export function BotControlsWidget() {
         await startBot({ dryRun, processLate: true })
       } else if (type === 'visitor') {
         // Mode Visiteur: Utilise la configuration du fichier config.yaml par défaut,
-        // ou la limite spécifiée par l'utilisateur.
+        // ou la limite spécifiée par l&apos;utilisateur.
         const limit = visitorLimit ? parseInt(visitorLimit, 10) : undefined
         await startVisitorBot({ dryRun, limit })
       }
@@ -168,7 +168,7 @@ export function BotControlsWidget() {
               size="sm"
               onClick={() => handleStop(type === 'unlimited' ? 'birthday' : type, activeJobId)}
               disabled={loading === stopKey}
-              aria-label={`Arrêt d'urgence ${title}`}
+              aria-label={`Arrêt d&apos;urgence ${title}`}
             >
               {loading === stopKey ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />

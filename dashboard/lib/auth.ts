@@ -56,11 +56,14 @@ export function validateUserCredentials(username: string, password: string): boo
   const DEFAULT_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
   if (!DEFAULT_USER || !DEFAULT_PASSWORD) {
+    console.error('❌ [SECURITY CRITICAL] DASHBOARD_USER and/or DASHBOARD_PASSWORD environment variables are missing.');
     throw new Error('❌ [SECURITY] DASHBOARD_USER and DASHBOARD_PASSWORD environment variables are required but not set! Please configure them in your .env file.');
   }
 
   // Vérifier username d'abord (évite timing attack sur password si username invalide)
   if (username !== DEFAULT_USER) {
+    // Log discret pour debug (pas de mot de passe)
+    console.warn(`[AUTH] Echec connexion: utilisateur inconnu '${username}'`);
     return false;
   }
 

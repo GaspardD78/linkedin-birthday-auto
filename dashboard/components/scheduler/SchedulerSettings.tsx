@@ -49,7 +49,7 @@ export function SchedulerSettings() {
                     Automatisation des Bots
                   </CardTitle>
                   <CardDescription className="mt-2">
-                    Planifiez l'exécution automatique de vos bots Birthday et Visitor.
+                    Planifiez l&apos;exécution automatique de vos bots Birthday et Visitor.
                     Créez des jobs récurrents avec des horaires personnalisés.
                   </CardDescription>
                 </div>

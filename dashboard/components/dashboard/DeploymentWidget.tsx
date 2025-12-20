@@ -348,7 +348,7 @@ export function DeploymentWidget() {
               Git Pull (Mise à jour)
             </Button>
             <div className="text-xs text-slate-500 text-center pt-1">
-              ⚠️ Les actions rebuild/restart doivent être exécutées depuis l'hôte Docker
+              ⚠️ Les actions rebuild/restart doivent être exécutées depuis l&apos;hôte Docker
             </div>
           </div>
         </div>

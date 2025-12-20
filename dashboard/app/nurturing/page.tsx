@@ -107,7 +107,7 @@ export default function NurturingPage() {
     }
   }, [])
 
-  // Chargement d'un segment
+  // Chargement d&apos;un segment
   const loadSegmentDetail = async (segmentType: string) => {
     setLoadingSegment(true)
     try {
@@ -154,7 +154,7 @@ export default function NurturingPage() {
     const now = new Date()
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
 
-    if (diffDays === 0) return "Aujourd'hui"
+    if (diffDays === 0) return "Aujourd&apos;hui"
     if (diffDays === 1) return "Hier"
     if (diffDays < 7) return `Il y a ${diffDays} jours`
     if (diffDays < 30) return `Il y a ${Math.floor(diffDays / 7)} semaine(s)`
@@ -280,7 +280,7 @@ export default function NurturingPage() {
             <div className="bg-slate-800 p-4 rounded-lg">
               <h4 className="text-emerald-400 font-medium mb-2">Contacts inactifs</h4>
               <p className="text-slate-400">
-                Réactivez les contacts dormants avec un message d'anniversaire ou une visite de profil.
+                Réactivez les contacts dormants avec un message d&apos;anniversaire ou une visite de profil.
               </p>
             </div>
             <div className="bg-slate-800 p-4 rounded-lg">
