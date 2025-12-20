@@ -299,5 +299,33 @@ async def get_logs(lines: int = 100, service: str = "all"):
         logger.error(f"Error reading logs: {e}")
         return {"logs": [], "error": str(e)}
 
+# --- Bot Stats ---
+
+@app.get("/stats", tags=["Bot Stats"])
+async def get_bot_stats():
+    """Récupère les statistiques d'exécution du bot (JSON file)"""
+    stats_file = "logs/bot_stats.json"
+
+    if not os.path.exists(stats_file):
+        return {
+            "last_run": None,
+            "status": "pending",
+            "messages_sent": 0,
+            "messages_failed": 0,
+            "birthdays_today": 0,
+            "birthdays_late": 0,
+            "duration_seconds": 0,
+            "errors": [],
+            "created_at": None
+        }
+
+    try:
+        with open(stats_file, "r") as f:
+            stats = json.load(f)
+        return stats
+    except Exception as e:
+        logger.error(f"Error reading stats file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read stats file")
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
