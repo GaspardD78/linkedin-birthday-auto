@@ -470,22 +470,17 @@ log_step "PHASE 5: Configuration HTTPS"
 CERT_DIR="certbot/conf/live/${DOMAIN}"
 mkdir -p "$CERT_DIR"
 
-choice=$(prompt_menu "Scénario HTTPS" \
-    "🏠 LAN uniquement (HTTP, pas HTTPS)" \
-    "🌐 Domaine avec Let's Encrypt (production)" \
+choice=$(prompt_menu "Scénario HTTPS (RPi4 - Exposition HTTPS)" \
+    "🌐 Domaine avec Let's Encrypt (production - recommandé)" \
     "🔒 Certificats existants (import)" \
     "⚙️  Configuration manuelle (plus tard)")
 
 case "$choice" in
     1)
-        HTTPS_MODE="lan"
-        log_warn "HTTPS désactivé (LAN uniquement)"
-        ;;
-    2)
         HTTPS_MODE="letsencrypt"
         log_info "Let's Encrypt sera configuré avec: ./scripts/setup_letsencrypt.sh"
         ;;
-    3)
+    2)
         log_step "Import de Certificats Existants"
 
         # Fonction de validation certificat PEM
@@ -541,7 +536,7 @@ case "$choice" in
         HTTPS_MODE="existing"
         log_success "✓ Certificats importés avec succès"
         ;;
-    4)
+    3)
         HTTPS_MODE="manual"
         log_warn "Configuration HTTPS manuelle sélectionnée"
         ;;

@@ -21,17 +21,26 @@ hash_and_store_password() {
 
     # STRATÉGIE 1: Utiliser le script Node.js du dashboard (via conteneur Docker)
     # C'est la méthode la plus propre car elle réutilise le code existant
-    if cmd_exists docker && docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
-        log_info "Hashage via conteneur Docker (bcryptjs)..."
+    if cmd_exists docker; then
+        # Vérifier si image existe, sinon la tirer
+        if ! docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
+            log_info "Téléchargement de l'image Docker (première utilisation)..."
+            docker pull ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest 2>/dev/null || log_warn "Impossible de tirer l'image Docker"
+        fi
 
-        # Lancer conteneur éphémère avec le script hash_password.js
-        hashed_password=$(echo -n "$password" | docker run --rm -i \
-            --entrypoint node \
-            ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
-            /app/scripts/hash_password.js --quiet 2>/dev/null | head -n1)
+        # Essayer le hashage via Docker
+        if docker image inspect ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest &>/dev/null; then
+            log_info "Hashage via conteneur Docker (bcryptjs)..."
 
-        if [[ -n "$hashed_password" ]]; then
-            log_success "✓ Hash généré via conteneur Docker"
+            # Lancer conteneur éphémère avec le script hash_password.js
+            hashed_password=$(echo -n "$password" | docker run --rm -i \
+                --entrypoint node \
+                ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest \
+                /app/scripts/hash_password.js --quiet 2>/dev/null | head -n1)
+
+            if [[ -n "$hashed_password" ]]; then
+                log_success "✓ Hash généré via conteneur Docker"
+            fi
         fi
     fi
 
