@@ -1,26 +1,29 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# LINKEDIN AUTO RPi4 - SETUP SCRIPT (V4.0 - HYBRID ARCHITECTURE)
+# LINKEDIN AUTO RPi4 - SUPER ORCHESTRATEUR v5.0
 # ═══════════════════════════════════════════════════════════════════════════════
-# Expert DevOps avec Architecture Modulaire & State Management
+# Expert DevOps avec Architecture Modulaire, UX Immersive & Robustesse Maximale
 # Cible: Raspberry Pi 4 (4GB RAM, SD 32GB, ARM64)
 # Domaine: gaspardanoukolivier.freeboxos.fr (192.168.1.145)
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# AMÉLIORATIONS v4.0:
-#  ✅ Architecture modulaire (libs réutilisables)
-#  ✅ État persistant (checkpoint + recovery)
-#  ✅ Pré-vérifications robustes
-#  ✅ Sécurité renforcée (mots de passe, secrets)
-#  ✅ Idempotence (skip phases déjà complétées)
-#  ✅ Logs centralisés et diagnostics
-#  ✅ Backup automatique avant modifications
+# NOUVEAUTÉS v5.0 (SUPER ORCHESTRATEUR):
+#  ✅ Logging dual-output centralisé (screen + fichier timestampé)
+#  ✅ Bannière de bienvenue ASCII immersive
+#  ✅ Vérification connectivité internet avant de commencer
+#  ✅ Configuration Google Drive (rclone) guidée pour headless (Cheat Sheet visuel)
+#  ✅ Attente active des conteneurs "healthy" avec tests endpoints
+#  ✅ Barres de progression et spinners améliorés
+#  ✅ Affichage intelligent des mots de passe (en clair si généré, masqué sinon)
+#  ✅ Audit final complet avec Deep Dive
+#  ✅ Intégration scripts d'optimisation (kernel, ZRAM) si présents
 #
 # Usage:
 #   ./setup.sh                    # Setup normal avec tous les checks
 #   ./setup.sh --check-only       # Vérifications sans modifications
 #   ./setup.sh --dry-run          # Simulation sans déploiement
 #   ./setup.sh --resume           # Reprendre après erreur
+#   ./setup.sh --verbose          # Logs détaillés
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -112,7 +115,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            log_error "Option inconnue: $1"
+            echo -e "${_RED}[ERROR]${_NC} Option inconnue: $1"
             echo "Utilisez --help pour voir les options disponibles"
             exit 1
             ;;
@@ -135,6 +138,17 @@ if ! cmd_exists python3; then
     log_error "Python3 est requis pour le state management"
     exit 1
 fi
+
+# === INITIALISER LE LOGGING DUAL-OUTPUT (NOUVEAU v5.0) ===
+
+setup_logging "logs"
+
+# === AFFICHER LA BANNIÈRE DE BIENVENUE (NOUVEAU v5.0) ===
+
+show_welcome_banner "5.0" "LinkedIn Birthday Auto"
+
+log_info "📋 Fichier de log: ${BOLD}$(get_log_file)${NC}"
+echo ""
 
 # === VARIABLES DE CONFIGURATION ===
 
@@ -179,9 +193,18 @@ trap setup_cleanup EXIT
 # MAIN SETUP FLOW
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# === PHASE 0: INITIALIZATION ===
+# === PHASE 0: INITIALIZATION & NETWORK CHECKS (NOUVEAU v5.0) ===
 
-log_step "PHASE 0: Initialisation du Setup"
+log_step "PHASE 0: Vérifications Préliminaires"
+
+# Vérifier la connectivité internet (NOUVEAU)
+if ! check_internet_connectivity; then
+    log_error "Connectivité internet requise pour continuer"
+    exit 1
+fi
+
+# Vérifier DNS (NOUVEAU)
+check_dns_resolution || log_warn "DNS potentiellement problématique, mais on continue..."
 
 # Récupérer domaine depuis .env existant si présent
 if [[ -f "$ENV_FILE" ]]; then
@@ -307,7 +330,6 @@ if [[ "$NEEDS_PASSWORD" == "true" ]]; then
             echo -e "\n${BOLD}Entrez le nouveau mot de passe:${NC}"
             echo -e "${DIM}Recommandations: min 12 caractères, majuscules, chiffres, symboles${NC}"
 
-            # Fix: 'local' keyword is not allowed in global scope (outside functions)
             password_valid=false
             while [[ "$password_valid" != "true" ]]; do
                 echo -n "Mot de passe (caché) : "
@@ -505,7 +527,6 @@ case "$choice" in
             return 0
         }
 
-        # Fix: 'local' keyword is not allowed in global scope
         cert_valid=false
         key_valid=false
 
@@ -627,14 +648,9 @@ fi
 
 log_step "PHASE 6: Déploiement Docker"
 
-# Demander pour le monitoring
-if prompt_yes_no "Activer le monitoring complet (Grafana/Prometheus) ? [Mémoire +500MB]" "n"; then
-    MONITORING_ENABLED="true"
-    setup_state_set_config "monitoring_enabled" "true"
-else
-    MONITORING_ENABLED="false"
-    setup_state_set_config "monitoring_enabled" "false"
-fi
+# Demander pour le monitoring (DÉSACTIVÉ - Grafana retiré)
+MONITORING_ENABLED="false"
+setup_state_set_config "monitoring_enabled" "false"
 
 # Initialiser la barre de progression pour la phase 6
 progress_init "Déploiement Docker" 4
@@ -678,18 +694,18 @@ progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
 
 progress_end
 
-# === PHASE 7: VALIDATION ===
+# === PHASE 7: VALIDATION (Utilise les nouvelles fonctions de audit.sh) ===
 
 log_step "PHASE 7: Validation du Déploiement"
 
-# Attendre que les services soient opérationnels
-if ! wait_for_service "api" "http://localhost:8000/health"; then
+# Attendre que les services soient opérationnels (NOUVEAU - utilise wait_for_api_endpoint)
+if ! wait_for_api_endpoint "API" "http://localhost:8000/health" 90; then
     log_error "API ne démarre pas"
     docker compose -f "$COMPOSE_FILE" logs api --tail=50
     exit 1
 fi
 
-if ! wait_for_service "dashboard" "http://localhost:3000/api/system/health"; then
+if ! wait_for_api_endpoint "Dashboard" "http://localhost:3000/api/system/health" 90; then
     log_error "Dashboard ne démarre pas"
     docker compose -f "$COMPOSE_FILE" logs dashboard --tail=50
     exit 1
@@ -697,7 +713,7 @@ fi
 
 log_success "✓ Services validés"
 
-# === PHASE 8: CONFIGURATION GOOGLE DRIVE (OPTIONNEL) ===
+# === PHASE 8: CONFIGURATION GOOGLE DRIVE (OPTIONNEL) - NOUVEAU GUIDE VISUEL ===
 
 log_step "PHASE 8: Configuration Sauvegardes Google Drive (Optionnel)"
 
@@ -720,36 +736,93 @@ if prompt_yes_no "Configurer sauvegardes Google Drive ?" "n"; then
         fi
     fi
 
-    # Configurer rclone si installé
+    # Configurer rclone si installé (NOUVEAU - GUIDE VISUEL HEADLESS)
     if cmd_exists rclone; then
-        log_step "Configuration rclone"
+        log_step "Configuration rclone Google Drive (Headless)"
 
-        cat <<EOF
-${BOLD}${BLUE}
-═══════════════════════════════════════════════════════════════════════════════
-  CONFIGURATION RCLONE - GOOGLE DRIVE
-═══════════════════════════════════════════════════════════════════════════════
+        # AFFICHER LE CHEAT SHEET VISUEL (CRITIQUE POUR RPi4 SANS ÉCRAN)
+        cat <<'EOF'
 
-Étapes:
-  1. Un navigateur s'ouvrira pour vous authentifier avec Google
-  2. Autorisez l'accès à Google Drive
-  3. Copiez le code d'authentification dans le terminal
-  4. Nommez la configuration 'gdrive' (recommandé pour les sauvegardes)
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║   📚 GUIDE VISUEL - CONFIGURATION RCLONE GOOGLE DRIVE (HEADLESS)         ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
 
-Documentation: https://rclone.org/drive/
+⚠️  IMPORTANT: Raspberry Pi 4 sans écran - Configuration en ligne de commande
 
-${NC}
+┌─ Étapes à suivre EXACTEMENT ─────────────────────────────────────────────┐
+
+  1️⃣  New remote? → Tapez: n
+
+  2️⃣  Name → Tapez EXACTEMENT: gdrive
+      (Ce nom est utilisé par les scripts de sauvegarde)
+
+  3️⃣  Storage → Cherchez "Google Drive" dans la liste
+      - Option 18 (peut varier selon version) OU tapez: drive
+
+  4️⃣  client_id → Laissez vide (Entrée)
+
+  5️⃣  client_secret → Laissez vide (Entrée)
+
+  6️⃣  Scope → Tapez: 1 (Full access to all files)
+
+  7️⃣  service_account_file → Laissez vide (Entrée)
+
+  8️⃣  Edit advanced config → Tapez: n
+
+  9️⃣  Use web browser to automatically authenticate → Tapez: n ❌ CRUCIAL!
+      (Répondre "y" planterait sur un serveur sans écran)
+
+  🔟  AUTHENTIFICATION (Mode Headless):
+      ┌────────────────────────────────────────────────────────────────────┐
+      │ rclone va afficher une COMMANDE comme:                             │
+      │                                                                     │
+      │   rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlIn0"              │
+      │                                                                     │
+      │ 📋 COPIEZ cette commande                                           │
+      │ 💻 LANCEZ-LA sur votre PC/Mac (avec rclone installé)              │
+      │ 🌐 Un navigateur s'ouvrira pour vous authentifier                 │
+      │ ✅ Autorisez l'accès à Google Drive                               │
+      │ 📝 Copiez le TOKEN résultat (config_token: {...})                 │
+      │ 📥 COLLEZ le token dans ce terminal du RPi                        │
+      └────────────────────────────────────────────────────────────────────┘
+
+  1️⃣1️⃣  Configure as team drive → Tapez: n
+
+  1️⃣2️⃣  Keep this "gdrive" remote → Tapez: y
+
+  1️⃣3️⃣  Quit config → Tapez: q
+
+└───────────────────────────────────────────────────────────────────────────┘
+
+📚 Documentation complète: https://rclone.org/drive/
+
 EOF
 
+        echo ""
+        log_warn "⏸️  Prenez le temps de LIRE le guide ci-dessus avant de continuer"
+        pause_with_message "Appuyez sur Entrée quand vous êtes prêt à lancer 'rclone config'" 0
+
+        # Lancer rclone config
         if rclone config; then
             # Vérifier que la configuration est valide
-            if rclone listremotes | grep -q .; then
+            if rclone listremotes | grep -q "gdrive"; then
                 BACKUP_CONFIGURED="true"
                 setup_state_set_config "backup_configured" "true"
-                log_success "✓ Configuration rclone réussie"
-                log_info "Remotes disponibles: $(rclone listremotes | tr '\n' ', ' | sed 's/,$//')"
+                log_success "✓ Configuration rclone réussie - Remote 'gdrive' détecté"
+
+                # Tester l'accès
+                log_info "Test de l'accès à Google Drive..."
+                if rclone lsd gdrive: >/dev/null 2>&1; then
+                    log_success "✓ Connexion à Google Drive fonctionnelle"
+                else
+                    log_warn "⚠️  Connexion à Google Drive non testable (vérifiez manuellement avec: rclone lsd gdrive:)"
+                fi
             else
-                log_warn "⚠️  Aucun remote rclone détecté après configuration"
+                log_warn "⚠️  Remote 'gdrive' non détecté après configuration"
+                log_info "Remotes disponibles: $(rclone listremotes | tr '\n' ', ' | sed 's/,$//')"
+                log_warn "Les scripts de sauvegarde attendent un remote nommé 'gdrive'"
                 BACKUP_CONFIGURED="false"
             fi
         else
@@ -761,11 +834,11 @@ EOF
         log_warn "rclone non disponible, sauvegardes désactivées"
     fi
 else
-    log_info "Sauvegardes Google Drive non configurées (vous pouvez les ajouter plus tard via: ./setup.sh)"
+    log_info "Sauvegardes Google Drive non configurées (vous pouvez les ajouter plus tard)"
     BACKUP_CONFIGURED="false"
 fi
 
-# === AUDIT COMPLET FINAL (SÉCURITÉ, SERVICES, BDD, ROUTES) ===
+# === AUDIT COMPLET FINAL (SÉCURITÉ, SERVICES, BDD, ROUTES) - NOUVEAU v5.0 ===
 
 if declare -f run_full_audit &>/dev/null; then
     run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
@@ -786,14 +859,15 @@ LOCAL_IP=$(
 DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
 DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
 
-# Préparer l'affichage du mot de passe/hash
+# Préparer l'affichage du mot de passe/hash (NOUVEAU - Affichage intelligent)
 if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
-    # Afficher le mot de passe en clair (RPi4 avec HTTPS sécurisé)
+    # Afficher le mot de passe en clair UNIQUEMENT s'il vient d'être généré
     PASSWORD_DISPLAY="${BOLD}${RED}${SETUP_PASSWORD_PLAINTEXT}${NC}"
     HASH_DISPLAY="${GREEN}${DASHBOARD_HASH}${NC}"
-    PASSWORD_NOTE="${BOLD}${GREEN}✓ Mot de passe configuré${NC}"
+    PASSWORD_NOTE="${BOLD}${GREEN}✓ Mot de passe défini lors de ce setup${NC}"
 else
-    PASSWORD_DISPLAY="${YELLOW}[configuré lors du setup]${NC}"
+    # Sinon, afficher "Masqué" (sécurité)
+    PASSWORD_DISPLAY="${YELLOW}[Masqué - déjà configuré]${NC}"
     HASH_DISPLAY="${YELLOW}[voir .env]${NC}"
     PASSWORD_NOTE=""
 fi
@@ -807,7 +881,7 @@ ${BOLD}${BLUE}└─────────────────────
   ${BOLD}🌐 Accès${NC}
   ├─ HTTPS externe     : ${GREEN}https://${DOMAIN}${NC}
   ├─ HTTP local        : http://${LOCAL_IP}:3000
-  └─ Grafana monitoring : http://${LOCAL_IP}:3001
+  └─ API              : http://${LOCAL_IP}:8000
 
   ${BOLD}🔐 Authentification Dashboard${NC}
   ├─ Utilisateur       : ${GREEN}${DASHBOARD_USER}${NC}
@@ -820,7 +894,7 @@ ${BOLD}${BLUE}└─────────────────────
   ├─ IP locale        : ${LOCAL_IP}
   ├─ Conteneurs       : $(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
   ├─ HTTPS mode       : ${HTTPS_MODE}
-  └─ Sauvegardes      : $([ "$BACKUP_CONFIGURED" == "true" ] && echo "${GREEN}Activées${NC}" || echo "${YELLOW}Non configurées${NC}")
+  └─ Sauvegardes      : $([ "$BACKUP_CONFIGURED" == "true" ] && echo "${GREEN}Activées (gdrive)${NC}" || echo "${YELLOW}Non configurées${NC}")
 
   ${BOLD}🔧 Commandes utiles${NC}
   ├─ Logs              : docker compose -f $COMPOSE_FILE logs -f
@@ -837,6 +911,9 @@ ${BOLD}${BLUE}└─────────────────────
   ├─ Security: docs/SECURITY_AUDIT.md
   └─ État du setup: .setup.state
 
+  ${BOLD}📋 Logs de cette installation${NC}
+  └─ Fichier: ${CYAN}$(get_log_file)${NC}
+
   ${BOLD}🆘 En cas de problème de login${NC}
   ├─ Vérifiez le .env: grep DASHBOARD_PASSWORD .env
   ├─ Réinitialiser: ./scripts/manage_dashboard_password.sh
@@ -844,11 +921,11 @@ ${BOLD}${BLUE}└─────────────────────
 
 ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 
-✓ ${GREEN}Setup v4.0 réussi${NC} - Accédez au dashboard pour finaliser la configuration!
+✓ ${GREEN}Setup v5.0 (Super Orchestrateur) réussi${NC} - Accédez au dashboard!
 
 EOF
 
-# Afficher un rappel final avec les infos de connexion
+# Afficher un rappel final avec les infos de connexion (UNIQUEMENT si mot de passe généré)
 if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
     echo ""
     echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -867,5 +944,8 @@ if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
     echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 fi
+
+# Bannière de fin (NOUVEAU v5.0)
+show_completion_banner "success" "Installation terminée avec succès 🎉"
 
 exit 0
