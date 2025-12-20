@@ -128,6 +128,7 @@ source "$SCRIPT_DIR/scripts/lib/security.sh" || { echo "ERROR: Failed to load se
 source "$SCRIPT_DIR/scripts/lib/docker.sh" || { echo "ERROR: Failed to load docker.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/checks.sh" || { echo "ERROR: Failed to load checks.sh"; exit 1; }
 source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/audit.sh" || { echo "ERROR: Failed to load audit.sh"; exit 1; }
 
 # === VARIABLES DE CONFIGURATION ===
 
@@ -760,11 +761,9 @@ else
     BACKUP_CONFIGURED="false"
 fi
 
-# === AUDIT SÉCURITÉ FINAL ===
+# === AUDIT COMPLET FINAL (SÉCURITÉ, SERVICES, BDD, ROUTES) ===
 
-log_step "🔒 AUDIT SÉCURITÉ & CONFIGURATION"
-
-audit_env_security "$ENV_FILE" || true
+run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
 
 # === RAPPORT FINAL ===
 
