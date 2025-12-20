@@ -265,9 +265,29 @@ fi
 
 setup_state_checkpoint "docker_config" "completed"
 
-# Configure Docker IPv4 et DNS fiables
+# Configure Docker IPv4 et DNS fiables (NOUVEAU - Approche robuste)
 log_info "Configuration Docker pour RPi4..."
-configure_docker_ipv4 || true
+
+# Sourcer le module DNS Fix (production-ready)
+if [[ -f "$SCRIPT_DIR/scripts/lib/docker_dns_fix.sh" ]]; then
+    source "$SCRIPT_DIR/scripts/lib/docker_dns_fix.sh"
+
+    # Appliquer le fix DNS si nécessaire (avec diagnostic automatique)
+    log_info "Diagnostic et correction DNS Docker..."
+    if fix_docker_dns; then
+        log_success "✓ DNS Docker configuré avec succès"
+    else
+        log_warn "⚠️  Fix DNS échoué, tentative avec méthode legacy..."
+        # Fallback sur l'ancienne méthode si le nouveau module échoue
+        configure_docker_ipv4 || log_warn "Configuration DNS partiellement échouée"
+    fi
+else
+    # Fallback si le nouveau module n'existe pas
+    log_warn "Module docker_dns_fix.sh non trouvé, utilisation méthode legacy"
+    configure_docker_ipv4 || true
+fi
+
+# Optimisations système (kernel, ZRAM)
 configure_kernel_params || true
 configure_zram || true
 
