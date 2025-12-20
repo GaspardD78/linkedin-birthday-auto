@@ -63,7 +63,7 @@ ensure_system_requirements() {
 
     # Vérifier dépendances manquantes
     local missing_deps=false
-    for cmd in curl openssl git jq python3; do
+    for cmd in curl openssl git jq python3 envsubst; do
         if ! cmd_exists "$cmd"; then
             missing_deps=true
             break
@@ -72,7 +72,7 @@ ensure_system_requirements() {
 
     if [[ "$missing_deps" == "true" ]]; then
         if [[ "$check_only" == "true" ]]; then
-             log_error "Dépendances système manquantes (curl, openssl, git, jq, python3)."
+             log_error "Dépendances système manquantes (curl, openssl, git, jq, python3, envsubst)."
              return 1
         fi
 
@@ -80,7 +80,7 @@ ensure_system_requirements() {
         install_system_packages
         install_python_packages
     else
-        log_success "✓ Outils système installés (curl, openssl, git, jq, python3)"
+        log_success "✓ Outils système installés (curl, openssl, git, jq, python3, envsubst)"
 
         # Vérifier paquets python même si python3 existe
         if [[ "$check_only" != "true" ]]; then
