@@ -8,17 +8,12 @@ set -euo pipefail
 
 # === CONFIGURATION ===
 
-# Image pré-buildée via GitHub Actions pour éviter npm/compile sur le Pi
-# Le nom de l'image est dynamique si possible, sinon fallback
-# On suppose l'usage de ghcr.io/<owner>/<repo>/pi-security-hash:latest
-# Comme le script ne connait pas l'owner/repo Git facilement s'il est hors git,
-# on utilise une valeur par défaut cohérente ou on la détecte.
-# Pour ce setup, on utilise la variable définie ou le fallback Gaspard.
-
-# NOTE: Pour que cela fonctionne universellement, l'image doit être publique
-# ou l'utilisateur doit être docker login.
+# Images
+# Helper dédié (Prio 2)
 DEFAULT_REPO="gaspardd78/linkedin-birthday-auto-dashboard"
 SECURITY_IMAGE="ghcr.io/${GITHUB_REPOSITORY:-$DEFAULT_REPO}/pi-security-hash:latest"
+# Image principale du dashboard (Prio 3 - contient node + scripts)
+DASHBOARD_IMAGE="ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest"
 
 # === PASSWORD HASHING ===
 
@@ -34,56 +29,155 @@ hash_and_store_password() {
 
     log_info "🔒 Hashage sécurisé du mot de passe..."
     local hash=""
+    local method_used=""
 
-    # 1. Tentative via Image Docker Dédiée (Méthode Prioritaire)
-    if cmd_exists docker; then
-        log_debug "Utilisation de l'image de sécurité: $SECURITY_IMAGE"
-
-        # Pull de l'image (silencieux sauf erreur)
-        if ! docker pull "$SECURITY_IMAGE" >/dev/null 2>&1; then
-             log_warn "Impossible de télécharger l'image de sécurité ($SECURITY_IMAGE)."
-             log_warn "Vérifiez la connexion internet ou l'existence de l'image."
-        fi
-
-        # Exécution du hashage (OFFLINE container execution)
-        # --network none : Sécurité maximale, pas d'accès réseau requis pour hasher
-        set +e
-        hash=$(docker run --rm --platform linux/arm64 --network none \
-            "$SECURITY_IMAGE" "$password" 2>/dev/null)
-        local exit_code=$?
-        set -e
-
-        if [[ $exit_code -ne 0 ]] || [[ ! "$hash" =~ ^\$2[abxy]\$ ]]; then
-            log_warn "Échec du hashage Docker standard. Code: $exit_code"
-            hash=""
+    # -------------------------------------------------------------------------
+    # PRIORITÉ 1: LOCAL PYTHON (Le plus rapide, pas de dépendances externes)
+    # -------------------------------------------------------------------------
+    if cmd_exists python3 && python3 -c "import bcrypt" 2>/dev/null; then
+        log_debug "Méthode: Local Python (bcrypt)"
+        # Note: On double les $ ici car le retour est direct
+        hash=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$password', bcrypt.gensalt()).decode('utf-8'))")
+        if [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+            method_used="Python (Local)"
+        else
+            hash="" # Invalide
         fi
     fi
 
-    # 2. Fallback: Méthode htpasswd (si installé)
-    if [[ -z "$hash" ]] && cmd_exists htpasswd; then
-        log_info "Fallback: utilisation de htpasswd (bcrypt)..."
-        local htpasswd_out
-        htpasswd_out=$(htpasswd -nbB dummy "$password" 2>/dev/null)
-        hash=$(echo "$htpasswd_out" | cut -d':' -f2)
+    # -------------------------------------------------------------------------
+    # PRIORITÉ 2: LOCAL NODE (Si repo cloné et npm install fait)
+    # -------------------------------------------------------------------------
+    if [[ -z "$hash" ]] && cmd_exists node; then
+        local script_path="$PROJECT_ROOT/dashboard/scripts/hash_password.js"
+        # On vérifie si le script ET le module bcryptjs sont dispos
+        if [[ -f "$script_path" ]] && [[ -d "$PROJECT_ROOT/dashboard/node_modules" ]]; then
+            log_debug "Méthode: Local Node.js"
+            set +e
+            hash=$(node "$script_path" "$password" --quiet 2>/dev/null)
+            local exit_code=$?
+            set -e
+
+            if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+                 method_used="Node.js (Local)"
+            else
+                 hash=""
+            fi
+        fi
     fi
 
-    # 3. Fallback: OpenSSL (SHA512 - moins bon mais standard)
+    # -------------------------------------------------------------------------
+    # PRIORITÉ 3: DOCKER (Helper Image 'pi-security-hash')
+    # -------------------------------------------------------------------------
+    if [[ -z "$hash" ]] && cmd_exists docker; then
+        log_debug "Méthode: Docker (Security Image)"
+
+        # Tentative de pull avec retry (3 essais)
+        local pull_success=false
+        for i in {1..3}; do
+            if docker pull "$SECURITY_IMAGE" >/dev/null 2>&1; then
+                pull_success=true
+                break
+            fi
+            log_debug "Tentative pull $i/3 échouée..."
+            sleep 1
+        done
+
+        if [[ "$pull_success" == "true" ]]; then
+            set +e
+            hash=$(docker run --rm --platform linux/arm64 --network none \
+                "$SECURITY_IMAGE" "$password" 2>/dev/null)
+            local exit_code=$?
+            set -e
+
+            if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+                method_used="Docker (Helper Image)"
+            else
+                hash=""
+            fi
+        else
+            log_warn "Impossible de télécharger l'image de sécurité helper."
+        fi
+    fi
+
+    # -------------------------------------------------------------------------
+    # PRIORITÉ 4: DOCKER (Main Dashboard Image - Fallback Robuste)
+    # -------------------------------------------------------------------------
+    # Si l'image helper échoue, on utilise l'image principale qui contient tout le code
+    if [[ -z "$hash" ]] && cmd_exists docker; then
+        log_debug "Méthode: Docker (Dashboard Image Fallback)"
+
+        local pull_success=false
+        if docker pull "$DASHBOARD_IMAGE" >/dev/null 2>&1; then
+             pull_success=true
+        fi
+
+        if [[ "$pull_success" == "true" ]]; then
+            # On exécute le script node présent dans l'image
+            # Path dans l'image: /app/scripts/hash_password.js (supposition standard Next.js ou structure app)
+            # Vérifions structure repo: dashboard/scripts/hash_password.js -> /app/scripts/...
+            # Dans le Dockerfile dashboard, COPY . . -> /app/scripts est probable
+
+            set +e
+            # Note: Le path interne dépend du WORKDIR /app.
+            # On essaye d'exécuter le script via node directement
+            hash=$(docker run --rm --entrypoint node \
+                "$DASHBOARD_IMAGE" \
+                scripts/hash_password.js "$password" --quiet 2>/dev/null)
+            local exit_code=$?
+            set -e
+
+            if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+                method_used="Docker (Dashboard Image)"
+            else
+                # Deuxième essai path (si structure différente)
+                set +e
+                hash=$(docker run --rm --entrypoint node \
+                    "$DASHBOARD_IMAGE" \
+                    dashboard/scripts/hash_password.js "$password" --quiet 2>/dev/null)
+                 exit_code=$?
+                set -e
+                 if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+                    method_used="Docker (Dashboard Image v2)"
+                else
+                    hash=""
+                fi
+            fi
+        fi
+    fi
+
+    # -------------------------------------------------------------------------
+    # PRIORITÉ 5: FALLBACK OPENSSL (Dernier recours)
+    # -------------------------------------------------------------------------
     if [[ -z "$hash" ]] && cmd_exists openssl; then
-        log_warn "⚠️  Fallback sur OpenSSL (SHA-512) car bcrypt indisponible."
+        log_warn "⚠️  Bcrypt indisponible (Local & Docker). Fallback sur OpenSSL (SHA-512)."
+        log_warn "   Ce mode est moins sécurisé mais fonctionnel."
         hash=$(echo "$password" | openssl passwd -6 -stdin 2>/dev/null | tr -d '\n')
+        if [[ -n "$hash" ]]; then
+            method_used="OpenSSL (SHA-512)"
+        fi
     fi
 
-    # Échec critique
+    # ÉCHEC TOTAL
     if [[ -z "$hash" ]]; then
-        log_error "❌ Impossible de générer un hash pour le mot de passe."
+        log_error "❌ IMPOSSIBLE DE GÉNÉRER LE HASH DU MOT DE PASSE."
+        log_error "   Aucune méthode (Python, Node, Docker, OpenSSL) n'a fonctionné."
         return 1
     fi
+
+    log_success "✓ Hash généré via : $method_used"
 
     # --- ÉCRITURE ATOMIQUE & SÉCURISÉE DANS .ENV ---
 
     # Échappement des $ pour Docker Compose ($ -> $$)
     # Ex: $2a$12$... devient $$2a$$12$$...
+    # Note: Si OpenSSL ($6$...), on échappe aussi pour uniformité
     local hash_escaped="${hash//\$/\$\$}"
+
+    # Vérifier doublage (paranoïa check)
+    if [[ ! "$hash_escaped" == *"\$\$"* ]]; then
+        log_warn "⚠️  L'échappement Docker Compose semble incorrect ($hash_escaped)"
+    fi
 
     # Création d'un fichier temporaire pour écriture atomique
     local temp_env="${env_file}.tmp"
@@ -102,7 +196,7 @@ hash_and_store_password() {
     mv "$temp_env" "$env_file"
     chmod 600 "$env_file"
 
-    log_success "✅ Mot de passe sécurisé et enregistré (Hash: ${hash:0:10}...)"
+    log_success "✅ Mot de passe enregistré dans .env"
 
     # Pour setup.sh state tracking
     export SETUP_PASSWORD_HASH="$hash"
