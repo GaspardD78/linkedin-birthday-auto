@@ -578,3 +578,83 @@ configure_docker_ipv4() {
         log_success "✓ Docker redémarré avec IPv4 + DNS fiables."
     fi
 }
+
+# === TERMINAL UI UTILS (Added for Dashboard UX) ===
+
+# Detect if we have a robust TTY capable of cursor movement
+has_smart_tty() {
+    [[ -t 1 ]] && command -v tput >/dev/null 2>&1
+}
+
+# Get terminal dimensions
+get_term_cols() {
+    tput cols 2>/dev/null || echo 80
+}
+
+get_term_lines() {
+    tput lines 2>/dev/null || echo 24
+}
+
+# Cursor controls
+ui_cursor_hide() { has_smart_tty && tput civis; }
+ui_cursor_show() { has_smart_tty && tput cnorm; }
+ui_cursor_save() { has_smart_tty && tput sc; }
+ui_cursor_restore() { has_smart_tty && tput rc; }
+ui_line_clear() { has_smart_tty && tput el; }
+ui_move_up() { has_smart_tty && tput cuu1; }
+ui_move_up_n() { has_smart_tty && tput cuu "$1"; }
+
+# Text truncation for clean columns
+ui_truncate_text() {
+    local text="$1"
+    local max_len="$2"
+    if [[ ${#text} -gt $max_len ]]; then
+        echo "${text:0:$((max_len-1))}…"
+    else
+        printf "%-${max_len}s" "$text"
+    fi
+}
+
+# Render a robust progress bar
+# Usage: ui_render_progress_bar <current> <total> <width> <color>
+ui_render_progress_bar() {
+    local current=$1
+    local total=$2
+    local width=${3:-20}
+    local color=${4:-$BLUE}
+
+    local percent=0
+    local filled=0
+
+    if [[ $total -gt 0 ]]; then
+        percent=$((current * 100 / total))
+        filled=$((current * width / total))
+    fi
+    local empty=$((width - filled))
+
+    # Use Unicode block characters if locale supports it, else ASCII
+    local char_fill="█"
+    local char_empty="░"
+    if [[ "${LANG:-}" != *"UTF-8"* ]]; then
+        char_fill="#"
+        char_empty="-"
+    fi
+
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="${char_fill}"; done
+    for ((i=0; i<empty; i++)); do bar+="${char_empty}"; done
+
+    echo -ne "${color}${bar}${NC} ${percent}%"
+}
+
+# Format bytes to human readable
+ui_format_bytes() {
+    local bytes="${1:-0}"
+    if [[ $bytes -lt 1024 ]]; then
+        echo "${bytes} B"
+    elif [[ $bytes -lt 1048576 ]]; then
+        echo "$((bytes / 1024)) KB"
+    else
+        echo "$((bytes / 1048576)) MB"
+    fi
+}
