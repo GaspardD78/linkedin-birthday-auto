@@ -59,91 +59,260 @@ docker_compose_validate() {
     return 0
 }
 
+# Enhanced Interactive Pull with Dashboard
 docker_pull_with_retry() {
     local compose_file="$1"
     local max_retries=4
     local base_delay=2
-    local services
-    local error_log="/tmp/setup_docker_services.err"
+    local error_log
+    error_log=$(mktemp)
+    local pull_log
+    pull_log=$(mktemp)
 
-    log_info "Vérification du fichier docker-compose..."
-
+    # --- 1. Validation Phase ---
     if [[ ! -f "$compose_file" ]]; then
-        log_error "Fichier docker-compose introuvable: $(cd . && pwd)/$compose_file"
+        log_error "Compose file not found: $compose_file"
         return 1
     fi
-    log_info "✓ Fichier trouvé: $compose_file"
 
-    log_info "Validation YAML du fichier docker-compose..."
+    # Validate YAML
     if ! docker compose -f "$compose_file" config > /dev/null 2>"$error_log"; then
-        log_error "Le fichier $compose_file est invalide (YAML malformé)"
-        log_error "Détails de l'erreur :"
-        cat "$error_log" | sed 's/^/  /'
-        rm -f "$error_log"
+        log_error "Invalid Docker Compose file:"
+        cat "$error_log" | sed 's/^/  /' && rm -f "$error_log"
         return 1
     fi
-    log_info "✓ YAML valide"
 
-    log_info "Lecture de la liste des services..."
-    services=$(docker compose -f "$compose_file" config --services 2>"$error_log")
-    local docker_exit_code=$?
-
-    if [[ $docker_exit_code -ne 0 ]] || [[ -z "$services" ]]; then
-        log_error "Impossible de lire la liste des services depuis $compose_file"
-        if [[ -s "$error_log" ]]; then
-            log_error "Message d'erreur Docker :"
-            cat "$error_log" | sed 's/^/  /'
-        fi
-        rm -f "$error_log"
+    # Get Services
+    local services_raw
+    services_raw=$(docker compose -f "$compose_file" config --services 2>"$error_log")
+    if [[ $? -ne 0 ]] || [[ -z "$services_raw" ]]; then
+        log_error "Failed to list services."
+        cat "$error_log" && rm -f "$error_log"
         return 1
     fi
     rm -f "$error_log"
 
-    log_info "Téléchargement des images Docker..."
+    # Read into array
+    local service_list=()
+    while IFS= read -r s; do [[ -n "$s" ]] && service_list+=("$s"); done <<< "$services_raw"
+    local total=${#service_list[@]}
 
-    local total_services
-    total_services=$(echo "$services" | wc -l)
-    local current=0
+    # --- 2. Mode Selection ---
+    local use_ui=false
+    if has_smart_tty; then use_ui=true; fi
 
-    while IFS= read -r service; do
-        [[ -z "$service" ]] && continue
+    # Disable UI if terminal height is too small to fit the dashboard
+    if [[ "$use_ui" == "true" ]]; then
+        local term_lines
+        term_lines=$(get_term_lines)
+        if [[ $((total + 5)) -gt "$term_lines" ]]; then
+            use_ui=false
+            log_warn "Terminal too small for dashboard UI ($total services vs $term_lines lines). Falling back to log mode."
+        fi
+    fi
 
-        current=$((current + 1))
-        echo -n "[${current}/${total_services}] Pull de l'image pour '${service}' "
-        local retry_count=0
-        local success=false
+    log_info "Synchronizing ${total} Docker images... (Sequential pull for UI stability)"
 
-        while [[ $retry_count -lt $max_retries ]]; do
-            if docker compose -f "$compose_file" pull --quiet "$service" 2>"$error_log"; then
-                echo -e "${GREEN}✓${NC}"
-                success=true
-                rm -f "$error_log"
-                break
-            else
-                retry_count=$((retry_count + 1))
-                if [[ $retry_count -lt $max_retries ]]; then
-                    local delay=$((base_delay ** retry_count))
-                    echo -n "${YELLOW}✗${NC} (retry dans ${delay}s) "
-                    sleep "$delay"
-                else
-                    echo -e "${RED}✗ ÉCHEC${NC}"
+    # --- 3. UI Execution ---
+    if [[ "$use_ui" == "true" ]]; then
+        # Trap to clean up cursor and logs
+        trap 'ui_cursor_show; rm -f "$pull_log" "$error_log"; [[ -n "${pid:-}" ]] && kill "$pid" 2>/dev/null' EXIT INT TERM
+
+        ui_cursor_hide
+        echo ""
+
+        # Draw Initial Dashboard
+        # Header is already printed by log_info above, let's print the list
+
+        for svc in "${service_list[@]}"; do
+            printf "   ${DIM}• %-25s${NC} ${DIM}Waiting...${NC}\n" "${svc:0:25}"
+        done
+        echo "" # Spacer
+        echo "" # Global Bar placeholder
+
+        # Calculate cursor jumps
+        local total_rows=$((total + 2)) # Services + Spacer + Bar
+
+        # We start at the bottom of the printed block.
+
+        local current=0
+        for svc in "${service_list[@]}"; do
+            ((current++))
+            local retry=0
+            local success=false
+
+            # --- PREPARE CURSOR ---
+            # Lines are:
+            # 1. Service 1
+            # ...
+            # N. Service N
+            # N+1. Spacer
+            # N+2. Global Bar
+            # We are at N+3.
+
+            # Calculate lines UP to reach the current service line
+            local lines_up=$((total_rows - (current - 1)))
+
+            # START PULL LOOP
+            while [[ $retry -lt $max_retries ]]; do
+                # Update line to "Pulling"
+                echo -ne "\r"
+                ui_move_up_n "$lines_up"
+                ui_line_clear
+                printf "   ${BLUE}➤ %-25s${NC} ${YELLOW}Starting...${NC}" "${svc:0:25}"
+
+                # Move back down to update Global Bar
+                tput cud "$lines_up"
+
+                # Update Global Bar
+                ui_move_up_n 1 # Go to Bar line
+                ui_line_clear
+                local p_current=$((current - 1)) # Completed count
+                local cols
+                cols=$(get_term_cols)
+                local bar_width=$((cols - 35)) # Subtract label and percentage length
+                [[ $bar_width -lt 10 ]] && bar_width=10 # Minimum width
+                printf "   ${BLUE}Total Progress:${NC} "
+                ui_render_progress_bar "$p_current" "$total" "$bar_width" "$BLUE"
+                tput cud 1 # Back to bottom
+
+                # START BACKGROUND PULL
+                > "$pull_log"
+                # Using --progress=plain to parse logs
+                docker compose -f "$compose_file" pull --progress=plain "$svc" > "$pull_log" 2>&1 &
+                local pid=$!
+
+                local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                if [[ "${LANG:-}" != *"UTF-8"* ]]; then
+                    spin_chars='|/-\'
                 fi
+                local idx=0
+                local spin_len=${#spin_chars}
+
+                # SPINNER LOOP
+                while kill -0 "$pid" 2>/dev/null; do
+                    idx=$(( (idx+1) % spin_len ))
+                    local char="${spin_chars:$idx:1}"
+
+                    # Parse status from log
+                    local status_msg="Downloading..."
+                    local last_line
+                    # Grab last non-empty line
+                    last_line=$(grep -v "^$" "$pull_log" | tail -n 1 | tr -d '\r' | tr -s ' ' || true)
+
+                    # Heuristics for status
+                    if [[ "$last_line" == *"Downloading"* ]]; then
+                        status_msg="Downloading layers..."
+                        # Try to find a percentage like "12MB/50MB" or similar if present
+                        # Usually plain output is "layer: Downloading [===>   ] 10MB/50MB"
+                        if [[ "$last_line" =~ ([0-9]+(\.[0-9]+)?[KMGT]B/[0-9]+(\.[0-9]+)?[KMGT]B) ]]; then
+                            status_msg="Downloading (${BASH_REMATCH[1]})"
+                        fi
+                    elif [[ "$last_line" == *"Waiting"* ]]; then
+                        status_msg="Waiting for layers..."
+                    elif [[ "$last_line" == *"Verifying"* ]]; then
+                        status_msg="Verifying Checksum..."
+                    elif [[ "$last_line" == *"Pull complete"* ]]; then
+                        status_msg="Extracting..."
+                    elif [[ "$last_line" == *"Pulled"* ]]; then
+                        status_msg="Finalizing..."
+                    elif [[ -n "$last_line" ]]; then
+                        # Strip service name if present at start "service_1 The..."
+                         local clean_line=${last_line#* }
+                         status_msg=$(ui_truncate_text "${clean_line}" 35)
+                    fi
+
+                    # Update Service Line
+                    echo -ne "\r"
+                    ui_move_up_n "$lines_up"
+                    ui_line_clear
+                    printf "   ${BLUE}➤ %-25s${NC} ${CYAN}%s${NC} %s" "${svc:0:25}" "$char" "$status_msg"
+                    tput cud "$lines_up"
+
+                    sleep 0.1
+                done
+
+                wait "$pid"
+                local exit_code=$?
+
+                if [[ $exit_code -eq 0 ]]; then
+                    success=true
+                    # Mark DONE
+                    echo -ne "\r"
+                    ui_move_up_n "$lines_up"
+                    ui_line_clear
+                    printf "   ${GREEN}✓ %-25s${NC} ${DIM}Ready${NC}" "${svc:0:25}"
+                    tput cud "$lines_up"
+                    break
+                else
+                    ((retry++))
+                    local delay=$((base_delay ** retry))
+                    # Mark ERROR/RETRY
+                    echo -ne "\r"
+                    ui_move_up_n "$lines_up"
+                    ui_line_clear
+                    printf "   ${YELLOW}⚠ %-25s${NC} ${RED}Retry ${retry}/${max_retries} in ${delay}s...${NC}" "${svc:0:25}"
+                    tput cud "$lines_up"
+                    sleep "$delay"
+                fi
+            done
+
+            if [[ "$success" != "true" ]]; then
+                ui_cursor_show
+                # Move below the dashboard block
+                echo ""
+                log_error "Failed to pull $svc after retries."
+                return 1
             fi
         done
 
-        if [[ "$success" != "true" ]]; then
-            log_error "Échec du pull pour le service '$service'."
-            if [[ -s "$error_log" ]]; then
-                log_error "Détails :"
-                cat "$error_log" | sed 's/^/  /'
-            fi
-            rm -f "$error_log"
-            return 1
-        fi
-    done <<< "$services"
+        # Final Global Bar Update
+        ui_move_up_n 1
+        ui_line_clear
+        local cols
+        cols=$(get_term_cols)
+        local bar_width=$((cols - 35))
+        [[ $bar_width -lt 10 ]] && bar_width=10
+        printf "   ${BLUE}Total Progress:${NC} "
+        ui_render_progress_bar "$total" "$total" "$bar_width" "$GREEN"
+        tput cud 1
 
-    log_success "Toutes les images ont été téléchargées avec succès."
-    return 0
+        ui_cursor_show
+        echo -e "\n\n${GREEN}✓ All images synchronized.${NC}\n"
+        rm -f "$pull_log"
+        return 0
+
+    else
+        # --- 4. Fallback Mode (No UI) ---
+        # Simple linear log
+        local current=0
+        for svc in "${service_list[@]}"; do
+            ((current++))
+            echo -n "   [${current}/${total}] Pulling $svc... "
+            local retry=0
+            local success=false
+            while [[ $retry -lt $max_retries ]]; do
+                if docker compose -f "$compose_file" pull --quiet "$svc" 2>/dev/null; then
+                    echo "OK"
+                    success=true
+                    break
+                else
+                     ((retry++))
+                     if [[ $retry -lt $max_retries ]]; then
+                        echo -n "Retry $retry... "
+                        sleep 2
+                     else
+                        echo "Failed."
+                     fi
+                fi
+            done
+            if [[ "$success" == "false" ]]; then
+                return 1
+            fi
+        done
+        log_success "Images pulled."
+        return 0
+    fi
 }
 
 docker_compose_up() {
