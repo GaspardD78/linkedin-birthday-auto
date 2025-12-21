@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field("sqlite+aiosqlite:///./data/linkedin.db", description="URL de connexion à la base de données SQLite")
 
+    # Logging
+    log_level: str = Field("INFO", description="Niveau de log (DEBUG, INFO, WARNING, ERROR)")
+
     # Rate Limiting (valeurs EXACTES de l'ancien config)
     max_messages_per_week: int = Field(100, description="Nombre maximum de messages autorisés par semaine")
     max_messages_per_day: int = Field(15, description="Nombre maximum de messages autorisés par jour")
