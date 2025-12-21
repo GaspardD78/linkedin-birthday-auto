@@ -16,7 +16,8 @@ install_system_packages() {
     log_info "Mise à jour des dépôts apt..."
     sudo apt-get update -qq
 
-    local packages=("curl" "openssl" "git" "jq" "python3" "python3-pip" "python3-venv")
+    # [FIX] Added python3-bcrypt to system dependencies for priority 1 hashing support
+    local packages=("curl" "openssl" "git" "jq" "python3" "python3-pip" "python3-venv" "python3-bcrypt")
     local to_install=()
 
     for pkg in "${packages[@]}"; do
