@@ -1,10 +1,24 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# LINKEDIN AUTO - SECURITY LIBRARY (v4.0)
+# LINKEDIN AUTO - SECURITY LIBRARY (v5.0)
 # Password hashing, key generation, and security functions
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
+
+# === CONFIGURATION ===
+
+# Image pré-buildée via GitHub Actions pour éviter npm/compile sur le Pi
+# Le nom de l'image est dynamique si possible, sinon fallback
+# On suppose l'usage de ghcr.io/<owner>/<repo>/pi-security-hash:latest
+# Comme le script ne connait pas l'owner/repo Git facilement s'il est hors git,
+# on utilise une valeur par défaut cohérente ou on la détecte.
+# Pour ce setup, on utilise la variable définie ou le fallback Gaspard.
+
+# NOTE: Pour que cela fonctionne universellement, l'image doit être publique
+# ou l'utilisateur doit être docker login.
+DEFAULT_REPO="gaspardd78/linkedin-birthday-auto-dashboard"
+SECURITY_IMAGE="ghcr.io/${GITHUB_REPOSITORY:-$DEFAULT_REPO}/pi-security-hash:latest"
 
 # === PASSWORD HASHING ===
 
@@ -12,87 +26,97 @@ hash_and_store_password() {
     local env_file="$1"
     local password="$2"
 
-    # Validation du mot de passe
-    if [[ -z "$password" ]]; then
-        log_error "Mot de passe vide"
+    # Validation
+    if [[ ${#password} -lt 8 ]]; then
+        log_error "Mot de passe trop court (<8 caractères)"
         return 1
     fi
 
-    local hashed_password=""
+    log_info "🔒 Hashage sécurisé du mot de passe..."
+    local hash=""
 
-    # -------------------------------------------------------------------------
-    # STRATÉGIE ROBUSTE (ARM64 / Alpine)
-    # Utilisation de node:20-alpine pour légèreté et compatibilité.
-    # Installation de bcryptjs à la volée (pas de compilation C++).
-    # Passage du mot de passe par ENV pour sécurité (invisible dans ps).
-    # -------------------------------------------------------------------------
-
+    # 1. Tentative via Image Docker Dédiée (Méthode Prioritaire)
     if cmd_exists docker; then
-        log_info "Hashage sécurisé (Docker node:20-alpine)..."
+        log_debug "Utilisation de l'image de sécurité: $SECURITY_IMAGE"
 
-        set +e # Désactiver exit-on-error temporairement pour capturer l'échec
+        # Pull de l'image (silencieux sauf erreur)
+        if ! docker pull "$SECURITY_IMAGE" >/dev/null 2>&1; then
+             log_warn "Impossible de télécharger l'image de sécurité ($SECURITY_IMAGE)."
+             log_warn "Vérifiez la connexion internet ou l'existence de l'image."
+        fi
 
-        local output
-        # Commande optimisée:
-        # --entrypoint /bin/sh : S'assure qu'on utilise un shell
-        # -e PASS_INPUT : Le mot de passe passe par ENV, pas par argument
-        # npm install ... : Installe bcryptjs dans le conteneur éphémère
-        output=$(docker run --rm \
-            --platform linux/arm64 \
-            --entrypoint /bin/sh \
-            -e PASS_INPUT="$password" \
-            node:20-alpine \
-            -c "npm install bcryptjs --no-save --silent >/dev/null 2>&1 && node -e \"console.log(require('bcryptjs').hashSync(process.env.PASS_INPUT, 12))\"" \
-            2>&1)
-
+        # Exécution du hashage (OFFLINE container execution)
+        # --network none : Sécurité maximale, pas d'accès réseau requis pour hasher
+        set +e
+        hash=$(docker run --rm --platform linux/arm64 --network none \
+            "$SECURITY_IMAGE" "$password" 2>/dev/null)
         local exit_code=$?
         set -e
 
-        # Vérification: on cherche un hash bcrypt valide
-        if [[ $exit_code -eq 0 ]] && [[ "$output" =~ ^\$2[abxy]\$ ]]; then
-            hashed_password=$(echo "$output" | tr -d '\r\n')
-            log_success "✓ Hash généré avec succès"
-        else
-            log_error "Échec du hashage Docker."
-            log_error "Sortie: $output"
-            hashed_password=""
+        if [[ $exit_code -ne 0 ]] || [[ ! "$hash" =~ ^\$2[abxy]\$ ]]; then
+            log_warn "Échec du hashage Docker standard. Code: $exit_code"
+            hash=""
         fi
     fi
 
-    # STRATÉGIE DE SECOURS: Fallback local (htpasswd)
-    # Utile si Docker ne fonctionne pas ou pas d'internet
-    if [[ -z "$hashed_password" ]] && cmd_exists htpasswd; then
-        log_info "Fallback: hashage via htpasswd (bcrypt)..."
-        local htpasswd_output
-        htpasswd_output=$(htpasswd -nbB dummy "$password" 2>/dev/null)
-        hashed_password=$(echo "$htpasswd_output" | cut -d':' -f2)
+    # 2. Fallback: Méthode htpasswd (si installé)
+    if [[ -z "$hash" ]] && cmd_exists htpasswd; then
+        log_info "Fallback: utilisation de htpasswd (bcrypt)..."
+        local htpasswd_out
+        htpasswd_out=$(htpasswd -nbB dummy "$password" 2>/dev/null)
+        hash=$(echo "$htpasswd_out" | cut -d':' -f2)
     fi
 
-    # Check final failure
-    if [[ -z "$hashed_password" ]]; then
-        log_error "Impossible de hasher le mot de passe (méthodes Docker et htpasswd échouées)."
+    # 3. Fallback: OpenSSL (SHA512 - moins bon mais standard)
+    if [[ -z "$hash" ]] && cmd_exists openssl; then
+        log_warn "⚠️  Fallback sur OpenSSL (SHA-512) car bcrypt indisponible."
+        hash=$(echo "$password" | openssl passwd -6 -stdin 2>/dev/null | tr -d '\n')
+    fi
+
+    # Échec critique
+    if [[ -z "$hash" ]]; then
+        log_error "❌ Impossible de générer un hash pour le mot de passe."
         return 1
     fi
 
-    # -------------------------------------------------------------------------
-    # CRITIQUE: Échappement Docker Compose ($ -> $$)
-    # Le hash doit avoir ses $ doublés pour ne pas être interpolé par Docker Compose.
-    # Ex: $2b$12$... -> $$2b$$12$$...
-    # -------------------------------------------------------------------------
-    local doubled_hash="${hashed_password//\$/\$\$}"
+    # --- ÉCRITURE ATOMIQUE & SÉCURISÉE DANS .ENV ---
 
-    # Échapper pour sed (délimiteurs / & |)
-    local safe_val=$(printf '%s\n' "$doubled_hash" | sed 's:[&/|]:\\&:g')
+    # Échappement des $ pour Docker Compose ($ -> $$)
+    # Ex: $2a$12$... devient $$2a$$12$$...
+    local hash_escaped="${hash//\$/\$\$}"
 
-    # Mise à jour du fichier .env
-    if grep -q "^DASHBOARD_PASSWORD=" "$env_file"; then
-        sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=${safe_val}|" "$env_file"
+    # Création d'un fichier temporaire pour écriture atomique
+    local temp_env="${env_file}.tmp"
+
+    # Copier tout SAUF la ligne DASHBOARD_PASSWORD existante
+    if [[ -f "$env_file" ]]; then
+        grep -v '^DASHBOARD_PASSWORD=' "$env_file" > "$temp_env" || true
     else
-        echo "DASHBOARD_PASSWORD=${safe_val}" >> "$env_file"
+        touch "$temp_env"
     fi
 
-    log_success "✓ Mot de passe hashé et sécurisé dans .env"
+    # Ajouter la nouvelle ligne
+    echo "DASHBOARD_PASSWORD=\"$hash_escaped\"" >> "$temp_env"
+
+    # Swap atomique
+    mv "$temp_env" "$env_file"
+    chmod 600 "$env_file"
+
+    log_success "✅ Mot de passe sécurisé et enregistré (Hash: ${hash:0:10}...)"
+
+    # Pour setup.sh state tracking
+    export SETUP_PASSWORD_HASH="$hash"
+
     return 0
+}
+
+# Fonction de test unitaire
+test_hash() {
+    local test_pass="testpassword123"
+    echo "Testing hash with: $test_pass"
+    hash_and_store_password "/tmp/test.env" "$test_pass"
+    cat /tmp/test.env
+    rm -f /tmp/test.env
 }
 
 # === KEY GENERATION ===
@@ -109,7 +133,7 @@ generate_jwt_secret() {
 
 escape_sed_string() {
     local string="$1"
-    # Échapper /, &, et | car | est souvent utilisé comme séparateur sed
+    # Échapper /, &, et |
     printf '%s\n' "$string" | sed 's:[\/&|]:\\&:g'
 }
 
@@ -119,55 +143,33 @@ audit_env_security() {
     local env_file="$1"
 
     log_step "🔒 AUDIT SÉCURITÉ"
-
     local issues=0
 
-    # Vérifier les variables de remplissage
-    if grep -q "CHANGEZ_MOI\|your_secure\|your_jwt\|REPLACE_ME" "$env_file"; then
-        log_warn "⚠️  Certaines variables ne sont pas configurées (CHANGEZ_MOI, REPLACE_ME)"
-        issues=$((issues + 1))
-    fi
-
-    # Vérifier les permissions du fichier .env
+    # Vérifier permissions
     local perms
     perms=$(stat -c %a "$env_file" 2>/dev/null || stat -f %A "$env_file" 2>/dev/null || echo "")
     if [[ -n "$perms" && "$perms" != "600" ]]; then
-        log_warn "⚠️  Permissions du .env: $perms (recommandé: 600)"
+        log_warn "⚠️  Permissions du .env: $perms (fixé à 600)"
         chmod 600 "$env_file" 2>/dev/null || true
-        issues=$((issues + 1))
     else
         log_success "✓ Permissions .env: 600"
     fi
 
-    # Vérifier la présence de DASHBOARD_PASSWORD
-    if ! grep -q "^DASHBOARD_PASSWORD=" "$env_file" || grep -q "^DASHBOARD_PASSWORD=$\|^DASHBOARD_PASSWORD=CHANGEZ_MOI" "$env_file"; then
-        log_warn "⚠️  DASHBOARD_PASSWORD non configuré"
-        issues=$((issues + 1))
-    else
-        log_success "✓ DASHBOARD_PASSWORD configuré"
-    fi
-
-    # Vérifier la présence de API_KEY
-    if ! grep -q "^API_KEY=" "$env_file" || grep -q "^API_KEY=$\|^API_KEY=CHANGEZ_MOI" "$env_file"; then
-        log_warn "⚠️  API_KEY non configurée"
-        issues=$((issues + 1))
-    else
-        log_success "✓ API_KEY configurée"
-    fi
-
-    # Vérifier la présence de JWT_SECRET
-    if ! grep -q "^JWT_SECRET=" "$env_file" || grep -q "^JWT_SECRET=$\|^JWT_SECRET=CHANGEZ_MOI" "$env_file"; then
-        log_warn "⚠️  JWT_SECRET non configuré"
-        issues=$((issues + 1))
-    else
-        log_success "✓ JWT_SECRET configuré"
-    fi
+    # Vérifier variables critiques
+    for var in "DASHBOARD_PASSWORD" "API_KEY" "JWT_SECRET"; do
+        if ! grep -q "^${var}=" "$env_file" || grep -q "^${var}=$\|^${var}=CHANGEZ_MOI" "$env_file"; then
+            log_warn "⚠️  ${var} non configuré ou insécure"
+            issues=$((issues + 1))
+        else
+            log_success "✓ ${var} configuré"
+        fi
+    done
 
     if [[ $issues -eq 0 ]]; then
-        log_success "✓ Audit sécurité réussi (aucun problème détecté)"
+        log_success "✓ Audit sécurité réussi"
         return 0
     else
         log_warn "⚠️  $issues problèmes de sécurité détectés"
-        return 0  # Ne pas échouer, juste avertir
+        return 0
     fi
 }

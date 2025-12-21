@@ -312,55 +312,45 @@ fi
 
 # PHASE 3 : Configuration Sécurisée Dashboard
 configure_dashboard_password() {
-    echo ">>> Configuration du Mot de Passe Dashboard"
+    log_info ">>> 🔐 Configuration Mot de Passe Dashboard"
 
-    # Idempotence : skip si existe déjà
-    if [ -f .env ] && grep -q "^DASHBOARD_PASSWORD=" .env; then
-        echo "ℹ [INFO] Mot de passe existant détecté."
-        read -p "Modifier ? (y/N) : " -n 1 MODIFY_PWD
-        echo
-        [[ $MODIFY_PWD =~ ^[Yy] ]] || { echo "✓ [OK] Conservation."; return 0; }
+    # Idempotence : skip si existe déjà (avec vérification plus robuste)
+    if [[ -f "$ENV_FILE" ]] && grep -q "^DASHBOARD_PASSWORD=" "$ENV_FILE"; then
+        log_info "✅ Mot de passe déjà configuré (hash présent)"
+
+        # Option pour forcer le changement si demandé ou via argument (futur)
+        # Pour l'instant on conserve le comportement idempotent strict
+        return 0
     fi
 
-    # Input masqué + validation stricte
+    local PASSWORD
+    local PASSWORD_CONFIRM
+
+    # Double validation mot de passe
     while true; do
-        read -s -p "Entrez mot de passe (>=8 caractères) : " PASSWORD
-        echo
-        [[ ${#PASSWORD} -ge 8 ]] && break
-        echo "✗ [ERROR] Trop court. Réessayez."
+        echo ""
+        read -s -r -p "🔑 Mot de passe dashboard (≥8 car.) : " PASSWORD
+        echo ""
+        read -s -r -p "🔑 Confirmez le mot de passe       : " PASSWORD_CONFIRM
+        echo ""
+
+        if [[ "$PASSWORD" == "$PASSWORD_CONFIRM" ]] && [[ ${#PASSWORD} -ge 8 ]]; then
+            break
+        fi
+
+        log_warn "❌ Non concordant ou trop court (<8). Réessayez."
     done
 
-    # Hash bcryptjs Docker (COMMANDE VALIDÉE MANUELLEMENT)
-    echo "ℹ [INFO] Hashage bcryptjs sécurisé (Docker ARM64)..."
-    HASH=$(docker run --rm --platform linux/arm64 node:20-alpine sh -c "
-    mkdir -p /app && cd /app &&
-    npm init -y --silent >/dev/null 2>&1 &&
-    npm i bcryptjs --no-save >/dev/null 2>&1 &&
-    node -e \"const b=require('bcryptjs'); b.hash('$PASSWORD',12).then(console.log).catch(console.error)\"
-    " 2>&1 | head -1)
-
-    # Validation + fallback openssl SHA512
-    if [[ ! $HASH =~ ^\$2b\$ ]]; then
-        echo "⚠ [WARN] Docker échoué → Fallback openssl SHA512"
-        HASH=$(echo "$PASSWORD" | openssl passwd -6 -stdin 2>/dev/null | tr -d '\n')
+    # Hachage via lib security.sh (Architecture CI/CD Robuste)
+    # Utilise l'image 'pi-security-hash' pré-buildée
+    if hash_and_store_password "$ENV_FILE" "$PASSWORD"; then
+        export SETUP_PASSWORD_PLAINTEXT="$PASSWORD"
+        setup_state_set_config "password_set" "true"
+        log_success "✅ Dashboard sécurisé !"
+    else
+        log_error "💥 ÉCHEC CRITIQUE du hachage. Setup abandonné."
+        exit 1
     fi
-
-    [[ -z "$HASH" ]] && { echo "✗ [CRITIQUE] Hashage impossible."; exit 1; }
-
-    # DOUBLE TOUS LES $ → OBLIGATOIRE pour .env Bash
-    echo "🔧 Doublement systématique des \$ → .env safe"
-    HASH_ESCAPED=$(echo "$HASH" | sed 's/\$/$$/g')
-    echo "DASHBOARD_PASSWORD=\"$HASH_ESCAPED\"" >> .env
-
-    # Debug clair AVANT/APRÈS
-    echo "📋 Hash original : $HASH"
-    echo "📋 Hash échappé  : $HASH_ESCAPED"
-    echo "✓ [OK] Hash stocké sécurisé dans .env"
-    echo "ℹ [INFO] Ligne .env : $(grep DASHBOARD_PASSWORD .env)"
-
-    # Maintain state compatibility
-    export SETUP_PASSWORD_PLAINTEXT="$PASSWORD"
-    setup_state_set_config "password_set" "true"
 }
 configure_dashboard_password
 
