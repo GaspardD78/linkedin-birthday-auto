@@ -355,13 +355,27 @@ fi
 configure_dashboard_password() {
     log_info ">>> 🔐 Configuration Mot de Passe Dashboard"
 
-    # Idempotence : skip si existe déjà (avec vérification plus robuste)
-    if [[ -f "$ENV_FILE" ]] && grep -q "^DASHBOARD_PASSWORD=" "$ENV_FILE"; then
-        log_info "✅ Mot de passe déjà configuré (hash présent)"
+    # ==============================================================================
+    # IDEMPOTENCE ROBUSTE (Correctif v5.2 - Production Ready)
+    # Validation stricte du hash Bcrypt et gestion complète des cas .env
+    # ==============================================================================
 
-        # Option pour forcer le changement si demandé ou via argument (futur)
-        # Pour l'instant on conserve le comportement idempotent strict
-        return 0
+    if [[ -f "$ENV_FILE" ]]; then
+        local current_pwd=""
+        current_pwd=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d '"'\' | tr -d '\r' | xargs)
+        local default_value="CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT"
+
+        # Validation robuste acceptant le format standard ($2a$...) et le format échappé Docker ($$2a$$...)
+        if [[ -n "$current_pwd" && "$current_pwd" != "$default_value" && "$current_pwd" =~ ^(\$\$|[\$])2[aby](\$\$|[\$]).{50,}$ ]]; then
+            log_success "✅ Mot de passe déjà configuré (hash Bcrypt valide détecté)"
+            return 0
+        fi
+
+        if [[ -z "$current_pwd" || "$current_pwd" == "$default_value" ]]; then
+            log_warn "⚠️  Valeur par défaut ou vide détectée dans .env. Reconfiguration requise."
+        else
+            log_warn "⚠️  Mot de passe non hashé ou invalide. Hashage forcé enclenché..."
+        fi
     fi
 
     local PASSWORD
