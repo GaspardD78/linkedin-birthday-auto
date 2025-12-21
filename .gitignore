@@ -157,3 +157,4 @@ export_*.json
 # Setup state files (runtime, not version controlled)
 .setup.state
 .setup.lock
+backups/
