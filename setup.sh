@@ -365,7 +365,8 @@ configure_dashboard_password() {
         current_pwd=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2- | tr -d '"'\' | tr -d '\r' | xargs)
         local default_value="CHANGEZ_MOI_PAR_MOT_DE_PASSE_FORT"
 
-        if [[ -n "$current_pwd" && "$current_pwd" != "$default_value" && "$current_pwd" =~ ^\$2[aby]\$.{56}$ ]]; then
+        # Validation robuste acceptant le format standard ($2a$...) et le format échappé Docker ($$2a$$...)
+        if [[ -n "$current_pwd" && "$current_pwd" != "$default_value" && "$current_pwd" =~ ^(\$\$|[\$])2[aby](\$\$|[\$]).{50,}$ ]]; then
             log_success "✅ Mot de passe déjà configuré (hash Bcrypt valide détecté)"
             return 0
         fi
