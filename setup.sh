@@ -241,6 +241,47 @@ if [[ "$CHECK_ONLY" == "true" ]]; then
     exit 0
 fi
 
+#===============================================================================
+# PHASE 1.5 : Configuration DNS Stable (Anti-timeout Docker pull)
+#===============================================================================
+echo "══════════════════════════════════════════════════════════════"
+echo "  PHASE 1.5 : DNS Stable RPi4 (Google/Cloudflare)"
+echo "══════════════════════════════════════════════════════════════"
+
+# Install dnsutils si manquant (pour nslookup)
+if ! command -v nslookup >/dev/null 2>&1; then
+    echo "ℹ [INFO] Installation dnsutils..."
+    sudo apt update -qq && sudo apt install dnsutils -y </dev/null
+fi
+
+# Vérif configuration existante (idempotence)
+if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
+    echo "✓ [OK] DNS déjà configuré (Google DNS)"
+else
+    echo "🔧 Configuration DNS permanent..."
+    sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
+# DNS stable RPi4 - anti-timeout Docker pull (LinkedIn-bot)
+static domain_name_servers=8.8.8.8 8.8.4.4 1.1.1.1
+EOF
+fi
+
+# Redémarrage dhcpcd (pas systemctl !)
+echo "🔄 Redémarrage réseau dhcpcd..."
+sudo dhcpcd -n
+sleep 3
+
+# Test DNS fonctionnel
+if nslookup google.com >/dev/null 2>&1 && nslookup gaspardanoukolivier.freeboxos.fr >/dev/null 2>&1; then
+    echo "✓ [OK] DNS opérationnel : google.com + freeboxos.fr"
+    echo "ℹ [INFO] /etc/resolv.conf : $(head -2 /etc/resolv.conf)"
+else
+    echo "⚠ [WARN] DNS défaillant → Reboot recommandé"
+    echo "ℹ [INFO] Exécutez : sudo reboot"
+    exit 1
+fi
+
+echo "✅ PHASE DNS TERMINÉE"
+
 # === PHASE 2: BACKUP & CONFIGURATION ===
 
 log_step "PHASE 2: Backup"
