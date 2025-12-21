@@ -30,6 +30,7 @@ server {
     # PROXY VERS DASHBOARD (Next.js)
     # ═══════════════════════════════════════════════════════════════
     location / {
+        proxy_hide_header Content-Security-Policy;
         # Rate limiting (Protection contre abus)
         limit_req zone=general burst=20 nodelay;
 
