@@ -162,33 +162,19 @@ export async function pollJobStatus(jobId: string): Promise<JobStatus> {
 
 export async function stopBot(jobType?: string, jobId?: string) {
   // Unified API: POST /api/bot/action
+  // Uses 'stop' action. If jobType is missing, sends 'all' to be explicit,
+  // or sends undefined/null which backend also handles as 'all'.
+  // Using 'all' for clarity.
+
   return post('/api/bot/action', {
     action: 'stop',
-    job_type: jobType || (jobId ? undefined : 'all'), // logic might need adjustment depending on backend
-    // Backend handles job_type inside StopRequest logic which we reused.
-    // But our new /action expects job_type to be explicit for start.
-    // For stop, it delegates to stop_bot which takes StopRequest.
-    // If jobType is null, we might need a dummy value?
-    // Let's stick to the direct /stop endpoint for stopBot to avoid complexity if /action requires valid job_type.
-    // However, the prompt implies "Unified interface".
-    // My implementation of /action in bot_control.py:
-    // elif request.action == "stop": stop_req = StopRequest(job_type=request.job_type)
-    // It passes request.job_type.
-    // If jobType is undefined, request.job_type might be missing validation?
-    // StopRequest logic handles optional job_type.
-    // But BotActionRequest has job_type as REQUIRED string.
-    // So for stop, we must provide something.
-    // I'll revert stopBot to use /stop directly as it's cleaner for "stop all".
+    job_type: jobType || 'all',
+    config: jobId ? { job_id: jobId } : {}
   });
 }
 
-// Revert stopBot to use direct endpoint for safety, as /action requires job_type
-export async function stopBotSafe(jobType?: string, jobId?: string) {
-   return post('/api/bot/stop', {
-    job_type: jobType,
-    job_id: jobId
-  });
-}
+// Alias for compatibility if needed, but uses the same unified function
+export const stopBotSafe = stopBot;
 
 export async function uploadAuthState(file: File) {
   const formData = new FormData();
