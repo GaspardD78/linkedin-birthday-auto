@@ -1,31 +1,56 @@
-name: Build Security Image (ARM64)
+name: Build Security Image
+
 on:
   push:
-    paths: ['docker/security/**', '.github/workflows/build-security-image.yml']
     branches: [ main, develop ]
+    tags: [ 'v*' ]
+    paths:
+      - 'docker/security/**'
+      - '.github/workflows/build-security-image.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
   build:
+    name: Build Security Image
     runs-on: ubuntu-latest
     permissions: { packages: write, contents: read }
 
     steps:
     - uses: actions/checkout@v4
 
+    # Optimization: Filter to ensure we only build if relevant files changed
+    # This specifically handles the case where a Tag push would otherwise trigger a build
+    # independent of the 'paths' filter (which is ignored for tags).
+    - name: Check for changes
+      uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          security:
+            - 'docker/security/**'
+            - '.github/workflows/build-security-image.yml'
+
     - name: Set image name to lowercase
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       run: echo "IMAGE_NAME=$(echo '${{ github.repository }}/pi-security-hash' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
     - name: Set up QEMU
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       uses: docker/setup-qemu-action@v3
 
     - name: Set up Docker Buildx
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       uses: docker/setup-buildx-action@v3
 
     - name: Login to GHCR
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -33,6 +58,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Extract metadata
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -41,15 +67,17 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
           type=ref,event=branch
           type=sha,prefix=sha-
+          type=semver,pattern={{version}}
 
-    - name: Build & Push ARM64
+    - name: Build & Push Multi-Arch
+      if: steps.changes.outputs.security == 'true' || github.event_name == 'workflow_dispatch'
       uses: docker/build-push-action@v6
       with:
         context: docker/security
         file: docker/security/Dockerfile
-        platforms: linux/arm64
+        platforms: linux/amd64,linux/arm64
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=security
+        cache-to: type=gha,mode=max,scope=security
