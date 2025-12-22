@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.env
+.venv
+venv/
+data/
+logs/
+dashboard/node_modules
+dashboard/.next
+tests/
+docs/

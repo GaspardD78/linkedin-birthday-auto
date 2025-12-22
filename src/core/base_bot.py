@@ -29,12 +29,21 @@ from ..utils.exceptions import (
     AccountRestrictedError,
     CaptchaRequiredError,
     LinkedInBotError,
+    BotSecurityError,
     is_critical_error,
 )
 from ..utils.logging import get_logger
 from ..utils.date_parser import DateParsingService
 
 logger = get_logger(__name__)
+
+class ClickMetrics:
+    total_clicks = 0
+    direct_clicks = 0
+    force_clicks = 0
+    js_fallback_clicks = 0
+    dispatch_clicks = 0
+    honeypot_detections = 0
 
 # Import conditionnel pour éviter les erreurs d'import circulaire
 def _get_notification_service(db_path: str = "/app/data/linkedin.db"):
@@ -328,18 +337,16 @@ class BaseLinkedInBot(ABC):
     def _smart_click(self, locator: Locator, timeout: int = 5000) -> bool:
         """
         Tente de cliquer sur un élément avec plusieurs stratégies de fallback.
-        1. Standard click
-        2. Force click (bypass viewport/overlay checks)
-        3. JS click (works even if element is outside viewport)
-        4. Dispatch Event
-
         Capture une capture d'écran en cas d'échec total et retourne False sans crasher.
         """
+        ClickMetrics.total_clicks += 1
         error_msg = ""
 
         try:
             # Strategy 1: Standard Click
             locator.click(timeout=timeout)
+            ClickMetrics.direct_clicks += 1
+            logger.debug(f"SmartClick: ✅ Direct click success")
             return True
         except Exception as e1:
             error_msg = str(e1)
@@ -348,14 +355,31 @@ class BaseLinkedInBot(ABC):
         try:
             # Strategy 2: Force Click (bypasses actionability checks including viewport)
             locator.click(timeout=timeout, force=True)
+            ClickMetrics.force_clicks += 1
+            logger.debug(f"SmartClick: ✅ Force click success")
             return True
         except Exception as e2:
             logger.debug(f"SmartClick: Force click failed ({e2}). Trying JS click...")
 
+        # HONEYPOT DETECTION (Avant JS Fallback)
+        try:
+            # Check if element is hidden (offsetParent is null) which JS click would bypass
+            is_hidden = locator.evaluate("el => el.offsetParent === null")
+            if is_hidden:
+                ClickMetrics.honeypot_detections += 1
+                logger.critical(f"🚨 HONEYPOT DETECTED: Element is hidden (offsetParent=null). Aborting click.")
+                raise BotSecurityError("Honeypot detected: Element hidden")
+        except BotSecurityError:
+            raise
+        except Exception:
+            pass # Ignore check failures
+
         try:
             # Strategy 3: JS Click (works even if element is outside viewport)
             # This is the most reliable for elements in scrollable containers
+            logger.warning(f"🚨 FALLBACK: Using JS eval click")
             locator.evaluate("el => el.click()")
+            ClickMetrics.js_fallback_clicks += 1
             return True
         except Exception as e3:
             logger.debug(f"SmartClick: JS click failed ({e3}). Trying Dispatch Event...")
@@ -363,6 +387,7 @@ class BaseLinkedInBot(ABC):
         try:
             # Strategy 4: Dispatch Event (most compatible with various frameworks)
             locator.evaluate("el => el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}))")
+            ClickMetrics.dispatch_clicks += 1
             return True
         except Exception as e4:
             # All failed

@@ -20,36 +20,48 @@ export async function POST(request: Request) {
     let endpoint = '';
     let payload: any = {};
 
-    // Routage vers les endpoints spécifiques (Architecture V2 - Routes /bot/*)
-    if (action === 'start' && job_type === 'birthday') {
-      endpoint = '/bot/start/birthday';
-      payload = {
-        dry_run: dry_run ?? true,
-        process_late: process_late ?? false,
-        max_days_late: body.max_days_late ?? 10
-      };
-    } else if (action === 'start' && job_type === 'visit') {
-      endpoint = '/bot/start/visitor';
-      payload = {
-        dry_run: dry_run ?? true,
-        limit: limit ?? 10
-      };
-    } else if (action === 'stop') {
-      endpoint = '/bot/stop';
-      payload = {};
+    // Routage unifié vers /bot/action (Architecture V3)
+    endpoint = '/bot/action';
 
-      // Ajouter job_type si fourni (pour arrêt par type)
-      if (body.job_type) {
-        payload.job_type = body.job_type;
-      }
+    // Pass the body directly, ensuring it matches BotActionRequest structure
+    // api.ts sends: { action, job_type, config: {...} }
+    // If request body is flat (legacy), adapt it.
 
-      // Ajouter job_id si fourni (pour arrêt par ID spécifique)
-      if (body.job_id) {
-        payload.job_id = body.job_id;
-      }
-
+    if (body.config) {
+        payload = body; // Already V3 format
     } else {
-      return NextResponse.json({ error: "Invalid action or job_type" }, { status: 400 });
+        // Adapt Legacy flat format to V3 BotActionRequest
+        payload = {
+            action: action,
+            job_type: job_type,
+            config: {}
+        };
+
+        if (job_type === 'birthday') {
+            payload.config = {
+                dry_run: dry_run ?? true,
+                process_late: process_late ?? false,
+                max_days_late: body.max_days_late ?? 10
+            };
+        } else if (job_type === 'visit') {
+            payload.config = {
+                dry_run: dry_run ?? true,
+                limit: limit ?? 10
+            };
+        } else if (action === 'stop') {
+             // For stop, job_type is optional in legacy /stop but required in /action
+             // If missing, use 'all' or handle on backend
+             payload.job_type = body.job_type || 'all';
+             // We might want to use specific endpoint for stop if V3 /action is strict
+             if (!body.job_type && !body.job_id) {
+                 // Emergency stop
+                 endpoint = '/bot/stop';
+                 payload = {};
+             } else {
+                 endpoint = '/bot/stop'; // Stick to /stop for now for safety as per my Python implementation of /action
+                 payload = { job_type: body.job_type, job_id: body.job_id };
+             }
+        }
     }
 
 

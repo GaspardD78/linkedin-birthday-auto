@@ -208,7 +208,7 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - ./data:/app/data
-    - ./src:/app/src
+    # - ./src:/app/src  <-- Removed for production stability
     deploy:
       resources:
         limits:
@@ -261,7 +261,7 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - ./data:/app/data
-    - ./src:/app/src
+    # - ./src:/app/src  <-- Removed for production stability
     stop_signal: SIGINT
     # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:

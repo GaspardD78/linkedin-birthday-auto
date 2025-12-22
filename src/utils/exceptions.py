@@ -52,6 +52,7 @@ class ErrorCode(Enum):
     # Generic (9xxx)
     UNKNOWN_ERROR = 9000
     NOT_IMPLEMENTED = 9001
+    BOT_DETECTED = 9002  # Honeypot etc.
 
 
 class LinkedInBotError(Exception):
@@ -355,6 +356,21 @@ class CaptchaRequiredError(LinkedInBotError):
         recoverable = kwargs.pop("recoverable", False)
         super().__init__(
             message="LinkedIn requires captcha verification",
+            error_code=error_code,
+            recoverable=recoverable,
+            **kwargs,
+        )
+
+
+class BotSecurityError(LinkedInBotError):
+    """Erreur de sécurité (Honeypot, Détection, etc.)."""
+
+    def __init__(self, message: str, **kwargs):
+        # Extraire les arguments pour éviter les doublons
+        error_code = kwargs.pop("error_code", ErrorCode.BOT_DETECTED)
+        recoverable = kwargs.pop("recoverable", False)
+        super().__init__(
+            message=message,
             error_code=error_code,
             recoverable=recoverable,
             **kwargs,
