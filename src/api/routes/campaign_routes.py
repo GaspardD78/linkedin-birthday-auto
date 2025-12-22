@@ -6,7 +6,6 @@ import json
 import logging
 from src.core.database import get_database
 from src.api.security import verify_api_key
-from src.queue.tasks import run_visitor_task
 import redis
 from rq import Queue
 
