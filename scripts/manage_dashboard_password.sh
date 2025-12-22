@@ -34,7 +34,7 @@ BOLD='\033[1m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_ROOT}/.env"
-COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.pi4-standalone.yml"
+COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.yml"
 LOG_DIR="${PROJECT_ROOT}/logs"
 HISTORY_LOG="${LOG_DIR}/password_history.log"
 

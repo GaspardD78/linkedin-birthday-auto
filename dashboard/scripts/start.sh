@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-# Note: In docker-compose.pi4-standalone.yml, redis service is named 'redis-bot'
+# Note: In docker-compose.yml, redis service is named 'redis-bot'
 # Dashboard connects to 'redis-dashboard' for its own cache, but needs 'redis-bot' for worker status.
 # The requirement is explicitly to wait for 'redis-bot:6379'.
 REDIS_HOST="${BOT_REDIS_HOST:-redis-bot}"

@@ -29,7 +29,7 @@ DISK_INFO=$(df -h / | awk 'NR==2 {print $3"/"$2}')
 
 # État Docker
 if command -v docker &> /dev/null; then
-    DOCKER_STATUS=$(docker compose -f "${PROJECT_DIR}/docker-compose.pi4-standalone.yml" ps --format json 2>/dev/null | grep -c "running" || echo "0")
+    DOCKER_STATUS=$(docker compose -f "${PROJECT_DIR}/docker-compose.yml" ps --format json 2>/dev/null | grep -c "running" || echo "0")
 else
     DOCKER_STATUS="N/A"
 fi

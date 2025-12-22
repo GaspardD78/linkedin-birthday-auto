@@ -143,7 +143,7 @@ curl -k https://localhost:3000/api/system/health
 **Migration :**
 ```bash
 # Ancien (ne fonctionne plus)
-docker compose -f docker-compose.pi4-standalone.yml logs
+docker compose -f docker-compose.yml logs
 
 # Nouveau
 docker compose logs

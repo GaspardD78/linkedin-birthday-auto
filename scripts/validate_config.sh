@@ -49,7 +49,7 @@ echo ""
 # 4. Validation Docker Compose
 echo "4️⃣ Validation Docker Compose..."
 if command -v docker >/dev/null 2>&1; then
-    if docker compose -f docker-compose.pi4-standalone.yml config >/dev/null 2>&1; then
+    if docker compose -f docker-compose.yml config >/dev/null 2>&1; then
         echo -e "${GREEN}✅ Docker Compose syntaxiquement correct${NC}"
     else
         echo -e "${RED}❌ Erreur de syntaxe Docker Compose${NC}"
@@ -82,5 +82,5 @@ echo -e "${GREEN}🎉 VALIDATION TERMINÉE AVEC SUCCÈS${NC}"
 echo ""
 echo "Prochaines étapes:"
 echo "1. Commit et push des modifications"
-echo "2. Démarrer les services: docker compose -f docker-compose.pi4-standalone.yml up -d"
-echo "3. Vérifier les logs: docker compose -f docker-compose.pi4-standalone.yml logs -f"
+echo "2. Démarrer les services: docker compose -f docker-compose.yml up -d"
+echo "3. Vérifier les logs: docker compose -f docker-compose.yml logs -f"

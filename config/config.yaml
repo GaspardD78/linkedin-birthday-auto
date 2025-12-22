@@ -147,7 +147,7 @@ database:
   enabled: true
 
   # Base de données SQLite dans le volume partagé Docker
-  # Compatible avec docker-compose.pi4-standalone.yml (shared-data volume)
+  # Compatible avec docker-compose.yml (shared-data volume)
   # IMPORTANT: Nom doit correspondre à DATABASE_URL dans .env (linkedin.db)
   db_path: /app/data/linkedin.db
 

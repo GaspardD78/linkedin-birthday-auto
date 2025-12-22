@@ -90,7 +90,7 @@ If you're upgrading from a version before these changes:
 
 ### Breaking Changes
 
-- **Docker Compose Filename**: If you have custom scripts referencing `docker-compose.pi4-standalone.yml`, update them to use `docker-compose.yml`
+- **Docker Compose Filename**: If you have custom scripts referencing `docker-compose.yml` (formerly `docker-compose.pi4-standalone.yml`), update them to use `docker-compose.yml`
 
 ### New Features You Can Enable
 

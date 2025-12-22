@@ -7,7 +7,7 @@
 # - Freebox Pop : IP résidentielle légitime pour LinkedIn
 #
 # Utilisation:
-#   docker compose -f docker-compose.pi4-standalone.yml up -d
+#   docker compose -f docker-compose.yml up -d
 #
 # Documentation:
 # - Setup: docs/RASPBERRY_PI_DOCKER_SETUP.md

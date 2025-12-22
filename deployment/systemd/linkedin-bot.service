@@ -13,7 +13,7 @@ RemainAfterExit=yes
 WorkingDirectory=/home/pi/linkedin-birthday-auto
 
 # Variables d'environnement
-Environment="COMPOSE_FILE=docker-compose.pi4-standalone.yml"
+Environment="COMPOSE_FILE=docker-compose.yml"
 Environment="DOCKER_BUILDKIT=1"
 
 # Commandes de démarrage
