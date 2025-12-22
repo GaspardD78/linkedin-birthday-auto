@@ -692,9 +692,19 @@ MONITORING_ENABLED="false"
 setup_state_set_config "monitoring_enabled" "false"
 
 # Initialiser la barre de progression pour la phase 6
-progress_init "Déploiement Docker" 4
+progress_init "Déploiement Docker" 5
 
-# Étape 1: Validation docker-compose
+# Étape 1: Validation de l'environnement
+progress_step "Validation de l'environnement"
+if ! "$SCRIPT_DIR/scripts/validate_env.sh"; then
+    progress_fail "Environnement invalide"
+    progress_end
+    log_error "Validation de l'environnement échouée (.env / API_KEY)"
+    exit 1
+fi
+progress_done "Environnement valide"
+
+# Étape 2: Validation docker-compose
 progress_step "Validation du fichier docker-compose"
 if ! docker_compose_validate "$COMPOSE_FILE"; then
     progress_fail "Fichier docker-compose invalide"
@@ -704,7 +714,7 @@ if ! docker_compose_validate "$COMPOSE_FILE"; then
 fi
 progress_done "Configuration valide"
 
-# Étape 2: Pull des images Docker
+# Étape 3: Pull des images Docker
 progress_step "Téléchargement des images Docker"
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     progress_fail "Impossible de télécharger les images"
@@ -714,7 +724,7 @@ if ! docker_pull_with_retry "$COMPOSE_FILE"; then
 fi
 progress_done "Images téléchargées"
 
-# Étape 3: Démarrage des conteneurs
+# Étape 4: Démarrage des conteneurs
 progress_step "Démarrage des conteneurs"
 if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
     progress_fail "Échec du démarrage"
@@ -724,7 +734,7 @@ if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
 fi
 progress_done "Conteneurs démarrés"
 
-# Étape 4: Vérification post-démarrage
+# Étape 5: Vérification post-démarrage
 progress_step "Vérification des conteneurs"
 sleep 3
 RUNNING_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)

@@ -193,7 +193,7 @@ services:
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Clé API pour sécuriser les appels internes (OBLIGATOIRE)
       # Générer avec: python -c "import secrets; print(secrets.token_hex(32))"
-    - API_KEY=${API_KEY:?API_KEY must be set in .env file}
+    - API_KEY=${API_KEY:?API_KEY doit être définie dans le fichier .env}
       # Activer la télémétrie OpenTelemetry
     - ENABLE_TELEMETRY=false
       # Nom du service pour séparer les logs
@@ -334,7 +334,7 @@ services:
 
       # Configuration Bot (pour Proxy API)
     - BOT_API_URL=http://api:8000
-    - BOT_API_KEY=${API_KEY:?API_KEY must be set in .env file}
+    - BOT_API_KEY=${API_KEY:?API_KEY doit être définie dans le fichier .env}
 
       # Configuration Authentification Dashboard (REQUIS)
     - JWT_SECRET=${JWT_SECRET}
