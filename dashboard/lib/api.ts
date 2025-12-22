@@ -128,9 +128,8 @@ export async function startBot(options: {
   processLate?: boolean;
   maxDaysLate?: number;
 } = {}) {
-  return post('/api/bot/action', {
-    action: 'start',
-    job_type: 'birthday',
+  // New API: POST /bot/start/birthday with BirthdayConfig payload
+  return post('/api/bot/start/birthday', {
     dry_run: options.dryRun ?? true,
     process_late: options.processLate ?? false,
     max_days_late: options.maxDaysLate ?? 10
@@ -141,17 +140,16 @@ export async function startVisitorBot(options: {
   dryRun?: boolean;
   limit?: number;
 } = {}) {
-  return post('/api/bot/action', {
-    action: 'start',
-    job_type: 'visit',
+  // New API: POST /bot/start/visitor with VisitorConfig payload
+  return post('/api/bot/start/visitor', {
     dry_run: options.dryRun ?? true,
     limit: options.limit ?? 10
   });
 }
 
 export async function stopBot(jobType?: string, jobId?: string) {
-  return post('/api/bot/action', {
-    action: 'stop',
+  // New API: POST /bot/stop with StopRequest payload
+  return post('/api/bot/stop', {
     job_type: jobType,
     job_id: jobId
   });
