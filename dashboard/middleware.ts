@@ -2,22 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
-  // Get session cookie
-  const session = request.cookies.get("session")?.value;
+  const { pathname } = request.nextUrl;
 
-  // Verify session
+  // 1. Define Public Routes
+  // These routes do not require authentication
+  const isPublicRoute =
+    pathname === "/login" ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/system");
+
+  if (isPublicRoute) {
+    return NextResponse.next();
+  }
+
+  // 2. Verify Session for Protected Routes
+  const session = request.cookies.get("session")?.value;
   const payload = session ? await verifySession(session) : null;
 
-  // Protected routes logic
+  // 3. Handle Unauthorized Access
   if (!payload) {
-    // Si déjà sur /login, ne pas rediriger (évite boucle infinie)
-    if (request.nextUrl.pathname.startsWith("/login")) {
-      return NextResponse.next();
+    // API Routes -> Return JSON 401 instead of redirecting
+    // This prevents the frontend from trying to parse HTML as JSON
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    const loginUrl = new URL("/login", request.url);
-    // Redirect to login if trying to access protected route
-    return NextResponse.redirect(loginUrl);
+    // UI Routes -> Redirect to /login
+    // Avoid redirect loops by checking we are not already on login (covered by isPublicRoute, but safety first)
+    if (!pathname.startsWith("/login")) {
+        const loginUrl = new URL("/login", request.url);
+        return NextResponse.redirect(loginUrl);
+    }
   }
 
   return NextResponse.next();
@@ -27,19 +45,10 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api (API routes are handled separately)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - login (login page)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
-
-    /*
-     * Match API routes, but EXCLUDE:
-     * - auth/* (login, logout, etc.)
-     * - system/* (health checks, etc.)
-     */
-    "/api/((?!auth|system).*)",
+    "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };
