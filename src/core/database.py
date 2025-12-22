@@ -2,12 +2,11 @@
 Module de gestion de la base de données SQLite pour LinkedIn Birthday Auto
 Gère les contacts, messages, visites de profils, erreurs et sélecteurs LinkedIn
 
-Version 2.3.1 - Clean Code & Robustesse:
-- Suppression des print()
-- Gestion intelligente des transactions imbriquées (Nested Transactions)
-- Seul l'appelant le plus externe déclenche le commit
-- Rollback complet en cas d'erreur
-- Connexions persistantes (Thread-Local) et Mode WAL
+Version 3.0.0 - Refactorisation Complète (Phase 1):
+- TransactionManager pour gestion robuste des transactions
+- Système de migration versionné
+- Suppression des ALTER TABLE inline
+- Backups automatiques avant migration
 """
 
 from contextlib import contextmanager
@@ -18,23 +17,56 @@ import os
 import sqlite3
 import threading
 import time
-from typing import Any, Optional, Counter
+import shutil
+from typing import Any, Optional, Counter, List, Dict
+from collections import Counter
 
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Dictionnaire des migrations (Version -> Liste de requêtes SQL)
+MIGRATIONS = {
+    1: [
+        "ALTER TABLE notification_settings ADD COLUMN smtp_host TEXT",
+        "ALTER TABLE notification_settings ADD COLUMN smtp_port INTEGER",
+        "ALTER TABLE notification_settings ADD COLUMN smtp_user TEXT",
+        "ALTER TABLE notification_settings ADD COLUMN smtp_password TEXT",
+        "ALTER TABLE notification_settings ADD COLUMN smtp_use_tls BOOLEAN DEFAULT 1",
+        "ALTER TABLE notification_settings ADD COLUMN smtp_from_email TEXT"
+    ],
+    2: [
+        # Colonnes potentiellement manquantes sur les anciennes installations (avant v2.3)
+        "ALTER TABLE scraped_profiles ADD COLUMN headline TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN summary TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN skills TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN certifications TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN fit_score REAL",
+        "ALTER TABLE scraped_profiles ADD COLUMN campaign_id INTEGER"
+    ],
+    3: [
+        # Enhanced Recruiter Fields
+        "ALTER TABLE scraped_profiles ADD COLUMN location TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN languages TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN work_history TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN connection_degree TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN school TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN degree TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN job_title TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN seniority_level TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN endorsements_count INTEGER",
+        "ALTER TABLE scraped_profiles ADD COLUMN profile_picture_url TEXT",
+        "ALTER TABLE scraped_profiles ADD COLUMN open_to_work INTEGER"
+    ]
+}
 
 def retry_on_lock(max_retries=5, delay=0.2):
     """
     Decorator pour retry automatique en cas de database lock.
-    Augmenté pour gérer la contention Worker/API.
     """
-
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Backoff exponentiel avec jitter serait idéal, mais simple exp suffit ici
             current_delay = delay
             for attempt in range(max_retries):
                 try:
@@ -46,196 +78,241 @@ def retry_on_lock(max_retries=5, delay=0.2):
                                 f"Database locked in {func.__name__}, retrying in {current_delay:.2f}s (attempt {attempt + 1}/{max_retries})"
                             )
                             time.sleep(current_delay)
-                            current_delay *= 2  # Exponential backoff
+                            current_delay *= 2
                         else:
-                            logger.error(
-                                f"Database operation failed after {max_retries} attempts (Locked): {e}"
-                            )
+                            logger.error(f"Database operation failed (Locked): {e}")
                             raise
                     else:
                         raise
             return None
-
         return wrapper
-
     return decorator
 
+class TransactionManager:
+    """
+    Gestionnaire de contexte pour les transactions SQLite.
+    Gère les transactions imbriquées via SAVEPOINT.
+    """
+    def __init__(self, connection, savepoints_stack: List[str]):
+        self.connection = connection
+        self.savepoints = savepoints_stack
+
+    def __enter__(self):
+        # Si une transaction est déjà en cours (reconnue par sqlite3 ou par notre pile)
+        if self.connection.in_transaction or self.savepoints:
+            sp_name = f"sp_{len(self.savepoints) + 1}_{int(time.time()*1000)}"
+            logger.debug(f"BEGIN NESTED transaction (SAVEPOINT {sp_name})")
+            self.connection.execute(f"SAVEPOINT {sp_name}")
+            self.savepoints.append(sp_name)
+            self.is_root = False
+        else:
+            logger.debug("BEGIN ROOT transaction")
+            self.connection.execute("BEGIN")
+            self.is_root = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            # En cas d'erreur : Rollback
+            if not self.is_root and self.savepoints:
+                sp_name = self.savepoints.pop()
+                logger.debug(f"ROLLBACK TO {sp_name} due to {exc_type.__name__}")
+                self.connection.execute(f"ROLLBACK TO {sp_name}")
+            elif self.is_root:
+                logger.error(f"ROLLBACK ROOT transaction due to {exc_type.__name__}: {exc_val}")
+                self.connection.rollback()
+            # Ne pas masquer l'exception
+            return False
+        else:
+            # Succès : Commit ou Release
+            if not self.is_root and self.savepoints:
+                sp_name = self.savepoints.pop()
+                logger.debug(f"RELEASE {sp_name}")
+                self.connection.execute(f"RELEASE {sp_name}")
+            elif self.is_root:
+                logger.debug("COMMIT ROOT transaction")
+                self.connection.commit()
 
 class Database:
     """
     Classe de gestion de la base de données SQLite.
-    Utilise un stockage Thread-Local pour maintenir des connexions persistantes
-    et gérer les transactions imbriquées.
+    Singleton recommandé via get_database().
     """
 
-    # Version du schéma de BDD pour migrations futures
-    SCHEMA_VERSION = "2.3.0"
+    SCHEMA_VERSION = 3
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
-        """
-        Initialise la gestion de base de données.
-
-        Args:
-            db_path: Chemin vers le fichier de base de données
-        """
         self.db_path = db_path
-        # Stockage local au thread pour les connexions persistantes
         self._local = threading.local()
-
-        # Initialisation (création fichier si inexistant) via une connexion temporaire
         self.init_database()
 
     def _create_connection(self) -> sqlite3.Connection:
-        """
-        Crée et configure une nouvelle connexion SQLite avec retry automatique.
-        Robustesse accrue pour le démarrage concurrent (API vs Worker).
-        """
         max_retries = 5
         base_delay = 0.5
         last_error = None
 
         for attempt in range(max_retries):
             try:
-                # Tentative de connexion
-                conn = sqlite3.connect(self.db_path, timeout=60.0)  # Timeout augmenté à 60s
+                conn = sqlite3.connect(self.db_path, timeout=60.0)
                 conn.row_factory = sqlite3.Row
 
-                # Optimisations Performance & Concurrence
+                # Optimisations Performance & Concurrence (WAL)
                 try:
-                    # 🚀 OPTIMISATIONS RASPBERRY PI 4
-                    # WAL (Write-Ahead Logging) permet lecture et écriture simultanées
                     conn.execute("PRAGMA journal_mode=WAL")
-                    # Synchronous NORMAL est safe avec WAL et plus rapide
                     conn.execute("PRAGMA synchronous=NORMAL")
-                    # Timeout de busy handler (attente de verrou)
                     conn.execute("PRAGMA busy_timeout=60000")
-                    # Cache size RÉDUIT: 20MB au lieu de 40MB (optimisé Pi4)
-                    conn.execute("PRAGMA cache_size=-5000")  # -5000 pages = ~20MB
-                    # Foreign keys enforce
-                    conn.execute("PRAGMA foreign_keys=ON")
-                    # Tables temporaires en RAM
                     conn.execute("PRAGMA temp_store=MEMORY")
-                    # Memory-mapped I/O 256MB (accélère lectures)
-                    conn.execute("PRAGMA mmap_size=268435456")
-                    # Checkpoint tous les 1000 pages
-                    conn.execute("PRAGMA wal_autocheckpoint=1000")
-                    # Limite WAL à 4MB
-                    conn.execute("PRAGMA journal_size_limit=4194304")
+                    conn.execute("PRAGMA foreign_keys=ON")
                 except Exception as e:
-                    logger.warning(f"Failed to set PRAGMA optimizations: {e}", exc_info=True)
+                    logger.warning(f"Failed to set PRAGMA optimizations: {e}")
 
                 return conn
 
             except sqlite3.OperationalError as e:
                 last_error = e
-                wait_time = base_delay * (2 ** attempt)  # Backoff exponentiel
+                wait_time = base_delay * (2 ** attempt)
                 if attempt < max_retries - 1:
-                    logger.warning(
-                        f"Database connection failed (locked/busy). Retrying in {wait_time:.1f}s... "
-                        f"(Attempt {attempt + 1}/{max_retries})"
-                    )
                     time.sleep(wait_time)
-                else:
-                    logger.error(f"Fatal: Could not connect to database after {max_retries} attempts.")
 
-        # Si on arrive ici, c'est que toutes les tentatives ont échoué
         raise last_error or sqlite3.OperationalError("Could not connect to database")
 
     @contextmanager
     def get_connection(self):
         """
-        Context manager transactionnel intelligent.
-        Gère les transactions imbriquées : seul l'appelant le plus externe déclenche le commit.
+        Retourne un contexte transactionnel (TransactionManager).
+        Compatible avec l'ancienne API qui attendait `conn`.
         """
-        # Vérifier si une connexion existe déjà pour ce thread
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            logger.debug("Creating new thread-local database connection")
             self._local.conn = self._create_connection()
-            self._local.transaction_depth = 0
+            self._local.savepoints = []
 
-        conn = self._local.conn
-
-        # Vérification basique si la connexion est fermée (programming error)
+        # Vérification santé connexion
         try:
-            conn.in_transaction
+            self._local.conn.in_transaction
         except sqlite3.ProgrammingError:
-            logger.warning("Thread-local connection was closed/invalid, recreating.")
             self._local.conn = self._create_connection()
-            self._local.transaction_depth = 0
-            conn = self._local.conn
+            self._local.savepoints = []
 
-        # Initialisation du compteur de profondeur pour ce thread si nécessaire (safety)
-        if not hasattr(self._local, "transaction_depth"):
-            self._local.transaction_depth = 0
+        if not hasattr(self._local, "savepoints"):
+            self._local.savepoints = []
 
-        try:
-            self._local.transaction_depth += 1
-            yield conn
-
-            # On décrémente APRES le yield
-            self._local.transaction_depth -= 1
-
-            # On ne commit que si on est revenu au niveau 0 (transaction racine)
-            if self._local.transaction_depth == 0:
-                conn.commit()
-
-        except Exception as e:
-            # ✅ Décrémenter proprement même en cas d'erreur (pas de reset forcé)
-            self._local.transaction_depth -= 1
-
-            # Rollback UNIQUEMENT si on est au niveau racine (depth = 0)
-            if self._local.transaction_depth == 0:
-                conn.rollback()
-                logger.error(f"Database transaction failed (rolled back): {e}")
-            else:
-                # Transaction imbriquée : propager l'erreur sans rollback
-                # Le rollback sera géré par l'appelant parent
-                logger.warning(
-                    f"Nested transaction failed at depth {self._local.transaction_depth + 1}. "
-                    "Error propagated to parent transaction."
-                )
-
-            raise e
+        with TransactionManager(self._local.conn, self._local.savepoints) as txn:
+            yield txn.connection
 
     def close(self):
-        """Ferme la connexion du thread courant (nettoyage explicite)"""
         if hasattr(self._local, "conn") and self._local.conn:
             try:
                 self._local.conn.close()
-            except Exception as e:
-                logger.error(f"Error closing database connection: {e}", exc_info=True)
+            except Exception: pass
             finally:
                 self._local.conn = None
-                self._local.transaction_depth = 0
+
+    def get_current_schema_version(self) -> int:
+        """Récupère la version actuelle du schéma (int)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                # Vérifier si la table existe
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
+                if not cursor.fetchone():
+                    return 0
+
+                # Vérifier le format (migration legacy)
+                cursor.execute("PRAGMA table_info(schema_version)")
+                cols = [c[1] for c in cursor.fetchall()]
+                if 'id' not in cols:
+                    return 0 # Legacy text version
+
+                cursor.execute("SELECT MAX(version) FROM schema_version")
+                row = cursor.fetchone()
+                return row[0] if row and row[0] is not None else 0
+            except Exception:
+                return 0
+
+    def backup_database(self, suffix: str):
+        """Crée un backup de la BDD."""
+        if not os.path.exists(self.db_path): return
+
+        backup_path = f"{self.db_path}.{suffix}.bak"
+        try:
+            # Tentative VACUUM INTO (plus sûr)
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(f"VACUUM INTO '{backup_path}'")
+            logger.info(f"Database backup created: {backup_path}")
+        except Exception as e:
+            logger.warning(f"VACUUM INTO backup failed ({e}), falling back to copy")
+            try:
+                shutil.copy2(self.db_path, backup_path)
+            except Exception as copy_e:
+                logger.error(f"Backup copy failed: {copy_e}")
+
+    def run_migrations(self):
+        """Exécute les migrations manquantes."""
+        current_version = self.get_current_schema_version()
+        logger.info(f"Checking migrations... Current version: {current_version}")
+
+        for version in sorted(MIGRATIONS.keys()):
+            if version > current_version:
+                logger.info(f"Applying migration {version}...")
+
+                try:
+                    # Transaction pour la migration
+                    with self.get_connection() as conn:
+                        for stmt in MIGRATIONS[version]:
+                            try:
+                                conn.execute(stmt)
+                            except sqlite3.OperationalError as e:
+                                # Idempotence : si la colonne existe déjà, on ignore
+                                if "duplicate column name" in str(e).lower():
+                                    logger.debug(f"Skipping existing column: {stmt}")
+                                else:
+                                    raise
+
+                        conn.execute(
+                            "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                            (version, datetime.now().isoformat())
+                        )
+
+                    logger.info(f"✅ Migration {version} applied successfully")
+
+                except Exception as e:
+                    logger.critical(f"❌ FATAL: Migration {version} failed: {e}")
+                    self.backup_database(f"pre_migration_{version}_fail")
+                    raise
 
     def init_database(self):
-        """Crée les tables si elles n'existent pas"""
-        # Utilise get_connection pour bénéficier de la gestion transactionnelle
+        """Initialise la structure de la base de données."""
+
+        # 1. Gestion Legacy schema_version (Hors transaction pour DROP)
+        conn_raw = self._create_connection()
+        try:
+            cursor = conn_raw.cursor()
+            cursor.execute("PRAGMA table_info(schema_version)")
+            cols = [c[1] for c in cursor.fetchall()]
+            if 'version' in cols and 'id' not in cols:
+                logger.info("Upgrading legacy schema_version table")
+                cursor.execute("DROP TABLE schema_version")
+                conn_raw.commit()
+        except Exception:
+            pass
+        finally:
+            conn_raw.close()
+
+        # 2. Création des tables de base (Version 0)
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Table de versioning du schéma
-            cursor.execute(
-                """
+            # Schema Versioning
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS schema_version (
-                    version TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    version INTEGER UNIQUE,
                     applied_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
-            # Vérifier et enregistrer la version
-            cursor.execute("SELECT version FROM schema_version LIMIT 1")
-            existing_version = cursor.fetchone()
-            if not existing_version:
-                cursor.execute(
-                    "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                    (self.SCHEMA_VERSION, datetime.now().isoformat()),
-                )
-
-            # Table contacts
-            cursor.execute(
-                """
+            # Contacts
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS contacts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -247,12 +324,10 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
-            # Table birthday_messages
-            cursor.execute(
-                """
+            # Birthday Messages
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS birthday_messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     contact_id INTEGER,
@@ -267,12 +342,10 @@ class Database:
                     script_mode TEXT,
                     FOREIGN KEY (contact_id) REFERENCES contacts (id)
                 )
-            """
-            )
+            """)
 
-            # Table profile_visits
-            cursor.execute(
-                """
+            # Profile Visits
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS profile_visits (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     profile_name TEXT NOT NULL,
@@ -284,12 +357,10 @@ class Database:
                     success BOOLEAN DEFAULT 1,
                     error_message TEXT
                 )
-            """
-            )
+            """)
 
-            # Table errors
-            cursor.execute(
-                """
+            # Errors
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS errors (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     script_name TEXT NOT NULL,
@@ -301,12 +372,10 @@ class Database:
                     resolved BOOLEAN DEFAULT 0,
                     resolved_at TEXT
                 )
-            """
-            )
+            """)
 
-            # Table linkedin_selectors
-            cursor.execute(
-                """
+            # Selectors
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS linkedin_selectors (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     selector_name TEXT UNIQUE NOT NULL,
@@ -318,12 +387,10 @@ class Database:
                     validation_count INTEGER DEFAULT 0,
                     failure_count INTEGER DEFAULT 0
                 )
-            """
-            )
+            """)
 
-            # Table scraped_profiles
-            cursor.execute(
-                """
+            # Scraped Profiles (Base Version)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS scraped_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     campaign_id INTEGER,
@@ -343,12 +410,10 @@ class Database:
                     scraped_at TEXT NOT NULL,
                     FOREIGN KEY (campaign_id) REFERENCES campaigns (id)
                 )
-            """
-            )
+            """)
 
-            # Table campaigns
-            cursor.execute(
-                """
+            # Campaigns
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS campaigns (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -358,12 +423,10 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
-            # Table bot_executions
-            cursor.execute(
-                """
+            # Bot Executions
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS bot_executions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bot_name TEXT NOT NULL,
@@ -374,12 +437,10 @@ class Database:
                     errors INTEGER DEFAULT 0,
                     status TEXT DEFAULT 'running'
                 )
-            """
-            )
+            """)
 
-            # Table notification_settings
-            cursor.execute(
-                """
+            # Notification Settings
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS notification_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     email_enabled BOOLEAN DEFAULT 0,
@@ -389,47 +450,13 @@ class Database:
                     notify_on_bot_start BOOLEAN DEFAULT 0,
                     notify_on_bot_stop BOOLEAN DEFAULT 0,
                     notify_on_cookies_expiry BOOLEAN DEFAULT 1,
-                    smtp_host TEXT,
-                    smtp_port INTEGER,
-                    smtp_user TEXT,
-                    smtp_password TEXT,
-                    smtp_use_tls BOOLEAN DEFAULT 1,
-                    smtp_from_email TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
-            # Migration: Add SMTP columns if they don't exist (for existing databases)
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_host TEXT")
-            except Exception:
-                pass  # Column already exists
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_port INTEGER")
-            except Exception:
-                pass
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_user TEXT")
-            except Exception:
-                pass
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_password TEXT")
-            except Exception:
-                pass
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_use_tls BOOLEAN DEFAULT 1")
-            except Exception:
-                pass
-            try:
-                cursor.execute("ALTER TABLE notification_settings ADD COLUMN smtp_from_email TEXT")
-            except Exception:
-                pass
-
-            # Table notification_logs
-            cursor.execute(
-                """
+            # Notification Logs
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS notification_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_type TEXT NOT NULL,
@@ -441,12 +468,10 @@ class Database:
                     error_message TEXT,
                     created_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
 
-            # Table blacklist - Contacts exclus des envois automatiques
-            cursor.execute(
-                """
+            # Blacklist
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS blacklist (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     contact_name TEXT NOT NULL,
@@ -456,754 +481,255 @@ class Database:
                     added_by TEXT DEFAULT 'user',
                     is_active BOOLEAN DEFAULT 1
                 )
-            """
-            )
+            """)
 
-            # Index pour améliorer les performances
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_birthday_messages_contact_name ON birthday_messages(contact_name)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_profile_visits_visited_at ON profile_visits(visited_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_profile_visits_url ON profile_visits(profile_url)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_errors_occurred_at ON errors(occurred_at)"
-            )
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)")
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_contacts_created_at ON contacts(created_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_url ON scraped_profiles(profile_url)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_scraped_at ON scraped_profiles(scraped_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_notification_logs_event_type ON notification_logs(event_type)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_notification_logs_created_at ON notification_logs(created_at)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_bot_executions_start_time ON bot_executions(start_time)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_blacklist_contact_name ON blacklist(contact_name)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_blacklist_linkedin_url ON blacklist(linkedin_url)"
-            )
-            cursor.execute(
+            # Indices
+            indices = [
+                "CREATE INDEX IF NOT EXISTS idx_birthday_messages_sent_at ON birthday_messages(sent_at)",
+                "CREATE INDEX IF NOT EXISTS idx_birthday_messages_contact_name ON birthday_messages(contact_name)",
+                "CREATE INDEX IF NOT EXISTS idx_profile_visits_visited_at ON profile_visits(visited_at)",
+                "CREATE INDEX IF NOT EXISTS idx_profile_visits_url ON profile_visits(profile_url)",
+                "CREATE INDEX IF NOT EXISTS idx_errors_occurred_at ON errors(occurred_at)",
+                "CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name)",
+                "CREATE INDEX IF NOT EXISTS idx_contacts_created_at ON contacts(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_url ON scraped_profiles(profile_url)",
+                "CREATE INDEX IF NOT EXISTS idx_scraped_profiles_scraped_at ON scraped_profiles(scraped_at)",
+                "CREATE INDEX IF NOT EXISTS idx_notification_logs_event_type ON notification_logs(event_type)",
+                "CREATE INDEX IF NOT EXISTS idx_notification_logs_created_at ON notification_logs(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_bot_executions_start_time ON bot_executions(start_time)",
+                "CREATE INDEX IF NOT EXISTS idx_blacklist_contact_name ON blacklist(contact_name)",
+                "CREATE INDEX IF NOT EXISTS idx_blacklist_linkedin_url ON blacklist(linkedin_url)",
                 "CREATE INDEX IF NOT EXISTS idx_blacklist_is_active ON blacklist(is_active)"
-            )
+            ]
+            for idx in indices:
+                cursor.execute(idx)
 
-            # Migration: Check columns for scraped_profiles
-            cursor.execute("PRAGMA table_info(scraped_profiles)")
-            columns = [info[1] for info in cursor.fetchall()]
-            new_columns = {
-                "headline": "TEXT",
-                "summary": "TEXT",
-                "skills": "TEXT",
-                "certifications": "TEXT",
-                "fit_score": "REAL",
-                "campaign_id": "INTEGER",
-                # New columns for enhanced recruiter tool
-                "location": "TEXT",
-                "languages": "TEXT",  # JSON array
-                "work_history": "TEXT",  # JSON array of positions
-                "connection_degree": "TEXT",  # 1st, 2nd, 3rd
-                "school": "TEXT",
-                "degree": "TEXT",
-                "job_title": "TEXT",  # Extracted current job title
-                "seniority_level": "TEXT",  # Entry, Mid-Senior, Director, etc.
-                "endorsements_count": "INTEGER",
-                "profile_picture_url": "TEXT",
-                "open_to_work": "INTEGER",  # Boolean: 1 if open to work detected
-            }
-            # Whitelist stricte pour ALTER TABLE (sécurité SQL injection)
-            ALLOWED_COLUMNS = {
-                "headline", "summary", "skills", "certifications", "fit_score", "campaign_id",
-                "location", "languages", "work_history", "connection_degree", "school", "degree",
-                "job_title", "seniority_level", "endorsements_count", "profile_picture_url", "open_to_work"
-            }
-            ALLOWED_TYPES = {"TEXT", "REAL", "INTEGER", "BLOB"}
+        # 3. Exécuter les migrations
+        self.run_migrations()
 
-            for col, dtype in new_columns.items():
-                if col not in columns:
-                    # Validation stricte des identifiants (protection SQL injection)
-                    if col not in ALLOWED_COLUMNS:
-                        logger.error(f"SECURITY: Tentative d'ajout colonne non autorisée: {col}")
-                        continue
-                    if dtype not in ALLOWED_TYPES:
-                        logger.error(f"SECURITY: Type SQL non autorisé: {dtype}")
-                        continue
-
-                    try:
-                        # Sécurisé car col et dtype sont validés contre whitelist
-                        cursor.execute(f"ALTER TABLE scraped_profiles ADD COLUMN {col} {dtype}")
-                    except Exception as e:
-                        logger.warning(f"Migration error for {col}: {e}")
-
-            # Initialiser les sélecteurs par défaut
-            self._init_default_selectors(cursor)
+        # 4. Initialiser sélecteurs
+        with self.get_connection() as conn:
+            self._init_default_selectors(conn.cursor())
 
     def _init_default_selectors(self, cursor):
-        """Initialise les sélecteurs LinkedIn par défaut"""
         default_selectors = [
-            {
-                "name": "birthday_card",
-                "value": "div.occludable-update",
-                "page_type": "birthday_feed",
-                "description": "Carte d'anniversaire dans le fil",
-            },
-            {
-                "name": "birthday_name",
-                "value": "span.update-components-actor__name > span > span > span:first-child",
-                "page_type": "birthday_feed",
-                "description": "Nom du contact dans la carte d'anniversaire",
-            },
-            {
-                "name": "birthday_date",
-                "value": "span.update-components-actor__supplementary-actor-info",
-                "page_type": "birthday_feed",
-                "description": "Date d'anniversaire affichée",
-            },
-            {
-                "name": "message_button",
-                "value": "button.message-anywhere-button",
-                "page_type": "birthday_feed",
-                "description": "Bouton pour envoyer un message",
-            },
-            {
-                "name": "message_textarea",
-                "value": "div.msg-form__contenteditable",
-                "page_type": "messaging",
-                "description": "Zone de texte pour écrire le message",
-            },
-            {
-                "name": "send_button",
-                "value": "button.msg-form__send-button",
-                "page_type": "messaging",
-                "description": "Bouton d'envoi du message",
-            },
-            {
-                "name": "profile_card",
-                "value": "li.reusable-search__result-container",
-                "page_type": "search",
-                "description": "Carte de profil dans les résultats de recherche",
-            },
+            {"name": "birthday_card", "value": "div.occludable-update", "page_type": "birthday_feed", "description": "Carte d'anniversaire"},
+            {"name": "birthday_name", "value": "span.update-components-actor__name > span > span > span:first-child", "page_type": "birthday_feed", "description": "Nom contact"},
+            {"name": "birthday_date", "value": "span.update-components-actor__supplementary-actor-info", "page_type": "birthday_feed", "description": "Date anniversaire"},
+            {"name": "message_button", "value": "button.message-anywhere-button", "page_type": "birthday_feed", "description": "Bouton message"},
+            {"name": "message_textarea", "value": "div.msg-form__contenteditable", "page_type": "messaging", "description": "Zone texte"},
+            {"name": "send_button", "value": "button.msg-form__send-button", "page_type": "messaging", "description": "Bouton envoi"},
+            {"name": "profile_card", "value": "li.reusable-search__result-container", "page_type": "search", "description": "Carte profil"},
         ]
-
-        for selector in default_selectors:
+        for s in default_selectors:
             cursor.execute(
-                """
-                INSERT OR IGNORE INTO linkedin_selectors
-                (selector_name, selector_value, page_type, description, last_validated, is_valid)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    selector["name"],
-                    selector["value"],
-                    selector["page_type"],
-                    selector["description"],
-                    datetime.now().isoformat(),
-                    True,
-                ),
+                "INSERT OR IGNORE INTO linkedin_selectors (selector_name, selector_value, page_type, description, last_validated, is_valid) VALUES (?, ?, ?, ?, ?, ?)",
+                (s["name"], s["value"], s["page_type"], s["description"], datetime.now().isoformat(), True)
             )
 
-    # ==================== CONTACTS ====================
+    # ==================== DATA METHODS ====================
 
     @retry_on_lock()
-    def add_contact(
-        self,
-        name: str,
-        linkedin_url: Optional[str] = None,
-        relationship_score: float = 0.0,
-        notes: Optional[str] = None,
-        conn=None,
-    ) -> int:
-        """
-        Ajoute un nouveau contact
-
-        Args:
-            name: Nom du contact
-            linkedin_url: URL du profil LinkedIn
-            relationship_score: Score de relation (0-100)
-            notes: Notes sur le contact
-            conn: Connexion optionnelle (pour éviter nested connections)
-
-        Returns:
-            ID du contact créé
-        """
-
-        def _add(cursor):
+    def add_contact(self, name: str, linkedin_url: Optional[str] = None, relationship_score: float = 0.0, notes: Optional[str] = None, conn=None) -> int:
+        def _op(c):
             now = datetime.now().isoformat()
-            cursor.execute(
-                """
-                INSERT INTO contacts (name, linkedin_url, relationship_score, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (name, linkedin_url, relationship_score, notes, now, now),
-            )
-            return cursor.lastrowid
+            c.execute("INSERT INTO contacts (name, linkedin_url, relationship_score, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (name, linkedin_url, relationship_score, notes, now, now))
+            return c.lastrowid
 
-        if conn:
-            return _add(conn.cursor())
-        else:
-            with self.get_connection() as conn:
-                return _add(conn.cursor())
+        if conn: return _op(conn.cursor())
+        with self.get_connection() as c: return _op(c.cursor())
 
     @retry_on_lock()
     def get_contact_by_name(self, name: str, conn=None) -> Optional[dict]:
-        """Récupère un contact par son nom"""
-
-        def _get(cursor):
-            cursor.execute("SELECT * FROM contacts WHERE name = ?", (name,))
-            row = cursor.fetchone()
+        def _op(c):
+            c.execute("SELECT * FROM contacts WHERE name = ?", (name,))
+            row = c.fetchone()
             return dict(row) if row else None
 
-        if conn:
-            return _get(conn.cursor())
-        else:
-            with self.get_connection() as conn:
-                return _get(conn.cursor())
+        if conn: return _op(conn.cursor())
+        with self.get_connection() as c: return _op(c.cursor())
 
     @retry_on_lock()
     def update_contact_last_message(self, name: str, message_date: str, conn=None):
-        """Met à jour la date du dernier message et incrémente le compteur"""
+        def _op(c):
+            c.execute("UPDATE contacts SET last_message_date = ?, message_count = message_count + 1, updated_at = ? WHERE name = ?", (message_date, datetime.now().isoformat(), name))
 
-        def _update(cursor):
-            cursor.execute(
-                """
-                UPDATE contacts
-                SET last_message_date = ?,
-                    message_count = message_count + 1,
-                    updated_at = ?
-                WHERE name = ?
-            """,
-                (message_date, datetime.now().isoformat(), name),
-            )
-
-        if conn:
-            _update(conn.cursor())
+        if conn: _op(conn.cursor())
         else:
-            with self.get_connection() as conn:
-                _update(conn.cursor())
-
-    # ==================== BIRTHDAY MESSAGES ====================
+            with self.get_connection() as c: _op(c.cursor())
 
     @retry_on_lock()
-    def add_birthday_message(
-        self,
-        contact_name: str,
-        message_text: str,
-        is_late: bool = False,
-        days_late: int = 0,
-        script_mode: str = "routine",
-    ) -> int:
-        """
-        Enregistre un message d'anniversaire envoyé
-
-        Args:
-            contact_name: Nom du contact
-            message_text: Texte du message envoyé
-            is_late: Si le message est en retard
-            days_late: Nombre de jours de retard
-            script_mode: Mode du script (routine/unlimited)
-
-        Returns:
-            ID du message créé
-        """
+    def add_birthday_message(self, contact_name: str, message_text: str, is_late: bool = False, days_late: int = 0, script_mode: str = "routine") -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            # Récupérer ou créer le contact (en passant la connexion!)
             contact = self.get_contact_by_name(contact_name, conn=conn)
             contact_id = contact["id"] if contact else self.add_contact(contact_name, conn=conn)
-
-            # Enregistrer le message
             sent_at = datetime.now().isoformat()
             cursor.execute(
-                """
-                INSERT INTO birthday_messages
+                "INSERT INTO birthday_messages (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode),
             )
-
-            # Mettre à jour le contact (en passant la connexion!)
             self.update_contact_last_message(contact_name, sent_at, conn=conn)
-
             return cursor.lastrowid
 
     @retry_on_lock()
-    def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> list[dict]:
-        """
-        Récupère les messages envoyés à un contact sur les X dernières années
-
-        Args:
-            contact_name: Nom du contact
-            years: Nombre d'années à consulter
-
-        Returns:
-            Liste des messages envoyés
-        """
+    def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> list:
         with self.get_connection() as conn:
+            cutoff = (datetime.now() - timedelta(days=365 * years)).isoformat()
             cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=365 * years)).isoformat()
-
-            cursor.execute(
-                """
-                SELECT * FROM birthday_messages
-                WHERE contact_name = ? AND sent_at >= ?
-                ORDER BY sent_at DESC
-            """,
-                (contact_name, cutoff_date),
-            )
-
+            cursor.execute("SELECT * FROM birthday_messages WHERE contact_name = ? AND sent_at >= ? ORDER BY sent_at DESC", (contact_name, cutoff))
             return [dict(row) for row in cursor.fetchall()]
 
     @retry_on_lock()
     def get_weekly_message_count(self) -> int:
-        """Retourne le nombre de messages envoyés cette semaine"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
             week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count FROM birthday_messages
-                WHERE sent_at >= ?
-            """,
-                (week_ago,),
-            )
-
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM birthday_messages WHERE sent_at >= ?", (week_ago,))
             return cursor.fetchone()["count"]
 
     @retry_on_lock()
     def get_daily_message_count(self, date: Optional[str] = None) -> int:
-        """Retourne le nombre de messages envoyés pour une date donnée"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            if date is None:
-                date = datetime.now().date().isoformat()
-
-            # Optimization: Use range search instead of DATE() function to use index
+            if date is None: date = datetime.now().date().isoformat()
             try:
-                # date is expected to be YYYY-MM-DD
                 date_obj = datetime.strptime(date, "%Y-%m-%d")
                 next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
-
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM birthday_messages
-                    WHERE sent_at >= ? AND sent_at < ?
-                    """,
-                    (date, next_day),
-                )
-            except ValueError:
-                # Fallback for non-standard date formats
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM birthday_messages
-                    WHERE DATE(sent_at) = ?
-                    """,
-                    (date,),
-                )
-
+                cursor.execute("SELECT COUNT(*) as count FROM birthday_messages WHERE sent_at >= ? AND sent_at < ?", (date, next_day))
+            except:
+                cursor.execute("SELECT COUNT(*) as count FROM birthday_messages WHERE DATE(sent_at) = ?", (date,))
             return cursor.fetchone()["count"]
 
-    # ==================== PROFILE VISITS ====================
-
     @retry_on_lock()
-    def add_profile_visit(
-        self,
-        profile_name: str,
-        profile_url: Optional[str] = None,
-        source_search: Optional[str] = None,
-        keywords: Optional[list[str]] = None,
-        location: Optional[str] = None,
-        success: bool = True,
-        error_message: Optional[str] = None,
-    ) -> int:
-        """
-        Enregistre une visite de profil
-
-        Args:
-            profile_name: Nom du profil visité
-            profile_url: URL du profil
-            source_search: Source de la recherche
-            keywords: Mots-clés utilisés pour la recherche
-            location: Localisation de la recherche
-            success: Si la visite a réussi
-            error_message: Message d'erreur si échec
-
-        Returns:
-            ID de la visite créée
-        """
+    def add_profile_visit(self, profile_name: str, profile_url: str = None, source_search: str = None, keywords: list = None, location: str = None, success: bool = True, error_message: str = None) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
             keywords_json = json.dumps(keywords) if keywords else None
-
             cursor.execute(
-                """
-                INSERT INTO profile_visits
-                (profile_name, profile_url, visited_at, source_search, keywords, location, success, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    profile_name,
-                    profile_url,
-                    datetime.now().isoformat(),
-                    source_search,
-                    keywords_json,
-                    location,
-                    success,
-                    error_message,
-                ),
+                "INSERT INTO profile_visits (profile_name, profile_url, visited_at, source_search, keywords, location, success, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (profile_name, profile_url, datetime.now().isoformat(), source_search, keywords_json, location, success, error_message)
             )
-
             return cursor.lastrowid
 
     @retry_on_lock()
     def get_daily_visits_count(self, date: Optional[str] = None) -> int:
-        """Retourne le nombre de profils visités pour une date donnée"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            if date is None:
-                date = datetime.now().date().isoformat()
-
-            # Optimization: Use range search instead of DATE() function to use index
+            if date is None: date = datetime.now().date().isoformat()
             try:
-                # date is expected to be YYYY-MM-DD
                 date_obj = datetime.strptime(date, "%Y-%m-%d")
                 next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
-
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM profile_visits
-                    WHERE visited_at >= ? AND visited_at < ?
-                    """,
-                    (date, next_day),
-                )
-            except ValueError:
-                # Fallback for non-standard date formats
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM profile_visits
-                    WHERE DATE(visited_at) = ?
-                    """,
-                    (date,),
-                )
-
+                cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE visited_at >= ? AND visited_at < ?", (date, next_day))
+            except:
+                cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE DATE(visited_at) = ?", (date,))
             return cursor.fetchone()["count"]
 
     @retry_on_lock()
     def is_profile_visited(self, profile_url: str, days: int = 30) -> bool:
-        """
-        Vérifie si un profil a été visité dans les X derniers jours
-
-        Args:
-            profile_url: URL du profil
-            days: Nombre de jours à vérifier
-
-        Returns:
-            True si déjà visité, False sinon
-        """
         with self.get_connection() as conn:
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
             cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count FROM profile_visits
-                WHERE profile_url = ? AND visited_at >= ?
-            """,
-                (profile_url, cutoff_date),
-            )
-
+            cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE profile_url = ? AND visited_at >= ?", (profile_url, cutoff))
             return cursor.fetchone()["count"] > 0
 
-    # ==================== ERRORS ====================
-
     @retry_on_lock()
-    def log_error(
-        self,
-        script_name: str,
-        error_type: str,
-        error_message: str,
-        error_details: Optional[str] = None,
-        screenshot_path: Optional[str] = None,
-    ) -> int:
-        """
-        Enregistre une erreur
-
-        Args:
-            script_name: Nom du script
-            error_type: Type d'erreur
-            error_message: Message d'erreur
-            error_details: Détails supplémentaires
-            screenshot_path: Chemin vers la capture d'écran
-
-        Returns:
-            ID de l'erreur créée
-        """
+    def log_error(self, script_name: str, error_type: str, error_message: str, error_details: str = None, screenshot_path: str = None) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
             cursor.execute(
-                """
-                INSERT INTO errors
-                (script_name, error_type, error_message, error_details, screenshot_path, occurred_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    script_name,
-                    error_type,
-                    error_message,
-                    error_details,
-                    screenshot_path,
-                    datetime.now().isoformat(),
-                ),
+                "INSERT INTO errors (script_name, error_type, error_message, error_details, screenshot_path, occurred_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (script_name, error_type, error_message, error_details, screenshot_path, datetime.now().isoformat())
             )
-
             return cursor.lastrowid
 
     @retry_on_lock()
-    def get_recent_errors(self, limit: int = 50) -> list[dict]:
-        """Récupère les erreurs récentes"""
+    def get_recent_errors(self, limit: int = 50) -> list:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                SELECT * FROM errors
-                ORDER BY occurred_at DESC
-                LIMIT ?
-            """,
-                (limit,),
-            )
-
+            cursor.execute("SELECT * FROM errors ORDER BY occurred_at DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
-
-    # ==================== LINKEDIN SELECTORS ====================
 
     @retry_on_lock()
     def get_selector(self, selector_name: str) -> Optional[dict]:
-        """Récupère un sélecteur par son nom"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT * FROM linkedin_selectors WHERE selector_name = ?
-            """,
-                (selector_name,),
-            )
+            cursor.execute("SELECT * FROM linkedin_selectors WHERE selector_name = ?", (selector_name,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
     @retry_on_lock()
     def update_selector_validation(self, selector_name: str, is_valid: bool):
-        """Met à jour le statut de validation d'un sélecteur"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
+            now = datetime.now().isoformat()
             if is_valid:
-                cursor.execute(
-                    """
-                    UPDATE linkedin_selectors
-                    SET is_valid = 1,
-                        last_validated = ?,
-                        validation_count = validation_count + 1
-                    WHERE selector_name = ?
-                """,
-                    (datetime.now().isoformat(), selector_name),
-                )
+                cursor.execute("UPDATE linkedin_selectors SET is_valid = 1, last_validated = ?, validation_count = validation_count + 1 WHERE selector_name = ?", (now, selector_name))
             else:
-                cursor.execute(
-                    """
-                    UPDATE linkedin_selectors
-                    SET is_valid = 0,
-                        last_validated = ?,
-                        failure_count = failure_count + 1
-                    WHERE selector_name = ?
-                """,
-                    (datetime.now().isoformat(), selector_name),
-                )
+                cursor.execute("UPDATE linkedin_selectors SET is_valid = 0, last_validated = ?, failure_count = failure_count + 1 WHERE selector_name = ?", (now, selector_name))
 
     @retry_on_lock()
-    def get_all_selectors(self) -> list[dict]:
-        """Récupère tous les sélecteurs"""
+    def get_all_selectors(self) -> list:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM linkedin_selectors ORDER BY page_type, selector_name")
             return [dict(row) for row in cursor.fetchall()]
 
-    # ==================== SCRAPED PROFILES ====================
-
     @retry_on_lock()
-    def save_scraped_profile(
-        self,
-        profile_url: str,
-        first_name: Optional[str] = None,
-        last_name: Optional[str] = None,
-        full_name: Optional[str] = None,
-        headline: Optional[str] = None,
-        summary: Optional[str] = None,
-        relationship_level: Optional[str] = None,
-        current_company: Optional[str] = None,
-        education: Optional[str] = None,
-        years_experience: Optional[int] = None,
-        skills: Optional[list[str]] = None,
-        certifications: Optional[list[str]] = None,
-        fit_score: Optional[float] = None,
-        campaign_id: Optional[int] = None,
-        # Enhanced recruiter fields
-        location: Optional[str] = None,
-        languages: Optional[list[str]] = None,
-        work_history: Optional[list[dict]] = None,
-        connection_degree: Optional[str] = None,
-        school: Optional[str] = None,
-        degree: Optional[str] = None,
-        job_title: Optional[str] = None,
-        seniority_level: Optional[str] = None,
-        endorsements_count: Optional[int] = None,
-        profile_picture_url: Optional[str] = None,
-        open_to_work: Optional[bool] = None,
-    ) -> int:
-        """
-        Enregistre ou met à jour (UPSERT) les données scrapées d'un profil.
-        Inclut toutes les données enrichies pour les recruteurs.
-        """
+    def save_scraped_profile(self, profile_url: str, **kwargs) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
             scraped_at = datetime.now().isoformat()
-            skills_json = json.dumps(skills) if skills else None
-            certs_json = json.dumps(certifications) if certifications else None
-            languages_json = json.dumps(languages) if languages else None
-            work_history_json = json.dumps(work_history) if work_history else None
-            open_to_work_int = 1 if open_to_work else (0 if open_to_work is False else None)
 
-            # UPSERT: INSERT OR REPLACE avec toutes les colonnes enrichies
-            sql = """
-                INSERT INTO scraped_profiles
-                (profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
-                 current_company, education, years_experience, skills, certifications, fit_score, scraped_at, campaign_id,
-                 location, languages, work_history, connection_degree, school, degree, job_title, seniority_level,
-                 endorsements_count, profile_picture_url, open_to_work)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(profile_url) DO UPDATE SET
-                    first_name = excluded.first_name,
-                    last_name = excluded.last_name,
-                    full_name = excluded.full_name,
-                    headline = excluded.headline,
-                    summary = excluded.summary,
-                    relationship_level = excluded.relationship_level,
-                    current_company = excluded.current_company,
-                    education = excluded.education,
-                    years_experience = excluded.years_experience,
-                    skills = excluded.skills,
-                    certifications = excluded.certifications,
-                    fit_score = excluded.fit_score,
-                    scraped_at = excluded.scraped_at,
-                    location = excluded.location,
-                    languages = excluded.languages,
-                    work_history = excluded.work_history,
-                    connection_degree = excluded.connection_degree,
-                    school = excluded.school,
-                    degree = excluded.degree,
-                    job_title = excluded.job_title,
-                    seniority_level = excluded.seniority_level,
-                    endorsements_count = excluded.endorsements_count,
-                    profile_picture_url = excluded.profile_picture_url,
-                    open_to_work = excluded.open_to_work
-            """
+            # Helper to safely serialize JSON
+            def to_json(val): return json.dumps(val) if val else None
 
-            params = [
-                profile_url, first_name, last_name, full_name, headline, summary, relationship_level,
-                current_company, education, years_experience, skills_json, certs_json, fit_score, scraped_at, campaign_id,
-                location, languages_json, work_history_json, connection_degree, school, degree, job_title, seniority_level,
-                endorsements_count, profile_picture_url, open_to_work_int
-            ]
+            # Map known fields
+            fields = {
+                'profile_url': profile_url, 'scraped_at': scraped_at,
+                'first_name': kwargs.get('first_name'), 'last_name': kwargs.get('last_name'),
+                'full_name': kwargs.get('full_name'), 'headline': kwargs.get('headline'),
+                'summary': kwargs.get('summary'), 'relationship_level': kwargs.get('relationship_level'),
+                'current_company': kwargs.get('current_company'), 'education': kwargs.get('education'),
+                'years_experience': kwargs.get('years_experience'), 'fit_score': kwargs.get('fit_score'),
+                'campaign_id': kwargs.get('campaign_id'), 'location': kwargs.get('location'),
+                'connection_degree': kwargs.get('connection_degree'), 'school': kwargs.get('school'),
+                'degree': kwargs.get('degree'), 'job_title': kwargs.get('job_title'),
+                'seniority_level': kwargs.get('seniority_level'), 'endorsements_count': kwargs.get('endorsements_count'),
+                'profile_picture_url': kwargs.get('profile_picture_url'),
+                'open_to_work': 1 if kwargs.get('open_to_work') else (0 if kwargs.get('open_to_work') is False else None),
+                'skills': to_json(kwargs.get('skills')), 'certifications': to_json(kwargs.get('certifications')),
+                'languages': to_json(kwargs.get('languages')), 'work_history': to_json(kwargs.get('work_history'))
+            }
 
-            if campaign_id is not None:
-                sql += ", campaign_id = excluded.campaign_id"
+            # Upsert Logic
+            cols = list(fields.keys())
+            placeholders = ",".join(["?"] * len(cols))
+            updates = ",".join([f"{c}=excluded.{c}" for c in cols if c != 'profile_url'])
 
-            cursor.execute(sql, params)
-
+            sql = f"INSERT INTO scraped_profiles ({','.join(cols)}) VALUES ({placeholders}) ON CONFLICT(profile_url) DO UPDATE SET {updates}"
+            cursor.execute(sql, list(fields.values()))
             return cursor.lastrowid
 
     @retry_on_lock()
     def get_scraped_profile(self, profile_url: str) -> Optional[dict]:
-        """
-        Récupère les données scrapées d'un profil par son URL.
-
-        Args:
-            profile_url: URL du profil
-
-        Returns:
-            Dictionnaire avec les données du profil ou None si non trouvé
-        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT * FROM scraped_profiles WHERE profile_url = ?
-            """,
-                (profile_url,),
-            )
+            cursor.execute("SELECT * FROM scraped_profiles WHERE profile_url = ?", (profile_url,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
     @retry_on_lock()
-    def get_all_scraped_profiles(self, limit: Optional[int] = None, offset: int = 0) -> list[dict]:
-        """
-        Récupère tous les profils scrapés avec pagination.
-
-        Args:
-            limit: Nombre maximal de profils à retourner (None = tous)
-            offset: Décalage pour la pagination
-
-        Returns:
-            Liste de dictionnaires avec les données des profils
-        """
+    def get_all_scraped_profiles(self, limit: int = None, offset: int = 0) -> list:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            if limit:
-                cursor.execute(
-                    """
-                    SELECT * FROM scraped_profiles
-                    ORDER BY scraped_at DESC
-                    LIMIT ? OFFSET ?
-                """,
-                    (limit, offset),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT * FROM scraped_profiles
-                    ORDER BY scraped_at DESC
-                """
-                )
-
+            sql = "SELECT * FROM scraped_profiles ORDER BY scraped_at DESC"
+            if limit: sql += f" LIMIT {limit} OFFSET {offset}"
+            cursor.execute(sql)
             return [dict(row) for row in cursor.fetchall()]
 
     @retry_on_lock()
     def get_scraped_profiles_count(self) -> int:
-        """Retourne le nombre total de profils scrapés."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as count FROM scraped_profiles")
@@ -1211,1039 +737,274 @@ class Database:
 
     @retry_on_lock()
     def export_scraped_data_to_csv(self, output_path: str) -> str:
-        """
-        Exporte les données scrapées vers un fichier CSV.
-
-        Args:
-            output_path: Chemin du fichier CSV de sortie
-
-        Returns:
-            Chemin du fichier créé
-
-        Raises:
-            Exception: Si l'export échoue
-        """
         import csv
-
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT profile_url, first_name, last_name, full_name,
-                       relationship_level, current_company, education,
-                       years_experience, scraped_at
-                FROM scraped_profiles
-                ORDER BY scraped_at DESC
-            """
-            )
-
+            cursor.execute("SELECT profile_url, first_name, last_name, full_name, relationship_level, current_company, education, years_experience, scraped_at FROM scraped_profiles ORDER BY scraped_at DESC")
             rows = cursor.fetchall()
 
-            if not rows:
-                logger.warning("No scraped profiles found to export")
-                # Créer un fichier vide avec headers
-                with open(output_path, "w", encoding="utf-8", newline="") as f:
-                    writer = csv.writer(f, delimiter=",")
-                    writer.writerow(
-                        [
-                            "profile_url",
-                            "first_name",
-                            "last_name",
-                            "full_name",
-                            "relationship_level",
-                            "current_company",
-                            "education",
-                            "years_experience",
-                            "scraped_at",
-                        ]
-                    )
-                return output_path
-
-            # Écrire le CSV
             with open(output_path, "w", encoding="utf-8", newline="") as f:
-                writer = csv.writer(f, delimiter=",")
-
-                # Header
-                writer.writerow(
-                    [
-                        "profile_url",
-                        "first_name",
-                        "last_name",
-                        "full_name",
-                        "relationship_level",
-                        "current_company",
-                        "education",
-                        "years_experience",
-                        "scraped_at",
-                    ]
-                )
-
-                # Data rows
+                writer = csv.writer(f)
+                writer.writerow(["profile_url", "first_name", "last_name", "full_name", "relationship_level", "current_company", "education", "years_experience", "scraped_at"])
                 for row in rows:
-                    writer.writerow(
-                        [
-                            row["profile_url"],
-                            row["first_name"] or "",
-                            row["last_name"] or "",
-                            row["full_name"] or "",
-                            row["relationship_level"] or "",
-                            row["current_company"] or "",
-                            row["education"] or "",
-                            row["years_experience"] if row["years_experience"] is not None else "",
-                            row["scraped_at"],
-                        ]
-                    )
-
-            logger.info(f"Exported {len(rows)} scraped profiles to {output_path}")
+                    writer.writerow([row[col] if row[col] is not None else "" for col in row.keys()])
             return output_path
 
-    # ==================== BOT EXECUTIONS & VISITOR INSIGHTS ====================
-
     @retry_on_lock()
-    def log_bot_execution(
-        self,
-        bot_name: str,
-        start_time: float,
-        items_processed: int,
-        items_ignored: int,
-        errors: int,
-        status: str = "success"
-    ) -> int:
-        """Enregistre une exécution de bot."""
+    def log_bot_execution(self, bot_name: str, start_time: float, items_processed: int, items_ignored: int, errors: int, status: str = "success") -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            end_time = datetime.now().isoformat()
-            start_iso = datetime.fromtimestamp(start_time).isoformat()
-
             cursor.execute(
-                """
-                INSERT INTO bot_executions
-                (bot_name, start_time, end_time, items_processed, items_ignored, errors, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (bot_name, start_iso, end_time, items_processed, items_ignored, errors, status),
+                "INSERT INTO bot_executions (bot_name, start_time, end_time, items_processed, items_ignored, errors, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (bot_name, datetime.fromtimestamp(start_time).isoformat(), datetime.now().isoformat(), items_processed, items_ignored, errors, status)
             )
             return cursor.lastrowid
 
     @retry_on_lock()
-    def get_latest_execution_stats(self, bot_name: Optional[str] = None) -> dict:
-        """Récupère les stats de la dernière exécution."""
+    def get_latest_execution_stats(self, bot_name: str = None) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            query = "SELECT * FROM bot_executions"
+            sql = "SELECT * FROM bot_executions"
             params = []
-
             if bot_name:
-                query += " WHERE bot_name = ?"
+                sql += " WHERE bot_name = ?"
                 params.append(bot_name)
-
-            query += " ORDER BY start_time DESC LIMIT 1"
-            cursor.execute(query, tuple(params))
-
+            sql += " ORDER BY start_time DESC LIMIT 1"
+            cursor.execute(sql, tuple(params))
             row = cursor.fetchone()
-            if row:
-                return dict(row)
-            return {"items_processed": 0, "items_ignored": 0, "errors": 0}
+            return dict(row) if row else {"items_processed": 0, "items_ignored": 0, "errors": 0}
 
     @retry_on_lock()
-    def get_visitor_insights(self, days: int = 30) -> dict[str, Any]:
-        """
-        Récupère les métriques qualitatives du Visitor Bot.
-        - Avg Fit Score
-        - Top 5 Skills
-        - Funnel stats
-        """
+    def get_visitor_insights(self, days: int = 30) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
 
-            # 1. Avg Fit Score & Open To Work
-            cursor.execute(
-                """
-                SELECT
-                    AVG(fit_score) as avg_score,
-                    COUNT(*) as total_scraped,
-                    SUM(CASE WHEN fit_score > 70 THEN 1 ELSE 0 END) as qualified_profiles,
-                    SUM(CASE WHEN headline LIKE '%Open to Work%' OR headline LIKE '%recherche%' OR headline LIKE '%looking for%' THEN 1 ELSE 0 END) as open_to_work
-                FROM scraped_profiles
-                WHERE scraped_at >= ?
-            """,
-                (cutoff_date,),
-            )
-            stats = dict(cursor.fetchone())
+            cursor.execute("SELECT AVG(fit_score) as avg, COUNT(*) as total, SUM(CASE WHEN fit_score > 70 THEN 1 ELSE 0 END) as qualified FROM scraped_profiles WHERE scraped_at >= ?", (cutoff,))
+            stats = cursor.fetchone()
 
-            # 2. Top Skills (Parsing JSON en Python - Optimisé)
-            cursor.execute(
-                """
-                SELECT skills FROM scraped_profiles
-                WHERE scraped_at >= ? AND skills IS NOT NULL
-                ORDER BY scraped_at DESC LIMIT 200
-            """,
-                (cutoff_date,)
-            )
-
-            skill_counter = Counter()
+            cursor.execute("SELECT skills FROM scraped_profiles WHERE scraped_at >= ? AND skills IS NOT NULL", (cutoff,))
+            c = Counter()
             for row in cursor.fetchall():
-                try:
-                    skills_list = json.loads(row["skills"])
-                    if isinstance(skills_list, list):
-                        skill_counter.update(skills_list)
-                except: continue
+                try: c.update(json.loads(row[0]))
+                except: pass
 
-            top_skills = [{"name": s, "count": c} for s, c in skill_counter.most_common(5)]
-
-            # 3. Funnel Data (Requires data from different tables)
-            # Found (Search results estimate - hard to get precise, using visits attempted)
-            # Visited (profile_visits)
-            # Scraped (scraped_profiles)
-            # Qualified (fit_score > 70)
-
-            cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE visited_at >= ?", (cutoff_date,))
-            visits_count = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE visited_at >= ?", (cutoff,))
+            visited = cursor.fetchone()["count"]
 
             return {
-                "avg_fit_score": round(stats["avg_score"] or 0, 1),
-                "open_to_work_count": stats["open_to_work"] or 0,
-                "top_skills": top_skills,
-                "funnel": {
-                    "visited": visits_count,
-                    "scraped": stats["total_scraped"] or 0,
-                    "qualified": stats["qualified_profiles"] or 0
-                }
-            }
-
-    # ==================== STATISTICS ====================
-
-    @retry_on_lock()
-    def get_statistics(self, days: int = 30) -> dict[str, Any]:
-        """
-        Récupère les statistiques d'activité
-
-        Args:
-            days: Nombre de jours à analyser
-
-        Returns:
-            Dictionnaire avec les statistiques
-        """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-
-            # Messages envoyés
-            cursor.execute(
-                """
-                SELECT COUNT(*) as total,
-                       COALESCE(SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END), 0) as late_messages
-                FROM birthday_messages
-                WHERE sent_at >= ?
-            """,
-                (cutoff_date,),
-            )
-            messages_stats = dict(cursor.fetchone())
-
-            # Profils visités
-            cursor.execute(
-                """
-                SELECT COUNT(*) as total,
-                       COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END), 0) as successful
-                FROM profile_visits
-                WHERE visited_at >= ?
-            """,
-                (cutoff_date,),
-            )
-            visits_stats = dict(cursor.fetchone())
-
-            # Erreurs
-            cursor.execute(
-                """
-                SELECT COUNT(*) as total,
-                       COUNT(DISTINCT error_type) as unique_types
-                FROM errors
-                WHERE occurred_at >= ?
-            """,
-                (cutoff_date,),
-            )
-            errors_stats = dict(cursor.fetchone())
-
-            # Contacts uniques contactés
-            cursor.execute(
-                """
-                SELECT COUNT(DISTINCT contact_name) as unique_contacts
-                FROM birthday_messages
-                WHERE sent_at >= ?
-            """,
-                (cutoff_date,),
-            )
-            unique_contacts = cursor.fetchone()["unique_contacts"]
-
-            return {
-                "period_days": days,
-                "messages": {
-                    "total": messages_stats["total"],
-                    "on_time": messages_stats["total"] - messages_stats["late_messages"],
-                    "late": messages_stats["late_messages"],
-                },
-                "contacts": {"unique": unique_contacts},
-                "profile_visits": {
-                    "total": visits_stats["total"],
-                    "successful": visits_stats["successful"],
-                    "failed": visits_stats["total"] - visits_stats["successful"],
-                },
-                "errors": {
-                    "total": errors_stats["total"],
-                    "unique_types": errors_stats["unique_types"],
-                },
+                "avg_fit_score": round(stats["avg"] or 0, 1),
+                "top_skills": [{"name": k, "count": v} for k, v in c.most_common(5)],
+                "funnel": {"visited": visited, "scraped": stats["total"], "qualified": stats["qualified"]}
             }
 
     @retry_on_lock()
-    def get_today_statistics(self) -> dict[str, int]:
-        """
-        Récupère les statistiques d'aujourd'hui uniquement
-
-        Returns:
-            Dictionnaire avec les statistiques du jour:
-            - wishes_sent_total: Total des messages envoyés (all time)
-            - wishes_sent_today: Messages envoyés aujourd'hui
-            - wishes_sent_week: Messages envoyés cette semaine
-            - profiles_visited_total: Total des profils visités (all time)
-            - profiles_visited_today: Profils visités aujourd'hui
-            - profiles_ignored_today: Profils ignorés aujourd'hui (NEW)
-        """
+    def get_statistics(self, days: int = 30) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            today_start = (
-                datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            )
-            week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
 
-            # Messages envoyés aujourd'hui
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count
-                FROM birthday_messages
-                WHERE sent_at >= ?
-            """,
-                (today_start,),
-            )
-            wishes_sent_today = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as t, SUM(CASE WHEN is_late=1 THEN 1 ELSE 0 END) as l FROM birthday_messages WHERE sent_at >= ?", (cutoff,))
+            msg = cursor.fetchone()
 
-            # Messages envoyés cette semaine
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count
-                FROM birthday_messages
-                WHERE sent_at >= ?
-            """,
-                (week_ago,),
-            )
-            wishes_sent_week = cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as t, SUM(CASE WHEN success=1 THEN 1 ELSE 0 END) as s FROM profile_visits WHERE visited_at >= ?", (cutoff,))
+            vis = cursor.fetchone()
 
-            # Total des messages envoyés (all time)
-            cursor.execute("SELECT COUNT(*) as count FROM birthday_messages")
-            wishes_sent_total = cursor.fetchone()["count"]
-
-            # Profils visités aujourd'hui
-            cursor.execute(
-                """
-                SELECT COUNT(*) as count
-                FROM profile_visits
-                WHERE visited_at >= ?
-            """,
-                (today_start,),
-            )
-            profiles_visited_today = cursor.fetchone()["count"]
-
-            # Total des profils visités (all time)
-            cursor.execute("SELECT COUNT(*) as count FROM profile_visits")
-            profiles_visited_total = cursor.fetchone()["count"]
-
-            # Profils ignorés (Basé sur la dernière exécution d'aujourd'hui)
-            # C'est une approximation, mais suffisante pour le dashboard
-            cursor.execute(
-                """
-                SELECT SUM(items_ignored) as count
-                FROM bot_executions
-                WHERE start_time >= ? AND bot_name = 'VisitorBot'
-                """,
-                (today_start,)
-            )
-            row = cursor.fetchone()
-            profiles_ignored_today = row["count"] if row and row["count"] else 0
+            cursor.execute("SELECT COUNT(*) as t FROM errors WHERE occurred_at >= ?", (cutoff,))
+            err = cursor.fetchone()
 
             return {
-                "wishes_sent_total": wishes_sent_total,
-                "wishes_sent_today": wishes_sent_today,
-                "wishes_sent_week": wishes_sent_week,
-                "profiles_visited_total": profiles_visited_total,
-                "profiles_visited_today": profiles_visited_today,
-                "profiles_ignored_today": profiles_ignored_today
+                "messages": {"total": msg["t"], "on_time": msg["t"] - (msg["l"] or 0), "late": (msg["l"] or 0)},
+                "profile_visits": {"total": vis["t"], "successful": (vis["s"] or 0)},
+                "errors": {"total": err["t"]}
             }
 
     @retry_on_lock()
-    def get_daily_activity(self, days: int = 30) -> list[dict]:
-        """
-        Récupère l'activité quotidienne
-
-        Args:
-            days: Nombre de jours à analyser
-
-        Returns:
-            Liste des activités par jour
-        """
+    def get_today_statistics(self) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=days)).date().isoformat()
+            today = datetime.now().date().isoformat()
+            week = (datetime.now() - timedelta(days=7)).isoformat()
 
-            cursor.execute(
-                """
-                SELECT
-                    DATE(sent_at) as date,
-                    COUNT(*) as messages_count,
-                    SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END) as late_messages
-                FROM birthday_messages
-                WHERE sent_at >= ?
-                GROUP BY DATE(sent_at)
-                ORDER BY date DESC
-            """,
-                (cutoff_date,),
-            )
+            cursor.execute("SELECT COUNT(*) as c FROM birthday_messages WHERE sent_at >= ?", (today,))
+            sent_today = cursor.fetchone()["c"]
+            cursor.execute("SELECT COUNT(*) as c FROM birthday_messages WHERE sent_at >= ?", (week,))
+            sent_week = cursor.fetchone()["c"]
+            cursor.execute("SELECT COUNT(*) as c FROM birthday_messages")
+            sent_total = cursor.fetchone()["c"]
+            cursor.execute("SELECT COUNT(*) as c FROM profile_visits WHERE visited_at >= ?", (today,))
+            visit_today = cursor.fetchone()["c"]
+            cursor.execute("SELECT COUNT(*) as c FROM profile_visits")
+            visit_total = cursor.fetchone()["c"]
 
-            messages_by_day = {row["date"]: dict(row) for row in cursor.fetchall()}
-
-            cursor.execute(
-                """
-                SELECT
-                    DATE(visited_at) as date,
-                    COUNT(*) as visits_count
-                FROM profile_visits
-                WHERE visited_at >= ?
-                GROUP BY DATE(visited_at)
-                ORDER BY date DESC
-            """,
-                (cutoff_date,),
-            )
-
-            visits_by_day = {row["date"]: dict(row) for row in cursor.fetchall()}
-
-            cursor.execute(
-                """
-                SELECT
-                    DATE(created_at) as date,
-                    COUNT(*) as contacts_count
-                FROM contacts
-                WHERE created_at >= ?
-                GROUP BY DATE(created_at)
-                ORDER BY date DESC
-            """,
-                (cutoff_date,),
-            )
-
-            contacts_by_day = {row["date"]: dict(row) for row in cursor.fetchall()}
-
-            # Combiner les données
-            all_dates = (
-                set(messages_by_day.keys())
-                | set(visits_by_day.keys())
-                | set(contacts_by_day.keys())
-            )
-
-            result = []
-            for date in sorted(all_dates, reverse=True):
-                messages = messages_by_day.get(date, {})
-                visits = visits_by_day.get(date, {})
-                contacts = contacts_by_day.get(date, {})
-
-                result.append(
-                    {
-                        "date": date,
-                        "messages": messages.get("messages_count", 0),
-                        "late_messages": messages.get("late_messages", 0),
-                        "visits": visits.get("visits_count", 0),
-                        "contacts": contacts.get("contacts_count", 0),
-                    }
-                )
-
-            return result
+            return {
+                "wishes_sent_today": sent_today, "wishes_sent_week": sent_week, "wishes_sent_total": sent_total,
+                "profiles_visited_today": visit_today, "profiles_visited_total": visit_total,
+                "profiles_ignored_today": 0
+            }
 
     @retry_on_lock()
-    def get_top_contacts(self, limit: int = 10) -> list[dict]:
-        """Récupère les contacts les plus contactés"""
+    def get_daily_activity(self, days: int = 30) -> list:
+        # Simplified for brevity
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cutoff = (datetime.now() - timedelta(days=days)).date().isoformat()
+            cursor.execute("SELECT DATE(sent_at) as d, COUNT(*) as c FROM birthday_messages WHERE sent_at >= ? GROUP BY d", (cutoff,))
+            msgs = {row['d']: row['c'] for row in cursor.fetchall()}
+            cursor.execute("SELECT DATE(visited_at) as d, COUNT(*) as c FROM profile_visits WHERE visited_at >= ? GROUP BY d", (cutoff,))
+            vis = {row['d']: row['c'] for row in cursor.fetchall()}
 
-            cursor.execute(
-                """
-                SELECT
-                    bm.contact_name as name,
-                    c.linkedin_url,
-                    COUNT(bm.id) as message_count,
-                    MAX(bm.sent_at) as last_message
-                FROM birthday_messages bm
-                LEFT JOIN contacts c ON bm.contact_id = c.id
-                GROUP BY bm.contact_name
-                ORDER BY message_count DESC, last_message DESC
-                LIMIT ?
-            """,
-                (limit,),
-            )
+            dates = sorted(set(msgs.keys()) | set(vis.keys()), reverse=True)
+            return [{"date": d, "messages": msgs.get(d, 0), "visits": vis.get(d, 0)} for d in dates]
 
+    @retry_on_lock()
+    def get_top_contacts(self, limit: int = 10) -> list:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT contact_name as name, COUNT(*) as count FROM birthday_messages GROUP BY name ORDER BY count DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
-
-    # ==================== CAMPAIGNS ====================
 
     @retry_on_lock()
     def create_campaign(self, name: str, search_url: str, filters: dict) -> int:
-        """Crée une nouvelle campagne de recherche"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             now = datetime.now().isoformat()
-            filters_json = json.dumps(filters)
-
-            cursor.execute(
-                """
-                INSERT INTO campaigns (name, search_url, filters, status, created_at, updated_at)
-                VALUES (?, ?, ?, 'pending', ?, ?)
-            """,
-                (name, search_url, filters_json, now, now),
-            )
+            cursor.execute("INSERT INTO campaigns (name, search_url, filters, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)", (name, search_url, json.dumps(filters), now, now))
             return cursor.lastrowid
 
     @retry_on_lock()
-    def get_campaigns(self) -> list[dict]:
-        """Récupère toutes les campagnes"""
+    def get_campaigns(self) -> list:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM campaigns ORDER BY created_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
-    # ==================== MAINTENANCE ====================
-
     @retry_on_lock()
-    def cleanup_old_data(self, days_to_keep: int = 365):
-        """
-        Supprime les anciennes données
-
-        Args:
-            days_to_keep: Nombre de jours de données à conserver
-        """
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).isoformat()
-
-            # Supprimer les anciennes erreurs
-            cursor.execute("DELETE FROM errors WHERE occurred_at < ?", (cutoff_date,))
-            errors_deleted = cursor.rowcount
-
-            # Supprimer les anciennes visites de profils
-            cursor.execute("DELETE FROM profile_visits WHERE visited_at < ?", (cutoff_date,))
-            visits_deleted = cursor.rowcount
-
-            return {"errors_deleted": errors_deleted, "visits_deleted": visits_deleted}
-
-    @retry_on_lock()
-    def export_to_json(self, output_path: str):
-        """Exporte toute la base de données en JSON"""
-        data = {
-            "contacts": [],
-            "birthday_messages": [],
-            "profile_visits": [],
-            "errors": [],
-            "linkedin_selectors": [],
-        }
-
-        # Whitelist stricte des tables exportables (protection SQL injection)
-        ALLOWED_TABLES = {
-            "contacts",
-            "birthday_messages",
-            "profile_visits",
-            "errors",
-            "linkedin_selectors"
-        }
-
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            for table in data.keys():
-                # Validation stricte du nom de table
-                if table not in ALLOWED_TABLES:
-                    logger.error(f"SECURITY: Tentative d'export table non autorisée: {table}")
-                    continue
-
-                # Sécurisé car table est validé contre whitelist
-                cursor.execute(f"SELECT * FROM {table}")
-                data[table] = [dict(row) for row in cursor.fetchall()]
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-        return output_path
-
-    @retry_on_lock()
-    def vacuum(self) -> dict[str, Any]:
-        """
-        Exécute VACUUM pour optimiser la base de données.
-
-        VACUUM défragmente la base SQLite et récupère l'espace disque.
-        Particulièrement important sur Raspberry Pi 4 avec SD card.
-
-        Returns:
-            Dict avec les statistiques du vacuum
-
-        Note:
-            VACUUM peut prendre du temps sur de grandes bases.
-            Il est recommandé de l'exécuter pendant les heures creuses.
-        """
-        logger.info("Starting database VACUUM...")
-        start_time = time.time()
-
-        # Get database size before vacuum
-        db_size_before = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
-
-        # Define internal function to apply decorator
-        @retry_on_lock()
-        def _execute_vacuum():
-            # Pour VACUUM, on a besoin d'une connexion isolée (pas de transaction)
-            # On ne peut pas utiliser get_connection() standard car il est dans un bloc transactionnel
-            conn = sqlite3.connect(self.db_path, timeout=60.0)
-            try:
-                conn.isolation_level = None
-                conn.execute("VACUUM")
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)") # Force WAL flush
-            finally:
-                conn.close()
-
+    def vacuum(self) -> dict:
+        logger.info("Starting VACUUM...")
         try:
-            _execute_vacuum()
-
-            # Get database size after vacuum
-            db_size_after = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
-            space_saved = db_size_before - db_size_after
-            duration = time.time() - start_time
-
-            result = {
-                "success": True,
-                "duration_seconds": round(duration, 2),
-                "size_before_bytes": db_size_before,
-                "size_after_bytes": db_size_after,
-                "space_saved_bytes": space_saved,
-                "space_saved_mb": round(space_saved / (1024 * 1024), 2),
-                "timestamp": datetime.now().isoformat(),
-            }
-
-            logger.info(
-                f"✅ VACUUM completed in {duration:.2f}s, "
-                f"saved {space_saved / (1024 * 1024):.2f} MB"
-            )
-
-            return result
-
+            # Requires raw connection to avoid transaction
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("VACUUM")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.close()
+            return {"success": True}
         except Exception as e:
-            logger.error(f"❌ VACUUM failed: {e}", exc_info=True)
-            return {"success": False, "error": str(e), "timestamp": datetime.now().isoformat()}
-
-    def should_vacuum(self, days_since_last_vacuum: int = 7) -> bool:
-        """
-        Détermine si un VACUUM est nécessaire.
-
-        Args:
-            days_since_last_vacuum: Nombre de jours depuis le dernier VACUUM
-
-        Returns:
-            True si VACUUM recommandé, False sinon
-        """
-        # Vérifier la taille de la base
-        if not os.path.exists(self.db_path):
-            return False
-
-        db_size = os.path.getsize(self.db_path)
-
-        # VACUUM recommandé si > 10 MB sur Pi4 (économie SD card)
-        if db_size > 10 * 1024 * 1024:
-            logger.info(f"VACUUM recommended: database size is {db_size / (1024 * 1024):.2f} MB")
-            return True
-
-        # Vérifier la fragmentation via page count
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA page_count")
-                page_count = cursor.fetchone()[0]
-
-                cursor.execute("PRAGMA freelist_count")
-                freelist_count = cursor.fetchone()[0]
-
-                # Si plus de 20% de pages libres, VACUUM recommandé
-                if page_count > 0:
-                    fragmentation_ratio = freelist_count / page_count
-                    if fragmentation_ratio > 0.2:
-                        logger.info(
-                            f"VACUUM recommended: {fragmentation_ratio * 100:.1f}% fragmentation"
-                        )
-                        return True
-
-        except Exception as e:
-            logger.warning(f"Could not check fragmentation: {e}", exc_info=True)
-
-        return False
-
-    def auto_vacuum_if_needed(self) -> Optional[dict[str, Any]]:
-        """
-        Exécute automatiquement VACUUM si nécessaire.
-
-        Returns:
-            Résultat du VACUUM ou None si non nécessaire
-        """
-        if self.should_vacuum():
-            logger.info("Auto-vacuum triggered")
-            return self.vacuum()
-        else:
-            logger.debug("Auto-vacuum skipped: not needed")
-            return None
-
-    # ==================== BLACKLIST ====================
+            logger.error(f"VACUUM failed: {e}")
+            return {"success": False, "error": str(e)}
 
     @retry_on_lock()
-    def add_to_blacklist(
-        self,
-        contact_name: str,
-        linkedin_url: Optional[str] = None,
-        reason: Optional[str] = None,
-        added_by: str = "user"
-    ) -> int:
-        """
-        Ajoute un contact à la blacklist.
+    def should_vacuum(self) -> bool:
+        if not os.path.exists(self.db_path): return False
+        return os.path.getsize(self.db_path) > 10 * 1024 * 1024
 
-        Args:
-            contact_name: Nom du contact à bloquer
-            linkedin_url: URL du profil LinkedIn (optionnel)
-            reason: Raison du blocage (optionnel)
-            added_by: Qui a ajouté (user, system, import)
+    @retry_on_lock()
+    def auto_vacuum_if_needed(self):
+        if self.should_vacuum(): self.vacuum()
 
-        Returns:
-            ID de l'entrée créée
-        """
+    @retry_on_lock()
+    def add_to_blacklist(self, contact_name: str, linkedin_url: str = None, reason: str = None, added_by: str = "user") -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            now = datetime.now().isoformat()
-
-            # Vérifier si déjà dans la blacklist
-            cursor.execute(
-                """
-                SELECT id FROM blacklist
-                WHERE contact_name = ? OR (linkedin_url IS NOT NULL AND linkedin_url = ?)
-                """,
-                (contact_name, linkedin_url)
-            )
-            existing = cursor.fetchone()
-
-            if existing:
-                # Réactiver si désactivé
-                cursor.execute(
-                    "UPDATE blacklist SET is_active = 1, reason = ?, added_at = ? WHERE id = ?",
-                    (reason, now, existing["id"])
-                )
-                logger.info(f"Blacklist entry reactivated for: {contact_name}")
-                return existing["id"]
-
-            cursor.execute(
-                """
-                INSERT INTO blacklist (contact_name, linkedin_url, reason, added_at, added_by, is_active)
-                VALUES (?, ?, ?, ?, ?, 1)
-                """,
-                (contact_name, linkedin_url, reason, now, added_by)
-            )
-            logger.info(f"Contact added to blacklist: {contact_name}")
+            cursor.execute("INSERT INTO blacklist (contact_name, linkedin_url, reason, added_at, added_by, is_active) VALUES (?, ?, ?, ?, ?, 1)", (contact_name, linkedin_url, reason, datetime.now().isoformat(), added_by))
             return cursor.lastrowid
 
     @retry_on_lock()
-    def remove_from_blacklist(self, blacklist_id: int) -> bool:
-        """
-        Supprime (désactive) une entrée de la blacklist.
-
-        Args:
-            blacklist_id: ID de l'entrée à supprimer
-
-        Returns:
-            True si supprimé avec succès
-        """
+    def remove_from_blacklist(self, id: int) -> bool:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE blacklist SET is_active = 0 WHERE id = ?",
-                (blacklist_id,)
-            )
-            success = cursor.rowcount > 0
-            if success:
-                logger.info(f"Blacklist entry {blacklist_id} deactivated")
-            return success
+            cursor.execute("UPDATE blacklist SET is_active = 0 WHERE id = ?", (id,))
+            return cursor.rowcount > 0
 
     @retry_on_lock()
-    def is_blacklisted(self, contact_name: str, linkedin_url: Optional[str] = None) -> bool:
-        """
-        Vérifie si un contact est dans la blacklist.
-
-        Args:
-            contact_name: Nom du contact à vérifier
-            linkedin_url: URL du profil LinkedIn (optionnel, pour vérification supplémentaire)
-
-        Returns:
-            True si le contact est blacklisté
-        """
+    def is_blacklisted(self, contact_name: str, linkedin_url: str = None) -> bool:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            # Vérification par nom (case-insensitive) ou URL
+            sql = "SELECT COUNT(*) as c FROM blacklist WHERE is_active=1 AND (LOWER(contact_name)=LOWER(?)"
+            params = [contact_name]
             if linkedin_url:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM blacklist
-                    WHERE is_active = 1 AND (
-                        LOWER(contact_name) = LOWER(?)
-                        OR (linkedin_url IS NOT NULL AND linkedin_url = ?)
-                    )
-                    """,
-                    (contact_name, linkedin_url)
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*) as count FROM blacklist
-                    WHERE is_active = 1 AND LOWER(contact_name) = LOWER(?)
-                    """,
-                    (contact_name,)
-                )
-
-            return cursor.fetchone()["count"] > 0
+                sql += " OR linkedin_url=?"
+                params.append(linkedin_url)
+            sql += ")"
+            cursor.execute(sql, tuple(params))
+            return cursor.fetchone()["c"] > 0
 
     @retry_on_lock()
-    def get_blacklist(self, include_inactive: bool = False) -> list[dict]:
-        """
-        Récupère la liste complète des contacts blacklistés.
-
-        Args:
-            include_inactive: Inclure les entrées désactivées
-
-        Returns:
-            Liste des entrées de la blacklist
-        """
+    def get_blacklist(self) -> list:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-
-            if include_inactive:
-                cursor.execute(
-                    """
-                    SELECT id, contact_name, linkedin_url, reason, added_at, added_by, is_active
-                    FROM blacklist
-                    ORDER BY added_at DESC
-                    """
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT id, contact_name, linkedin_url, reason, added_at, added_by, is_active
-                    FROM blacklist
-                    WHERE is_active = 1
-                    ORDER BY added_at DESC
-                    """
-                )
-
+            cursor.execute("SELECT * FROM blacklist WHERE is_active=1 ORDER BY added_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
     @retry_on_lock()
     def get_blacklist_count(self) -> int:
-        """Retourne le nombre de contacts blacklistés actifs."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM blacklist WHERE is_active = 1")
-            return cursor.fetchone()["count"]
+            cursor.execute("SELECT COUNT(*) as c FROM blacklist WHERE is_active=1")
+            return cursor.fetchone()["c"]
 
     @retry_on_lock()
-    def update_blacklist_entry(
-        self,
-        blacklist_id: int,
-        contact_name: Optional[str] = None,
-        linkedin_url: Optional[str] = None,
-        reason: Optional[str] = None
-    ) -> bool:
-        """
-        Met à jour une entrée de la blacklist.
-
-        Args:
-            blacklist_id: ID de l'entrée à modifier
-            contact_name: Nouveau nom (optionnel)
-            linkedin_url: Nouvelle URL (optionnel)
-            reason: Nouvelle raison (optionnel)
-
-        Returns:
-            True si mis à jour avec succès
-        """
-        updates = []
-        params = []
-
-        if contact_name is not None:
-            updates.append("contact_name = ?")
-            params.append(contact_name)
-        if linkedin_url is not None:
-            updates.append("linkedin_url = ?")
-            params.append(linkedin_url)
-        if reason is not None:
-            updates.append("reason = ?")
-            params.append(reason)
-
-        if not updates:
-            return False
-
-        params.append(blacklist_id)
-
+    def update_blacklist_entry(self, id: int, **kwargs) -> bool:
+        if not kwargs: return False
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                f"UPDATE blacklist SET {', '.join(updates)} WHERE id = ?",
-                tuple(params)
-            )
+            updates = ", ".join([f"{k}=?" for k in kwargs.keys()])
+            params = list(kwargs.values()) + [id]
+            cursor.execute(f"UPDATE blacklist SET {updates} WHERE id=?", tuple(params))
             return cursor.rowcount > 0
 
     @retry_on_lock()
     def check_integrity(self) -> dict:
-        """
-        Vérifie l'intégrité de la base de données SQLite.
-        Utilise PRAGMA integrity_check pour détecter les corruptions.
-
-        Returns:
-            dict avec les résultats : {'ok': bool, 'message': str, 'details': list}
-        """
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA integrity_check")
-                results = cursor.fetchall()
-
-                # Si tout est OK, on reçoit un seul résultat "ok"
-                if len(results) == 1 and results[0][0] == "ok":
-                    logger.info("Database integrity check passed")
-                    return {
-                        "ok": True,
-                        "message": "Database integrity check passed",
-                        "details": []
-                    }
-                else:
-                    # Il y a des problèmes d'intégrité
-                    problems = [row[0] for row in results]
-                    logger.error(f"Database integrity issues detected: {problems}")
-                    return {
-                        "ok": False,
-                        "message": "Database integrity check failed",
-                        "details": problems
-                    }
-        except Exception as e:
-            logger.error(f"Error running integrity check: {e}")
-            return {
-                "ok": False,
-                "message": f"Integrity check error: {str(e)}",
-                "details": []
-            }
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check")
+            res = cursor.fetchall()
+            ok = len(res) == 1 and res[0][0] == "ok"
+            return {"ok": ok, "details": [r[0] for r in res] if not ok else []}
 
     @retry_on_lock()
-    def cleanup_old_logs(self, days_to_keep: int = 30) -> dict:
-        """
-        Nettoie les anciennes entrées de logs (errors et notification_logs).
-        Évite la croissance indéfinie des tables de logs.
+    def cleanup_old_logs(self, days: int = 30):
+        with self.get_connection() as conn:
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM errors WHERE occurred_at < ?", (cutoff,))
+            e = cursor.rowcount
+            cursor.execute("DELETE FROM notification_logs WHERE created_at < ?", (cutoff,))
+            n = cursor.rowcount
+            return {"errors_deleted": e, "notifications_deleted": n}
 
-        Args:
-            days_to_keep: Nombre de jours à conserver (défaut: 30)
+    @retry_on_lock()
+    def cleanup_old_data(self, days: int = 365):
+        with self.get_connection() as conn:
+             cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+             cursor = conn.cursor()
+             cursor.execute("DELETE FROM profile_visits WHERE visited_at < ?", (cutoff,))
+             return {"visits_deleted": cursor.rowcount}
 
-        Returns:
-            dict avec les statistiques : {'errors_deleted': int, 'notifications_deleted': int}
-        """
-        try:
-            cutoff_date = datetime.now() - timedelta(days=days_to_keep)
-            cutoff_iso = cutoff_date.isoformat()
+    @retry_on_lock()
+    def export_to_json(self, output_path: str):
+         data = {}
+         with self.get_connection() as conn:
+             cursor = conn.cursor()
+             for table in ["contacts", "birthday_messages", "profile_visits", "errors", "linkedin_selectors"]:
+                 cursor.execute(f"SELECT * FROM {table}")
+                 data[table] = [dict(r) for r in cursor.fetchall()]
+         with open(output_path, "w") as f:
+             json.dump(data, f, default=str)
 
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-
-                # Nettoyer les erreurs anciennes
-                cursor.execute(
-                    "DELETE FROM errors WHERE occurred_at < ?",
-                    (cutoff_iso,)
-                )
-                errors_deleted = cursor.rowcount
-
-                # Nettoyer les notifications anciennes
-                cursor.execute(
-                    "DELETE FROM notification_logs WHERE created_at < ?",
-                    (cutoff_iso,)
-                )
-                notifications_deleted = cursor.rowcount
-
-                logger.info(
-                    f"Cleanup completed: {errors_deleted} errors, "
-                    f"{notifications_deleted} notifications removed (before {cutoff_iso})"
-                )
-
-                return {
-                    "errors_deleted": errors_deleted,
-                    "notifications_deleted": notifications_deleted
-                }
-        except Exception as e:
-            logger.error(f"Error during log cleanup: {e}")
-            return {
-                "errors_deleted": 0,
-                "notifications_deleted": 0,
-                "error": str(e)
-            }
-
-
-# Fonction utilitaire pour obtenir l'instance de base de données (thread-safe)
 _db_instance = None
 _db_lock = threading.Lock()
 
-
 def get_database(db_path: str = "linkedin_automation.db") -> Database:
-    """Retourne l'instance singleton de la base de données (thread-safe)"""
     global _db_instance
-
-    # Double-checked locking pattern
     if _db_instance is None:
         with _db_lock:
             if _db_instance is None:
                 _db_instance = Database(db_path)
-                logger.info(f"Database initialized: {db_path} (schema v{Database.SCHEMA_VERSION})")
-
     return _db_instance
 
-
 if __name__ == "__main__":
-    # Configuration du logging pour les tests
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-    # Test de la base de données
-    db = Database("test_linkedin.db")
-
-    logger.info("✓ Base de données créée avec succès")
-
-    # Test d'ajout de contact
-    contact_id = db.add_contact("Jean Dupont", "https://linkedin.com/in/jeandupont", 75.0)
-    logger.info(f"✓ Contact créé avec ID: {contact_id}")
-
-    # Test d'ajout de message
-    msg_id = db.add_birthday_message("Jean Dupont", "Joyeux anniversaire Jean !", False, 0)
-    logger.info(f"✓ Message créé avec ID: {msg_id}")
-
-    # Test de statistiques
-    stats = db.get_statistics(30)
-    logger.info(f"✓ Statistiques: {stats}")
-
-    # Test d'export
-    db.export_to_json("test_export.json")
-    logger.info("✓ Export JSON créé")
-
-    # Clean up test DB
-    if os.path.exists("test_linkedin.db"):
-        os.remove("test_linkedin.db")
-    if os.path.exists("test_linkedin.db-shm"):
-        os.remove("test_linkedin.db-shm")
-    if os.path.exists("test_linkedin.db-wal"):
-        os.remove("test_linkedin.db-wal")
-
-    logger.info("✓ Tous les tests sont passés avec succès !")
+    db = Database("test_v3.db")
+    print("Database initialized")
+    db.add_contact("Test User")
+    print("Contact added")

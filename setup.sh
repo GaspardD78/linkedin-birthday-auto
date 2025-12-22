@@ -235,6 +235,33 @@ fi
 
 setup_state_checkpoint "prerequisites" "completed"
 
+# Vérification des ports critiques (NOUVEAU)
+log_info "Vérification des ports..."
+check_port_available() {
+    local port=$1
+    if command -v lsof >/dev/null 2>&1; then
+        if lsof -i :$port -t >/dev/null 2>&1; then
+            echo "❌ Port $port est déjà utilisé!"
+            return 1
+        fi
+    elif command -v nc >/dev/null 2>&1; then
+         if nc -z localhost $port 2>/dev/null; then
+            echo "❌ Port $port est déjà utilisé!"
+            return 1
+         fi
+    fi
+    return 0
+}
+
+# Ports: Redis(6379), API(8000), Dashboard(3000), Nginx(80,443)
+for port in 6379 8000 3000 80 443; do
+    if ! check_port_available $port; then
+        log_warn "Port $port occupé. Si c'est par nos conteneurs, c'est OK."
+        # On ne bloque pas strictement car docker-compose restart gérera ça,
+        # mais c'est une bonne info pour le debug
+    fi
+done
+
 # Si --check-only, arrêter ici
 if [[ "$CHECK_ONLY" == "true" ]]; then
     log_success "✓ Toutes les vérifications passées"
@@ -248,36 +275,42 @@ echo "════════════════════════�
 echo "  PHASE 1.5 : DNS Stable RPi4 (Google/Cloudflare)"
 echo "══════════════════════════════════════════════════════════════"
 
-# Install dnsutils si manquant (pour nslookup)
-if ! command -v nslookup >/dev/null 2>&1; then
-    echo "ℹ [INFO] Installation dnsutils..."
-    sudo apt update -qq && sudo apt install dnsutils -y </dev/null
-fi
+# Paramétrage via variable d'environnement (Task 4.2)
+CONFIGURE_SYSTEM_DNS="${CONFIGURE_SYSTEM_DNS:-true}"
 
-# Vérif configuration existante (idempotence)
-if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
-    echo "✓ [OK] DNS déjà configuré (Google DNS)"
-else
-    echo "🔧 Configuration DNS permanent..."
-    sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
+if [ "${CONFIGURE_SYSTEM_DNS}" = "true" ]; then
+
+    # Install dnsutils si manquant (pour nslookup)
+    if ! command -v nslookup >/dev/null 2>&1; then
+        echo "ℹ [INFO] Installation dnsutils..."
+        sudo apt update -qq && sudo apt install dnsutils -y </dev/null
+    fi
+
+    # Vérif configuration existante (idempotence)
+    if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
+        echo "✓ [OK] DNS déjà configuré (Google DNS)"
+    else
+        echo "🔧 Configuration DNS permanent..."
+        sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
 # DNS stable RPi4 - anti-timeout Docker pull (LinkedIn-bot)
 static domain_name_servers=8.8.8.8 8.8.4.4 1.1.1.1
 EOF
-fi
+    fi
 
-# Redémarrage dhcpcd (pas systemctl !)
-echo "🔄 Redémarrage réseau dhcpcd..."
-sudo dhcpcd -n
-sleep 3
+    # Redémarrage dhcpcd (pas systemctl !)
+    echo "🔄 Redémarrage réseau dhcpcd..."
+    sudo dhcpcd -n || echo "⚠️ Redémarrage dhcpcd échoué (ignorer si non présent)"
+    sleep 3
 
-# Test DNS fonctionnel
-if nslookup google.com >/dev/null 2>&1 && nslookup gaspardanoukolivier.freeboxos.fr >/dev/null 2>&1; then
-    echo "✓ [OK] DNS opérationnel : google.com + freeboxos.fr"
-    echo "ℹ [INFO] /etc/resolv.conf : $(head -2 /etc/resolv.conf)"
+    # Test DNS fonctionnel
+    if nslookup google.com >/dev/null 2>&1; then
+        echo "✓ [OK] DNS opérationnel : google.com"
+    else
+        echo "⚠ [WARN] DNS Google non accessible"
+    fi
+
 else
-    echo "⚠ [WARN] DNS défaillant → Reboot recommandé"
-    echo "ℹ [INFO] Exécutez : sudo reboot"
-    exit 1
+    echo "⚠️  CONFIGURE_SYSTEM_DNS=false; Configuration DNS système ignorée."
 fi
 
 echo "✅ PHASE DNS TERMINÉE"

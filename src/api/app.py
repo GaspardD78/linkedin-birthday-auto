@@ -107,12 +107,8 @@ async def lifespan(app: FastAPI):
             logger.error(f"Unexpected error during Redis connection: {e}")
             break
 
-    # Log registered routes
-    logger.info("✅ Registered Routes:")
-    for route in app.routes:
-        if hasattr(route, "path"):
-            methods = ",".join(route.methods) if hasattr(route, "methods") else "ALL"
-            logger.info(f" - {route.path} [{methods}]")
+    # Validation finale des routes
+    validate_api_routes()
 
     yield
 
@@ -168,12 +164,35 @@ def include_safe(module_path: str, router_name: str = "router"):
         router_obj = getattr(module, router_name)
         app.include_router(router_obj)
         logger.info(f"✅ Router included: {module_path}")
-    except ImportError as e:
-        logger.error(f"❌ Failed to import router {module_path}: {e}")
-    except AttributeError as e:
-        logger.error(f"❌ Failed to find '{router_name}' in {module_path}: {e}")
+    except (ImportError, SyntaxError, AttributeError) as e:
+        logger.critical(f"FATAL: Cannot load {module_path}.{router_name}: {e}")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"❌ Unexpected error including {module_path}: {e}")
+        logger.critical(f"UNEXPECTED ERROR loading {module_path}: {type(e).__name__}: {e}")
+        raise
+
+
+def validate_api_routes():
+    """Vérifie que suffisamment de routes sont chargées."""
+    total_routes = len(app.routes)
+    routes_by_prefix = collections.defaultdict(int)
+
+    for route in app.routes:
+        if hasattr(route, "path"):
+            # Simple prefix extraction (e.g., /api/bot -> /api/bot)
+            parts = route.path.strip("/").split("/")
+            if len(parts) >= 2 and parts[0] == "api":
+                prefix = f"/{parts[0]}/{parts[1]}"
+            elif len(parts) >= 1:
+                prefix = f"/{parts[0]}"
+            else:
+                prefix = "/"
+            routes_by_prefix[prefix] += 1
+
+    logger.info(f"✅ {total_routes} routes loaded: {dict(routes_by_prefix)}")
+
+    if total_routes < 10:
+        raise RuntimeError(f"FATAL: API has only {total_routes} routes loaded. Some imports failed. Check logs above.")
 
 # 1. Critical Routers (Auth, Bot Control)
 include_safe("src.api.auth_routes", "router")
@@ -240,6 +259,43 @@ async def health_check():
         "uptime_seconds": uptime,
         "database": db_status
     }
+
+@app.get("/health/api-routes", tags=["General"])
+async def health_api_routes():
+    """Diagnostic des routes API chargées."""
+    total_routes = len(app.routes)
+    routes_by_prefix = collections.defaultdict(int)
+
+    for route in app.routes:
+        if hasattr(route, "path"):
+            parts = route.path.strip("/").split("/")
+            if len(parts) >= 2 and parts[0] == "api":
+                prefix = f"/{parts[0]}/{parts[1]}"
+            elif len(parts) >= 1:
+                prefix = f"/{parts[0]}"
+            else:
+                prefix = "/"
+            routes_by_prefix[prefix] += 1
+
+    return {
+        "status": "healthy" if total_routes >= 10 else "degraded",
+        "total_routes": total_routes,
+        "routes_by_prefix": dict(routes_by_prefix)
+    }
+
+@app.get("/health/db-schema-version", tags=["General"])
+async def health_db_schema():
+    """Diagnostic de la version du schéma BDD."""
+    try:
+        db = get_database()
+        current = db.get_current_schema_version()
+        return {
+            "current_version": current,
+            "expected_version": db.SCHEMA_VERSION,
+            "status": "healthy" if current == db.SCHEMA_VERSION else "migration_pending"
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 # --- Config Management ---
 

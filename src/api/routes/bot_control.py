@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Tuple, Generator
+from typing import Optional, List, Dict, Tuple, Generator, Any
 from contextlib import contextmanager
 from redis import Redis, ConnectionPool
 from rq import Queue
@@ -92,6 +92,11 @@ class BotStatusResponse(BaseModel):
     active_jobs: List[JobStatus]
     queued_jobs: List[JobStatus]
     worker_status: str
+
+class BotActionRequest(BaseModel):
+    action: str = Field(..., description="Action to perform: start, stop")
+    job_type: str = Field(..., description="Job type: birthday, visitor")
+    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Configuration parameters")
 
 # Helper function with retry logic for Redis operations
 @retry(
@@ -233,6 +238,57 @@ async def start_visitor_bot(config: VisitorConfig, authenticated: bool = Depends
         except Exception as e:
             logger.error(f"Failed to enqueue visitor bot: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/action")
+async def bot_action_endpoint(request: BotActionRequest, authenticated: bool = Depends(verify_api_key)):
+    """Unified endpoint for bot actions (start/stop). Async & Idempotent."""
+
+    if request.action == "start":
+        with get_redis_queue() as (redis_conn, job_queue):
+            # Check for existing running jobs of same type to ensure idempotence/single instance?
+            # For now, we allow queueing multiple.
+
+            if request.job_type == "birthday":
+                cfg = request.config or {}
+                bot_mode = "unlimited" if cfg.get("process_late") else "standard"
+                timeout = "180m" if bot_mode == "unlimited" else "30m"
+
+                job = job_queue.enqueue(
+                    "src.queue.tasks.run_bot_task",
+                    bot_mode=bot_mode,
+                    dry_run=cfg.get("dry_run", True),
+                    max_days_late=cfg.get("max_days_late", 10),
+                    job_timeout=timeout,
+                    meta={'job_type': 'birthday'}
+                )
+                logger.info(f"✅ [BIRTHDAY] Started via /action. Job ID: {job.id}")
+                return {"status": "queued", "job_id": job.id, "type": "birthday", "message": "Birthday bot queued"}
+
+            elif request.job_type == "visitor":
+                cfg = request.config or {}
+                job = job_queue.enqueue(
+                    "src.queue.tasks.run_profile_visit_task",
+                    dry_run=cfg.get("dry_run", True),
+                    limit=cfg.get("limit", 10),
+                    job_timeout="45m",
+                    meta={'job_type': 'visit'}
+                )
+                logger.info(f"✅ [VISITOR] Started via /action. Job ID: {job.id}")
+                return {"status": "queued", "job_id": job.id, "type": "visit", "message": "Visitor bot queued"}
+
+            else:
+                raise HTTPException(400, f"Unknown job_type: {request.job_type}")
+
+    elif request.action == "stop":
+        # Delegate to stop logic
+        # Construct StopRequest compatible object or call logic directly?
+        # We can call the stop_bot function if we extract logic, but for now reuse code.
+        # Actually, let's call the stop_bot handler logic? No, that requires request object.
+        # I'll instantiate StopRequest and call stop_bot.
+        stop_req = StopRequest(job_type=request.job_type)
+        return await stop_bot(stop_req, authenticated)
+
+    raise HTTPException(400, f"Unknown action: {request.action}")
 
 @router.post("/stop")
 async def stop_bot(request: StopRequest, authenticated: bool = Depends(verify_api_key)):
