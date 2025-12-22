@@ -6,13 +6,24 @@
 
 set -euo pipefail
 
-# Couleurs
-BLUE='\033[0;34m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-BOLD='\033[1m'
+# Déterminer le répertoire du script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Charger les libs
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+elif [[ -f "$PROJECT_ROOT/scripts/lib/common.sh" ]]; then
+    source "$PROJECT_ROOT/scripts/lib/common.sh"
+else
+    # Fallback si common.sh n'est pas trouvé
+    BLUE='\033[0;34m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    RED='\033[0;31m'
+    NC='\033[0m'
+    BOLD='\033[1m'
+fi
 
 ERRORS=0
 WARNINGS=0
@@ -194,7 +205,7 @@ if [[ -f .env ]]; then
     fi
 
     # DASHBOARD_PASSWORD
-    if grep -q "^DASHBOARD_PASSWORD=" .env && grep -q "^DASHBOARD_PASSWORD=\$2" .env; then
+    if grep -q "^DASHBOARD_PASSWORD=" .env && grep -q "^DASHBOARD_PASSWORD=\$\$2" .env; then
         check_pass "DASHBOARD_PASSWORD haché (bcrypt)"
     else
         check_warn "DASHBOARD_PASSWORD non haché (exécutez setup.sh)"
