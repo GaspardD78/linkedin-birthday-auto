@@ -140,6 +140,19 @@ export async function startBot(options: {
   });
 }
 
+export async function startInvitationBot(options: {
+  dryRun?: boolean;
+} = {}) {
+  // Unified API: POST /api/bot/action
+  return post('/api/bot/action', {
+    action: 'start',
+    job_type: 'invitation_manager',
+    config: {
+      dry_run: options.dryRun ?? true
+    }
+  });
+}
+
 export async function startVisitorBot(options: {
   dryRun?: boolean;
   limit?: number;

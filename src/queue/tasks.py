@@ -3,6 +3,7 @@ from typing import Any, Optional
 from ..bots.birthday_bot import run_birthday_bot
 from ..bots.unlimited_bot import run_unlimited_bot
 from ..bots.visitor_bot import VisitorBot
+from ..bots.invitation_manager_bot import InvitationManagerBot
 from ..config.config_manager import get_config
 from ..utils.logging import get_logger
 from ..utils.exceptions import InvalidAuthStateError
@@ -107,6 +108,29 @@ def run_visitor_task(
             campaign_id=campaign_id
         ) as bot:
             return bot.run()
+
+    except InvalidAuthStateError:
+        error_msg = "Authentication missing. Please login via Dashboard."
+        logger.error(f"task_auth_error: {error_msg}")
+        return {"success": False, "error": error_msg}
+    except Exception as e:
+        logger.error("task_failed", error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+def run_invitation_task(dry_run: bool = False) -> dict[str, Any]:
+    """
+    Task to run the InvitationManagerBot.
+    """
+    logger.info("task_start", type="invitation_manager", dry_run=dry_run)
+    try:
+        config = get_config()
+        if dry_run:
+            config.dry_run = True
+
+        # Run the bot
+        bot = InvitationManagerBot(config=config)
+        return bot.run()
 
     except InvalidAuthStateError:
         error_msg = "Authentication missing. Please login via Dashboard."

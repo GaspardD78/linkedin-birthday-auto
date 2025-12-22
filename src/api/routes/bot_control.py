@@ -77,6 +77,9 @@ class VisitorConfig(BaseModel):
     dry_run: bool = Field(default=True)
     limit: Optional[int] = Field(default=None, ge=1, le=1000, description="Max profiles to visit (1-1000)")
 
+class InvitationConfig(BaseModel):
+    dry_run: bool = Field(default=True)
+
 class StopRequest(BaseModel):
     job_type: Optional[str] = Field(None, description="Specific job type to stop (birthday, visit)")
     job_id: Optional[str] = Field(None, description="Specific job ID to stop")
@@ -275,6 +278,17 @@ async def bot_action_endpoint(request: BotActionRequest, authenticated: bool = D
                 )
                 logger.info(f"✅ [VISITOR] Started via /action. Job ID: {job.id}")
                 return {"status": "queued", "job_id": job.id, "type": "visit", "message": "Visitor bot queued"}
+
+            elif request.job_type == "invitation_manager":
+                cfg = request.config or {}
+                job = job_queue.enqueue(
+                    "src.queue.tasks.run_invitation_task",
+                    dry_run=cfg.get("dry_run", True),
+                    job_timeout="30m",
+                    meta={'job_type': 'invitation_manager'}
+                )
+                logger.info(f"✅ [INVITATION] Started via /action. Job ID: {job.id}")
+                return {"status": "queued", "job_id": job.id, "type": "invitation_manager", "message": "Invitation manager queued"}
 
             else:
                 raise HTTPException(400, f"Unknown job_type: {request.job_type}")
