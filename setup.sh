@@ -698,10 +698,14 @@ progress_init "Déploiement Docker" 7
 # Étape 1: Validation de l'environnement
 progress_step "Validation de l'environnement"
 if ! "$SCRIPT_DIR/scripts/validate_env.sh"; then
-    progress_fail "Environnement invalide"
-    progress_end
-    log_error "Validation de l'environnement échouée (.env / API_KEY)"
-    exit 1
+    log_warn "Environnement invalide, tentative de correction automatique..."
+    if ! "$SCRIPT_DIR/scripts/validate_env.sh" --fix; then
+        progress_fail "Environnement invalide (Fix échoué)"
+        progress_end
+        log_error "Validation de l'environnement échouée (.env / API_KEY)"
+        exit 1
+    fi
+    log_success "Environnement corrigé automatiquement"
 fi
 progress_done "Environnement valide"
 
