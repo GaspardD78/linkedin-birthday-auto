@@ -208,11 +208,12 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be uploaded to /app/data/auth_state.json via dashboard
     - ./data:/app/data
+    - ./src:/app/src
     deploy:
       resources:
         limits:
           cpus: '0.5'
-          memory: 384M
+          memory: 512M
         reservations:
           cpus: '0.25'
           memory: 256M
@@ -260,6 +261,7 @@ services:
     # Messages files are stored in /app/data/ and editable via API
     # auth_state.json is optional - can be in environment variable or uploaded to /app/data/
     - ./data:/app/data
+    - ./src:/app/src
     stop_signal: SIGINT
     # 🚀 OPTIMISÉ POUR RASPBERRY PI 4 (Multi-process with limits for stability)
     deploy:
