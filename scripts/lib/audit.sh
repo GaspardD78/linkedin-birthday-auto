@@ -67,13 +67,14 @@ audit_security() {
     # Vérifier DASHBOARD_PASSWORD
     local pwd_status=0
     local pwd_msg=""
-    if grep -q "^DASHBOARD_PASSWORD=\$\$2[abxy]\$" "$env_file" 2>/dev/null; then
+    # Regex améliorée pour accepter les guillemets optionnels ("..."), fréquents après setup.sh
+    if grep -q "^DASHBOARD_PASSWORD=\"\?\$\$2[abxy]\$" "$env_file" 2>/dev/null; then
         pwd_status=0
         pwd_msg="Hash bcrypt détecté"
-    elif grep -q "^DASHBOARD_PASSWORD=\\\$\\\$2[abxy]\\\$" "$env_file" 2>/dev/null; then
+    elif grep -q "^DASHBOARD_PASSWORD=\"\?\\\$\\\$2[abxy]\\\$" "$env_file" 2>/dev/null; then
         pwd_status=0
         pwd_msg="Hash bcrypt détecté (échappé)"
-    elif grep -q "^DASHBOARD_PASSWORD=\\\$\\\$6\\\$\\\$" "$env_file" 2>/dev/null; then
+    elif grep -q "^DASHBOARD_PASSWORD=\"\?\\\$\\\$6\\\$\\\$" "$env_file" 2>/dev/null; then
         pwd_status=1
         pwd_msg="SHA-512 (moins sécurisé que bcrypt)"
     elif grep -q "^DASHBOARD_PASSWORD=$\|CHANGEZ_MOI\|REPLACE_ME" "$env_file" 2>/dev/null; then
@@ -654,8 +655,10 @@ wait_for_api_endpoint() {
     log_info "Attente de $service_name sur $url..."
 
     while [[ $elapsed -lt $max_wait ]]; do
-        if curl -sf "$url" > /dev/null 2>&1; then
-            log_success "✓ $service_name est accessible (HTTP 200 OK)"
+        # Utilisation de -L pour suivre les redirections (ex: 307 -> 200)
+        # Utilisation de -f pour échouer sur 4xx/5xx (ex: 502 pendant le démarrage)
+        if curl -sfL "$url" > /dev/null 2>&1; then
+            log_success "✓ $service_name est accessible"
             return 0
         fi
 

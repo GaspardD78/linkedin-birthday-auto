@@ -244,8 +244,8 @@ show_status() {
     echo -e "${BOLD}Statut du Mot de Passe Dashboard${NC}"
     echo ""
 
-    # Regex plus souple pour détecter les hash bcrypt (avec ou sans double $)
-    if grep -qE "^DASHBOARD_PASSWORD=(\$\$)?2[abxy]\$" "$ENV_FILE" 2>/dev/null; then
+    # Regex plus souple pour détecter les hash bcrypt (avec ou sans double $, avec ou sans guillemets)
+    if grep -qE "^DASHBOARD_PASSWORD=\"?(\$\$)?2[abxy]" "$ENV_FILE" 2>/dev/null; then
         HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" | cut -d'=' -f2)
         HASH_SHORT="${HASH:0:30}..."
         echo -e "  ${GREEN}✓ Hash bcrypt présent${NC}"
