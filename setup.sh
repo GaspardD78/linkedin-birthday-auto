@@ -685,14 +685,15 @@ fi
 
 # === PHASE 6: DÉPLOIEMENT DOCKER ===
 
-log_step "PHASE 6: Déploiement Docker"
+log_step "PHASE 6: Déploiement Docker (Mode Agressif)"
 
 # Demander pour le monitoring (DÉSACTIVÉ - Grafana retiré)
 MONITORING_ENABLED="false"
 setup_state_set_config "monitoring_enabled" "false"
 
 # Initialiser la barre de progression pour la phase 6
-progress_init "Déploiement Docker" 5
+# 7 étapes : Env, Config, Clean Img, Pull, Start, Check, Prune
+progress_init "Déploiement Docker" 7
 
 # Étape 1: Validation de l'environnement
 progress_step "Validation de l'environnement"
@@ -714,7 +715,13 @@ if ! docker_compose_validate "$COMPOSE_FILE"; then
 fi
 progress_done "Configuration valide"
 
-# Étape 3: Pull des images Docker
+# Étape 3: Nettoyage préventif (NOUVEAU)
+progress_step "Nettoyage préventif image Dashboard"
+# Force la suppression de l'image locale pour garantir un pull frais
+docker rmi ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1 || true
+progress_done "Image locale nettoyée"
+
+# Étape 4: Pull des images Docker
 progress_step "Téléchargement des images Docker"
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     progress_fail "Impossible de télécharger les images"
@@ -724,9 +731,10 @@ if ! docker_pull_with_retry "$COMPOSE_FILE"; then
 fi
 progress_done "Images téléchargées"
 
-# Étape 4: Démarrage des conteneurs
-progress_step "Démarrage des conteneurs"
-if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
+# Étape 5: Démarrage des conteneurs (Force Recreate)
+progress_step "Démarrage des conteneurs (--force-recreate)"
+# Remplacement de docker_compose_up pour forcer la recréation
+if ! docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans >/dev/null 2>&1; then
     progress_fail "Échec du démarrage"
     progress_end
     log_error "Démarrage des conteneurs échoué"
@@ -734,12 +742,17 @@ if ! docker_compose_up "$COMPOSE_FILE" "true" "$MONITORING_ENABLED"; then
 fi
 progress_done "Conteneurs démarrés"
 
-# Étape 5: Vérification post-démarrage
+# Étape 6: Vérification post-démarrage
 progress_step "Vérification des conteneurs"
-sleep 3
+sleep 5 # Délai accru pour stabilisation
 RUNNING_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
 TOTAL_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
 progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
+
+# Étape 7: Nettoyage final (NOUVEAU)
+progress_step "Nettoyage images obsolètes"
+docker image prune -f >/dev/null 2>&1 || true
+progress_done "Espace disque optimisé"
 
 progress_end
 
