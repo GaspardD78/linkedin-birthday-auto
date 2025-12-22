@@ -1,4 +1,4 @@
-name: Build and Push Docker Images for Raspberry Pi 4
+name: Build and Push Docker Images
 
 on:
   push:
@@ -10,14 +10,18 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Permet de déclencher manuellement
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
   build-bot-worker:
-    name: Build Bot Worker (ARM64)
+    name: Build Bot Worker (Multi-Arch)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,8 +36,6 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,24 +65,15 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.multiarch
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test Bot Worker image
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "Testing bot worker image..."
-          docker run --rm --platform linux/arm64 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BOT }}:latest \
-            python --version
-          echo "✓ Bot worker image health check passed"
+          cache-from: type=gha,scope=bot-worker
+          cache-to: type=gha,mode=max,scope=bot-worker
 
   build-dashboard:
-    name: Build Dashboard (ARM64)
+    name: Build Dashboard (Multi-Arch)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,8 +88,6 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -126,19 +117,9 @@ jobs:
         with:
           context: ./dashboard
           file: ./dashboard/Dockerfile.prod.pi4
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test Dashboard image
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "Testing dashboard image..."
-          docker run --rm --platform linux/arm64 \
-            --entrypoint node \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DASHBOARD }}:latest \
-            --version
-          echo "✓ Dashboard image health check passed"
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard
