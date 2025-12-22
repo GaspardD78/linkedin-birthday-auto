@@ -51,9 +51,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # Cela assure la compatibilité avec les volumes partagés (ex: bases de données, logs)
 # sur le Raspberry Pi sans scripts complexes de modification d'UID.
 
-# Préparation des répertoires avec les bonnes permissions
-RUN mkdir -p /app/logs /app/data && \
-    chown -R node:node /app
+# Préparation des répertoires
+RUN mkdir -p /app/logs /app/data
+
+# Copie explicite de la configuration runtime
+# Indispensable si server.js cherche next.config.js à la racine (headers, rewrites, etc.)
+COPY --from=builder /app/next.config.js ./next.config.js
 
 # Copie des artefacts optimisés
 # 'public' pour les assets statiques
@@ -66,6 +69,11 @@ COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 # Copy entrypoint script
 COPY scripts/start.sh ./scripts/start.sh
 RUN chmod +x ./scripts/start.sh
+
+# Application des permissions récursives sur TOUT /app
+# Cela garantit que tous les fichiers (standalone, static, scripts, logs) appartiennent bien à 'node'
+# avant de basculer l'utilisateur. C'est une sécurité contre les erreurs 404/EACCES.
+RUN chown -R node:node /app
 
 # Bascule sur l'utilisateur non-privilégié
 USER node
