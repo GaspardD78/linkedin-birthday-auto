@@ -95,7 +95,7 @@ class BotStatusResponse(BaseModel):
 
 class BotActionRequest(BaseModel):
     action: str = Field(..., description="Action to perform: start, stop")
-    job_type: str = Field(..., description="Job type: birthday, visitor")
+    job_type: Optional[str] = Field(None, description="Job type: birthday, visitor. Optional for stop.")
     config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Configuration parameters")
 
 # Helper function with retry logic for Redis operations
@@ -244,10 +244,10 @@ async def bot_action_endpoint(request: BotActionRequest, authenticated: bool = D
     """Unified endpoint for bot actions (start/stop). Async & Idempotent."""
 
     if request.action == "start":
-        with get_redis_queue() as (redis_conn, job_queue):
-            # Check for existing running jobs of same type to ensure idempotence/single instance?
-            # For now, we allow queueing multiple.
+        if not request.job_type:
+            raise HTTPException(400, "job_type is required for start action")
 
+        with get_redis_queue() as (redis_conn, job_queue):
             if request.job_type == "birthday":
                 cfg = request.config or {}
                 bot_mode = "unlimited" if cfg.get("process_late") else "standard"
@@ -280,12 +280,13 @@ async def bot_action_endpoint(request: BotActionRequest, authenticated: bool = D
                 raise HTTPException(400, f"Unknown job_type: {request.job_type}")
 
     elif request.action == "stop":
-        # Delegate to stop logic
-        # Construct StopRequest compatible object or call logic directly?
-        # We can call the stop_bot function if we extract logic, but for now reuse code.
-        # Actually, let's call the stop_bot handler logic? No, that requires request object.
-        # I'll instantiate StopRequest and call stop_bot.
-        stop_req = StopRequest(job_type=request.job_type)
+        # Handle 'all' or None as global stop
+        target_type = request.job_type if request.job_type != "all" else None
+
+        # Extract job_id from config if present
+        target_id = request.config.get("job_id") if request.config else None
+
+        stop_req = StopRequest(job_type=target_type, job_id=target_id)
         return await stop_bot(stop_req, authenticated)
 
     raise HTTPException(400, f"Unknown action: {request.action}")
