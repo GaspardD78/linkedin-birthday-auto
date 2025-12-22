@@ -1,0 +1,43 @@
+# Image de base : Python 3.11 Slim Bookworm
+# Choisie pour sa stabilité sur ARM64 et sa petite taille (~130MB compressé)
+FROM python:3.11-slim-bookworm
+
+# -----------------------------------------------------------------------------
+# Variables d'Environnement
+# -----------------------------------------------------------------------------
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    # Optimisation PIP : Pas de cache pour économiser l'espace
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Optimisation Mémoire Python (CRITIQUE pour RPi 4)
+    # Réduit la fragmentation de la mémoire (glibc)
+    MALLOC_ARENA_MAX=2 \
+    # Configuration Playwright pour utiliser le Chromium du système
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+
+# -----------------------------------------------------------------------------
+# Installation des dépendances système
+# -----------------------------------------------------------------------------
+# Nous installons Chromium via apt (paquet Debian optimisé ARM64)
+# plutôt que via Playwright pour gagner ~500Mo d'espace.
+# dumb-init est ajouté pour une gestion propre des signaux (PID 1).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    dumb-init \
+    # Nettoyage immédiat et agressif pour garder l'image légère
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/*
+
+# -----------------------------------------------------------------------------
+# Installation de Playwright
+# -----------------------------------------------------------------------------
+# Installe uniquement la librairie Python.
+# Grâce aux ENV vars ci-dessus, il ne téléchargera pas les navigateurs.
+RUN pip install --no-cache-dir playwright
+
+# Point d'entrée pour la gestion correcte des signaux
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
