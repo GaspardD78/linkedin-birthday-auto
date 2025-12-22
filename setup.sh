@@ -315,6 +315,113 @@ fi
 
 echo "✅ PHASE DNS TERMINÉE"
 
+#===============================================================================
+# PHASE 1.6 : DNS Docker OPTIMISÉ (Local + fallback public)
+#===============================================================================
+log_step "PHASE 1.6: Optimisation DNS Docker (Freebox/Local + Publics)"
+
+# 1. Détection DNS Local
+detect_dns_local() {
+    local dns=""
+    # Méthode A: Gateway par défaut
+    if command -v ip >/dev/null; then
+        dns=$(ip route | awk '/default/ {print $3; exit}')
+    fi
+    # Méthode B: resolv.conf (si A échoue ou vide)
+    if [[ -z "$dns" ]] && [[ -f /etc/resolv.conf ]]; then
+        dns=$(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}')
+    fi
+    # Méthode C: Freebox discovery (fallback ultime)
+    if [[ -z "$dns" ]] && command -v ip >/dev/null; then
+        dns=$(ip neigh | grep -E '192\.168\.1\.' | grep 'REachable' | awk '{print $1}' | head -1)
+    fi
+    # Validation format IP simple
+    if [[ ! "$dns" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo ""
+        return 1
+    fi
+    echo "$dns"
+}
+
+DNS_LOCAL=$(detect_dns_local)
+DOMAIN_TO_TEST="gaspardanoukolivier.freeboxos.fr"
+DNS_VALIDATED=false
+DNS_CONFIGURED_PHASE_1_6=false
+
+if [[ -n "$DNS_LOCAL" ]]; then
+    log_info "DNS Local candidat détecté: $DNS_LOCAL"
+    # 2. Vérification de la résolution
+    if command -v nslookup >/dev/null; then
+        if nslookup "$DOMAIN_TO_TEST" "$DNS_LOCAL" >/dev/null 2>&1; then
+             log_success "✓ DNS Local validé: $DNS_LOCAL résout $DOMAIN_TO_TEST"
+             DNS_VALIDATED=true
+        else
+             log_warn "DNS Local $DNS_LOCAL ne résout pas $DOMAIN_TO_TEST. Fallback publics."
+        fi
+    else
+        log_warn "nslookup absent, validation impossible. Utilisation prudente."
+        DNS_VALIDATED=true
+    fi
+else
+    log_warn "Aucun DNS local détecté. Utilisation des DNS publics uniquement."
+fi
+
+# 3. Création daemon.json Idempotent
+DOCKER_DAEMON_FILE="/etc/docker/daemon.json"
+if [[ "$DNS_VALIDATED" == "true" ]]; then
+    DNS_LIST="\"$DNS_LOCAL\", \"1.1.1.1\", \"8.8.8.8\""
+    LOG_MSG="DNS Docker: $DNS_LOCAL (auto-détecté) + publics"
+else
+    DNS_LIST="\"1.1.1.1\", \"8.8.8.8\""
+    LOG_MSG="DNS Docker: Publics uniquement (fallback)"
+fi
+
+# Vérification idempotence
+SHOULD_WRITE=true
+if [[ -f "$DOCKER_DAEMON_FILE" ]]; then
+    CURRENT_CONTENT=$(sudo cat "$DOCKER_DAEMON_FILE")
+    # Si le fichier contient déjà notre DNS local (si valide) ou juste les publics
+    if [[ "$DNS_VALIDATED" == "true" ]] && [[ "$CURRENT_CONTENT" == *"$DNS_LOCAL"* ]]; then
+        SHOULD_WRITE=false
+    elif [[ "$DNS_VALIDATED" == "false" ]] && [[ "$CURRENT_CONTENT" == *"1.1.1.1"* ]]; then
+        # On assume que si 1.1.1.1 est là, c'est bon pour le fallback
+        SHOULD_WRITE=false
+    fi
+fi
+
+if [[ "$SHOULD_WRITE" == "true" ]]; then
+    log_info "Configuration de $DOCKER_DAEMON_FILE..."
+
+    # Création du répertoire si nécessaire
+    sudo mkdir -p /etc/docker
+
+    echo "{
+  \"dns\": [$DNS_LIST],
+  \"dns-opts\": [\"timeout:2\", \"attempts:3\"]
+}" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
+
+    log_info "Redémarrage de Docker..."
+    sudo systemctl restart docker || log_warn "Redémarrage Docker échoué (ignorer si Docker non installé)"
+    DNS_CONFIGURED_PHASE_1_6=true
+else
+    log_info "Configuration DNS Docker déjà à jour. Skip."
+    DNS_CONFIGURED_PHASE_1_6=true
+fi
+
+# 5. Test (si Docker dispo)
+if command -v docker >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then
+    if docker run --rm busybox nslookup "$DOMAIN_TO_TEST" >/dev/null 2>&1; then
+        log_success "✓ TEST RÉUSSI: Résolution conteneur OK pour $DOMAIN_TO_TEST"
+    else
+        # Test fallback internet
+        if docker run --rm busybox nslookup google.com >/dev/null 2>&1; then
+             log_warn "⚠ Résolution locale échouée, mais internet OK."
+        fi
+    fi
+fi
+log_success "✓ $LOG_MSG"
+
+
 # === PHASE 2: BACKUP & CONFIGURATION ===
 
 log_step "PHASE 2: Backup"
@@ -343,7 +450,9 @@ setup_state_checkpoint "docker_config" "completed"
 log_info "Configuration Docker pour RPi4..."
 
 # Sourcer le module DNS Fix (production-ready)
-if [[ -f "$SCRIPT_DIR/scripts/lib/docker_dns_fix.sh" ]]; then
+if [[ "${DNS_CONFIGURED_PHASE_1_6:-false}" == "true" ]]; then
+    log_info "DNS déjà configuré en Phase 1.6 (Optimisé Local). Saut du fix générique."
+elif [[ -f "$SCRIPT_DIR/scripts/lib/docker_dns_fix.sh" ]]; then
     source "$SCRIPT_DIR/scripts/lib/docker_dns_fix.sh"
 
     # Appliquer le fix DNS si nécessaire (avec diagnostic automatique)
