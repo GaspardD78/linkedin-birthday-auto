@@ -4,6 +4,7 @@
 
 # --- Stage 1: Dependencies ---
 FROM node:20-slim AS deps
+ARG TARGETARCH
 WORKDIR /app
 
 # Copie des fichiers de définition de dépendances
@@ -19,7 +20,10 @@ RUN npm ci \
 
 # Installation explicite du binaire SWC pour ARM64/glibc
 # Indispensable pour éviter le fallback vers WASM (lent) ou les erreurs de build
-RUN npm install @next/swc-linux-arm64-gnu --no-save
+# Utilisation conditionnelle et --force pour éviter EBADPLATFORM sur les runners x64
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      npm install @next/swc-linux-arm64-gnu --no-save --force; \
+    fi
 
 # --- Stage 2: Builder ---
 FROM node:20-slim AS builder
