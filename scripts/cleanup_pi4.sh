@@ -45,10 +45,10 @@ print_header "🧹 Démarrage du Grand Nettoyage"
 
 # 1. Arrêt via Docker Compose (tentative propre)
 print_info "Arrêt des services via Docker Compose..."
-if [ -f "docker-compose.pi4-standalone.yml" ]; then
-    docker compose -f docker-compose.pi4-standalone.yml down --volumes --remove-orphans 2>/dev/null || true
+if [ -f "docker-compose.yml" ]; then
+    docker compose -f docker-compose.yml down --volumes --remove-orphans 2>/dev/null || true
 else
-    print_warning "Fichier docker-compose.pi4-standalone.yml non trouvé, passage à l'arrêt forcé."
+    print_warning "Fichier docker-compose.yml non trouvé, passage à l'arrêt forcé."
 fi
 
 # 2. Arrêt forcé et suppression de tous les conteneurs

@@ -185,7 +185,7 @@ rclone config
 
 ```bash
 # Logs temps réel
-docker compose -f docker-compose.pi4-standalone.yml logs -f
+docker compose -f docker-compose.yml logs -f
 
 # Logs d'un service spécifique
 docker compose logs -f dashboard
@@ -197,7 +197,7 @@ docker compose logs -f nginx
 
 ```bash
 # Redémarrer tous les services
-docker compose -f docker-compose.pi4-standalone.yml restart
+docker compose -f docker-compose.yml restart
 
 # Redémarrer un service spécifique
 docker compose restart dashboard

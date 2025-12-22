@@ -47,18 +47,18 @@ fi
 
 # 3. Vérification de la rotation des logs Docker
 print_header "Vérification de la rotation des logs Docker"
-if grep -q "max-size" docker-compose.pi4-standalone.yml; then
+if grep -q "max-size" docker-compose.yml; then
     print_success "Rotation des logs Docker configurée"
 else
-    print_warning "Rotation des logs Docker absente dans docker-compose.pi4-standalone.yml"
+    print_warning "Rotation des logs Docker absente dans docker-compose.yml"
 fi
 
 # 4. Vérification des limites de ressources
 print_header "Vérification des limites de ressources"
-if grep -q "deploy:" docker-compose.pi4-standalone.yml; then
+if grep -q "deploy:" docker-compose.yml; then
     print_success "Limites de ressources (CPU/RAM) définies"
 else
-    print_warning "Limites de ressources non définies dans docker-compose.pi4-standalone.yml"
+    print_warning "Limites de ressources non définies dans docker-compose.yml"
 fi
 
 # 5. Vérification ZRAM (Optionnel mais recommandé)

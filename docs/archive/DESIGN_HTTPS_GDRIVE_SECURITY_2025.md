@@ -906,8 +906,8 @@ if [[ "$choice" == "1" ]]; then
         log_success "Mot de passe modifié et stocké dans .env"
         log_info "Redémarrage du dashboard pour appliquer..."
 
-        if docker compose -f "${PROJECT_ROOT}/docker-compose.pi4-standalone.yml" ps dashboard >/dev/null 2>&1; then
-            docker compose -f "${PROJECT_ROOT}/docker-compose.pi4-standalone.yml" restart dashboard >/dev/null 2>&1
+        if docker compose -f "${PROJECT_ROOT}/docker-compose.yml" ps dashboard >/dev/null 2>&1; then
+            docker compose -f "${PROJECT_ROOT}/docker-compose.yml" restart dashboard >/dev/null 2>&1
             log_success "Dashboard redémarré."
         fi
     else
@@ -967,8 +967,8 @@ elif [[ "$choice" == "2" ]]; then
     echo -e "${BOLD}${GREEN}═══════════════════════════════════════════════════════════${NC}"
 
     # Redémarrage dashboard
-    if docker compose -f "${PROJECT_ROOT}/docker-compose.pi4-standalone.yml" ps dashboard >/dev/null 2>&1; then
-        docker compose -f "${PROJECT_ROOT}/docker-compose.pi4-standalone.yml" restart dashboard >/dev/null 2>&1
+    if docker compose -f "${PROJECT_ROOT}/docker-compose.yml" ps dashboard >/dev/null 2>&1; then
+        docker compose -f "${PROJECT_ROOT}/docker-compose.yml" restart dashboard >/dev/null 2>&1
         log_success "Dashboard redémarré avec nouveau mot de passe."
     fi
 
@@ -1089,7 +1089,7 @@ prompt_menu() {
 |---------|--------|
 | `deployment/nginx/linkedin-bot.conf.template` | Excellente structure, pas de change |
 | `scripts/setup_letsencrypt.sh` | Robuste, juste sera appelé depuis setup.sh |
-| `docker-compose.pi4-standalone.yml` | Config saine, seulement doc update |
+| `docker-compose.yml` | Config saine, seulement doc update |
 
 ---
 

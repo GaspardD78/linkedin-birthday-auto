@@ -19,7 +19,7 @@ Ce document détaille les améliorations de sécurité implémentées suite à l
 ### Problème identifié
 - **Sévérité:** CRITIQUE
 - **Issue:** Identifiants Grafana en dur (`admin/admin`) + accès anonyme en tant qu'Admin
-- **Fichier:** `docker-compose.pi4-standalone.yml:371-375`
+- **Fichier:** `docker-compose.yml:371-375`
 - **Impact:** Accès non autorisé au monitoring et modification des dashboards
 
 ### Solution implémentée
@@ -76,7 +76,7 @@ environment:
 ### Problème identifié
 - **Sévérité:** CRITIQUE
 - **Issue:** Socket Docker exposée directement à l'API sans contrôle
-- **Fichier:** `docker-compose.pi4-standalone.yml:159`
+- **Fichier:** `docker-compose.yml:159`
 - **Impact:** L'API a accès complet à Docker (escalade de privilèges)
 
 ### Solution implémentée
@@ -278,7 +278,7 @@ print(f"Deleted {stats['errors_deleted']} errors, {stats['notifications_deleted'
 
 ## Fichiers modifiés
 
-### 1. `docker-compose.pi4-standalone.yml`
+### 1. `docker-compose.yml`
 - ✅ Ligne 123-160: Ajout du service `docker-socket-proxy`
 - ✅ Ligne 170-174: Dépendance docker-socket-proxy dans l'API
 - ✅ Ligne 194: Variable `DOCKER_HOST` pour l'API
@@ -320,7 +320,7 @@ docker compose down
 docker volume rm linkedin-grafana-data
 
 # 3. Relancer avec les images mises à jour
-docker compose -f docker-compose.pi4-standalone.yml up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 ### Phase 3: Validation

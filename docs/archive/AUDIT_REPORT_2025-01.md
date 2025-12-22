@@ -18,7 +18,7 @@ Ce projet est une implementation **mature et bien architecturee** d'un systeme d
 
 ### CRITIQUE #1 : Grafana - Credentials par defaut exposes
 
-**Fichier / Zone :** `docker-compose.pi4-standalone.yml:373-375`
+**Fichier / Zone :** `docker-compose.yml:373-375`
 **Severite :** CRITIQUE
 **Impact :** Securite - Acces administrateur Grafana avec credentials par defaut
 
@@ -48,7 +48,7 @@ environment:
 
 ### CRITIQUE #2 : Docker Socket exposee sans protection
 
-**Fichier / Zone :** `docker-compose.pi4-standalone.yml:159`
+**Fichier / Zone :** `docker-compose.yml:159`
 **Severite :** CRITIQUE
 **Impact :** Securite - Escalade de privileges potentielle
 
@@ -130,7 +130,7 @@ Le code configure bien le mode WAL et les optimisations, mais il n'y a pas de ve
 
 ### MOYEN #4 : Absence de backup automatise dans le compose
 
-**Fichier / Zone :** `docker-compose.pi4-standalone.yml`
+**Fichier / Zone :** `docker-compose.yml`
 **Impact :** Robustesse - Pas de backup automatique de la base SQLite
 
 **Description :**

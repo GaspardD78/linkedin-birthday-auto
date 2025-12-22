@@ -204,10 +204,10 @@ else
 fi
 
 # docker-compose.yml
-if [[ -f docker-compose.pi4-standalone.yml ]]; then
-    check_pass "docker-compose.pi4-standalone.yml présent"
+if [[ -f docker-compose.yml ]]; then
+    check_pass "docker-compose.yml présent"
 else
-    check_fail "docker-compose.pi4-standalone.yml absent"
+    check_fail "docker-compose.yml absent"
 fi
 
 # ==============================================================================
@@ -216,9 +216,9 @@ fi
 echo -e "\n${BOLD}[8] Services Docker (si actifs)${NC}"
 echo "─────────────────────────────────"
 
-if docker compose -f docker-compose.pi4-standalone.yml ps &>/dev/null; then
-    RUNNING_SERVICES=$(docker compose -f docker-compose.pi4-standalone.yml ps --services --filter "status=running" 2>/dev/null | wc -l)
-    TOTAL_SERVICES=$(docker compose -f docker-compose.pi4-standalone.yml config --services 2>/dev/null | wc -l)
+if docker compose -f docker-compose.yml ps &>/dev/null; then
+    RUNNING_SERVICES=$(docker compose -f docker-compose.yml ps --services --filter "status=running" 2>/dev/null | wc -l)
+    TOTAL_SERVICES=$(docker compose -f docker-compose.yml config --services 2>/dev/null | wc -l)
 
     if [[ "$RUNNING_SERVICES" -eq "$TOTAL_SERVICES" ]]; then
         check_pass "Services Docker: ${RUNNING_SERVICES}/${TOTAL_SERVICES} actifs"

@@ -241,7 +241,7 @@ sudo systemctl start docker
 
 # 2. Fichier compose introuvable
 cd ~/linkedin-birthday-auto
-ls -la docker-compose.pi4-standalone.yml
+ls -la docker-compose.yml
 
 # 3. Permissions
 sudo chown -R pi:pi ~/linkedin-birthday-auto

@@ -26,7 +26,7 @@ Lors de l'exécution du script setup.sh sur Raspberry Pi 4, la PHASE 5 échouait
 
 ```
 [INFO] Pull des images...
-[ERROR] Impossible de lire la liste des services depuis docker-compose.pi4-standalone.yml
+[ERROR] Impossible de lire la liste des services depuis docker-compose.yml
 [ERROR] Impossible de télécharger les images.
 [ERROR] Le script a échoué (Code 1).
 ```
@@ -55,7 +55,7 @@ services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
 
 ### Validation du Fichier Docker-Compose
 
-Le fichier `docker-compose.pi4-standalone.yml` est valide avec 10 services :
+Le fichier `docker-compose.yml` est valide avec 10 services :
 
 ```
 ✓ redis-bot
@@ -76,7 +76,7 @@ Quand le script est exécuté avec `sudo ./setup.sh`, le working directory peut 
 
 ```bash
 # ❌ AVANT : Peut échouer
-docker compose -f "docker-compose.pi4-standalone.yml" config --services
+docker compose -f "docker-compose.yml" config --services
 
 # ✅ APRÈS : Déterministe
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -196,14 +196,14 @@ docker compose -f "$COMPOSE_FILE" up -d --remove-orphans || {
 ```
 AVANT:
 [INFO] Pull des images...
-[ERROR] Impossible de lire la liste des services depuis docker-compose.pi4-standalone.yml
+[ERROR] Impossible de lire la liste des services depuis docker-compose.yml
 [ERROR] Impossible de télécharger les images.
 
 APRÈS:
 [INFO] Répertoire de travail: /home/user/linkedin-birthday-auto
-[INFO] Fichier docker-compose: docker-compose.pi4-standalone.yml
+[INFO] Fichier docker-compose: docker-compose.yml
 [INFO] Vérification du fichier docker-compose...
-[INFO] ✓ Fichier trouvé: docker-compose.pi4-standalone.yml
+[INFO] ✓ Fichier trouvé: docker-compose.yml
 [INFO] Validation YAML du fichier docker-compose...
 [INFO] ✓ YAML valide
 [INFO] Lecture de la liste des services...
@@ -230,25 +230,25 @@ APRÈS:
 
 **Symptôme :**
 ```
-[ERROR] Fichier docker-compose introuvable: /home/user/linkedin-birthday-auto/docker-compose.pi4-standalone.yml
-[INFO] Chemin absolu attendu: /home/user/linkedin-birthday-auto/docker-compose.pi4-standalone.yml
+[ERROR] Fichier docker-compose introuvable: /home/user/linkedin-birthday-auto/docker-compose.yml
+[INFO] Chemin absolu attendu: /home/user/linkedin-birthday-auto/docker-compose.yml
 ```
 
 **Solution :**
 ```bash
 # Vérifier que vous êtes dans le bon répertoire
 cd /home/user/linkedin-birthday-auto
-ls -la docker-compose.pi4-standalone.yml
+ls -la docker-compose.yml
 
 # Vérifier que le fichier n'a pas été supprimé ou renommé
-git checkout docker-compose.pi4-standalone.yml
+git checkout docker-compose.yml
 ```
 
 ### Cas 2 : YAML malformé
 
 **Symptôme :**
 ```
-[ERROR] Le fichier docker-compose.pi4-standalone.yml est invalide (YAML malformé)
+[ERROR] Le fichier docker-compose.yml est invalide (YAML malformé)
 [ERROR] Détails de l'erreur :
   yaml: line 42: mapping values are not allowed here
 ```
@@ -256,13 +256,13 @@ git checkout docker-compose.pi4-standalone.yml
 **Solution :**
 ```bash
 # Vérifier la syntaxe YAML
-docker compose -f docker-compose.pi4-standalone.yml config
+docker compose -f docker-compose.yml config
 
 # Chercher les tabulations (non autorisées en YAML)
-grep -P '\t' docker-compose.pi4-standalone.yml
+grep -P '\t' docker-compose.yml
 
 # Corriger à la ligne 42
-nano +42 docker-compose.pi4-standalone.yml
+nano +42 docker-compose.yml
 ```
 
 ### Cas 3 : docker compose non disponible
@@ -323,9 +323,9 @@ $ sudo ./setup.sh
 ══════════════════════════════════════════════════════════════
 
 [INFO] Répertoire de travail: /home/user/linkedin-birthday-auto
-[INFO] Fichier docker-compose: docker-compose.pi4-standalone.yml
+[INFO] Fichier docker-compose: docker-compose.yml
 [INFO] Vérification du fichier docker-compose...
-[INFO] ✓ Fichier trouvé: docker-compose.pi4-standalone.yml
+[INFO] ✓ Fichier trouvé: docker-compose.yml
 [INFO] Validation YAML du fichier docker-compose...
 [INFO] ✓ YAML valide
 [INFO] Lecture de la liste des services...
@@ -350,10 +350,10 @@ $ sudo ./setup.sh
 $ sudo ./setup.sh
 ...
 [INFO] Répertoire de travail: /home/user/linkedin-birthday-auto
-[INFO] Fichier docker-compose: docker-compose.pi4-standalone.yml
+[INFO] Fichier docker-compose: docker-compose.yml
 [INFO] Vérification du fichier docker-compose...
-[ERROR] Fichier docker-compose introuvable: /home/user/linkedin-birthday-auto/docker-compose.pi4-standalone.yml
-[INFO] Chemin absolu attendu: /home/user/linkedin-birthday-auto/docker-compose.pi4-standalone.yml
+[ERROR] Fichier docker-compose introuvable: /home/user/linkedin-birthday-auto/docker-compose.yml
+[INFO] Chemin absolu attendu: /home/user/linkedin-birthday-auto/docker-compose.yml
 [ERROR] Le script a échoué (Code 1).
 
 → Message très clair : le fichier n'existe pas et on sait où il devrait être
@@ -404,7 +404,7 @@ Cette correction résout le problème fondamental de diagnostic de la PHASE 5. E
 ## 📚 Références
 
 - **Setup Script** : `./setup.sh` (lignes 11-13, 278-373, 705-726)
-- **Docker Compose** : `./docker-compose.pi4-standalone.yml`
+- **Docker Compose** : `./docker-compose.yml`
 - **Commits associés** : `329f92b`
 
 ---
