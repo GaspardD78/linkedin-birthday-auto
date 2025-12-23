@@ -1,9 +1,8 @@
-from typing import Optional, List, Any
+from typing import Optional, Any, List
 from datetime import date, datetime
-from sqlalchemy import String, Integer, Float, Boolean, ForeignKey, Date, DateTime, JSON
+from sqlalchemy import String, Boolean, Float, JSON, DateTime, Date, ForeignKey, Integer, func, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.sql import func
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass
@@ -14,50 +13,88 @@ class Contact(Base):
     # Champs de base
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    profile_url: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    status: Mapped[Optional[str]] = mapped_column(String, default="new")
+    profile_url: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    headline: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    # Champs Sourcing (pour VisitorBot)
-    headline: Mapped[Optional[str]] = mapped_column(String)
-    location: Mapped[Optional[str]] = mapped_column(String)
-    open_to_work: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
-    fit_score: Mapped[Optional[float]] = mapped_column(Float)
-    skills: Mapped[Optional[Any]] = mapped_column(JSON)
-    work_history: Mapped[Optional[Any]] = mapped_column(JSON)
+    # Sourcing (Visitor)
+    location: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    open_to_work: Mapped[bool] = mapped_column(Boolean, default=False)
+    fit_score: Mapped[float] = mapped_column(Float, default=0.0)
+    skills: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)  # Text/JSON
+    work_history: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)  # Text/JSON
 
-    # Champs Métier
-    last_birthday_message_date: Mapped[Optional[date]] = mapped_column(Date)
-    next_birthday_date: Mapped[Optional[date]] = mapped_column(Date)
+    # Anniversaire
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    last_birthday_message_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Statut
+    status: Mapped[str] = mapped_column(String, default="new")  # "new", "visited", "contacted", "blacklisted"
+
+    # Métadonnées
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relations
     interactions: Mapped[List["Interaction"]] = relationship(back_populates="contact", cascade="all, delete-orphan")
+    # Legacy support
+    messages: Mapped[List["BirthdayMessage"]] = relationship(back_populates="contact")
 
     def __repr__(self) -> str:
-        return f"<Contact(id={self.id}, name='{self.name}', url='{self.profile_url}')>"
+        return f"<Contact(id={self.id}, name='{self.name}', status='{self.status}')>"
 
 class Interaction(Base):
     __tablename__ = "interactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False)  # ex: "birthday_msg", "profile_visit", "invitation_withdraw"
-    status: Mapped[str] = mapped_column(String, nullable=False)  # "success", "failed", "pending"
-    payload: Mapped[Optional[Any]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    type: Mapped[str] = mapped_column(String, nullable=False)  # "birthday_sent", "profile_visit", "invitation_withdrawn"
+    status: Mapped[str] = mapped_column(String, nullable=False)  # "success", "failed"
+    payload: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)  # Text/JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
-    # Relations
     contact: Mapped["Contact"] = relationship(back_populates="interactions")
 
     def __repr__(self) -> str:
-        return f"<Interaction(id={self.id}, type='{self.type}', status='{self.status}', created_at='{self.created_at}')>"
+        return f"<Interaction(id={self.id}, type='{self.type}', status='{self.status}')>"
+
+class LinkedInSelector(Base):
+    __tablename__ = "linkedin_selectors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    selector_value: Mapped[str] = mapped_column(String, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<LinkedInSelector(key='{self.key}', score={self.score})>"
 
 class Campaign(Base):
     __tablename__ = "campaigns"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False)  # ex: "birthday", "sourcing"
+    type: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, default="active")
+    config_snapshot: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<Campaign(id={self.id}, name='{self.name}', type='{self.type}', status='{self.status}')>"
+        return f"<Campaign(id={self.id}, name='{self.name}', status='{self.status}')>"
+
+# --- Deprecated / Legacy ---
+class BirthdayMessage(Base):
+    __tablename__ = "birthday_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contact_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contacts.id"))
+    contact_name: Mapped[Optional[str]] = mapped_column(String)
+    message_text: Mapped[Optional[str]] = mapped_column(Text)
+    sent_at: Mapped[Optional[str]] = mapped_column(String)
+    is_late: Mapped[Optional[bool]] = mapped_column(Boolean)
+    days_late: Mapped[Optional[int]] = mapped_column(Integer)
+    script_mode: Mapped[Optional[str]] = mapped_column(String)
+
+    contact: Mapped[Optional["Contact"]] = relationship(back_populates="messages")
+
+    def __repr__(self) -> str:
+        return f"<BirthdayMessage(id={self.id}, contact='{self.contact_name}', sent_at='{self.sent_at}')>"
