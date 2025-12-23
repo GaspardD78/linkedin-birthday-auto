@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 from datetime import date, datetime
-from sqlalchemy import String, Boolean, Float, JSON, DateTime, Date, ForeignKey, Integer, func
+from sqlalchemy import String, Boolean, Float, JSON, DateTime, Date, ForeignKey, Integer, func, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs
 
@@ -35,6 +35,8 @@ class Contact(Base):
 
     # Relations
     interactions: Mapped[List["Interaction"]] = relationship(back_populates="contact", cascade="all, delete-orphan")
+    # Legacy support
+    messages: Mapped[List["BirthdayMessage"]] = relationship(back_populates="contact")
 
     def __repr__(self) -> str:
         return f"<Contact(id={self.id}, name='{self.name}', status='{self.status}')>"
@@ -77,3 +79,21 @@ class Campaign(Base):
 
     def __repr__(self) -> str:
         return f"<Campaign(id={self.id}, name='{self.name}', status='{self.status}')>"
+
+# --- Deprecated / Legacy ---
+class BirthdayMessage(Base):
+    __tablename__ = "birthday_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contact_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contacts.id"))
+    contact_name: Mapped[Optional[str]] = mapped_column(String)
+    message_text: Mapped[Optional[str]] = mapped_column(Text)
+    sent_at: Mapped[Optional[str]] = mapped_column(String)
+    is_late: Mapped[Optional[bool]] = mapped_column(Boolean)
+    days_late: Mapped[Optional[int]] = mapped_column(Integer)
+    script_mode: Mapped[Optional[str]] = mapped_column(String)
+
+    contact: Mapped[Optional["Contact"]] = relationship(back_populates="messages")
+
+    def __repr__(self) -> str:
+        return f"<BirthdayMessage(id={self.id}, contact='{self.contact_name}', sent_at='{self.sent_at}')>"
