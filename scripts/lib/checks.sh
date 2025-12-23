@@ -62,19 +62,21 @@ ensure_system_requirements() {
     log_success "✓ Mémoire: ${total_memory}GB (OK)"
 
     # Vérifier dépendances manquantes
-    local missing_deps=false
+    local missing_tools=()
     for cmd in curl openssl git jq python3 envsubst; do
         if ! cmd_exists "$cmd"; then
-            missing_deps=true
-            break
+            missing_tools+=("$cmd")
         fi
     done
 
-    if [[ "$missing_deps" == "true" ]]; then
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
         if [[ "$check_only" == "true" ]]; then
-             log_error "Dépendances système manquantes (curl, openssl, git, jq, python3, envsubst)."
+             log_error "Dépendances système manquantes: ${missing_tools[*]}"
              return 1
         fi
+
+        log_warn "Outils manquants détectés: ${missing_tools[*]}"
+        log_info "Tentative d'installation automatique..."
 
         # Installer les dépendances
         install_system_packages
