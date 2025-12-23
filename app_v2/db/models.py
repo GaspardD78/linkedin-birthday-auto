@@ -1,79 +1,63 @@
-from sqlalchemy.ext.asyncio import AsyncAttrs
+from typing import Optional, List, Any
+from datetime import date, datetime
+from sqlalchemy import String, Integer, Float, Boolean, ForeignKey, Date, DateTime, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Float, Boolean, Text, DateTime, ForeignKey
-from datetime import datetime
-from typing import Optional
-import uuid
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.sql import func
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass
 
-# Modèle 1 : contacts
 class Contact(Base):
     __tablename__ = "contacts"
 
+    # Champs de base
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    linkedin_url: Mapped[Optional[str]] = mapped_column(String, unique=True)
-    last_message_date: Mapped[Optional[str]] = mapped_column(String)  # Format ISO
-    message_count: Mapped[int] = mapped_column(Integer, default=0)
-    relationship_score: Mapped[float] = mapped_column(Float, default=0.0)
-    notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[Optional[str]] = mapped_column(String)
-    updated_at: Mapped[Optional[str]] = mapped_column(String)
+    profile_url: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    status: Mapped[Optional[str]] = mapped_column(String, default="new")
 
-    # Relation vers messages
-    messages: Mapped[list["BirthdayMessage"]] = relationship(back_populates="contact")
+    # Champs Sourcing (pour VisitorBot)
+    headline: Mapped[Optional[str]] = mapped_column(String)
+    location: Mapped[Optional[str]] = mapped_column(String)
+    open_to_work: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
+    fit_score: Mapped[Optional[float]] = mapped_column(Float)
+    skills: Mapped[Optional[Any]] = mapped_column(JSON)
+    work_history: Mapped[Optional[Any]] = mapped_column(JSON)
 
-    def __repr__(self):
-        return f"<Contact(id={self.id}, name='{self.name}')>"
+    # Champs Métier
+    last_birthday_message_date: Mapped[Optional[date]] = mapped_column(Date)
+    next_birthday_date: Mapped[Optional[date]] = mapped_column(Date)
 
-# Modèle 2 : birthday_messages
-class BirthdayMessage(Base):
-    __tablename__ = "birthday_messages"
+    # Relations
+    interactions: Mapped[List["Interaction"]] = relationship(back_populates="contact", cascade="all, delete-orphan")
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contact_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contacts.id"))
-    contact_name: Mapped[Optional[str]] = mapped_column(String)
-    message_text: Mapped[Optional[str]] = mapped_column(Text)
-    sent_at: Mapped[Optional[str]] = mapped_column(String)
-    is_late: Mapped[Optional[bool]] = mapped_column(Boolean)
-    days_late: Mapped[Optional[int]] = mapped_column(Integer)
-    script_mode: Mapped[Optional[str]] = mapped_column(String)  # "v1" ou "v2"
+    def __repr__(self) -> str:
+        return f"<Contact(id={self.id}, name='{self.name}', url='{self.profile_url}')>"
 
-    # Relation vers contact
-    contact: Mapped[Optional["Contact"]] = relationship(back_populates="messages")
-
-    def __repr__(self):
-        return f"<BirthdayMessage(id={self.id}, contact='{self.contact_name}', sent_at='{self.sent_at}')>"
-
-# Modèle 3 : linkedin_selectors (pour le système heuristique)
-class LinkedInSelector(Base):
-    __tablename__ = "linkedin_selectors"
+class Interaction(Base):
+    __tablename__ = "interactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    element_type: Mapped[str] = mapped_column(String, nullable=False)  # "message_button", "textbox"...
-    selector: Mapped[str] = mapped_column(String, nullable=False)
-    score: Mapped[int] = mapped_column(Integer, default=0)
-    last_success_at: Mapped[Optional[str]] = mapped_column(String)
-    last_failure_at: Mapped[Optional[str]] = mapped_column(String)
-    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[str] = mapped_column(String, default=lambda: datetime.now().isoformat())
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)  # ex: "birthday_msg", "profile_visit", "invitation_withdraw"
+    status: Mapped[str] = mapped_column(String, nullable=False)  # "success", "failed", "pending"
+    payload: Mapped[Optional[Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
-    def __repr__(self):
-        return f"<LinkedInSelector(type='{self.element_type}', score={self.score})>"
+    # Relations
+    contact: Mapped["Contact"] = relationship(back_populates="interactions")
 
-# Modèle 4 : campaigns (si tu veux tracker les exécutions)
+    def __repr__(self) -> str:
+        return f"<Interaction(id={self.id}, type='{self.type}', status='{self.status}', created_at='{self.created_at}')>"
+
 class Campaign(Base):
     __tablename__ = "campaigns"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    started_at: Mapped[str] = mapped_column(String)
-    ended_at: Mapped[Optional[str]] = mapped_column(String)
-    messages_sent: Mapped[int] = mapped_column(Integer, default=0)
-    messages_failed: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String, default="running")  # running, completed, failed
+    type: Mapped[str] = mapped_column(String, nullable=False)  # ex: "birthday", "sourcing"
+    status: Mapped[str] = mapped_column(String, default="active")
 
-    def __repr__(self):
-        return f"<Campaign(id={self.id}, name='{self.name}', status='{self.status}')>"
+    def __repr__(self) -> str:
+        return f"<Campaign(id={self.id}, name='{self.name}', type='{self.type}', status='{self.status}')>"
