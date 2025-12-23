@@ -159,7 +159,7 @@ readonly NGINX_TEMPLATE_HTTPS="$SCRIPT_DIR/deployment/nginx/linkedin-bot-https.c
 readonly NGINX_TEMPLATE_LAN="$SCRIPT_DIR/deployment/nginx/linkedin-bot-lan.conf.template"
 readonly NGINX_CONFIG="$SCRIPT_DIR/deployment/nginx/linkedin-bot.conf"
 readonly DOMAIN_DEFAULT="gaspardanoukolivier.freeboxos.fr"
-LOCAL_IP="192.168.1.145"  # Not readonly - will be determined dynamically later
+# LOCAL_IP will be determined dynamically in Phase 0
 
 # === GLOBAL VARIABLES (set during setup) ===
 
@@ -196,6 +196,14 @@ trap setup_cleanup EXIT
 # === PHASE 0: INITIALIZATION & NETWORK CHECKS (NOUVEAU v5.0) ===
 
 log_step "PHASE 0: Vérifications Préliminaires"
+
+# Détection de l'IP locale (Phase 0)
+LOCAL_IP=$(
+    hostname -I 2>/dev/null | awk '{print $1}' ||
+    ip addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -1 ||
+    echo "127.0.0.1"
+)
+log_info "IP Locale détectée: $LOCAL_IP"
 
 # Vérifier la connectivité internet (NOUVEAU)
 if ! check_internet_connectivity; then
@@ -286,20 +294,24 @@ if [ "${CONFIGURE_SYSTEM_DNS}" = "true" ]; then
         sudo apt update -qq && sudo apt install dnsutils -y </dev/null
     fi
 
-    # Vérif configuration existante (idempotence)
-    if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
-        echo "✓ [OK] DNS déjà configuré (Google DNS)"
-    else
-        echo "🔧 Configuration DNS permanent..."
-        sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
+    # Vérifier si dhcpcd est actif
+    if command -v dhcpcd >/dev/null 2>&1 && systemctl is-active --quiet dhcpcd; then
+        # Vérif configuration existante (idempotence)
+        if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
+            echo "✓ [OK] DNS déjà configuré (Google DNS)"
+        else
+            echo "🔧 Configuration DNS permanent..."
+            sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
 # DNS stable RPi4 - anti-timeout Docker pull (LinkedIn-bot)
 static domain_name_servers=8.8.8.8 8.8.4.4 1.1.1.1
 EOF
+            # Redémarrage dhcpcd (pas systemctl !)
+            echo "🔄 Redémarrage réseau dhcpcd..."
+            sudo dhcpcd -n || echo "⚠️ Redémarrage dhcpcd échoué"
+        fi
+    else
+        echo "ℹ [INFO] dhcpcd non détecté ou inactif. Modification ignorée."
     fi
-
-    # Redémarrage dhcpcd (pas systemctl !)
-    echo "🔄 Redémarrage réseau dhcpcd..."
-    sudo dhcpcd -n || echo "⚠️ Redémarrage dhcpcd échoué (ignorer si non présent)"
     sleep 3
 
     # Test DNS fonctionnel
@@ -1092,12 +1104,6 @@ fi
 
 log_step "DÉPLOIEMENT TERMINÉ AVEC SUCCÈS"
 
-# Meilleure détection de l'IP locale (compatible Linux/macOS)
-LOCAL_IP=$(
-    hostname -I 2>/dev/null | awk '{print $1}' ||
-    ip addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -1 ||
-    echo "127.0.0.1"
-)
 DASHBOARD_USER=$(grep "^DASHBOARD_USER=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "admin")
 DASHBOARD_HASH=$(grep "^DASHBOARD_PASSWORD=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "[non configuré]")
 

@@ -391,8 +391,9 @@ prompt_yes_no() {
     fi
 
     case "$reply" in
-        [Yy]|"") [[ "$default" != "n" ]] && return 0 || return 1 ;;
-        [Nn]|"") [[ "$default" == "n" ]] && return 0 || return 1 ;;
+        [Yy]) return 0 ;;
+        [Nn]) return 1 ;;
+        "") [[ "$default" != "n" ]] && return 0 || return 1 ;;
         *) log_error "Réponse invalide. Veuillez répondre par 'y' ou 'n'"; return 2 ;;
     esac
 }

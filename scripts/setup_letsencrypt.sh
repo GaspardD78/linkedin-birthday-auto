@@ -10,6 +10,18 @@
 
 set -euo pipefail
 
+# --- Arguments ---
+FORCE_RENEW=false
+
+for arg in "$@"; do
+    case $arg in
+        --force)
+            FORCE_RENEW=true
+            shift
+            ;;
+    esac
+done
+
 # --- Configuration ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -102,6 +114,11 @@ reload_nginx() {
 }
 
 check_existing_certs() {
+    if [[ "$FORCE_RENEW" == "true" ]]; then
+        log_warn "Force renew activé : Ignorer certificats existants."
+        return 1
+    fi
+
     if [[ -f "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem" ]]; then
         # Vérifier validité (expiré dans moins de 30 jours ?)
         if openssl x509 -checkend 2592000 -noout -in "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem" >/dev/null 2>&1; then
@@ -116,6 +133,15 @@ check_existing_certs() {
 
 # --- Main Logic ---
 
+# Nettoyage forcé si demandé
+if [[ "$FORCE_RENEW" == "true" ]]; then
+    log_warn "⚠️  SUPPRESSION des certificats existants (--force)..."
+    rm -rf "$CERT_ROOT/conf/live/$DOMAIN" 2>/dev/null || true
+    rm -rf "$CERT_ROOT/conf/archive/$DOMAIN" 2>/dev/null || true
+    rm -rf "$CERT_ROOT/conf/renewal/$DOMAIN.conf" 2>/dev/null || true
+    rm -rf "$CERT_ROOT/conf/live/$DOMAIN-0001" 2>/dev/null || true
+fi
+
 log_info "🔍 Analyse de l'état SSL pour $DOMAIN..."
 
 if check_existing_certs; then
@@ -124,7 +150,7 @@ if check_existing_certs; then
     reload_nginx
     exit 0
 else
-    log_info "Pas de certificats valides. Tentative d'obtention (Let's Encrypt)..."
+    log_info "Pas de certificats valides (ou forcé). Tentative d'obtention (Let's Encrypt)..."
 fi
 
 # Demander email si manquant

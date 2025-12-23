@@ -10,6 +10,7 @@ class Base(AsyncAttrs, DeclarativeBase):
 class Contact(Base):
     __tablename__ = "contacts"
 
+    # Champs de base
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     profile_url: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)

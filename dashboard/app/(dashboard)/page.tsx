@@ -1,5 +1,5 @@
 import { SystemStatusHero } from "@/components/dashboard/SystemStatusHero"
-import { BotControlPanel } from "@/components/dashboard/BotControlPanel"
+import { BotControlsWidget } from "@/components/dashboard/BotControls"
 import { KPICards } from "@/components/dashboard/KPICards"
 import { ActivityMonitor } from "@/components/dashboard/ActivityMonitor"
 import { WeeklyLimitWidget } from "@/components/dashboard/WeeklyLimitWidget"
@@ -43,7 +43,7 @@ export default function DashboardPage() {
           <div className="lg:col-span-8 space-y-6">
 
             {/* Bot Control Panel */}
-            <BotControlPanel />
+            <BotControlsWidget />
 
             {/* KPI Cards */}
             <KPICards />
