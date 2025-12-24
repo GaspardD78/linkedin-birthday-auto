@@ -374,6 +374,20 @@ fi
 # 3. Création daemon.json Idempotent
 DOCKER_DAEMON_FILE="/etc/docker/daemon.json"
 if [[ "$DNS_VALIDATED" == "true" ]]; then
+    # Validation stricte de DNS_LOCAL avant insertion dans JSON
+    if [[ ! "$DNS_LOCAL" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        log_error "Format d'adresse IP invalide: $DNS_LOCAL. Fallback DNS publics uniquement."
+        DNS_VALIDATED=false
+    else
+        # Validation supplémentaire: chaque octet 0-255
+        if ! python3 -c "import sys; ip='$DNS_LOCAL'; parts=ip.split('.'); sys.exit(0 if len(parts)==4 and all(0<=int(p)<=255 for p in parts) else 1)" 2>/dev/null; then
+            log_error "Adresse IP hors limites: $DNS_LOCAL. Fallback DNS publics uniquement."
+            DNS_VALIDATED=false
+        fi
+    fi
+fi
+
+if [[ "$DNS_VALIDATED" == "true" ]]; then
     DNS_LIST="\"$DNS_LOCAL\", \"1.1.1.1\", \"8.8.8.8\""
     LOG_MSG="DNS Docker: $DNS_LOCAL (auto-détecté) + publics"
 else
@@ -800,7 +814,8 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
         # Vérifier si le cron job existe déjà
         CRON_JOB="0 3 * * * $PROJECT_ROOT/scripts/renew_certificates.sh >> /var/log/certbot-renew.log 2>&1"
 
-        if crontab -l 2>/dev/null | grep -qF "renew_certificates.sh"; then
+        # Vérifier idempotence exacte: le cron job complet doit exister
+        if crontab -l 2>/dev/null | grep -qF "$PROJECT_ROOT/scripts/renew_certificates.sh"; then
             log_info "✓ Cron job SSL déjà configuré"
         else
             log_info "Ajout du cron job pour le renouvellement SSL..."
@@ -1125,7 +1140,12 @@ fi
 
 # Fixes Issue #16: Check properly if function exists or load it
 if declare -f run_full_audit &>/dev/null; then
-    run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
+    if ! run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN"; then
+        log_error "⚠️ L'audit final a détecté des problèmes. Consultez les détails ci-dessus."
+        log_error "Le déploiement a réussi, mais certains problèmes de sécurité ou de santé nécessitent attention."
+    else
+        log_success "✓ Audit final réussi - Tous les contrôles de sécurité OK"
+    fi
 else
     log_warn "Audit final non disponible (fonction manquante dans audit.sh)"
 fi
