@@ -407,10 +407,18 @@ if [[ "$SHOULD_WRITE" == "true" ]]; then
     # Création du répertoire si nécessaire
     sudo mkdir -p /etc/docker
 
-    echo "{
+    JSON_CONTENT="{
   \"dns\": [$DNS_LIST],
   \"dns-opts\": [\"timeout:2\", \"attempts:3\"]
-}" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
+}"
+
+    # Validation JSON avec Python (car python3 est un prérequis)
+    if echo "$JSON_CONTENT" | python3 -c "import sys, json; json.load(sys.stdin)" >/dev/null 2>&1; then
+        echo "$JSON_CONTENT" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
+    else
+        log_error "JSON invalide généré pour daemon.json. Abort."
+        exit 1
+    fi
 
     log_info "Redémarrage de Docker..."
     sudo systemctl restart docker || log_warn "Redémarrage Docker échoué (ignorer si Docker non installé)"
@@ -582,7 +590,15 @@ if grep -q "JWT_SECRET=your_jwt_secret_here\|JWT_SECRET=CHANGEZ_MOI" "$ENV_FILE"
         log_error "Impossible de générer JWT_SECRET"
         exit 1
     }
+    if [[ -z "$NEW_JWT" ]]; then
+        log_error "JWT généré vide"
+        exit 1
+    fi
     ESCAPED_JWT=$(escape_sed_string "$NEW_JWT")
+    if [[ -z "$ESCAPED_JWT" ]]; then
+        log_error "JWT échappé vide"
+        exit 1
+    fi
     sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${ESCAPED_JWT}|" "$ENV_FILE"
     log_success "✓ JWT_SECRET généré"
 fi
@@ -848,6 +864,15 @@ progress_done "Image locale nettoyée"
 
 # Étape 4: Pull des images Docker
 progress_step "Téléchargement des images Docker"
+
+# Vérification authentification ghcr.io si nécessaire
+if grep -q "ghcr.io" "$COMPOSE_FILE"; then
+    if ! docker system info 2>/dev/null | grep -q "Username"; then
+        log_warn "Authentification Docker Registry peut être requise pour ghcr.io"
+        # On continue quand même car le repo peut être public, mais on avertit
+    fi
+fi
+
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     progress_fail "Impossible de télécharger les images"
     progress_end
@@ -1192,6 +1217,11 @@ if [[ -n "${SETUP_PASSWORD_PLAINTEXT:-}" ]]; then
     echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 fi
+
+# Nettoyage des variables sensibles
+unset SETUP_PASSWORD_PLAINTEXT
+unset PASSWORD
+unset PASSWORD_CONFIRM
 
 # Bannière de fin (NOUVEAU v5.0)
 show_completion_banner "success" "Installation terminée avec succès 🎉"
