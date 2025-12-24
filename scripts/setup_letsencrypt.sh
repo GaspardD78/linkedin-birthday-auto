@@ -153,10 +153,10 @@ else
     log_info "Pas de certificats valides (ou forcé). Tentative d'obtention (Let's Encrypt)..."
 fi
 
-# Demander email si manquant
-if [[ -z "$EMAIL" ]]; then
+# Demander email si manquant ou défaut
+if [[ -z "$EMAIL" ]] || [[ "$EMAIL" == "votre.email@example.com" ]]; then
     echo -e "${YELLOW}Email requis pour Let's Encrypt (notifications expiration):${NC}"
-    read -r EMAIL_INPUT
+    read -r -p "Email: " EMAIL_INPUT
     if [[ -n "$EMAIL_INPUT" ]]; then
         EMAIL="$EMAIL_INPUT"
         # Sauvegarder dans .env si possible
