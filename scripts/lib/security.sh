@@ -39,7 +39,9 @@ hash_and_store_password() {
              log_info "📦 Installation de python3-bcrypt pour le hachage..."
              # Essayer pip si dispo
              if cmd_exists pip3; then
-                 pip3 install bcrypt --quiet --user || true
+                 if ! pip3 install bcrypt --quiet --user; then
+                     log_warn "Échec de l'installation automatique de 'bcrypt' via pip."
+                 fi
              fi
         fi
 

@@ -244,21 +244,6 @@ setup_state_checkpoint "prerequisites" "completed"
 
 # Vérification des ports critiques (NOUVEAU)
 log_info "Vérification des ports..."
-check_port_available() {
-    local port=$1
-    if command -v lsof >/dev/null 2>&1; then
-        if lsof -i :$port -t >/dev/null 2>&1; then
-            echo "❌ Port $port est déjà utilisé!"
-            return 1
-        fi
-    elif command -v nc >/dev/null 2>&1; then
-         if nc -z localhost $port 2>/dev/null; then
-            echo "❌ Port $port est déjà utilisé!"
-            return 1
-         fi
-    fi
-    return 0
-}
 
 # Ports: Redis(6379), API(8000), Dashboard(3000), Nginx(80,443)
 for port in 6379 8000 3000 80 443; do
@@ -347,9 +332,16 @@ detect_dns_local() {
          dns=$(grep -h 'routers=' /var/lib/dhcpcd/*.lease 2>/dev/null | head -1 | cut -d= -f2 | tr -d "'\"")
     fi
 
-    # Validation format IP (Plus stricte)
+    # Validation format IP (Plus stricte - 0-255 range check)
+    # Fix Major #8: Regex Validation Incohérente -> Python check is safer
     if [[ "$dns" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        echo "$dns"
+        # Check octet range using python since we have it
+        if python3 -c "import sys; ip=sys.argv[1]; all(0<=int(x)<=255 for x in ip.split('.')) or sys.exit(1)" "$dns" 2>/dev/null; then
+             echo "$dns"
+        else
+             echo ""
+             return 1
+        fi
     else
         echo ""
         return 1
@@ -408,16 +400,14 @@ if [[ "$SHOULD_WRITE" == "true" ]]; then
     # Création du répertoire si nécessaire
     sudo mkdir -p /etc/docker
 
-    JSON_CONTENT="{
-  \"dns\": [$DNS_LIST],
-  \"dns-opts\": [\"timeout:2\", \"attempts:3\"]
-}"
+    # Fix Major #4: JSON Généré Manuellement -> Utiliser Python pour générer du JSON valide
+    # On passe la liste de DNS comme argument JSON string
+    JSON_CONTENT=$(python3 -c "import json; print(json.dumps({'dns': [$DNS_LIST], 'dns-opts': ['timeout:2', 'attempts:3']}, indent=2))")
 
-    # Validation JSON avec Python (car python3 est un prérequis)
-    if echo "$JSON_CONTENT" | python3 -c "import sys, json; json.load(sys.stdin)" >/dev/null 2>&1; then
+    if [[ $? -eq 0 && -n "$JSON_CONTENT" ]]; then
         echo "$JSON_CONTENT" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
     else
-        log_error "JSON invalide généré pour daemon.json. Abort."
+        log_error "Impossible de générer le JSON pour daemon.json."
         exit 1
     fi
 
