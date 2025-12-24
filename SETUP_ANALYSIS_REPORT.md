@@ -993,3 +993,9 @@ test_dns_flexible() {
 1. **CONFIGURE_SYSTEM_DNS**: Initialisation explicite à `true` si non défini.
 2. **Détection DNS**: Amélioration de `detect_dns_local` pour utiliser `ip route`, `resolv.conf` et les baux DHCP (Raspberry Pi), plus validation IP stricte.
 3. **Erreurs silencieuses**: Ajout de checks explicites pour `cp` (template env) et `chown` (permissions docker).
+4. **Architecture Check Port (Majeur #5)**: Déplacement de `check_port_available` depuis `setup.sh` vers `scripts/lib/checks.sh` (DRY).
+5. **Génération JSON Fragile (Majeur #4)**: Remplacement de la concaténation de chaînes par une génération Python (`json.dumps`) pour garantir un JSON valide dans `daemon.json`.
+6. **Validation IP (Majeur #8)**: Ajout d'une validation Python stricte des octets (0-255) dans `detect_dns_local`.
+
+### ✅ Mineurs Corrigés
+1. **Installation silencieuse pip (Mineur #6)**: Ajout d'un warning si `pip3 install bcrypt` échoue au lieu de `|| true`.

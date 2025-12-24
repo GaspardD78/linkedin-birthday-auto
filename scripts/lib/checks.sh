@@ -195,3 +195,35 @@ check_disk_space() {
 
     return 0
 }
+
+# === PORT AVAILABILITY ===
+
+check_port_available() {
+    local port=$1
+    if command -v lsof >/dev/null 2>&1; then
+        # -i :port  : select IPv[46] files at this port
+        # -t        : terse (only PIDs)
+        # -sTCP:LISTEN : only listening sockets
+        if lsof -i :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "❌ Port $port est déjà utilisé!"
+            return 1
+        fi
+    elif command -v nc >/dev/null 2>&1; then
+         # nc -z : zero-I/O mode (scanning)
+         # Check localhost first
+         if nc -z localhost $port 2>/dev/null; then
+            echo "❌ Port $port est déjà utilisé (localhost)!"
+            return 1
+         fi
+         # Warning: nc might not detect 0.0.0.0 binding if we only check localhost
+    else
+        # Fallback python
+        if command -v python3 >/dev/null 2>&1; then
+            if python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); result = s.connect_ex(('127.0.0.1', $port)); s.close(); exit(0 if result == 0 else 1)" 2>/dev/null; then
+                echo "❌ Port $port est déjà utilisé (Python check)!"
+                return 1
+            fi
+        fi
+    fi
+    return 0
+}
