@@ -73,8 +73,14 @@ configure_docker_permissions() {
     check_sudo
     sudo usermod -aG docker "$USER"
     log_success "✓ Utilisateur $USER ajouté au groupe docker"
-    log_warn "⚠️  Vous devrez vous déconnecter/reconnecter pour que les changements prennent effet."
-    log_warn "⚠️  Le script continuera, mais pourrait nécessiter sudo pour les commandes Docker."
+
+    # Fixes Issue #12: Docker Group Interlocking
+    # On ne peut pas forcer le login sans déconnecter l'utilisateur, mais on peut
+    # utiliser `sg` pour les commandes suivantes si nécessaire dans le setup.sh
+    # Ici, on avertit clairement.
+    log_warn "⚠️  GROUP DOCKER AJOUTÉ: Vous devez vous déconnecter/reconnecter."
+    log_warn "   Ou lancer: newgrp docker"
+    log_warn "   Le script tentera de continuer via sudo si nécessaire."
 }
 
 # === PYTHON PACKAGES ===
@@ -90,7 +96,7 @@ install_python_packages() {
     python3 -m pip install --upgrade pip --quiet 2>/dev/null || true
 
     # Installer bcrypt si manquant
-    if ! python3 -c "import bcrypt" 2>/dev/null; then
+    if ! python3 -c "import bcrypt" >/dev/null 2>&1; then
         log_info "Installation de bcrypt..."
         if python3 -m pip install --user bcrypt --quiet 2>/dev/null; then
              log_success "✓ bcrypt installé"

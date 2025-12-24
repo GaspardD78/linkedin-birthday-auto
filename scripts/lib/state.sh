@@ -54,23 +54,40 @@ setup_state_checkpoint() {
         setup_state_init
     fi
 
-    # Utiliser Python pour modifier le JSON de manière fiable
+    # Utiliser des variables d'environnement pour éviter l'injection de code
+    # Fixes Issue #15: PYTHON3 -c INJECTION VECTOR
+    export STATE_FILE="$SETUP_STATE_FILE"
+    export PHASE="$phase"
+    export STATUS="$status"
+
     python3 -c "
 import json
+import os
+import sys
 from datetime import datetime
 
-with open('$SETUP_STATE_FILE', 'r') as f:
-    state = json.load(f)
+state_file = os.environ['STATE_FILE']
+phase = os.environ['PHASE']
+status = os.environ['STATUS']
 
-state['checkpoints']['$phase'] = {
-    'status': '$status',
-    'timestamp': datetime.utcnow().isoformat() + 'Z'
-}
+try:
+    with open(state_file, 'r') as f:
+        state = json.load(f)
 
-with open('$SETUP_STATE_FILE', 'w') as f:
-    json.dump(state, f, indent=2)
+    if 'checkpoints' not in state:
+        state['checkpoints'] = {}
+
+    state['checkpoints'][phase] = {
+        'status': status,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+
+    with open(state_file, 'w') as f:
+        json.dump(state, f, indent=2)
+except Exception as e:
+    sys.exit(1)
 " 2>/dev/null || {
-        log_warn "Python3 non disponible, checkpoint skippé"
+        log_warn "Erreur checkpoint Python (ou Python3 manquant)"
     }
 }
 
@@ -85,19 +102,35 @@ setup_state_set_config() {
         return 0
     fi
 
-    # Utiliser Python pour modifier le JSON
+    # Utiliser des variables d'environnement pour éviter l'injection
+    export STATE_FILE="$SETUP_STATE_FILE"
+    export CONFIG_KEY="$key"
+    export CONFIG_VALUE="$value"
+
     python3 -c "
 import json
+import os
+import sys
 
-with open('$SETUP_STATE_FILE', 'r') as f:
-    state = json.load(f)
+state_file = os.environ['STATE_FILE']
+key = os.environ['CONFIG_KEY']
+value = os.environ['CONFIG_VALUE']
 
-state['config']['$key'] = '$value'
+try:
+    with open(state_file, 'r') as f:
+        state = json.load(f)
 
-with open('$SETUP_STATE_FILE', 'w') as f:
-    json.dump(state, f, indent=2)
+    if 'config' not in state:
+        state['config'] = {}
+
+    state['config'][key] = value
+
+    with open(state_file, 'w') as f:
+        json.dump(state, f, indent=2)
+except Exception as e:
+    sys.exit(1)
 " 2>/dev/null || {
-        log_warn "Python3 non disponible, config skippé"
+        log_warn "Erreur config Python"
     }
 }
 
@@ -110,15 +143,24 @@ setup_state_get_config() {
         return 0
     fi
 
+    export STATE_FILE="$SETUP_STATE_FILE"
+    export CONFIG_KEY="$key"
+    export DEFAULT_VAL="$default"
+
     python3 -c "
 import json
+import os
+
+state_file = os.environ['STATE_FILE']
+key = os.environ['CONFIG_KEY']
+default_val = os.environ['DEFAULT_VAL']
 
 try:
-    with open('$SETUP_STATE_FILE', 'r') as f:
+    with open(state_file, 'r') as f:
         state = json.load(f)
-    print(state.get('config', {}).get('$key', '$default'))
+    print(state.get('config', {}).get(key, default_val))
 except:
-    print('$default')
+    print(default_val)
 " 2>/dev/null || echo "$default"
 }
 
@@ -131,18 +173,29 @@ finalize_setup_state() {
         return 0
     fi
 
+    export STATE_FILE="$SETUP_STATE_FILE"
+    export FINAL_STATUS="$final_status"
+
     python3 -c "
 import json
+import os
+import sys
 from datetime import datetime
 
-with open('$SETUP_STATE_FILE', 'r') as f:
-    state = json.load(f)
+state_file = os.environ['STATE_FILE']
+final_status = os.environ['FINAL_STATUS']
 
-state['status'] = '$final_status'
-state['completed_at'] = datetime.utcnow().isoformat() + 'Z'
+try:
+    with open(state_file, 'r') as f:
+        state = json.load(f)
 
-with open('$SETUP_STATE_FILE', 'w') as f:
-    json.dump(state, f, indent=2)
+    state['status'] = final_status
+    state['completed_at'] = datetime.utcnow().isoformat() + 'Z'
+
+    with open(state_file, 'w') as f:
+        json.dump(state, f, indent=2)
+except Exception as e:
+    sys.exit(1)
 " 2>/dev/null || {
         log_warn "Impossible de finaliser l'état du setup"
     }

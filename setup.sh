@@ -1,30 +1,10 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# LINKEDIN AUTO RPi4 - SUPER ORCHESTRATEUR v5.0
+# LINKEDIN AUTO RPi4 - SUPER ORCHESTRATEUR v5.1
 # ═══════════════════════════════════════════════════════════════════════════════
 # Expert DevOps avec Architecture Modulaire, UX Immersive & Robustesse Maximale
 # Cible: Raspberry Pi 4 (4GB RAM, SD 32GB, ARM64)
 # Domaine: gaspardanoukolivier.freeboxos.fr (192.168.1.145)
-# ═══════════════════════════════════════════════════════════════════════════════
-#
-# NOUVEAUTÉS v5.0 (SUPER ORCHESTRATEUR):
-#  ✅ Logging dual-output centralisé (screen + fichier timestampé)
-#  ✅ Bannière de bienvenue ASCII immersive
-#  ✅ Vérification connectivité internet avant de commencer
-#  ✅ Configuration Google Drive (rclone) guidée pour headless (Cheat Sheet visuel)
-#  ✅ Attente active des conteneurs "healthy" avec tests endpoints
-#  ✅ Barres de progression et spinners améliorés
-#  ✅ Affichage intelligent des mots de passe (en clair si généré, masqué sinon)
-#  ✅ Audit final complet avec Deep Dive
-#  ✅ Intégration scripts d'optimisation (kernel, ZRAM) si présents
-#
-# Usage:
-#   ./setup.sh                    # Setup normal avec tous les checks
-#   ./setup.sh --check-only       # Vérifications sans modifications
-#   ./setup.sh --dry-run          # Simulation sans déploiement
-#   ./setup.sh --resume           # Reprendre après erreur
-#   ./setup.sh --verbose          # Logs détaillés
-#
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -37,56 +17,69 @@ cd "$SCRIPT_DIR"
 PROJECT_ROOT="$SCRIPT_DIR"
 export PROJECT_ROOT
 
+# Sourcing logging IMMEDIATELY (avant tout autre chose)
+# Fixes Issue #13: Logging redirection cassée en cas d'erreur précoce
+if [[ -f "$SCRIPT_DIR/scripts/lib/logging.sh" ]]; then
+    source "$SCRIPT_DIR/scripts/lib/logging.sh"
+    setup_logging "logs"
+else
+    # Fallback si logging.sh manquant
+    echo "ERROR: scripts/lib/logging.sh missing" >&2
+    exit 1
+fi
+
 # === VERROU DE FICHIER (ÉVITER EXÉCUTIONS MULTIPLES) ===
+# Fixes Issue #9: Race condition & timeout
 
 readonly LOCK_FILE="/tmp/linkedin-bot-setup.lock"
 readonly LOCK_FD=200
 
-# Couleurs pour les messages (avant le sourcing de common.sh)
-readonly _RED='\033[0;31m'
-readonly _YELLOW='\033[1;33m'
-readonly _NC='\033[0m'
-
-# Fonction de nettoyage du verrou
 cleanup_lock() {
     if [[ -f "$LOCK_FILE" ]]; then
-        rm -f "$LOCK_FILE" 2>/dev/null || true
+        # On ne supprime que si c'est notre PID (double sécurité)
+        if [[ "$(cat "$LOCK_FILE" 2>/dev/null)" == "$$" ]]; then
+            rm -f "$LOCK_FILE" 2>/dev/null || true
+        fi
     fi
 }
 
-# Acquérir le verrou exclusif
 acquire_lock() {
-    # Si le fichier de verrou existe mais n'est pas accessible, le supprimer
-    if [[ -f "$LOCK_FILE" ]] && ! [[ -w "$LOCK_FILE" ]]; then
-        rm -f "$LOCK_FILE" 2>/dev/null || true
-    fi
-
-    exec 200>"$LOCK_FILE" 2>/dev/null || {
-        echo -e "\n${_RED}[ERROR]${_NC} Impossible d'accéder au verrou $LOCK_FILE"
-        echo -e "${_YELLOW}[INFO]${_NC} Essayez de nettoyer le verrou:"
-        echo -e "  sudo rm -f $LOCK_FILE"
+    # Ouverture du descripteur de fichier pour le verrou
+    exec 200>"$LOCK_FILE" || {
+        log_error "Impossible d'accéder au fichier verrou $LOCK_FILE"
         exit 1
     }
 
-    if ! flock -n 200; then
+    # Tentative de verrouillage avec timeout (Wait 5 seconds)
+    if ! flock -w 5 200; then
         local lock_pid
         lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
-
-        echo -e "\n${_RED}[ERROR]${_NC} Une autre instance de setup.sh est déjà en cours d'exécution (PID: $lock_pid)"
-        echo -e "${_YELLOW}[INFO]${_NC} Si vous êtes certain qu'aucun setup n'est actif, supprimez le verrou:"
-        echo -e "  rm -f $LOCK_FILE"
+        log_error "Une autre instance de setup.sh est en cours (PID: $lock_pid)"
+        log_warn "Si vous êtes sûr qu'aucun setup ne tourne: sudo rm $LOCK_FILE"
         exit 1
     fi
 
-    # Écrire le PID dans le fichier de verrou
+    # Écriture atomique du PID (nous avons le lock exclusif ici)
     echo $$ >&200
 
-    # Nettoyer le verrou à la sortie
+    # Trap pour le nettoyage
     trap cleanup_lock EXIT
 }
 
-# Acquérir le verrou avant de continuer
 acquire_lock
+
+# === DOCKER COMMAND STANDARDIZATION ===
+# Fixes Issue #4: Commande Docker Incohérente
+
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_CMD="docker-compose"
+else
+    # Fallback (sera détecté comme erreur dans les prerequisites)
+    DOCKER_CMD="docker compose"
+fi
+export DOCKER_CMD
 
 # === OPTIONS DE LIGNE DE COMMANDE ===
 
@@ -115,7 +108,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${_RED}[ERROR]${_NC} Option inconnue: $1"
+            log_error "Option inconnue: $1"
             echo "Utilisez --help pour voir les options disponibles"
             exit 1
             ;;
@@ -125,13 +118,13 @@ done
 # === SOURCING DES LIBRARIES ===
 
 # Charger les libs dans l'ordre (dependencies) - utiliser chemins absolus
-source "$SCRIPT_DIR/scripts/lib/common.sh" || { echo "ERROR: Failed to load common.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/installers.sh" || { echo "ERROR: Failed to load installers.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/security.sh" || { echo "ERROR: Failed to load security.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/docker.sh" || { echo "ERROR: Failed to load docker.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/checks.sh" || { echo "ERROR: Failed to load checks.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/state.sh" || { echo "ERROR: Failed to load state.sh"; exit 1; }
-source "$SCRIPT_DIR/scripts/lib/audit.sh" || { echo "ERROR: Failed to load audit.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/common.sh" || { log_error "Failed to load common.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/installers.sh" || { log_error "Failed to load installers.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/security.sh" || { log_error "Failed to load security.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/docker.sh" || { log_error "Failed to load docker.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/checks.sh" || { log_error "Failed to load checks.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/state.sh" || { log_error "Failed to load state.sh"; exit 1; }
+source "$SCRIPT_DIR/scripts/lib/audit.sh" || { log_error "Failed to load audit.sh"; exit 1; }
 
 # Vérifier la disponibilité de Python3 (requis par state.sh)
 if ! cmd_exists python3; then
@@ -139,13 +132,9 @@ if ! cmd_exists python3; then
     exit 1
 fi
 
-# === INITIALISER LE LOGGING DUAL-OUTPUT (NOUVEAU v5.0) ===
-
-setup_logging "logs"
-
 # === AFFICHER LA BANNIÈRE DE BIENVENUE (NOUVEAU v5.0) ===
 
-show_welcome_banner "5.0" "LinkedIn Birthday Auto"
+show_welcome_banner "5.1" "LinkedIn Birthday Auto"
 
 log_info "📋 Fichier de log: ${BOLD}$(get_log_file)${NC}"
 echo ""
@@ -184,6 +173,7 @@ setup_cleanup() {
         finalize_setup_state "completed"
     fi
 
+    cleanup_lock
     return $exit_code
 }
 
@@ -265,7 +255,7 @@ check_port_available() {
 for port in 6379 8000 3000 80 443; do
     if ! check_port_available $port; then
         log_warn "Port $port occupé. Si c'est par nos conteneurs, c'est OK."
-        # On ne bloque pas strictement car docker-compose restart gérera ça,
+        # On ne bloque pas strictement car docker compose restart gérera ça,
         # mais c'est une bonne info pour le debug
     fi
 done
@@ -629,17 +619,19 @@ apply_permissions() {
 
     if [[ "$use_sudo" == "true" ]]; then
         check_sudo
-        sudo chown -R 1000:1000 data logs config certbot 2>/dev/null || {
-            log_warn "Impossible de changer le propriétaire (ignoré si vous êtes déjà UID 1000)"
-        }
+        # Fixes Issue #26: Chown fail silently
+        if ! sudo chown -R 1000:1000 data logs config certbot 2>/dev/null; then
+            log_warn "Impossible de changer le propriétaire vers 1000:1000"
+            log_warn "Assurez-vous que l'utilisateur 1000 a accès aux fichiers montés"
+        fi
         sudo chmod -R 775 data logs config 2>/dev/null || {
             log_error "Impossible de modifier les permissions"
             return 1
         }
     else
-        chown -R 1000:1000 data logs config certbot 2>/dev/null || {
-            log_warn "Impossible de changer le propriétaire (ignoré si vous êtes déjà UID 1000)"
-        }
+        if ! chown -R 1000:1000 data logs config certbot 2>/dev/null; then
+             log_warn "Impossible de changer le propriétaire vers 1000:1000"
+        fi
         chmod -R 775 data logs config 2>/dev/null || {
             log_error "Impossible de modifier les permissions"
             return 1
@@ -884,7 +876,8 @@ progress_done "Images téléchargées"
 # Étape 5: Démarrage des conteneurs (Force Recreate)
 progress_step "Démarrage des conteneurs (--force-recreate)"
 # Remplacement de docker_compose_up pour forcer la recréation
-if ! docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans >/dev/null 2>&1; then
+# USING DOCKER_CMD (Consistent)
+if ! $DOCKER_CMD -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans >/dev/null 2>&1; then
     progress_fail "Échec du démarrage"
     progress_end
     log_error "Démarrage des conteneurs échoué"
@@ -895,8 +888,8 @@ progress_done "Conteneurs démarrés"
 # Étape 6: Vérification post-démarrage
 progress_step "Vérification des conteneurs"
 sleep 5 # Délai accru pour stabilisation
-RUNNING_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
-TOTAL_CONTAINERS=$(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
+RUNNING_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
+TOTAL_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
 progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
 
 # Étape 7: Nettoyage final (NOUVEAU)
@@ -938,11 +931,11 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
 
             # Recharger Nginx pour appliquer les nouveaux certificats (sans coupure)
             log_info "Rechargement de la configuration Nginx..."
-            if docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null; then
+            if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null; then
                 log_success "✓ Nginx rechargé - Certificat SSL production actif"
             else
                 log_warn "⚠️  Impossible de recharger Nginx automatiquement"
-                log_info "Rechargez manuellement avec: docker compose -f $COMPOSE_FILE restart nginx"
+                log_info "Rechargez manuellement avec: $DOCKER_CMD -f $COMPOSE_FILE restart nginx"
             fi
         else
             # Échec de l'obtention du certificat
@@ -980,13 +973,13 @@ log_step "PHASE 7: Validation du Déploiement"
 # Attendre que les services soient opérationnels (NOUVEAU - utilise wait_for_api_endpoint)
 if ! wait_for_api_endpoint "API" "http://localhost:8000/health" 90; then
     log_error "API ne démarre pas"
-    docker compose -f "$COMPOSE_FILE" logs api --tail=50
+    $DOCKER_CMD -f "$COMPOSE_FILE" logs api --tail=50
     exit 1
 fi
 
 if ! wait_for_api_endpoint "Dashboard" "http://localhost:3000/api/system/health" 90; then
     log_error "Dashboard ne démarre pas"
-    docker compose -f "$COMPOSE_FILE" logs dashboard --tail=50
+    $DOCKER_CMD -f "$COMPOSE_FILE" logs dashboard --tail=50
     exit 1
 fi
 
@@ -1119,10 +1112,11 @@ fi
 
 # === AUDIT COMPLET FINAL (SÉCURITÉ, SERVICES, BDD, ROUTES) - NOUVEAU v5.0 ===
 
+# Fixes Issue #16: Check properly if function exists or load it
 if declare -f run_full_audit &>/dev/null; then
     run_full_audit "$ENV_FILE" "$COMPOSE_FILE" "data" "$DOMAIN" || true
 else
-    log_warn "Audit final non disponible (fonction manquante)"
+    log_warn "Audit final non disponible (fonction manquante dans audit.sh)"
 fi
 
 # === RAPPORT FINAL ===
@@ -1165,15 +1159,15 @@ ${BOLD}${BLUE}└─────────────────────
   ${BOLD}📊 Infrastructure${NC}
   ├─ Domaine          : ${DOMAIN}
   ├─ IP locale        : ${LOCAL_IP}
-  ├─ Conteneurs       : $(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
+  ├─ Conteneurs       : $($DOCKER_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
   ├─ HTTPS mode       : ${HTTPS_MODE}
   └─ Sauvegardes      : $([ "$BACKUP_CONFIGURED" == "true" ] && echo "${GREEN}Activées (gdrive)${NC}" || echo "${YELLOW}Non configurées${NC}")
 
   ${BOLD}🔧 Commandes utiles${NC}
-  ├─ Logs              : docker compose -f $COMPOSE_FILE logs -f
-  ├─ Statut            : docker compose -f $COMPOSE_FILE ps
-  ├─ Redémarrer        : docker compose -f $COMPOSE_FILE restart
-  ├─ Arrêter           : docker compose -f $COMPOSE_FILE down
+  ├─ Logs              : $DOCKER_CMD -f $COMPOSE_FILE logs -f
+  ├─ Statut            : $DOCKER_CMD -f $COMPOSE_FILE ps
+  ├─ Redémarrer        : $DOCKER_CMD -f $COMPOSE_FILE restart
+  ├─ Arrêter           : $DOCKER_CMD -f $COMPOSE_FILE down
   ├─ Mot de passe      : ./scripts/manage_dashboard_password.sh
   └─ Monitoring        : ./scripts/monitor_pi4_health.sh
 
