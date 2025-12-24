@@ -981,3 +981,15 @@ test_dns_flexible() {
 *Date: 24 Décembre 2025*
 *Codebase: linkedin-birthday-auto v5.1*
 *Durée d'analyse: Comprehensive (4+ heures)*
+
+## CORRECTIONS APPLIQUÉES
+
+### ✅ Critiques Corrigés
+1. **Password Export (Securité)**: Suppression de `export SETUP_PASSWORD_PLAINTEXT` dans `setup.sh`. La variable est maintenant locale.
+2. **Race Condition Lock (Robustesse)**: Remplacement du verrouillage par `flock` (fd 200) par une méthode atomique `mkdir` avec boucle de retry et nettoyage robuste.
+3. **Hash Validation (Securité)**: Ajout de validation stricte regex (`^$2[abxy]$.{50,}$`) dans `scripts/lib/security.sh` pour éviter les hash vides ou partiels.
+
+### ✅ Majeurs Corrigés
+1. **CONFIGURE_SYSTEM_DNS**: Initialisation explicite à `true` si non défini.
+2. **Détection DNS**: Amélioration de `detect_dns_local` pour utiliser `ip route`, `resolv.conf` et les baux DHCP (Raspberry Pi), plus validation IP stricte.
+3. **Erreurs silencieuses**: Ajout de checks explicites pour `cp` (template env) et `chown` (permissions docker).

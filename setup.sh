@@ -30,40 +30,47 @@ fi
 
 # === VERROU DE FICHIER (ÉVITER EXÉCUTIONS MULTIPLES) ===
 # Fixes Issue #9: Race condition & timeout
+# Fixes Critical #2: Atomic directory locking (mkdir) to avoid race conditions
 
-readonly LOCK_FILE="/tmp/linkedin-bot-setup.lock"
-readonly LOCK_FD=200
+readonly LOCK_DIR="/tmp/linkedin-bot-setup.lock"
 
 cleanup_lock() {
-    if [[ -f "$LOCK_FILE" ]]; then
-        # On ne supprime que si c'est notre PID (double sécurité)
-        if [[ "$(cat "$LOCK_FILE" 2>/dev/null)" == "$$" ]]; then
-            rm -f "$LOCK_FILE" 2>/dev/null || true
+    if [[ -d "$LOCK_DIR" ]]; then
+        # On ne supprime que si c'est notre PID
+        if [[ -f "$LOCK_DIR/pid" ]] && [[ "$(cat "$LOCK_DIR/pid" 2>/dev/null)" == "$$" ]]; then
+            rm -rf "$LOCK_DIR" 2>/dev/null || true
         fi
     fi
 }
 
 acquire_lock() {
-    # Ouverture du descripteur de fichier pour le verrou
-    exec 200>"$LOCK_FILE" || {
-        log_error "Impossible d'accéder au fichier verrou $LOCK_FILE"
-        exit 1
-    }
+    # Retry loop (30s timeout)
+    local retries=30
+    while [[ $retries -gt 0 ]]; do
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo $$ > "$LOCK_DIR/pid"
+            trap cleanup_lock EXIT
+            return 0
+        fi
 
-    # Tentative de verrouillage avec timeout (Wait 5 seconds)
-    if ! flock -w 5 200; then
+        # Check if stale lock
         local lock_pid
-        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "unknown")
-        log_error "Une autre instance de setup.sh est en cours (PID: $lock_pid)"
-        log_warn "Si vous êtes sûr qu'aucun setup ne tourne: sudo rm $LOCK_FILE"
-        exit 1
-    fi
+        if [[ -f "$LOCK_DIR/pid" ]]; then
+            lock_pid=$(cat "$LOCK_DIR/pid" 2>/dev/null)
+            if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+                log_warn "Verrou stérile détecté (PID $lock_pid mort). Nettoyage..."
+                rm -rf "$LOCK_DIR"
+                continue
+            fi
+        fi
 
-    # Écriture atomique du PID (nous avons le lock exclusif ici)
-    echo $$ >&200
+        sleep 1
+        ((retries--))
+    done
 
-    # Trap pour le nettoyage
-    trap cleanup_lock EXIT
+    log_error "Impossible d'acquérir le verrou après 30s."
+    log_warn "Si aucune instance ne tourne: sudo rm -rf $LOCK_DIR"
+    exit 1
 }
 
 acquire_lock
@@ -87,6 +94,8 @@ export DOCKER_CMD
 CHECK_ONLY=false
 DRY_RUN=false
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
+# Fix Major #1: Initialization of CONFIGURE_SYSTEM_DNS
+CONFIGURE_SYSTEM_DNS="${CONFIGURE_SYSTEM_DNS:-true}"
 VERBOSE="${VERBOSE:-false}"
 RESUME_MODE=false
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
@@ -325,24 +334,26 @@ log_step "PHASE 1.6: Optimisation DNS Docker (Freebox/Local + Publics)"
 # 1. Détection DNS Local
 detect_dns_local() {
     local dns=""
-    # Méthode A: Gateway par défaut
+    # Méthode A: Gateway par défaut (Robust)
     if command -v ip >/dev/null; then
-        dns=$(ip route | awk '/default/ {print $3; exit}')
+        dns=$(ip route show default | awk '/default/ {print $3}' | head -1)
     fi
     # Méthode B: resolv.conf (si A échoue ou vide)
     if [[ -z "$dns" ]] && [[ -f /etc/resolv.conf ]]; then
-        dns=$(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}')
+        dns=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)
     fi
-    # Méthode C: Freebox discovery (fallback ultime)
-    if [[ -z "$dns" ]] && command -v ip >/dev/null; then
-        dns=$(ip neigh | grep -E '192\.168\.1\.' | grep 'REachable' | awk '{print $1}' | head -1)
+    # Méthode C: DHCP leases (Raspberry Pi specific)
+    if [[ -z "$dns" ]]; then
+         dns=$(grep -h 'routers=' /var/lib/dhcpcd/*.lease 2>/dev/null | head -1 | cut -d= -f2 | tr -d "'\"")
     fi
-    # Validation format IP simple
-    if [[ ! "$dns" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+
+    # Validation format IP (Plus stricte)
+    if [[ "$dns" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "$dns"
+    else
         echo ""
         return 1
     fi
-    echo "$dns"
 }
 
 DNS_LOCAL=$(detect_dns_local)
@@ -499,7 +510,14 @@ log_info "Le hashage de mot de passe utilisera le conteneur Docker (bcryptjs)"
 # Créer .env s'il n'existe pas
 if [[ ! -f "$ENV_FILE" ]]; then
     log_info "Création $ENV_FILE depuis template..."
-    cp "$ENV_TEMPLATE" "$ENV_FILE"
+    if [[ ! -f "$ENV_TEMPLATE" ]]; then
+        log_error "Template .env manquant: $ENV_TEMPLATE"
+        exit 1
+    fi
+    cp "$ENV_TEMPLATE" "$ENV_FILE" || {
+        log_error "Impossible de copier le template"
+        exit 1
+    }
     chmod 600 "$ENV_FILE"
 fi
 
@@ -551,7 +569,8 @@ configure_dashboard_password() {
     # Hachage via lib security.sh (Architecture CI/CD Robuste)
     # Utilise l'image 'pi-security-hash' pré-buildée
     if hash_and_store_password "$ENV_FILE" "$PASSWORD"; then
-        export SETUP_PASSWORD_PLAINTEXT="$PASSWORD"
+        # Fix Critical #1: Ne jamais exporter le mot de passe en variable d'environnement
+        SETUP_PASSWORD_PLAINTEXT="$PASSWORD"
         setup_state_set_config "password_set" "true"
         log_success "✅ Dashboard sécurisé !"
     else
@@ -619,10 +638,12 @@ apply_permissions() {
 
     if [[ "$use_sudo" == "true" ]]; then
         check_sudo
-        # Fixes Issue #26: Chown fail silently
+        # Fixes Issue #26: Chown fail silently -> Now Explicit Error
         if ! sudo chown -R 1000:1000 data logs config certbot 2>/dev/null; then
-            log_warn "Impossible de changer le propriétaire vers 1000:1000"
-            log_warn "Assurez-vous que l'utilisateur 1000 a accès aux fichiers montés"
+             log_error "Impossible de changer le propriétaire vers 1000:1000"
+             log_error "L'utilisateur 1000 (node/python) ne pourra pas écrire."
+             log_error "Exécutez: sudo chown -R 1000:1000 data logs config certbot"
+             exit 1
         fi
         sudo chmod -R 775 data logs config 2>/dev/null || {
             log_error "Impossible de modifier les permissions"

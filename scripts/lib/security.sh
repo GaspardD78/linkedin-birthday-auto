@@ -52,7 +52,8 @@ hash_and_store_password() {
             py_output=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$password', bcrypt.gensalt()).decode('utf-8'))" 2>&1)
             local py_exit=$?
 
-            if [[ $py_exit -eq 0 ]] && [[ "$py_output" =~ ^\$2[abxy]\$ ]]; then
+            # Validation stricte du format bcrypt (Prefix + Longueur)
+            if [[ $py_exit -eq 0 ]] && [[ "$py_output" =~ ^\$2[abxy]\$.{50,}$ ]]; then
                 hash="$py_output"
                 method_used="Python (Local)"
             else
@@ -79,7 +80,8 @@ hash_and_store_password() {
         local exit_code=$?
         set -e
 
-        if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+        # Validation stricte du format bcrypt
+        if [[ $exit_code -eq 0 ]] && [[ "$hash" =~ ^\$2[abxy]\$.{50,}$ ]]; then
             method_used="Docker (Helper Image)"
         else
             hash=""
