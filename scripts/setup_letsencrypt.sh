@@ -51,13 +51,15 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
+# Fixes Issue #23: Validation DOMAIN
 DOMAIN=$(grep "^DOMAIN=" "$ENV_FILE" | cut -d'=' -f2)
-EMAIL=$(grep "^LETSENCRYPT_EMAIL=" "$ENV_FILE" | cut -d'=' -f2 || echo "")
-
-if [[ -z "$DOMAIN" ]]; then
-    log_error "DOMAIN non défini dans .env"
+# Regex basique pour nom de domaine (alphanum, tirets, points)
+if [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+    log_error "Domaine invalide ou manquant: '$DOMAIN'"
     exit 1
 fi
+
+EMAIL=$(grep "^LETSENCRYPT_EMAIL=" "$ENV_FILE" | cut -d'=' -f2 || echo "")
 
 # Intelligence Domaine: Pas de www pour freeboxos.fr
 DOMAINS_ARG="-d $DOMAIN"
@@ -105,11 +107,17 @@ generate_self_signed_fallback() {
 
 reload_nginx() {
     log_info "Rechargement de Nginx..."
-    if docker compose -f "$COMPOSE_FILE" exec nginx nginx -s reload; then
+    # Standardize on command available
+    local DOCKER_CMD="docker compose"
+    if ! command -v docker compose >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
+        DOCKER_CMD="docker-compose"
+    fi
+
+    if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -s reload; then
         log_success "Nginx rechargé avec succès"
     else
         log_warn "Échec du reload Nginx, tentative de restart..."
-        docker compose -f "$COMPOSE_FILE" restart nginx
+        $DOCKER_CMD -f "$COMPOSE_FILE" restart nginx
     fi
 }
 

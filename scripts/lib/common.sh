@@ -1,78 +1,20 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
 # LINKEDIN AUTO - COMMON LIBRARY (v5.0 - SUPER ORCHESTRATEUR)
-# Logging dual-output, UI immersive, spinners, progress bars, et utilitaires
+# UI immersive, spinners, progress bars, et utilitaires
 # Expert DevOps avec obsession UX/DX
 # ═══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
 
-# === COLORS & FORMATTING (Améliorés avec émojis) ===
+# Sourcing logging first to ensure colors and log functions are available
+# if common.sh is sourced independently.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/logging.sh" ]]; then
+    source "$SCRIPT_DIR/logging.sh"
+fi
 
-readonly BLUE='\033[0;34m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly RED='\033[0;31m'
-readonly CYAN='\033[0;36m'
-readonly MAGENTA='\033[0;35m'
-readonly NC='\033[0m'
-readonly BOLD='\033[1m'
-readonly DIM='\033[2m'
-readonly UNDERLINE='\033[4m'
-
-# === LOGGING DUAL-OUTPUT (SCREEN + FILE) ===
-
-SETUP_LOG_FILE="${SETUP_LOG_FILE:-}"
-LOGGING_INITIALIZED=false
-
-# Initialiser le logging dual-output (exec tee)
-setup_logging() {
-    local log_dir="${1:-logs}"
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-
-    # Créer le répertoire de logs si nécessaire
-    mkdir -p "$log_dir"
-
-    # Définir le fichier de log avec timestamp
-    SETUP_LOG_FILE="${log_dir}/setup_install_${timestamp}.log"
-
-    # Rediriger stdout et stderr vers tee (dual output)
-    # Cela capture TOUT ce qui s'affiche à l'écran dans le fichier
-    exec > >(tee -a "$SETUP_LOG_FILE")
-    exec 2>&1
-
-    LOGGING_INITIALIZED=true
-
-    # Enregistrer l'environnement
-    echo "═══════════════════════════════════════════════════════════════" >> "$SETUP_LOG_FILE"
-    echo "SETUP LOG - $(date '+%Y-%m-%d %H:%M:%S')" >> "$SETUP_LOG_FILE"
-    echo "Host: $(hostname)" >> "$SETUP_LOG_FILE"
-    echo "User: $(whoami)" >> "$SETUP_LOG_FILE"
-    echo "Working Directory: $(pwd)" >> "$SETUP_LOG_FILE"
-    echo "═══════════════════════════════════════════════════════════════" >> "$SETUP_LOG_FILE"
-    echo "" >> "$SETUP_LOG_FILE"
-}
-
-# Fonction pour afficher le chemin du log
-get_log_file() {
-    echo "${SETUP_LOG_FILE:-Logging non initialisé}"
-}
-
-# === LOGGING FUNCTIONS (Améliorées avec émojis) ===
-
-log_info()    { echo -e "${BLUE}ℹ [INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}✓ [OK]${NC} $1"; }
-log_warn()    { echo -e "${YELLOW}⚠ [WARN]${NC} $1"; }
-log_error()   { echo -e "${RED}✗ [ERROR]${NC} $1"; }
-log_debug()   { echo -e "${DIM}[DEBUG]${NC} $1"; }
-
-log_step() {
-    echo ""
-    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BOLD}${BLUE}  🚀 $1${NC}"
-    echo -e "${BOLD}${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-    echo ""
-}
+# === BANNERS & UI ELEMENTS ===
 
 # Bannière de bienvenue (Super Orchestrateur)
 show_welcome_banner() {

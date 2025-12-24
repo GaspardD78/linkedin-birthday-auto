@@ -34,7 +34,8 @@ hash_and_store_password() {
     # Vérifier si python3 est dispo
     if cmd_exists python3; then
         # Vérifier si bcrypt est installé, sinon l'installer temporairement (si pip dispo)
-        if ! python3 -c "import bcrypt" 2>/dev/null; then
+        # Fixes Issue #24: Bcrypt Silent Failure
+        if ! python3 -c "import bcrypt" >/dev/null 2>&1; then
              log_info "📦 Installation de python3-bcrypt pour le hachage..."
              # Essayer pip si dispo
              if cmd_exists pip3; then
@@ -43,14 +44,19 @@ hash_and_store_password() {
         fi
 
         # Générer le hash
-        if python3 -c "import bcrypt" 2>/dev/null; then
+        if python3 -c "import bcrypt" >/dev/null 2>&1; then
             log_debug "Méthode: Local Python (bcrypt)"
             # Note: On utilise bcrypt.hashpw avec un salt généré
-            hash=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$password', bcrypt.gensalt()).decode('utf-8'))")
+            # Fixes Issue #24: Capturer stderr en cas d'erreur
+            local py_output
+            py_output=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$password', bcrypt.gensalt()).decode('utf-8'))" 2>&1)
+            local py_exit=$?
 
-            if [[ "$hash" =~ ^\$2[abxy]\$ ]]; then
+            if [[ $py_exit -eq 0 ]] && [[ "$py_output" =~ ^\$2[abxy]\$ ]]; then
+                hash="$py_output"
                 method_used="Python (Local)"
             else
+                log_warn "Erreur Python Bcrypt: $py_output"
                 hash="" # Invalide
             fi
         else
