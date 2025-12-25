@@ -649,25 +649,65 @@ class BaseLinkedInBot(ABC):
     # ═══════════════════════════════════════════════════════════════
 
     def _parse_iso_datetime(self, timestamp_str: str) -> datetime:
-        """Parse ISO datetime with better error handling."""
+        """
+        Parse ISO datetime with robust error handling.
+        Handles multiple formats and timezone indicators.
+
+        Supports:
+            - ISO 8601 with timezone: "2025-01-01T12:00:00Z" or "2025-01-01T12:00:00+00:00"
+            - ISO 8601 naive: "2025-01-01T12:00:00" (assumes UTC)
+            - With microseconds: "2025-01-01T12:00:00.123456Z"
+            - Date only: "2025-01-01"
+            - Various separators (T or space)
+        """
+        if not timestamp_str:
+            raise ValueError("Empty timestamp string")
+
+        original_str = timestamp_str
+
         try:
-            # Handle 'Z' suffix
+            # Handle 'Z' suffix (UTC indicator)
             if timestamp_str.endswith('Z'):
                 timestamp_str = timestamp_str[:-1] + '+00:00'
 
+            # Try fromisoformat first (handles most ISO 8601 formats)
             try:
                 dt = datetime.fromisoformat(timestamp_str)
             except ValueError:
-                # Fallback to simple strptime for older python/specific formats
-                dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+                # Fallback: Try multiple strptime formats in order of likelihood
+                formats = [
+                    "%Y-%m-%dT%H:%M:%S.%f%z",  # With microseconds and timezone
+                    "%Y-%m-%dT%H:%M:%S%z",      # Without microseconds but with timezone
+                    "%Y-%m-%dT%H:%M:%S.%f",     # With microseconds, no timezone
+                    "%Y-%m-%dT%H:%M:%S",        # Basic format, no timezone
+                    "%Y-%m-%d %H:%M:%S.%f%z",   # Space separator with timezone
+                    "%Y-%m-%d %H:%M:%S%z",      # Space separator, no microseconds
+                    "%Y-%m-%d %H:%M:%S.%f",     # Space separator with microseconds
+                    "%Y-%m-%d %H:%M:%S",        # Space separator basic
+                    "%Y-%m-%d",                 # Date only
+                ]
 
-            # If naive, assume UTC
+                dt = None
+                last_error = None
+                for fmt in formats:
+                    try:
+                        dt = datetime.strptime(timestamp_str, fmt)
+                        break
+                    except ValueError as e:
+                        last_error = e
+                        continue
+
+                if dt is None:
+                    raise ValueError(f"Could not parse '{original_str}' with any standard format. Last error: {last_error}")
+
+            # If naive (no timezone), assume UTC
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
 
             return dt
+
         except Exception as e:
-            logger.error(f"Failed to parse ISO datetime '{timestamp_str}': {e}")
+            logger.error(f"Failed to parse ISO datetime '{original_str}': {e}")
             raise
 
     def _was_contacted_today(self, contact_name: str) -> bool:

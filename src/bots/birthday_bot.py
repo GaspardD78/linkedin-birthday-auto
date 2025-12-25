@@ -216,6 +216,9 @@ class BirthdayBot(BaseLinkedInBot):
         Helper method to run async notification functions from sync code.
         Safe against garbage collection and race conditions.
 
+        Tasks are stored and cleaned up in cleanup_notification_tasks() only,
+        not on every call (avoiding O(n) overhead).
+
         Args:
             async_func: The async notification function to call
             *args: Positional arguments to pass to the function
@@ -228,7 +231,7 @@ class BirthdayBot(BaseLinkedInBot):
                 # If we're in an async context, create a task and keep a reference
                 task = asyncio.create_task(async_func(*args, **kwargs))
 
-                # FIX: Add done callback to log errors
+                # Add done callback to log errors
                 def log_error(t):
                     try:
                         t.result()
@@ -237,10 +240,6 @@ class BirthdayBot(BaseLinkedInBot):
 
                 task.add_done_callback(log_error)
                 self._notification_tasks.append(task)
-
-                # FIX: Avoid O(n) cleanup on every call. Only clean if list gets too big.
-                if len(self._notification_tasks) > 20:
-                    self._notification_tasks = [t for t in self._notification_tasks if not t.done()]
 
             except RuntimeError:
                 # No running event loop, create one with timeout safety
@@ -252,25 +251,33 @@ class BirthdayBot(BaseLinkedInBot):
             logger.warning(f"Failed to send notification: {e}")
 
     def cleanup_notification_tasks(self) -> None:
-        """Wait for pending notification tasks to complete."""
+        """
+        Wait for pending notification tasks to complete.
+        Called during teardown to ensure notifications are sent before shutdown.
+        """
         pending = [t for t in self._notification_tasks if not t.done()]
-        if pending:
-            logger.info(f"Waiting for {len(pending)} pending notification(s)...")
+        if not pending:
+            return
+
+        logger.info(f"Waiting for {len(pending)} pending notification(s)...")
+        try:
+            # We need an event loop to wait for these tasks
             try:
-                # We need an event loop to wait for these tasks
-                try:
-                    loop = asyncio.get_running_loop()
-                    # FIX: Correctly handle asyncio.wait return values
-                    # loop.run_until_complete returns the result of the future/coroutine
-                    done, still_pending = loop.run_until_complete(asyncio.wait(pending, timeout=5.0))
+                loop = asyncio.get_running_loop()
+                # Use asyncio.wait to wait for all pending tasks with timeout
+                done, still_pending = loop.run_until_complete(asyncio.wait(pending, timeout=5.0))
 
-                    if still_pending:
-                        logger.warning(f"{len(still_pending)} notification tasks timed out and were abandoned.")
+                if still_pending:
+                    logger.warning(f"{len(still_pending)} notification tasks timed out and were abandoned.")
+                    # Log which tasks are still pending
+                    for task in still_pending:
+                        logger.debug(f"Pending task: {task.get_name()}")
 
-                except RuntimeError:
-                    pass
-            except Exception as e:
-                logger.warning(f"Error waiting for notifications: {e}")
+            except RuntimeError as e:
+                # No running event loop (teardown is sync)
+                logger.debug(f"No running event loop during teardown: {e}")
+        except Exception as e:
+            logger.warning(f"Error waiting for notifications: {e}")
 
     def teardown(self) -> None:
         """Override teardown to ensure notifications are sent."""
