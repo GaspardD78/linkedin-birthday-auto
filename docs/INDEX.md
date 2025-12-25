@@ -2,9 +2,18 @@
 
 **LinkedIn Birthday Auto Bot** - Navigation complète de la documentation du projet.
 
+**Décembre 2025** - Mise à jour complète : V1 en production, V2 en développement.
+
 ---
 
-## 🚀 Démarrage Rapide
+## ⚠️ État du Projet
+
+- **V1 (Production)** ✅ : Version 4.1 stable, déployée sur Raspberry Pi 4. **À utiliser pour la production.**
+- **V2 (Alternative)** 🔄 : Refonte async-first en `./app_v2/`, en développement. Voir `APP_V2_ANALYSIS_REPORT.md` pour les détails.
+
+---
+
+## 🚀 Démarrage Rapide (V1 - Production)
 
 **👉 Commencez ici si vous êtes nouveau :**
 
@@ -59,27 +68,41 @@
 
 ---
 
-## 📖 Rapports & Analyses (Archive)
+## 🔬 Analyses & Rapports
 
-Documentation historique, rapports d'audit et analyses de design :
+### V2 (Alternative)
 
-- **[AUDIT_REPORT_2025-01.md](archive/AUDIT_REPORT_2025-01.md)** - Audit complet du code
-- **[IMPLEMENTATION_SUMMARY_2025.md](archive/IMPLEMENTATION_SUMMARY_2025.md)** - Résumé des implémentations
-- **[DESIGN_HTTPS_GDRIVE_SECURITY_2025.md](archive/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md)** - Architecture HTTPS & Google Drive
-- **[SECURITY_ENHANCEMENTS_2025.md](archive/SECURITY_ENHANCEMENTS_2025.md)** - Améliorations sécurité (Grafana, Docker, Rate Limiting)
-- **[HISTORY_ANALYSIS_2025.md](archive/HISTORY_ANALYSIS_2025.md)** - Contexte historique et leçons apprises
-- **[MIGRATION_V4.1.md](archive/MIGRATION_V4.1.md)** - Guide migration version 4.1
-- **[PHASE5_DOCKER_PULL_FIX.md](archive/PHASE5_DOCKER_PULL_FIX.md)** - Fix Docker pull issues
-- **[SETUP_IMPROVEMENTS.md](archive/SETUP_IMPROVEMENTS.md)** - Améliorations du script setup.sh
+- **[../APP_V2_ANALYSIS_REPORT.md](../APP_V2_ANALYSIS_REPORT.md)** ⚠️ **Lecture essentielle pour V2**
+  - Analyse complète de l'architecture V2 en `./app_v2/`
+  - Points forts et problèmes critiques identifiés
+  - Recommandations pour la production
+  - **Verdict :** Architecture excellente mais sécurité problématique, pas de tests
+
+### V1 (Production)
+
+- **[archive/AUDIT_REPORT_2025-01.md](archive/AUDIT_REPORT_2025-01.md)** - Audit complet du code V1
+- **[archive/IMPLEMENTATION_SUMMARY_2025.md](archive/IMPLEMENTATION_SUMMARY_2025.md)** - Résumé des implémentations (Jan 2025)
+- **[archive/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md](archive/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md)** - Architecture HTTPS & Google Drive
+- **[archive/SECURITY_ENHANCEMENTS_2025.md](archive/SECURITY_ENHANCEMENTS_2025.md)** - Améliorations sécurité (Grafana, Docker, Rate Limiting)
+- **[archive/HISTORY_ANALYSIS_2025.md](archive/HISTORY_ANALYSIS_2025.md)** - Contexte historique et leçons apprises
+- **[archive/MIGRATION_V4.1.md](archive/MIGRATION_V4.1.md)** - Guide migration version 4.1
+- **[archive/PHASE5_DOCKER_PULL_FIX.md](archive/PHASE5_DOCKER_PULL_FIX.md)** - Fix Docker pull issues
+- **[archive/SETUP_IMPROVEMENTS.md](archive/SETUP_IMPROVEMENTS.md)** - Améliorations du script setup.sh
 
 ---
 
 ## 🎯 Guides Rapides par Scénario
 
-### Je viens de cloner le repo
-1. Lire [QUICK_START_2025.md](QUICK_START_2025.md)
+### Je suis nouveau, je veux démarrer (V1)
+1. Lire [QUICK_START_2025.md](QUICK_START_2025.md) (recommandé)
 2. Lancer `./setup.sh`
 3. Accéder au dashboard à `https://<IP_RPI>`
+4. (Optionnel) Lire [ARCHITECTURE.md](ARCHITECTURE.md) pour comprendre les détails techniques
+
+### Je veux explorer l'architecture V2 alternative
+1. Consulter [../APP_V2_ANALYSIS_REPORT.md](../APP_V2_ANALYSIS_REPORT.md) - **C'est important!**
+2. Explorer le code dans `./app_v2/`
+3. Note : Non recommandée pour production sans correction des problèmes sécurité
 
 ### J'ai une erreur ou problème
 1. Consulter [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
@@ -142,5 +165,6 @@ Fichiers de configuration importants (hors docs/) :
 
 ---
 
-**Version Documentation** : 2025-12
-**Mise à jour** : Consolidation documentation - Suppression fichiers obsolètes, organisation par thème
+**Version Documentation** : 3.0 (2025-12)
+**Mise à jour** : Consolidation complète - Suppression fichiers obsolètes, clarification V1/V2, organisation par thème
+**Fichiers supprimés** : AUDIT_REPORT_COMPLETE.md, SETUP_ANALYSIS_REPORT.md, RAPPORT_ANALYSE_SETUP.md, TEST_RESULTS.md, SETUP_CORRECTIONS_APPLIED.md, SETUP_GUIDE.md, BCRYPT_ARM64_FIX.md, DNS_FIX_SUMMARY.md, DOCKER_DNS_ANALYSIS.md, CORRECTIONS_AUDIT_PHASE1.md, PROJECT_MASTER_DOC.md (archivé)

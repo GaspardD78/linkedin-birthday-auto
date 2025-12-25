@@ -8,6 +8,10 @@
 **Système autonome d'automatisation LinkedIn conçu pour Raspberry Pi 4.**
 Gère vos vœux d'anniversaire et vos visites de profils de manière intelligente, discrète et résiliente.
 
+> ⚠️ **Note :** Ce projet a deux versions :
+> - **V1 (Production)** ✅ : Stable, en production. C'est celle-ci qui est recommandée.
+> - **V2 (Alternative)** 🔄 : Refonte async en développement (`./app_v2/`). Non recommandée pour production sans corrections. Voir [APP_V2_ANALYSIS_REPORT.md](APP_V2_ANALYSIS_REPORT.md).
+
 ---
 
 ## ✨ Fonctionnalités Clés
