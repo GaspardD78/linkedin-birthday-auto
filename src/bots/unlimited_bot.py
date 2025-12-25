@@ -56,7 +56,7 @@ class UnlimitedBirthdayBot(BirthdayBot):
         # Donc birthdays_late_ignored passé par parent sera 0 (car le parent calcule: 0 if process_late else found)
         # Nous récupérons la vraie valeur de run_stats
 
-        late_count = self.run_stats.get("late_found", 0)
+        late_count = self.run_stats.get("late_found", 0) if isinstance(self.run_stats, dict) else 0
 
         return {
             "success": True,

@@ -57,6 +57,9 @@ MIGRATIONS = {
         "ALTER TABLE scraped_profiles ADD COLUMN endorsements_count INTEGER",
         "ALTER TABLE scraped_profiles ADD COLUMN profile_picture_url TEXT",
         "ALTER TABLE scraped_profiles ADD COLUMN open_to_work INTEGER"
+    ],
+    4: [
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_no_dup_msg ON birthday_messages(contact_id, substr(sent_at, 1, 10), message_text)"
     ]
 }
 
@@ -139,7 +142,7 @@ class Database:
     Singleton recommandé via get_database().
     """
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, db_path: str = "linkedin_automation.db"):
         self.db_path = db_path
@@ -268,8 +271,23 @@ class Database:
 
                         for stmt in MIGRATIONS[version]:
                             try:
-                                conn.execute(stmt)
-                                logger.debug(f"✓ Executed: {stmt[:80]}...")
+                                # Robust Retry Loop for Locking
+                                max_retries_lock = 5
+                                for attempt in range(max_retries_lock):
+                                    try:
+                                        conn.execute(stmt)
+                                        logger.debug(f"✓ Executed: {stmt[:80]}...")
+                                        break # Success
+                                    except sqlite3.OperationalError as e:
+                                        if "database is locked" in str(e).lower():
+                                            if attempt < max_retries_lock - 1:
+                                                time.sleep(0.5 * (2**attempt))
+                                                logger.warning(f"Database locked during migration, retrying ({attempt+1}/{max_retries_lock})...")
+                                                continue
+                                            else:
+                                                raise # Exhausted retries
+                                        else:
+                                            raise # Not a lock error
 
                             except sqlite3.OperationalError as e:
                                 error_msg = str(e).lower()
@@ -281,18 +299,6 @@ class Database:
                                 elif "no such table" in error_msg:
                                     logger.debug(f"Table missing, skipping: {stmt}")
                                     continue
-                                elif "database is locked" in error_msg:
-                                    # Retry une fois
-                                    logger.warning(f"Database locked, retrying: {stmt}")
-                                    time.sleep(1)
-                                    try:
-                                        conn.execute(stmt)
-                                        continue
-                                    except:
-                                        migration_succeeded = False
-                                        failed_statements.append((stmt, e))
-                                        logger.error(f"Retry failed: {stmt}")
-                                        break
                                 else:
                                     # Erreur critique
                                     migration_succeeded = False
@@ -603,7 +609,7 @@ class Database:
                             is_late: bool = False, days_late: int = 0,
                             script_mode: str = "routine") -> Optional[int]:
         """
-        Ajoute un message d'anniversaire avec protection contre les doublons.
+        Ajoute un message d'anniversaire avec protection contre les doublons (Atomic).
 
         Returns:
             ID du message si inséré, None si doublon détecté
@@ -618,39 +624,29 @@ class Database:
             else:
                 contact_id = self.add_contact(contact_name, conn=conn)
 
-            # 2. Vérifier doublon AUJOURD'HUI
-            today = datetime.now().date().isoformat()
-            cursor.execute(
-                """
-                SELECT id FROM birthday_messages
-                WHERE contact_id = ? AND DATE(sent_at) = ? AND message_text = ?
-                LIMIT 1
-                """,
-                (contact_id, today, message_text)
-            )
-
-            existing = cursor.fetchone()
-            if existing:
-                logger.warning(
-                    f"Birthday message already sent to {contact_name} today. Skipping duplicate."
-                )
-                return None  # Doublon détecté
-
-            # 3. Insérer le nouveau message
+            # 2. Insérer le nouveau message (Atomic check via Unique Index)
             sent_at = datetime.now().isoformat()
-            cursor.execute(
-                """
-                INSERT INTO birthday_messages
-                (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
-            )
 
-            self.update_contact_last_message(contact_name, sent_at, conn=conn)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO birthday_messages
+                    (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
+                )
 
-            logger.info(f"Birthday message recorded for {contact_name} (ID: {cursor.lastrowid})")
-            return cursor.lastrowid
+                self.update_contact_last_message(contact_name, sent_at, conn=conn)
+                logger.info(f"Birthday message recorded for {contact_name} (ID: {cursor.lastrowid})")
+                return cursor.lastrowid
+
+            except sqlite3.IntegrityError:
+                # Doublon détecté par la contrainte UNIQUE
+                logger.warning(
+                    f"Birthday message already sent to {contact_name} today (caught by IntegrityError). Skipping duplicate."
+                )
+                return None
 
     @retry_on_lock()
     def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> list:
