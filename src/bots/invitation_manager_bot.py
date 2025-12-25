@@ -124,7 +124,10 @@ class InvitationManagerBot(BaseLinkedInBot):
                                     self.errors_count += 1
                             else:
                                 logger.info(f"[DRY RUN] Would withdraw request to {name}")
-                                self.withdrawn_count += 1 # Count virtual withdrawals
+                                # In dry-run, we simulate but DO NOT increment withdrawn_count to avoid confusing stats
+                                # or hitting loop limits prematurely based on fake actions
+                                action_taken_in_pass = True
+                                break
 
                     except Exception as e:
                         logger.warning(f"Error processing item {i}: {e}")
@@ -162,7 +165,8 @@ class InvitationManagerBot(BaseLinkedInBot):
             "success": True,
             "withdrawn_count": self.withdrawn_count,
             "errors": self.errors_count,
-            "duration": duration
+            "duration": duration,
+            "dry_run": self.config.dry_run
         }
 
     def _extract_time_text(self, item_locator) -> Optional[str]:

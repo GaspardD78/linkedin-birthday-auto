@@ -232,13 +232,18 @@ class TestUnlimitedBirthdayBot:
         with patch("src.core.base_bot.BrowserManager"):
             bot = UnlimitedBirthdayBot(config=mock_config)
 
+            # Manually set run_stats to simulate late_found as per the fix logic
+            # The fix uses self.run_stats.get("late_found", 0) NOT the parameter
+            bot.run_stats["late_found"] = 10
+
             result = bot._build_result(
                 messages_sent=15,
                 contacts_processed=15,
                 birthdays_today=5,
-                birthdays_late=10,
+                birthdays_late_ignored=0, # Passed as 0 by parent in unlimited mode
                 messages_ignored=2,
                 duration_seconds=450.5,
+                birthdays_late=10 # Kwargs
             )
 
             assert result["success"] is True

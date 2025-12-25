@@ -45,19 +45,18 @@ class UnlimitedBirthdayBot(BirthdayBot):
 
     def _build_result(self, messages_sent, contacts_processed, birthdays_today, birthdays_late_ignored=0, messages_ignored=0, duration_seconds=0.0, **kwargs) -> dict[str, Any]:
         """
-        Surcharge pour adapter le rapport de résultat (ex: birthdays_late au lieu de ignored).
-        Signature must match calling convention in BirthdayBot.
+        Surcharge pour adapter le rapport de résultat en mode unlimited.
+
+        En mode unlimited:
+        - birthdays_late_ignored du parent est en réalité ignoré (process_late=True toujours)
+        - On rapporte les birthdays_late TROUVÉS au lieu d'ignorés
         """
-        # Note: birthdays_late_ignored passed by base class is actually 'found' but ignored logic inside base class?
-        # In base class: `birthdays_late_ignored=0 if self.config.birthday_filter.process_late else self.run_stats["late_found"]`
-        # Since UnlimitedBot has process_late=True, base class passes 0 for ignored.
+        # Extraire la vraie valeur :
+        # En mode unlimited, process_late est TOUJOURS True (voir run_unlimited_bot)
+        # Donc birthdays_late_ignored passé par parent sera 0 (car le parent calcule: 0 if process_late else found)
+        # Nous récupérons la vraie valeur de run_stats
 
-        # We handle both named args (test) and positional (base class)
-
-        # Test sends: birthdays_late=10 (kwargs)
-        # Base sends: birthdays_late_ignored=0 (positional)
-
-        late_count = kwargs.get("birthdays_late", self.run_stats.get("late_found", 0))
+        late_count = self.run_stats.get("late_found", 0)
 
         return {
             "success": True,
@@ -65,7 +64,7 @@ class UnlimitedBirthdayBot(BirthdayBot):
             "messages_sent": messages_sent,
             "contacts_processed": contacts_processed,
             "birthdays_today": birthdays_today,
-            "birthdays_late": late_count, # We report found late birthdays
+            "birthdays_late": late_count,  # Report actual processed/found late birthdays
             "messages_ignored": messages_ignored,
             "errors": self.stats.get("errors", 0),
             "duration_seconds": round(duration_seconds, 2),

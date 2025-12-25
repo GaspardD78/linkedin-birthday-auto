@@ -247,7 +247,9 @@ class Database:
                 logger.error(f"Backup copy failed: {copy_e}")
 
     def run_migrations(self):
-        """Exécute les migrations manquantes."""
+        """
+        Exécute les migrations manquantes de manière sécurisée et idempotente.
+        """
         current_version = self.get_current_schema_version()
         logger.info(f"Checking migrations... Current version: {current_version}")
 
@@ -255,19 +257,57 @@ class Database:
             if version > current_version:
                 logger.info(f"Applying migration {version}...")
 
+                # Backup AVANT la migration
+                self.backup_database(f"pre_migration_{version}")
+
                 try:
-                    # Transaction pour la migration
+                    # Transaction complète pour la migration
                     with self.get_connection() as conn:
+                        migration_succeeded = True
+                        failed_statements = []
+
                         for stmt in MIGRATIONS[version]:
                             try:
                                 conn.execute(stmt)
-                            except sqlite3.OperationalError as e:
-                                # Idempotence : si la colonne existe déjà, on ignore
-                                if "duplicate column name" in str(e).lower():
-                                    logger.debug(f"Skipping existing column: {stmt}")
-                                else:
-                                    raise
+                                logger.debug(f"✓ Executed: {stmt[:80]}...")
 
+                            except sqlite3.OperationalError as e:
+                                error_msg = str(e).lower()
+
+                                # Erreurs idempotentes (OK d'ignorer)
+                                if "duplicate column name" in error_msg:
+                                    logger.debug(f"Column already exists, skipping: {stmt}")
+                                    continue
+                                elif "no such table" in error_msg:
+                                    logger.debug(f"Table missing, skipping: {stmt}")
+                                    continue
+                                elif "database is locked" in error_msg:
+                                    # Retry une fois
+                                    logger.warning(f"Database locked, retrying: {stmt}")
+                                    time.sleep(1)
+                                    try:
+                                        conn.execute(stmt)
+                                        continue
+                                    except:
+                                        migration_succeeded = False
+                                        failed_statements.append((stmt, e))
+                                        logger.error(f"Retry failed: {stmt}")
+                                        break
+                                else:
+                                    # Erreur critique
+                                    migration_succeeded = False
+                                    failed_statements.append((stmt, e))
+                                    logger.error(f"Migration statement failed: {stmt}")
+                                    logger.error(f"Error details: {e}")
+                                    break
+
+                        if not migration_succeeded:
+                            raise Exception(
+                                f"Migration {version} failed. Failed statements: "
+                                f"{[s[0][:50] for s in failed_statements]}"
+                            )
+
+                        # Enregistrer la migration SEULEMENT si tout a réussi
                         conn.execute(
                             "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                             (version, datetime.now().isoformat())
@@ -276,8 +316,8 @@ class Database:
                     logger.info(f"✅ Migration {version} applied successfully")
 
                 except Exception as e:
-                    logger.critical(f"❌ FATAL: Migration {version} failed: {e}")
-                    self.backup_database(f"pre_migration_{version}_fail")
+                    logger.critical(f"❌ FATAL: Migration {version} FAILED: {e}")
+                    logger.critical(f"Database backed up to: {self.db_path}.pre_migration_{version}.bak")
                     raise
 
     def init_database(self):
@@ -559,17 +599,57 @@ class Database:
             with self.get_connection() as c: _op(c.cursor())
 
     @retry_on_lock()
-    def add_birthday_message(self, contact_name: str, message_text: str, is_late: bool = False, days_late: int = 0, script_mode: str = "routine") -> int:
+    def add_birthday_message(self, contact_name: str, message_text: str,
+                            is_late: bool = False, days_late: int = 0,
+                            script_mode: str = "routine") -> Optional[int]:
+        """
+        Ajoute un message d'anniversaire avec protection contre les doublons.
+
+        Returns:
+            ID du message si inséré, None si doublon détecté
+        """
         with self.get_connection() as conn:
             cursor = conn.cursor()
+
+            # 1. Récupérer ou créer le contact
             contact = self.get_contact_by_name(contact_name, conn=conn)
-            contact_id = contact["id"] if contact else self.add_contact(contact_name, conn=conn)
+            if contact:
+                contact_id = contact["id"]
+            else:
+                contact_id = self.add_contact(contact_name, conn=conn)
+
+            # 2. Vérifier doublon AUJOURD'HUI
+            today = datetime.now().date().isoformat()
+            cursor.execute(
+                """
+                SELECT id FROM birthday_messages
+                WHERE contact_id = ? AND DATE(sent_at) = ? AND message_text = ?
+                LIMIT 1
+                """,
+                (contact_id, today, message_text)
+            )
+
+            existing = cursor.fetchone()
+            if existing:
+                logger.warning(
+                    f"Birthday message already sent to {contact_name} today. Skipping duplicate."
+                )
+                return None  # Doublon détecté
+
+            # 3. Insérer le nouveau message
             sent_at = datetime.now().isoformat()
             cursor.execute(
-                "INSERT INTO birthday_messages (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO birthday_messages
+                (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
                 (contact_id, contact_name, message_text, sent_at, is_late, days_late, script_mode)
             )
+
             self.update_contact_last_message(contact_name, sent_at, conn=conn)
+
+            logger.info(f"Birthday message recorded for {contact_name} (ID: {cursor.lastrowid})")
             return cursor.lastrowid
 
     @retry_on_lock()
