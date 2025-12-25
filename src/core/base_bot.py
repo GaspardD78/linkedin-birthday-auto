@@ -648,6 +648,28 @@ class BaseLinkedInBot(ABC):
     #  ENVOI AVEC AUTO-GUÉRISON (Self-Healing)
     # ═══════════════════════════════════════════════════════════════
 
+    def _parse_iso_datetime(self, timestamp_str: str) -> datetime:
+        """Parse ISO datetime with better error handling."""
+        try:
+            # Handle 'Z' suffix
+            if timestamp_str.endswith('Z'):
+                timestamp_str = timestamp_str[:-1] + '+00:00'
+
+            try:
+                dt = datetime.fromisoformat(timestamp_str)
+            except ValueError:
+                # Fallback to simple strptime for older python/specific formats
+                dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%f%z")
+
+            # If naive, assume UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+
+            return dt
+        except Exception as e:
+            logger.error(f"Failed to parse ISO datetime '{timestamp_str}': {e}")
+            raise
+
     def _was_contacted_today(self, contact_name: str) -> bool:
         """
         Vérifie si un contact a été contacté aujourd'hui (UTC aware).
@@ -668,17 +690,7 @@ class BaseLinkedInBot(ABC):
                     continue
 
                 try:
-                    # Parser le timestamp ISO
-                    if sent_at_str.endswith('Z'):
-                        sent_at = datetime.fromisoformat(sent_at_str.replace('Z', '+00:00'))
-                    elif '+' in sent_at_str or sent_at_str.count('-') > 2: # Has timezone info
-                         sent_at = datetime.fromisoformat(sent_at_str)
-                    else:
-                        # Assume UTC if naive (legacy data might be naive local, but we migrated to UTC)
-                        sent_at = datetime.fromisoformat(sent_at_str).replace(tzinfo=timezone.utc)
-
-                    # Convert to UTC for comparison if needed (though fromisoformat handles offsets)
-                    sent_at_utc = sent_at.astimezone(timezone.utc)
+                    sent_at_utc = self._parse_iso_datetime(sent_at_str).astimezone(timezone.utc)
 
                     if today_start <= sent_at_utc < today_end:
                          return True

@@ -227,9 +227,21 @@ class BirthdayBot(BaseLinkedInBot):
                 loop = asyncio.get_running_loop()
                 # If we're in an async context, create a task and keep a reference
                 task = asyncio.create_task(async_func(*args, **kwargs))
+
+                # FIX: Add done callback to log errors
+                def log_error(t):
+                    try:
+                        t.result()
+                    except Exception as err:
+                        logger.error(f"Notification task failed: {err}", exc_info=True)
+
+                task.add_done_callback(log_error)
                 self._notification_tasks.append(task)
-                # Cleanup finished tasks to avoid memory growth
-                self._notification_tasks = [t for t in self._notification_tasks if not t.done()]
+
+                # FIX: Avoid O(n) cleanup on every call. Only clean if list gets too big.
+                if len(self._notification_tasks) > 20:
+                    self._notification_tasks = [t for t in self._notification_tasks if not t.done()]
+
             except RuntimeError:
                 # No running event loop, create one with timeout safety
                 try:
@@ -248,14 +260,14 @@ class BirthdayBot(BaseLinkedInBot):
                 # We need an event loop to wait for these tasks
                 try:
                     loop = asyncio.get_running_loop()
-                    loop.run_until_complete(asyncio.wait(pending, timeout=5.0))
+                    # FIX: Correctly handle asyncio.wait return values
+                    # loop.run_until_complete returns the result of the future/coroutine
+                    done, still_pending = loop.run_until_complete(asyncio.wait(pending, timeout=5.0))
+
+                    if still_pending:
+                        logger.warning(f"{len(still_pending)} notification tasks timed out and were abandoned.")
+
                 except RuntimeError:
-                    # If no loop is running, we might be in trouble if tasks were attached to a now-closed loop
-                    # But if we are here, usually we are tearing down.
-                    # If tasks were created in a loop that is still running (e.g. inside a bigger async app), we can't easily wait for them synchronously without blocking.
-                    # However, since this bot is mostly sync, the tasks were likely created in the loop we found earlier.
-                    # If asyncio.run was used, it blocked, so no tasks there.
-                    # If asyncio.create_task was used, there WAS a loop.
                     pass
             except Exception as e:
                 logger.warning(f"Error waiting for notifications: {e}")
