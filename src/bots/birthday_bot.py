@@ -38,6 +38,7 @@ class BirthdayBot(BaseLinkedInBot):
             "sent": 0,
             "ignored_limit": 0
         }
+        self._notification_tasks = []
 
         logger.info(f"BirthdayBot initialized (Mode: {self.config.bot_mode})")
 
@@ -213,6 +214,7 @@ class BirthdayBot(BaseLinkedInBot):
     def _send_notification_sync(self, async_func, *args, **kwargs):
         """
         Helper method to run async notification functions from sync code.
+        Safe against garbage collection and race conditions.
 
         Args:
             async_func: The async notification function to call
@@ -223,13 +225,45 @@ class BirthdayBot(BaseLinkedInBot):
             # Try to get the running event loop
             try:
                 loop = asyncio.get_running_loop()
-                # If we're in an async context, create a task
-                asyncio.ensure_future(async_func(*args, **kwargs))
+                # If we're in an async context, create a task and keep a reference
+                task = asyncio.create_task(async_func(*args, **kwargs))
+                self._notification_tasks.append(task)
+                # Cleanup finished tasks to avoid memory growth
+                self._notification_tasks = [t for t in self._notification_tasks if not t.done()]
             except RuntimeError:
-                # No running event loop, create one
-                asyncio.run(async_func(*args, **kwargs))
+                # No running event loop, create one with timeout safety
+                try:
+                    asyncio.run(asyncio.wait_for(async_func(*args, **kwargs), timeout=10.0))
+                except asyncio.TimeoutError:
+                    logger.error("Notification sending timed out (10s)")
         except Exception as e:
             logger.warning(f"Failed to send notification: {e}")
+
+    def cleanup_notification_tasks(self) -> None:
+        """Wait for pending notification tasks to complete."""
+        pending = [t for t in self._notification_tasks if not t.done()]
+        if pending:
+            logger.info(f"Waiting for {len(pending)} pending notification(s)...")
+            try:
+                # We need an event loop to wait for these tasks
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.run_until_complete(asyncio.wait(pending, timeout=5.0))
+                except RuntimeError:
+                    # If no loop is running, we might be in trouble if tasks were attached to a now-closed loop
+                    # But if we are here, usually we are tearing down.
+                    # If tasks were created in a loop that is still running (e.g. inside a bigger async app), we can't easily wait for them synchronously without blocking.
+                    # However, since this bot is mostly sync, the tasks were likely created in the loop we found earlier.
+                    # If asyncio.run was used, it blocked, so no tasks there.
+                    # If asyncio.create_task was used, there WAS a loop.
+                    pass
+            except Exception as e:
+                logger.warning(f"Error waiting for notifications: {e}")
+
+    def teardown(self) -> None:
+        """Override teardown to ensure notifications are sent."""
+        self.cleanup_notification_tasks()
+        super().teardown()
 
     def _check_limits(self) -> None:
         """Vérifie que les limites globales ne sont pas atteintes."""

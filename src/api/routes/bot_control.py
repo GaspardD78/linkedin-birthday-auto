@@ -147,7 +147,11 @@ async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
                     started_at=fmt_date(job.started_at)
                 ))
             except Exception as e:
-                logger.warning(f"Could not fetch details for job {job_id}: {e}", exc_info=True)
+                # Handle race condition where job finishes/expires between listing and fetching
+                if "No such job" in str(e) or "Job" in str(e) and "not found" in str(e):
+                    logger.debug(f"Job {job_id} not found (likely completed/removed)")
+                else:
+                    logger.warning(f"Could not fetch details for job {job_id}: {e}", exc_info=True)
 
         for jid in started_ids:
             get_job_details(jid, active_jobs, "running")
