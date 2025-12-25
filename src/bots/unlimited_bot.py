@@ -85,8 +85,24 @@ class UnlimitedBirthdayBot(BirthdayBot):
 
 # Helper function stays similar
 def run_unlimited_bot(
-    config=None, dry_run: bool = False, max_days_late: int = 10
+    config=None, dry_run: bool = False, max_days_late: int = None
 ) -> dict[str, Any]:
+    """
+    Run the unlimited birthday bot.
+
+    Args:
+        config: Configuration object (defaults to loading from config.yaml)
+        dry_run: If True, simulate the run without sending messages
+        max_days_late: Maximum days late to consider (None = use config value)
+
+    Returns:
+        dict: Execution results
+
+    Phase 3 Fix (INC #1):
+    - Changed default max_days_late from hardcoded 10 to None
+    - When None, loads from config.birthday_filter.max_days_late
+    - Ensures config is the source of truth for default values
+    """
     from ..config.config_manager import get_config
 
     if config is None:
@@ -100,6 +116,11 @@ def run_unlimited_bot(
     config.bot_mode = "unlimited"
     config.birthday_filter.process_today = True
     config.birthday_filter.process_late = True
+
+    # INC #1 FIX: Use config value if max_days_late not explicitly provided
+    if max_days_late is None:
+        max_days_late = config.birthday_filter.max_days_late
+
     config.birthday_filter.max_days_late = max_days_late
 
     # Disable limits in config too just in case
