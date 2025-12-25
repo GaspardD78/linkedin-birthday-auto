@@ -316,7 +316,7 @@ class Database:
                         # Enregistrer la migration SEULEMENT si tout a réussi
                         conn.execute(
                             "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                            (version, datetime.now().isoformat())
+                            (version, datetime.now(timezone.utc).isoformat())
                         )
 
                     logger.info(f"✅ Migration {version} applied successfully")
@@ -570,7 +570,7 @@ class Database:
         for s in default_selectors:
             cursor.execute(
                 "INSERT OR IGNORE INTO linkedin_selectors (selector_name, selector_value, page_type, description, last_validated, is_valid) VALUES (?, ?, ?, ?, ?, ?)",
-                (s["name"], s["value"], s["page_type"], s["description"], datetime.now().isoformat(), True)
+                (s["name"], s["value"], s["page_type"], s["description"], datetime.now(timezone.utc).isoformat(), True)
             )
 
     # ==================== DATA METHODS ====================
@@ -748,7 +748,7 @@ class Database:
     def update_selector_validation(self, selector_name: str, is_valid: bool):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             if is_valid:
                 cursor.execute("UPDATE linkedin_selectors SET is_valid = 1, last_validated = ?, validation_count = validation_count + 1 WHERE selector_name = ?", (now, selector_name))
             else:
@@ -843,7 +843,7 @@ class Database:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO bot_executions (bot_name, start_time, end_time, items_processed, items_ignored, errors, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (bot_name, datetime.fromtimestamp(start_time).isoformat(), datetime.now().isoformat(), items_processed, items_ignored, errors, status)
+                (bot_name, datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat(), items_processed, items_ignored, errors, status)
             )
             return cursor.lastrowid
 
@@ -865,7 +865,7 @@ class Database:
     def get_visitor_insights(self, days: int = 30) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
             cursor.execute("SELECT AVG(fit_score) as avg, COUNT(*) as total, SUM(CASE WHEN fit_score > 70 THEN 1 ELSE 0 END) as qualified FROM scraped_profiles WHERE scraped_at >= ?", (cutoff,))
             stats = cursor.fetchone()
@@ -889,7 +889,7 @@ class Database:
     def get_statistics(self, days: int = 30) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
             cursor.execute("SELECT COUNT(*) as t, SUM(CASE WHEN is_late=1 THEN 1 ELSE 0 END) as l FROM birthday_messages WHERE sent_at >= ?", (cutoff,))
             msg = cursor.fetchone()
@@ -910,8 +910,8 @@ class Database:
     def get_today_statistics(self) -> dict:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            today = datetime.now().date().isoformat()
-            week = (datetime.now() - timedelta(days=7)).isoformat()
+            today = datetime.now(timezone.utc).date().isoformat()
+            week = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
             cursor.execute("SELECT COUNT(*) as c FROM birthday_messages WHERE sent_at >= ?", (today,))
             sent_today = cursor.fetchone()["c"]
@@ -935,7 +935,7 @@ class Database:
         # Simplified for brevity
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cutoff = (datetime.now() - timedelta(days=days)).date().isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
             cursor.execute("SELECT DATE(sent_at) as d, COUNT(*) as c FROM birthday_messages WHERE sent_at >= ? GROUP BY d", (cutoff,))
             msgs = {row['d']: row['c'] for row in cursor.fetchall()}
             cursor.execute("SELECT DATE(visited_at) as d, COUNT(*) as c FROM profile_visits WHERE visited_at >= ? GROUP BY d", (cutoff,))
@@ -955,7 +955,7 @@ class Database:
     def create_campaign(self, name: str, search_url: str, filters: dict) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            now = datetime.now().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor.execute("INSERT INTO campaigns (name, search_url, filters, status, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?)", (name, search_url, json.dumps(filters), now, now))
             return cursor.lastrowid
 
@@ -993,7 +993,7 @@ class Database:
     def add_to_blacklist(self, contact_name: str, linkedin_url: str = None, reason: str = None, added_by: str = "user") -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO blacklist (contact_name, linkedin_url, reason, added_at, added_by, is_active) VALUES (?, ?, ?, ?, ?, 1)", (contact_name, linkedin_url, reason, datetime.now().isoformat(), added_by))
+            cursor.execute("INSERT INTO blacklist (contact_name, linkedin_url, reason, added_at, added_by, is_active) VALUES (?, ?, ?, ?, ?, 1)", (contact_name, linkedin_url, reason, datetime.now(timezone.utc).isoformat(), added_by))
             return cursor.lastrowid
 
     @retry_on_lock()
@@ -1052,7 +1052,7 @@ class Database:
     @retry_on_lock()
     def cleanup_old_logs(self, days: int = 30):
         with self.get_connection() as conn:
-            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             cursor = conn.cursor()
             cursor.execute("DELETE FROM errors WHERE occurred_at < ?", (cutoff,))
             e = cursor.rowcount
@@ -1063,7 +1063,7 @@ class Database:
     @retry_on_lock()
     def cleanup_old_data(self, days: int = 365):
         with self.get_connection() as conn:
-             cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+             cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
              cursor = conn.cursor()
              cursor.execute("DELETE FROM profile_visits WHERE visited_at < ?", (cutoff,))
              return {"visits_deleted": cursor.rowcount}
