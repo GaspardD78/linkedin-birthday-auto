@@ -108,7 +108,9 @@ class DateParsingService:
     @classmethod
     def _invalidate_cache_if_needed(cls):
         """Invalide le cache si nous sommes un nouveau jour."""
-        today = datetime.now().date().isoformat()
+        # FIX: Use UTC to ensure consistency with BaseBot and prevent timezone glitches
+        from datetime import timezone
+        today = datetime.now(timezone.utc).date().isoformat()
 
         if cls._LAST_CACHE_DATE != today:
             cls._CACHE_BY_DATE = {}

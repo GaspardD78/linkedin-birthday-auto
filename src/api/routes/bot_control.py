@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from redis import Redis, ConnectionPool
 from rq import Queue
 from rq.job import Job
+from rq.exceptions import NoSuchJobError
 from rq.registry import StartedJobRegistry
 import os
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -146,10 +147,12 @@ async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
                     enqueued_at=fmt_date(job.enqueued_at) or "",
                     started_at=fmt_date(job.started_at)
                 ))
+            except NoSuchJobError:
+                logger.debug(f"Job {job_id} not found (likely completed/removed)")
             except Exception as e:
                 # Handle race condition where job finishes/expires between listing and fetching
                 if "No such job" in str(e) or "Job" in str(e) and "not found" in str(e):
-                    logger.debug(f"Job {job_id} not found (likely completed/removed)")
+                    logger.debug(f"Job {job_id} not found (likely completed/removed) - caught by string check")
                 else:
                     logger.warning(f"Could not fetch details for job {job_id}: {e}", exc_info=True)
 
