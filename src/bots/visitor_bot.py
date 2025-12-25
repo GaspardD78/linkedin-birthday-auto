@@ -1093,7 +1093,7 @@ class VisitorBot(BaseLinkedInBot):
                 logger.warning(f"Visit error on attempt {attempt+1}: {e}")
 
                 if attempt < max_attempts - 1:
-                    wait_time = backoff_factor ** (attempt + 1)
+                    wait_time = backoff_factor ** attempt
                     logger.info(f"Retrying in {wait_time:.1f}s...")
                     time.sleep(wait_time)
                     continue
