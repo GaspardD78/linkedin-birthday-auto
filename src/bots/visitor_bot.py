@@ -1050,23 +1050,57 @@ class VisitorBot(BaseLinkedInBot):
     # ═══════════════════════════════════════════════════════════════
 
     def _visit_profile_with_retry(self, url: str) -> tuple[bool, Optional[dict[str, Any]]]:
-        """Tente de visiter un profil avec mécanisme de retry."""
-        max_attempts = self.config.visitor.retry.max_attempts
-        backoff = self.config.visitor.retry.backoff_factor
+        """
+        Visite un profil avec retry automatique.
+
+        Returns:
+            (True, scraped_data) si succès
+            (False, None) si tous les retries échouent
+        """
+        max_attempts = self.config.visitor.retry.max_attempts or 3
+        backoff_factor = self.config.visitor.retry.backoff_factor or 1.5
+
+        last_error = None
 
         for attempt in range(max_attempts):
             try:
-                logger.info(f"Visiting {url} (Attempt {attempt+1})")
+                logger.info(f"Visiting {url} (Attempt {attempt+1}/{max_attempts})")
+
                 self.page.goto(url, timeout=90000, wait_until="domcontentloaded")
                 self._simulate_human_interactions()
                 data = self._scrape_profile_data()
                 self._random_delay_profile_visit()
+
+                logger.debug(f"✅ Successfully visited {url}")
                 return True, data
-            except PlaywrightTimeoutError:
-                time.sleep(backoff ** attempt)
+
+            except PlaywrightTimeoutError as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    wait_time = backoff_factor ** attempt
+                    logger.warning(
+                        f"Timeout visiting {url} (Attempt {attempt+1}/{max_attempts}). "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"Failed to visit {url} after {max_attempts} timeout attempts")
+                    return False, None
+
             except Exception as e:
-                logger.warning(f"Visit error: {e}")
-                return False, None
+                last_error = e
+                logger.warning(f"Visit error on attempt {attempt+1}: {e}")
+
+                if attempt < max_attempts - 1:
+                    wait_time = backoff_factor ** (attempt + 1)
+                    logger.info(f"Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    return False, None
+
+        logger.error(f"Failed to visit {url}: {last_error}")
         return False, None
 
     def _simulate_human_interactions(self) -> None:
@@ -1102,6 +1136,42 @@ class VisitorBot(BaseLinkedInBot):
             except Exception as e:
                 logger.error(f"DB Error: {e}")
 
+    def _serialize_safe_to_json(self, obj: Any, max_string_length: int = 1000) -> Optional[str]:
+        """
+        Sérialise un objet en JSON de manière sécurisée.
+
+        Args:
+            obj: Objet à sérialiser (list, dict, etc.)
+            max_string_length: Longueur max pour les strings
+
+        Returns:
+            JSON string ou None si erreur
+        """
+        if not obj:
+            return None
+
+        def sanitize_value(val):
+            """Convertit les valeurs non-sérialisables."""
+            if isinstance(val, (str, int, float, bool, type(None))):
+                return val
+            elif isinstance(val, (list, tuple)):
+                return [sanitize_value(v) for v in val]
+            elif isinstance(val, dict):
+                return {k: sanitize_value(v) for k, v in val.items()}
+            else:
+                # Objet Playwright, Locator, etc.
+                try:
+                    return str(val)[:max_string_length]
+                except:
+                    return f"<{type(val).__name__}>"
+
+        try:
+            sanitized = sanitize_value(obj)
+            return json.dumps(sanitized, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"JSON serialization failed for {type(obj).__name__}: {e}")
+            return None
+
     def _save_scraped_profile_data(self, data: dict) -> None:
         """
         Sauvegarde les données scrapées enrichies vers la base de données.
@@ -1116,10 +1186,10 @@ class VisitorBot(BaseLinkedInBot):
             campaign_id = self.campaign_id if hasattr(self, 'campaign_id') else None
 
             # Convertir les listes en JSON strings pour stockage
-            skills_json = json.dumps(data.get("skills", []), ensure_ascii=False) if data.get("skills") else None
-            certifications_json = json.dumps(data.get("certifications", []), ensure_ascii=False) if data.get("certifications") else None
-            languages_json = json.dumps(data.get("languages", []), ensure_ascii=False) if data.get("languages") else None
-            work_history_json = json.dumps(data.get("work_history", []), ensure_ascii=False) if data.get("work_history") else None
+            skills_json = self._serialize_safe_to_json(data.get("skills", []))
+            certifications_json = self._serialize_safe_to_json(data.get("certifications", []))
+            languages_json = self._serialize_safe_to_json(data.get("languages", []))
+            work_history_json = self._serialize_safe_to_json(data.get("work_history", []))
 
             # Appel à la méthode DB avec tous les champs
             self.db.save_scraped_profile(
