@@ -285,7 +285,17 @@ class BirthdayBot(BaseLinkedInBot):
         super().teardown()
 
     def _check_limits(self) -> None:
-        """Vérifie que les limites globales ne sont pas atteintes."""
+        """
+        Vérifie que les limites globales ne sont pas atteintes.
+
+        Phase 3 (INC #2) - Source of Truth for Messaging Limits:
+        - LIMITS (policy): Defined in config.yaml (messaging_limits section)
+        - COUNTERS (current state): Tracked in database (birthday_messages table)
+        - This design separates concerns: config = rules, db = tracking
+
+        Note: UnlimitedBirthdayBot overrides these limits programmatically (sets to 999999),
+        which is intentional for unlimited mode and documented in unlimited_bot.py.
+        """
         if not self.db: return
 
         weekly_count = self.db.get_weekly_message_count()
