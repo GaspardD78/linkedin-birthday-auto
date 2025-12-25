@@ -10,38 +10,33 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
 
 ---
 
-## ✨ Fonctionnalités Clés
+## ⚠️ Architecture du Projet (V1 vs V2)
+
+Ce dépôt contient deux versions de l'application :
+
+1.  **🟢 V1 Stable (Production)** : Située dans le dossier `src/`. C'est la version actuellement déployée, documentée et optimisée pour Raspberry Pi 4. **Utilisez cette version pour tout déploiement réel.**
+2.  **🚧 V2 Expérimentale (Beta)** : Située dans le dossier `app_v2/`. C'est une refonte majeure (Async-First, FastAPI) en cours de développement. Elle n'est pas encore prête pour la production. [Voir le README V2](app_v2/README.md).
+
+---
+
+## ✨ Fonctionnalités Clés (V1 Stable)
 
 *   **⚡ Optimisé RPi4** : Limites RAM strictes par service (~3.7GB total sur 4GB), prévention OOM kills, gestion ZRAM/Swap automatique, Docker multi-arch (ARM64).
 *   **🎂 Birthday Bot** : Envoi de messages personnalisés (Jour J ou rattrapage).
 *   **🔍 Visitor Bot** : Visite automatique de profils ciblés (Mode Recruteur, Filtres Booléens).
 *   **🛡️ Sécurité Renforcée (V3.3+)** :
     *   **Conteneurs non-privilégiés** : L'API n'a plus d'accès root à l'hôte.
-    *   **Docker Socket Proxy** : Gestion sécurisée des services via l'API Docker.
     *   **Isolation Réseau** : DNS fiables (Cloudflare/Google) forcés et hardening Nginx.
     *   **Rapport Sécurité Automatisé** : Vérification 4-points avec score (0-4) à chaque setup.
-*   **🔐 Gestion HTTPS Intelligente (Jan 2025)** :
-    *   **Menu Configuration HTTPS** : 4 options (LAN / Let's Encrypt / Certificats existants / Manuel).
-    *   **Setup Let's Encrypt Automatisé** : Certificats générés et gérés automatiquement.
-    *   **Import Certificats Existants** : Support certificats custom ou d'autorités tierces.
-*   **💾 Sauvegardes Google Drive Intégrées (Jan 2025)** :
-    *   **Configuration Automatisée** : Wizard interactif pour setup Google Drive + rclone.
-    *   **Backup Quotidien** : Cron ajouté automatiquement (02:00 chaque jour).
-    *   **Test Restore Mensuel** : Validation automatique de l'intégrité des backups.
-    *   **Notifications Slack (Optionnel)** : Alertes backup success/failure via Slack.
-*   **🔑 Gestion Mot de Passe Sécurisée (Jan 2025)** :
-    *   **Hachage Bcrypt Robuste** : Mots de passe jamais stockés en clair.
-    *   **Script de Modification** : Change/reset/status facilement post-setup.
-    *   **Récupération en cas d'Oubli** : Réinitialisation avec mot de passe temporaire sécurisé.
+*   **🔐 Gestion HTTPS Intelligente** : Let's Encrypt automatique ou certificats existants.
+*   **💾 Sauvegardes Google Drive** : Backups chiffrés et automatisés (Rclone).
 *   **📊 Dashboard** : Interface Web Next.js pour le pilotage, les logs et les statistiques.
-*   **🔄 Résilient** : Retry automatique, gestion des timeouts réseaux, base de données SQLite WAL robuste.
 
 ---
 
-## 🚀 Installation Rapide (Recommandée)
+## 🚀 Installation Rapide
 
-**Pré-requis :** Raspberry Pi 4 (4GB RAM minimum conseillé), Raspberry Pi OS 64-bit (Lite ou Desktop).
-**Système :** `git` et `docker` installés (le script peut installer Docker pour vous).
+**Pré-requis :** Raspberry Pi 4 (4GB RAM minimum conseillé), Raspberry Pi OS 64-bit.
 
 1.  **Cloner le dépôt :**
     ```bash
@@ -54,187 +49,73 @@ Gère vos vœux d'anniversaire et vos visites de profils de manière intelligent
     chmod +x setup.sh
     ./setup.sh
     ```
-    *Le script gère tout : vérification mémoire/swap, configuration Docker, création certificats SSL temporaires, et lancement des conteneurs.*
+    *Le script gère tout : Docker, HTTPS (Let's Encrypt), Backups, et Sécurité.*
 
 3.  **Accéder au Dashboard :**
-    *   Ouvrez votre navigateur : `https://<IP_DE_VOTRE_RPI>` (ou le domaine configuré).
-    *   Acceptez le certificat auto-signé (si vous n'avez pas encore configuré Let's Encrypt).
-    *   Connectez-vous (login par défaut affiché à la fin du script).
+    *   `https://<VOTRE_IP_OU_DOMAINE>`
+    *   Login par défaut : `admin` (mot de passe affiché à la fin du script).
+
+👉 **Guide de Démarrage Rapide complet :** [docs/QUICK_START_2025.md](docs/QUICK_START_2025.md)
 
 ---
 
-## 🆕 Nouveautés Jan 2025
-
-### 🚀 Version 4.1 (Décembre 2025) - Stabilité & Automatisation
-
-**Résolution de la dette technique pour production sur Raspberry Pi 4 :**
-
-*   **🛡️ Limites RAM Strictes** : Protection contre les OOM Kills avec allocation mémoire optimisée (~3.7GB/4GB)
-*   **🔐 Hashage Mot de Passe Robuste** : 3 stratégies en cascade (Docker bcryptjs → htpasswd → OpenSSL) sans dépendance Python
-*   **🔄 Renouvellement SSL Automatique** : Script + Cron job pour renouveler les certificats Let's Encrypt sans intervention
-*   **✅ CI/CD Amélioré** : Healthchecks post-build pour valider les images Docker avant déploiement
-*   **📦 Docker Compose Standardisé** : Renommage `docker-compose.yml` pour simplification
-
-👉 **Détails complets** : Voir [CHANGELOG.md](CHANGELOG.md)
-
-### Version 4.0 (Janvier 2025) - Assistants Interactifs
-
-Le script setup.sh inclut maintenant plusieurs assistants interactifs pour faciliter l'installation et la sécurité :
-
-### Phase 4.7 : Configuration HTTPS
-Pendant le setup, choisissez votre scénario HTTPS :
-
-```
-1) LAN uniquement (HTTP simple, réseau interne)
-2) Let's Encrypt (production recommandée, certificats automatiques)
-3) Certificats existants (import certificats custom)
-4) Configuration manuelle (vous gérez après setup)
-```
-
-**👉 Guide complet :** [docs/HTTPS_CONFIGURATION.md](docs/HTTPS_CONFIGURATION.md)
-
-### Phase 5.1 : Sauvegardes Google Drive
-Configuration automatisée des backups avec rclone :
-
-```
-1) Oui, activer avec chiffrement (recommandé)
-2) Oui, activer sans chiffrement
-3) Non, configurer plus tard
-```
-
-Avantages :
-- ✅ Backup quotidien automatique (02:00)
-- ✅ Test restore mensuel pour valider intégrité
-- ✅ Notifications Slack optionnelles
-- ✅ Rétention 30 jours (configurable)
-
-**👉 Guide complet :** [docs/SETUP_BACKUP_GUIDE.md](docs/SETUP_BACKUP_GUIDE.md)
-
-### Rapport Sécurité Automatisé
-À la fin du setup, vérification sécurité 4-points :
-
-```
-1. Mot de passe Dashboard... ✓ OK (hash bcrypt)
-2. HTTPS... ✓ PRODUCTION (Let's Encrypt)
-3. Sauvegardes Google Drive... ✓ OK (configurées)
-4. Fichier .env secrets... ✓ OK (pas de secrets en clair)
-
-SCORE SÉCURITÉ : 4 / 4
-🎉 EXCELLENT - Production Ready
-```
-
-### Gestion Mot de Passe Post-Setup
-Script dédié pour changer/réinitialiser le mot de passe :
-
-```bash
-./scripts/manage_dashboard_password.sh
-```
-
-Options :
-1. **Changer le mot de passe** - Double saisie + validation
-2. **Réinitialiser** - Génère mot de passe temporaire aléatoire
-3. **Afficher statut** - Vérifier dernière modification
-
-**👉 Guide complet :** [docs/PASSWORD_MANAGEMENT_GUIDE.md](docs/PASSWORD_MANAGEMENT_GUIDE.md)
-
----
-
-## 🏗️ Architecture V3.3
+## 🏗️ Architecture V1 (Stable)
 
 Le projet utilise une architecture micro-services sécurisée via Docker Compose :
 
-*   **Bot Worker** (Python/Playwright) : Exécute les tâches d'automatisation dans un environnement isolé.
-*   **API** (FastAPI) : Interface de contrôle, communique avec Docker via socket pour gérer les bots.
-*   **Dashboard** (Next.js) : Interface utilisateur moderne.
-*   **Redis** : File d'attente des tâches et cache.
-*   **Nginx** : Reverse Proxy (SSL, Rate Limiting, HTTP/2).
-*   **SQLite** : Stockage persistant léger et performant (fichier local).
+*   **Bot Worker** (`src/`): Exécute les tâches Playwright (Python).
+*   **API** (`src/api/`): Interface de contrôle FastAPI.
+*   **Dashboard** (`dashboard/`): Frontend Next.js.
+*   **Redis & SQLite**: Queue et Persistance.
 
 Pour plus de détails, voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
+## 📚 Documentation
+
+### Guides Utilisateur
+*   [**Quick Start Guide**](docs/QUICK_START_2025.md) : Installation en 10 minutes.
+*   [**Guide Configuration HTTPS**](docs/HTTPS_CONFIGURATION.md) : Options SSL/TLS.
+*   [**Guide Sauvegardes Google Drive**](docs/SETUP_BACKUP_GUIDE.md) : Sécuriser vos données.
+*   [**Guide Gestion Mot de Passe**](docs/PASSWORD_MANAGEMENT_GUIDE.md) : Sécurité du dashboard.
+*   [**Troubleshooting**](docs/TROUBLESHOOTING.md) : Résolution des problèmes courants.
+
+### Documentation Technique
+*   [**Architecture V1**](docs/ARCHITECTURE.md) : Détails techniques de la version stable.
+*   [**Architecture V2 (Beta)**](app_v2/README.md) : Détails sur la refonte en cours.
+*   [**Rapport d'Audit V2**](docs/audit/AUDIT_REPORT_COMPLETE.md) : Analyse de la version expérimentale.
+*   [**Sécurité & Hardening**](docs/SECURITY.md) : Pratiques de sécurité appliquées.
+
+---
+
 ## ⚙️ Configuration
 
-La configuration se fait principalement via le fichier `config/config.yaml` ou directement depuis le Dashboard.
+La configuration se fait principalement via le Dashboard ou le fichier `config/config.yaml`.
 
-**Exemple de config (`config.yaml`) :**
 ```yaml
 bots:
   birthday:
     enabled: true
-    mode: "standard" # ou "unlimited"
-    schedule: "0 9 * * *" # Cron syntax (9h00 tous les jours)
-    messaging:
-      template: "Joyeux anniversaire {name} ! 🎉"
-
-  visitor:
-    enabled: true
-    keywords: ["Recruteur", "CTO", "Tech Lead"]
-    location: "Paris"
-    limits:
-      profiles_per_run: 20
+    schedule: "0 9 * * *" # 9h00 tous les jours
 ```
-
----
-
-## 📚 Documentation
-
-### 🆕 Nouvelles Documentations (Jan 2025)
-
-*   [**Quick Start Guide**](docs/QUICK_START_2025.md) : Pour démarrer rapidement (5 min de lecture)
-*   [**Guide Configuration HTTPS**](docs/HTTPS_CONFIGURATION.md) : Détails sur les 4 options HTTPS + Let's Encrypt
-*   [**Guide Sauvegardes Google Drive**](docs/SETUP_BACKUP_GUIDE.md) : Setup rclone, cron, test restore
-*   [**Guide Gestion Mot de Passe**](docs/PASSWORD_MANAGEMENT_GUIDE.md) : Change/reset/recover mot de passe
-*   [**Troubleshooting Complet**](docs/TROUBLESHOOTING.md) : Solutions pour problèmes courants
-
-### 📖 Documentation Générale
-
-*   [**Résumé Implémentation (Jan 2025)**](docs/archive/IMPLEMENTATION_SUMMARY_2025.md) : Ce qui a été implémenté (statistiques + détails)
-*   [**Design Technique (Jan 2025)**](docs/archive/DESIGN_HTTPS_GDRIVE_SECURITY_2025.md) : Architecture détaillée des améliorations
-*   [**Analyse Historique (Jan 2025)**](docs/archive/HISTORY_ANALYSIS_2025.md) : Contexte historique + leçons apprises
-*   [**Améliorations de Sécurité (Jan 2025)**](docs/archive/SECURITY_ENHANCEMENTS_2025.md) : Corrections critiques implémentées (Grafana, Docker Socket Proxy, Rate Limiting Persistant).
-*   [**Améliorations Setup.sh (Jan 2025)**](docs/archive/SETUP_IMPROVEMENTS.md) : Rendre le script idempotent et automatisable.
-*   [**Sécurité & Hardening**](docs/SECURITY.md) : Détails sur la protection des données.
-*   [**Architecture Technique**](docs/ARCHITECTURE.md) : Pour les développeurs curieux.
-*   [**Rapport d'Audit Complet (Jan 2025)**](docs/archive/AUDIT_REPORT_2025-01.md) : Analyse détaillée du code et recommandations.
-*   [**Index Documentation**](docs/INDEX.md) : Navigation complète de la documentation.
-*   [**Guide de Dépannage (Troubleshooting)**](docs/TROUBLESHOOTING.md) : Problèmes courants et solutions.
 
 ---
 
 ## 🛠️ Commandes Utiles
 
-**Voir les logs en temps réel :**
-```bash
-docker compose logs -f
-```
-
-**Redémarrer les services :**
-```bash
-docker compose restart
-```
-
-**Activer le monitoring (optionnel) :**
-```bash
-docker compose --profile monitoring up -d
-```
-
-**Mettre à jour le bot :**
-```bash
-git pull
-./setup.sh
-```
+**Voir les logs :** `docker compose logs -f`
+**Mettre à jour :** `git pull && ./setup.sh`
+**Gérer mot de passe :** `./scripts/manage_dashboard_password.sh`
 
 ---
 
 ## 🤝 Contribution
 
-Les contributions sont les bienvenues ! Merci d'ouvrir une Issue pour discuter des changements majeurs avant de soumettre une PR.
+Les contributions sont les bienvenues !
+*   Pour des fixes sur la version stable, ciblez le dossier `src/`.
+*   Pour travailler sur la refonte, ciblez le dossier `app_v2/`.
 
 ## 📄 Licence
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
-
----
-*Développé avec ❤️ pour la communauté Raspberry Pi.*
+Licence MIT. Voir le fichier `LICENSE`.
