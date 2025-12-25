@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.pool import NullPool
 from app_v2.core.config import Settings
 from app_v2.db.models import Base
+from app_v2.db.migrations import run_migrations
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,12 +52,17 @@ async def get_db(settings: Settings):
             await session.close()
 
 async def init_db(settings: Settings):
-    """Initialise les tables (crée seulement si n'existent pas)"""
+    """Initialise les tables et crée/vérifie les index critiques"""
     engine = get_engine(settings)
     async with engine.begin() as conn:
         # NE PAS drop les tables existantes
         await conn.run_sync(Base.metadata.create_all)
     logger.info("✓ Tables DB initialisées")
+
+    # Run migration checks and index creation (PHASE 1 - P0)
+    logger.info("📊 Running database migrations (Phase 1)...")
+    await run_migrations(engine)
+    logger.info("✅ Database migrations completed")
 
 async def close_db():
     """Ferme proprement l'engine"""
