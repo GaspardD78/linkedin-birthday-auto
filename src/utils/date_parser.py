@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any
 from functools import lru_cache
 
@@ -107,9 +107,10 @@ class DateParsingService:
 
     @classmethod
     def _invalidate_cache_if_needed(cls):
-        """Invalide le cache si nous sommes un nouveau jour."""
-        # FIX: Use UTC to ensure consistency with BaseBot and prevent timezone glitches
-        from datetime import timezone
+        """
+        Invalide le cache si nous sommes un nouveau jour (UTC-aware).
+        Uses UTC to ensure consistency across timezones.
+        """
         today = datetime.now(timezone.utc).date().isoformat()
 
         if cls._LAST_CACHE_DATE != today:

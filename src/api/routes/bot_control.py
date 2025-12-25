@@ -148,13 +148,10 @@ async def get_bot_status(authenticated: bool = Depends(verify_api_key)):
                     started_at=fmt_date(job.started_at)
                 ))
             except NoSuchJobError:
+                # Job was removed or completed between listing and fetching (race condition)
                 logger.debug(f"Job {job_id} not found (likely completed/removed)")
             except Exception as e:
-                # Handle race condition where job finishes/expires between listing and fetching
-                if "No such job" in str(e) or "Job" in str(e) and "not found" in str(e):
-                    logger.debug(f"Job {job_id} not found (likely completed/removed) - caught by string check")
-                else:
-                    logger.warning(f"Could not fetch details for job {job_id}: {e}", exc_info=True)
+                logger.warning(f"Could not fetch details for job {job_id}: {e}")
 
         for jid in started_ids:
             get_job_details(jid, active_jobs, "running")
