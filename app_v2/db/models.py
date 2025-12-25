@@ -1,6 +1,6 @@
 from typing import Optional, Any, List
 from datetime import date, datetime
-from sqlalchemy import String, Boolean, Float, JSON, DateTime, Date, ForeignKey, Integer, func, Text
+from sqlalchemy import String, Boolean, Float, JSON, DateTime, Date, ForeignKey, Integer, func, Text, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs
 
@@ -39,6 +39,13 @@ class Contact(Base):
     # Legacy support
     messages: Mapped[List["BirthdayMessage"]] = relationship(back_populates="contact")
 
+    # Database Indexes for Performance (P0 - Critical)
+    __table_args__ = (
+        Index("idx_contact_birth_date", "birth_date"),
+        Index("idx_contact_status", "status"),
+        Index("idx_contact_created_at", "created_at"),
+    )
+
     def __repr__(self) -> str:
         return f"<Contact(id={self.id}, name='{self.name}', status='{self.status}')>"
 
@@ -54,6 +61,11 @@ class Interaction(Base):
 
     contact: Mapped["Contact"] = relationship(back_populates="interactions")
 
+    # Composite index for activity filtering (P0 - Critical)
+    __table_args__ = (
+        Index("idx_interaction_contact_type", "contact_id", "type"),
+    )
+
     def __repr__(self) -> str:
         return f"<Interaction(id={self.id}, type='{self.type}', status='{self.status}')>"
 
@@ -65,6 +77,11 @@ class LinkedInSelector(Base):
     selector_value: Mapped[str] = mapped_column(String, nullable=False)
     score: Mapped[int] = mapped_column(Integer, default=0)
     last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Index for selector performance (P0 - Critical)
+    __table_args__ = (
+        Index("idx_selector_success", "last_success_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<LinkedInSelector(key='{self.key}', score={self.score})>"
