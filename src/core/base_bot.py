@@ -6,7 +6,7 @@ entre les différents types de bots (birthday, unlimited, etc.).
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import random
 import re
 import time
@@ -649,15 +649,43 @@ class BaseLinkedInBot(ABC):
     # ═══════════════════════════════════════════════════════════════
 
     def _was_contacted_today(self, contact_name: str) -> bool:
+        """
+        Vérifie si un contact a été contacté aujourd'hui (UTC aware).
+        """
         if not self.db:
             return False
         try:
-            today = datetime.now().date().isoformat()
+            # Utiliser datetime avec timezone UTC pour la comparaison
+            now = datetime.now(timezone.utc)
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = today_start + timedelta(days=1)
+
             messages = self.db.get_messages_sent_to_contact(contact_name, years=1)
+
             for msg in messages:
-                msg_date = msg.get("sent_at", "")
-                if msg_date.startswith(today):
-                    return True
+                sent_at_str = msg.get("sent_at", "")
+                if not sent_at_str:
+                    continue
+
+                try:
+                    # Parser le timestamp ISO
+                    if sent_at_str.endswith('Z'):
+                        sent_at = datetime.fromisoformat(sent_at_str.replace('Z', '+00:00'))
+                    elif '+' in sent_at_str or sent_at_str.count('-') > 2: # Has timezone info
+                         sent_at = datetime.fromisoformat(sent_at_str)
+                    else:
+                        # Assume UTC if naive (legacy data might be naive local, but we migrated to UTC)
+                        sent_at = datetime.fromisoformat(sent_at_str).replace(tzinfo=timezone.utc)
+
+                    # Convert to UTC for comparison if needed (though fromisoformat handles offsets)
+                    sent_at_utc = sent_at.astimezone(timezone.utc)
+
+                    if today_start <= sent_at_utc < today_end:
+                         return True
+
+                except ValueError:
+                    continue
+
             return False
         except Exception as e:
             logger.warning(f"Could not check contact history: {e}")

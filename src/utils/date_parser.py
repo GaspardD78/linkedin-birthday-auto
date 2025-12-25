@@ -101,8 +101,20 @@ class DateParsingService:
 
         return None
 
+    # Cache par jour pour éviter les bugs inter-jour
+    _CACHE_BY_DATE = {}  # {date_str: {(text, locale): result}}
+    _LAST_CACHE_DATE = None
+
     @classmethod
-    @lru_cache(maxsize=256)  # 🚀 Cache les 256 dernières conversions
+    def _invalidate_cache_if_needed(cls):
+        """Invalide le cache si nous sommes un nouveau jour."""
+        today = datetime.now().date().isoformat()
+
+        if cls._LAST_CACHE_DATE != today:
+            cls._CACHE_BY_DATE = {}
+            cls._LAST_CACHE_DATE = today
+
+    @classmethod
     def parse_days_diff(cls, text: str, locale: str = 'en') -> Optional[int]:
         """
         Parses text to determine how many days have passed since the date.
@@ -111,8 +123,16 @@ class DateParsingService:
             >0 for past days (late)
             None if parse failed or future date (upcoming)
 
-        🚀 OPTIMISÉ: Résultats mis en cache avec LRU pour éviter le re-parsing
+        🚀 OPTIMISÉ: Résultats mis en cache pour la journée courante
         """
+        # Invalider cache si changement de jour
+        cls._invalidate_cache_if_needed()
+
+        # Lookup cache pour aujourd'hui
+        cache_key = (text.lower().strip(), locale)
+        if cache_key in cls._CACHE_BY_DATE:
+            return cls._CACHE_BY_DATE[cache_key]
+
         text = text.lower().strip()
         config = cls.LOCALE_CONFIG.get(locale, cls.LOCALE_CONFIG['en'])
 
@@ -129,14 +149,22 @@ class DateParsingService:
             return int(ago_match.group(1))
 
         # 2. Parse explicit date
+        result = None
         day, month = cls._extract_date_components(text, config)
         if day is None or month is None:
             # Fallback: Try all locales if 'en' failed (since LinkedIn might serve mixed content)
             if locale == 'en':
-                return cls.parse_days_diff(text, locale='fr')
-            return None
+                result = cls.parse_days_diff(text, locale='fr')
+        else:
+            result = cls._calculate_delta(day, month)
 
-        return cls._calculate_delta(day, month)
+        # Cache result logic is complicated by the recursive call above.
+        # If we are in recursive call, the cache check at top handles it.
+        # Store result in cache
+        if cache_key not in cls._CACHE_BY_DATE:
+            cls._CACHE_BY_DATE[cache_key] = result
+
+        return result
 
     @classmethod
     def _get_compiled_pattern(cls, pattern_str: str):
@@ -219,7 +247,8 @@ class DateParsingService:
 
         # If it was reasonably recent (e.g. < 60 days ago), consider it Late.
         # If it was 300 days ago, it's probably just an upcoming birthday for next year (which we ignore).
+        # Fix Type Error in tests by ensuring we return int, not MagicMock comparison result if it leaks
         if 0 < delta_last.days < 60:
-            return delta_last.days
+            return int(delta_last.days)
 
         return None # Considered "Upcoming" (Future)
