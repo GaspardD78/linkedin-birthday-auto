@@ -1100,9 +1100,6 @@ class VisitorBot(BaseLinkedInBot):
                 else:
                     return False, None
 
-        logger.error(f"Failed to visit {url}: {last_error}")
-        return False, None
-
     def _simulate_human_interactions(self) -> None:
         """Simule des interactions humaines (Scroll + Mouse) pour éviter la détection."""
         try:
@@ -1145,9 +1142,11 @@ class VisitorBot(BaseLinkedInBot):
             max_string_length: Longueur max pour les strings
 
         Returns:
-            JSON string ou None si erreur
+            JSON string ou None seulement si obj est None
         """
-        if not obj:
+        # ✅ Vérifier explicitement pour None, pas pour falsy values
+        # (listes vides [] doivent devenir "[]", pas None)
+        if obj is None:
             return None
 
         def sanitize_value(val):
