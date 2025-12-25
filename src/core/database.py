@@ -10,7 +10,7 @@ Version 3.0.0 - Refactorisation Complète (Phase 1):
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 import json
 import os
@@ -578,7 +578,8 @@ class Database:
     @retry_on_lock()
     def add_contact(self, name: str, linkedin_url: Optional[str] = None, relationship_score: float = 0.0, notes: Optional[str] = None, conn=None) -> int:
         def _op(c):
-            now = datetime.now().isoformat()
+            # ✅ Utiliser UTC pour les timestamps
+            now = datetime.now(timezone.utc).isoformat()
             c.execute("INSERT INTO contacts (name, linkedin_url, relationship_score, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (name, linkedin_url, relationship_score, notes, now, now))
             return c.lastrowid
 
@@ -598,7 +599,8 @@ class Database:
     @retry_on_lock()
     def update_contact_last_message(self, name: str, message_date: str, conn=None):
         def _op(c):
-            c.execute("UPDATE contacts SET last_message_date = ?, message_count = message_count + 1, updated_at = ? WHERE name = ?", (message_date, datetime.now().isoformat(), name))
+            # ✅ Utiliser UTC pour le timestamp updated_at
+            c.execute("UPDATE contacts SET last_message_date = ?, message_count = message_count + 1, updated_at = ? WHERE name = ?", (message_date, datetime.now(timezone.utc).isoformat(), name))
 
         if conn: _op(conn.cursor())
         else:
@@ -625,7 +627,8 @@ class Database:
                 contact_id = self.add_contact(contact_name, conn=conn)
 
             # 2. Insérer le nouveau message (Atomic check via Unique Index)
-            sent_at = datetime.now().isoformat()
+            # ✅ Toujours stocker en UTC (timezone-aware)
+            sent_at = datetime.now(timezone.utc).isoformat()
 
             try:
                 cursor.execute(
@@ -651,7 +654,8 @@ class Database:
     @retry_on_lock()
     def get_messages_sent_to_contact(self, contact_name: str, years: int = 3) -> list:
         with self.get_connection() as conn:
-            cutoff = (datetime.now() - timedelta(days=365 * years)).isoformat()
+            # ✅ Utiliser UTC pour les comparaisons de dates
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=365 * years)).isoformat()
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM birthday_messages WHERE contact_name = ? AND sent_at >= ? ORDER BY sent_at DESC", (contact_name, cutoff))
             return [dict(row) for row in cursor.fetchall()]
@@ -659,7 +663,8 @@ class Database:
     @retry_on_lock()
     def get_weekly_message_count(self) -> int:
         with self.get_connection() as conn:
-            week_ago = (datetime.now() - timedelta(days=7)).isoformat()
+            # ✅ Utiliser UTC pour les comparaisons de dates
+            week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as count FROM birthday_messages WHERE sent_at >= ?", (week_ago,))
             return cursor.fetchone()["count"]
@@ -668,7 +673,8 @@ class Database:
     def get_daily_message_count(self, date: Optional[str] = None) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            if date is None: date = datetime.now().date().isoformat()
+            # ✅ Utiliser UTC pour les timestamps
+            if date is None: date = datetime.now(timezone.utc).date().isoformat()
             try:
                 date_obj = datetime.strptime(date, "%Y-%m-%d")
                 next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -682,9 +688,10 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             keywords_json = json.dumps(keywords) if keywords else None
+            # ✅ Utiliser UTC pour les timestamps
             cursor.execute(
                 "INSERT INTO profile_visits (profile_name, profile_url, visited_at, source_search, keywords, location, success, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (profile_name, profile_url, datetime.now().isoformat(), source_search, keywords_json, location, success, error_message)
+                (profile_name, profile_url, datetime.now(timezone.utc).isoformat(), source_search, keywords_json, location, success, error_message)
             )
             return cursor.lastrowid
 
@@ -692,7 +699,8 @@ class Database:
     def get_daily_visits_count(self, date: Optional[str] = None) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            if date is None: date = datetime.now().date().isoformat()
+            # ✅ Utiliser UTC pour les timestamps
+            if date is None: date = datetime.now(timezone.utc).date().isoformat()
             try:
                 date_obj = datetime.strptime(date, "%Y-%m-%d")
                 next_day = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -704,7 +712,8 @@ class Database:
     @retry_on_lock()
     def is_profile_visited(self, profile_url: str, days: int = 30) -> bool:
         with self.get_connection() as conn:
-            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            # ✅ Utiliser UTC pour les comparaisons de dates
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as count FROM profile_visits WHERE profile_url = ? AND visited_at >= ?", (profile_url, cutoff))
             return cursor.fetchone()["count"] > 0
@@ -713,9 +722,10 @@ class Database:
     def log_error(self, script_name: str, error_type: str, error_message: str, error_details: str = None, screenshot_path: str = None) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            # ✅ Utiliser UTC pour les timestamps
             cursor.execute(
                 "INSERT INTO errors (script_name, error_type, error_message, error_details, screenshot_path, occurred_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (script_name, error_type, error_message, error_details, screenshot_path, datetime.now().isoformat())
+                (script_name, error_type, error_message, error_details, screenshot_path, datetime.now(timezone.utc).isoformat())
             )
             return cursor.lastrowid
 
@@ -755,7 +765,8 @@ class Database:
     def save_scraped_profile(self, profile_url: str, **kwargs) -> int:
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            scraped_at = datetime.now().isoformat()
+            # ✅ Utiliser UTC pour les timestamps
+            scraped_at = datetime.now(timezone.utc).isoformat()
 
             # Helper to safely serialize JSON
             def to_json(val): return json.dumps(val) if val else None
