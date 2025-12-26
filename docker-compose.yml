@@ -151,6 +151,8 @@ services:
       - TIMEOUT_CONNECT=50000
       - TIMEOUT_CLIENT=50000
       - TIMEOUT_SERVER=50000
+      # Timeout pour les connexions tunnel (events, attach, etc.)
+      - TIMEOUT_TUNNEL=3600000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     deploy:
