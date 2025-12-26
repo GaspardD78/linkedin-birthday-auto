@@ -183,6 +183,16 @@ server {
         proxy_read_timeout 5s;
     }
 
+    # API Health Check (appelé par le frontend/monitoring)
+    location /api/health {
+        access_log off;
+        set $upstream_api api;
+        proxy_pass http://$upstream_api:8000/health;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 5s;
+    }
+
     # ═══════════════════════════════════════════════════════════════
     # ERROR PAGES
     # ═══════════════════════════════════════════════════════════════
