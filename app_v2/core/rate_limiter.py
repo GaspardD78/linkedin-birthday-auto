@@ -288,10 +288,12 @@ class RateLimiter:
         if self.redis_client:
             try:
                 key = self._get_daily_key()
-                # INCR is atomic: increment and set TTL
-                await self.redis_client.incr(key)
-                # Set TTL to 24 hours if first increment
-                await self.redis_client.expire(key, 86400)
+                # INCR is atomic: increment and get value
+                new_count = await self.redis_client.incr(key)
+                # Set TTL to 24 hours if first increment (new_count == 1)
+                # This ensures TTL is only set once, making the operation more atomic
+                if new_count == 1:
+                    await self.redis_client.expire(key, 86400)
             except Exception as e:
                 logger.warning(f"⚠️ Redis increment failed: {e}")
                 # Fallback: record directly to DB
@@ -309,10 +311,12 @@ class RateLimiter:
         if self.redis_client:
             try:
                 key = self._get_weekly_key()
-                # INCR is atomic
-                await self.redis_client.incr(key)
-                # Set TTL to 7 days if first increment
-                await self.redis_client.expire(key, 604800)
+                # INCR is atomic: increment and get value
+                new_count = await self.redis_client.incr(key)
+                # Set TTL to 7 days if first increment (new_count == 1)
+                # This ensures TTL is only set once, making the operation more atomic
+                if new_count == 1:
+                    await self.redis_client.expire(key, 604800)
             except Exception as e:
                 logger.warning(f"⚠️ Redis increment failed: {e}")
                 # Fallback to DB
