@@ -155,6 +155,7 @@ readonly ENV_FILE="$SCRIPT_DIR/.env"
 readonly ENV_TEMPLATE="$SCRIPT_DIR/.env.pi4.example"
 readonly NGINX_TEMPLATE_HTTPS="$SCRIPT_DIR/deployment/nginx/linkedin-bot-https.conf.template"
 readonly NGINX_TEMPLATE_LAN="$SCRIPT_DIR/deployment/nginx/linkedin-bot-lan.conf.template"
+readonly NGINX_TEMPLATE_ACME_BOOTSTRAP="$SCRIPT_DIR/deployment/nginx/linkedin-bot-acme-bootstrap.conf.template"
 readonly NGINX_CONFIG="$SCRIPT_DIR/deployment/nginx/linkedin-bot.conf"
 readonly DOMAIN_DEFAULT="gaspardanoukolivier.freeboxos.fr"
 # LOCAL_IP will be determined dynamically in Phase 0
@@ -764,56 +765,89 @@ setup_state_set_config "https_mode" "$HTTPS_MODE"
 
 log_step "PHASE 5.1: Préparation SSL et Configuration Nginx"
 
-# NOTE: Certificats auto-signés ne seront créés que si Let's Encrypt échoue
-# (dans setup_letsencrypt.sh). Cela force une meilleure UX en cas d'échec.
-# Les certificats temporaires causent des alertes Chrome et doivent être évités.
+# ══════════════════════════════════════════════════════════════════════════════
+# STRATÉGIE "ZERO SELF-SIGNED" (v5.2)
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. Mode Let's Encrypt: Utiliser config HTTP-only (ACME bootstrap) pour démarrer
+#    Nginx SANS certificat SSL, puis obtenir le vrai certificat.
+# 2. Mode "existing": Certificats déjà fournis, utiliser config HTTPS directement.
+# 3. Mode "manual": Config HTTP-only, l'utilisateur configurera plus tard.
+#
+# AUCUN certificat auto-signé n'est généré. Si Let's Encrypt échoue,
+# le script s'arrête avec une erreur claire.
+# ══════════════════════════════════════════════════════════════════════════════
 
-# Vérifier si des certificats (valides ou non) existent déjà
+# Variable pour suivre si on doit passer en HTTPS après Let's Encrypt
+PENDING_HTTPS_SWITCH=false
+
+# Vérifier si des certificats valides existent déjà
 EXISTING_CERT="$CERT_DIR/fullchain.pem"
+VALID_CERT_EXISTS=false
+
 if [[ -f "$EXISTING_CERT" ]]; then
-    # Vérifier si le certificat existant est auto-signé
-    if ! openssl x509 -noout -text -in "$EXISTING_CERT" 2>/dev/null | grep -q "CN="; then
-        log_warn "⚠️  Certificat existant détecté mais invalide"
+    # Vérifier si le certificat existant est valide (non auto-signé et non expiré)
+    subject=$(openssl x509 -noout -subject -in "$EXISTING_CERT" 2>/dev/null || echo "")
+    issuer=$(openssl x509 -noout -issuer -in "$EXISTING_CERT" 2>/dev/null || echo "")
+
+    if [[ -z "$subject" ]]; then
+        log_warn "⚠️  Certificat existant détecté mais invalide (format incorrect)"
+    elif [[ "$subject" == "$issuer" ]]; then
+        log_warn "⚠️  Certificat AUTO-SIGNÉ détecté - sera ignoré"
+        log_warn "    Les certificats auto-signés causent des alertes de sécurité"
+        log_info "    Un nouveau certificat Let's Encrypt sera obtenu en Phase 6.5"
+        # Supprimer le certificat auto-signé pour forcer le mode ACME bootstrap
+        rm -f "$EXISTING_CERT" "$CERT_DIR/privkey.pem" 2>/dev/null || true
     else
-        # Vérifier si auto-signé (sujet == émetteur)
-        subject=$(openssl x509 -noout -subject -in "$EXISTING_CERT" 2>/dev/null || echo "")
-        issuer=$(openssl x509 -noout -issuer -in "$EXISTING_CERT" 2>/dev/null || echo "")
-        if [[ "$subject" == "$issuer" ]] && [[ -n "$subject" ]]; then
-            log_info "⚠️  Certificat auto-signé détecté (fallback de tentative précédente)"
-            log_warn "    Ce certificat causera une alerte Chrome - Let's Encrypt sera relancé en Phase 6.5"
+        # Vérifier expiration (> 7 jours)
+        if openssl x509 -checkend 604800 -noout -in "$EXISTING_CERT" 2>/dev/null; then
+            log_success "✓ Certificat valide détecté (émis par CA, non expiré)"
+            VALID_CERT_EXISTS=true
         else
-            log_success "✓ Certificat non auto-signé détecté (Let's Encrypt ou valide)"
-        fi
-    fi
-else
-    # Pas de certificat du tout - en créer un minimal JUSTE POUR NGINX BOOTSTRAP
-    # Ce certificat ne sera utilisé que quelques secondes avant Let's Encrypt
-    if [[ "$HTTPS_MODE" != "manual" ]]; then
-        log_info "Génération de certificat bootstrap minimal (pour démarrage Nginx)..."
-
-        if cmd_exists openssl; then
-            mkdir -p "$CERT_DIR"
-            openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-                -keyout "$CERT_DIR/privkey.pem" \
-                -out "$CERT_DIR/fullchain.pem" \
-                -subj "/CN=${DOMAIN}/O=Bootstrap Certificate/C=FR" 2>/dev/null
-
-            chmod 644 "$CERT_DIR/fullchain.pem"
-            chmod 600 "$CERT_DIR/privkey.pem"
-            log_success "✓ Certificat bootstrap créé (durée: 1 jour)"
-            log_info "  Ce certificat sera remplacé par Let's Encrypt en Phase 6.5"
+            log_warn "⚠️  Certificat existant mais expiré ou proche de l'expiration"
+            log_info "    Un nouveau certificat sera obtenu en Phase 6.5"
         fi
     fi
 fi
 
-# Sélectionner le template nginx approprié
-if [[ "$HTTPS_MODE" == "lan" ]]; then
-    NGINX_TEMPLATE="$NGINX_TEMPLATE_LAN"
-    log_info "Utilisation du template Nginx: MODE LAN (HTTP only)"
-else
-    NGINX_TEMPLATE="$NGINX_TEMPLATE_HTTPS"
-    log_info "Utilisation du template Nginx: MODE HTTPS"
-fi
+# Sélectionner le template nginx approprié selon le mode et l'état des certificats
+case "$HTTPS_MODE" in
+    "letsencrypt")
+        if [[ "$VALID_CERT_EXISTS" == "true" ]]; then
+            # Certificat valide existe déjà, utiliser config HTTPS directement
+            NGINX_TEMPLATE="$NGINX_TEMPLATE_HTTPS"
+            log_info "Utilisation du template Nginx: MODE HTTPS (certificat existant valide)"
+        else
+            # Pas de certificat valide, utiliser config ACME bootstrap (HTTP-only)
+            NGINX_TEMPLATE="$NGINX_TEMPLATE_ACME_BOOTSTRAP"
+            PENDING_HTTPS_SWITCH=true
+            log_info "Utilisation du template Nginx: MODE ACME BOOTSTRAP (HTTP-only)"
+            log_info "  → Le certificat Let's Encrypt sera obtenu en Phase 6.5"
+            log_info "  → La config passera automatiquement en HTTPS après obtention"
+        fi
+        ;;
+    "existing")
+        if [[ "$VALID_CERT_EXISTS" == "true" ]]; then
+            NGINX_TEMPLATE="$NGINX_TEMPLATE_HTTPS"
+            log_info "Utilisation du template Nginx: MODE HTTPS (certificats importés)"
+        else
+            log_error "Mode 'existing' sélectionné mais aucun certificat valide trouvé"
+            log_error "Veuillez importer des certificats valides dans: $CERT_DIR/"
+            exit 1
+        fi
+        ;;
+    "lan"|"manual")
+        NGINX_TEMPLATE="$NGINX_TEMPLATE_LAN"
+        log_info "Utilisation du template Nginx: MODE LAN/MANUEL (HTTP only)"
+        ;;
+    *)
+        log_error "Mode HTTPS inconnu: $HTTPS_MODE"
+        exit 1
+        ;;
+esac
+
+# Créer le répertoire certbot/www pour les challenges ACME
+mkdir -p "$SCRIPT_DIR/certbot/www"
+chown -R 1000:1000 "$SCRIPT_DIR/certbot" 2>/dev/null || true
 
 # Générer la configuration nginx
 if [[ -f "$NGINX_TEMPLATE" ]]; then
@@ -823,11 +857,14 @@ if [[ -f "$NGINX_TEMPLATE" ]]; then
         exit 1
     fi
     chmod 644 "$NGINX_CONFIG"
-    log_success "✓ Configuration Nginx générée (${HTTPS_MODE})"
+    log_success "✓ Configuration Nginx générée"
 else
     log_error "Template Nginx introuvable: $NGINX_TEMPLATE"
     exit 1
 fi
+
+# Exporter la variable pour la Phase 6.5
+export PENDING_HTTPS_SWITCH
 
 # === PHASE 5.3: CONFIGURATION CRON RENOUVELLEMENT SSL ===
 
@@ -959,73 +996,136 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
     # Vérifier que le script existe et est exécutable
     if [[ ! -f "$LETSENCRYPT_SCRIPT" ]]; then
         log_error "Script Let's Encrypt introuvable: $LETSENCRYPT_SCRIPT"
-        log_warn "⚠️  Certificats temporaires actifs - Exécutez manuellement plus tard:"
-        log_warn "     chmod +x $LETSENCRYPT_SCRIPT && $LETSENCRYPT_SCRIPT"
-    elif [[ ! -x "$LETSENCRYPT_SCRIPT" ]]; then
+        log_error "Impossible de continuer sans certificat SSL valide."
+        exit 1
+    fi
+
+    if [[ ! -x "$LETSENCRYPT_SCRIPT" ]]; then
         log_warn "Script Let's Encrypt non exécutable, correction..."
         chmod +x "$LETSENCRYPT_SCRIPT" || {
             log_error "Impossible de rendre le script exécutable"
-            log_warn "⚠️  Certificats temporaires actifs - Correction manuelle requise:"
-            log_warn "     sudo chmod +x $LETSENCRYPT_SCRIPT && $LETSENCRYPT_SCRIPT"
+            exit 1
         }
     fi
 
-    # Exécuter le script si disponible et exécutable (fail-safe)
-    if [[ -x "$LETSENCRYPT_SCRIPT" ]]; then
-        log_info "Tentative d'obtention du certificat Let's Encrypt..."
-        log_info "Cette opération peut prendre jusqu'à 2 minutes..."
+    # Exécuter le script pour obtenir le certificat
+    log_info "Tentative d'obtention du certificat Let's Encrypt..."
+    log_info "Cette opération peut prendre jusqu'à 2 minutes..."
 
-        # Exécuter avec capture du code de retour (ne pas planter le setup si échec)
-        if "$LETSENCRYPT_SCRIPT"; then
-            log_success "✓ Certificat Let's Encrypt obtenu avec succès"
+    if "$LETSENCRYPT_SCRIPT"; then
+        log_success "✓ Certificat Let's Encrypt obtenu avec succès"
 
-            # Recharger Nginx pour appliquer les nouveaux certificats (sans coupure)
-            log_info "Rechargement de la configuration Nginx..."
-            if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null; then
-                log_success "✓ Nginx rechargé - Certificat SSL production actif"
+        # ══════════════════════════════════════════════════════════════════
+        # VÉRIFICATION STRICTE: Le certificat ne doit PAS être auto-signé
+        # ══════════════════════════════════════════════════════════════════
+        FINAL_CERT="$CERT_DIR/fullchain.pem"
+        if [[ -f "$FINAL_CERT" ]]; then
+            final_subject=$(openssl x509 -noout -subject -in "$FINAL_CERT" 2>/dev/null || echo "")
+            final_issuer=$(openssl x509 -noout -issuer -in "$FINAL_CERT" 2>/dev/null || echo "")
+
+            if [[ "$final_subject" == "$final_issuer" ]] && [[ -n "$final_subject" ]]; then
+                log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                log_error "❌ ERREUR CRITIQUE: Le certificat obtenu est AUTO-SIGNÉ"
+                log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                log_error "Subject: $final_subject"
+                log_error "Issuer:  $final_issuer"
+                log_error ""
+                log_error "Ce n'est PAS un certificat Let's Encrypt valide."
+                log_error "Le setup ne peut pas continuer avec un certificat auto-signé."
+                log_error ""
+                log_error "🔧 SOLUTIONS:"
+                log_error "   1. Vérifiez que le DNS pointe vers ce serveur"
+                log_error "   2. Vérifiez que le port 80 est accessible depuis Internet"
+                log_error "   3. Relancez: $LETSENCRYPT_SCRIPT --force"
+                log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                exit 1
+            fi
+
+            # Afficher les détails du certificat valide
+            cert_cn=$(echo "$final_subject" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1)
+            cert_issuer_cn=$(echo "$final_issuer" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1)
+            cert_expiry=$(openssl x509 -noout -enddate -in "$FINAL_CERT" 2>/dev/null | cut -d'=' -f2)
+            log_success "✓ Certificat vérifié - NON auto-signé"
+            log_info "  Domaine: $cert_cn"
+            log_info "  Émetteur: $cert_issuer_cn"
+            log_info "  Expiration: $cert_expiry"
+        fi
+
+        # ══════════════════════════════════════════════════════════════════
+        # BASCULER VERS HTTPS (si on était en mode ACME bootstrap)
+        # ══════════════════════════════════════════════════════════════════
+        if [[ "${PENDING_HTTPS_SWITCH:-false}" == "true" ]]; then
+            log_info "Basculement de la configuration Nginx vers HTTPS..."
+
+            # Générer la configuration HTTPS finale
+            export DOMAIN
+            if envsubst '${DOMAIN}' < "$NGINX_TEMPLATE_HTTPS" > "$NGINX_CONFIG"; then
+                log_success "✓ Configuration Nginx HTTPS générée"
             else
-                log_warn "⚠️  Impossible de recharger Nginx automatiquement"
-                log_info "Rechargez manuellement avec: $DOCKER_CMD -f $COMPOSE_FILE restart nginx"
+                log_error "Impossible de générer la config HTTPS"
+                exit 1
+            fi
+        fi
+
+        # Recharger Nginx pour appliquer les nouveaux certificats
+        log_info "Rechargement de la configuration Nginx..."
+        if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -t 2>/dev/null; then
+            if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -s reload 2>/dev/null; then
+                log_success "✓ Nginx rechargé - HTTPS production actif"
+            else
+                log_warn "Reload échoué, tentative de restart..."
+                $DOCKER_CMD -f "$COMPOSE_FILE" restart nginx
             fi
         else
-            # Échec de l'obtention du certificat
-            log_warn ""
-            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            log_warn "❌ ${RED}${BOLD}CRITIQUE: Échec obtention certificat Let's Encrypt${NC}"
-            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            log_error "🚨 Votre serveur fonctionne en MODE DÉGRADÉ (certificat auto-signé)"
-            log_error "   Les navigateurs afficheront une ${BOLD}ALERTE DE SÉCURITÉ${NC}"
-            log_error "   Cela n'est PAS ACCEPTABLE pour la production"
-            echo ""
-            log_warn "📋 CAUSES PROBABLES:"
-            log_warn "   1. DNS NON PROPAGÉ"
-            log_warn "      → Domaine ${DOMAIN} ne pointe pas vers cette machine"
-            log_warn "      → Solution: Attendre 24-48h ou vérifier configuration DNS"
-            log_warn "      → Test: nslookup ${DOMAIN} 8.8.8.8"
-            echo ""
-            log_warn "   2. PORT 80 BLOQUÉ"
-            log_warn "      → FAI bloque (Freebox, Orange, etc.)"
-            log_warn "      → Solution: Ouvrir port 80 en UPnP ou config manuelle"
-            log_warn "      → Test: curl http://\$(hostname -I | awk '{print \$1}'):80"
-            echo ""
-            log_warn "   3. RATE LIMIT LET'S ENCRYPT"
-            log_warn "      → Trop de tentatives échouées (5/h, 50/semaine)"
-            log_warn "      → Solution: Attendre avant nouvelle tentative"
-            echo ""
-            log_warn "🔧 CORRECTION:"
-            log_warn "   1. Résolvez le problème ci-dessus"
-            log_warn "   2. Relancez: ${BOLD}${CYAN}$LETSENCRYPT_SCRIPT --force${NC}"
-            echo ""
-            log_warn "📚 DOCUMENTATION:"
-            log_warn "   • Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md"
-            log_warn "   • Logs détaillés: certbot/logs/letsencrypt.log"
-            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-
-            # Attendre 3 secondes pour que l'utilisateur voie le message
-            sleep 3
+            log_error "Configuration Nginx invalide après génération HTTPS"
+            log_info "Vérifiez les logs: $DOCKER_CMD -f $COMPOSE_FILE logs nginx"
+            exit 1
         fi
+
+        log_success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_success "✅ CERTIFICAT SSL VALIDE INSTALLÉ"
+        log_success "   Votre site est accessible en HTTPS sécurisé"
+        log_success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    else
+        # ══════════════════════════════════════════════════════════════════
+        # ÉCHEC DE LET'S ENCRYPT - ARRÊT DU SETUP (pas de fallback auto-signé)
+        # ══════════════════════════════════════════════════════════════════
+        log_error ""
+        log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_error "❌ ÉCHEC CRITIQUE: Impossible d'obtenir un certificat Let's Encrypt"
+        log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        log_error "Le setup ne peut pas continuer sans un certificat SSL valide."
+        log_error "Les certificats auto-signés NE sont PAS acceptables pour la production."
+        echo ""
+        log_warn "📋 CAUSES PROBABLES:"
+        log_warn "   1. DNS NON PROPAGÉ"
+        log_warn "      → Domaine ${DOMAIN} ne pointe pas vers cette machine"
+        log_warn "      → Solution: Vérifier configuration DNS, attendre propagation (24-48h)"
+        log_warn "      → Test: nslookup ${DOMAIN} 8.8.8.8"
+        echo ""
+        log_warn "   2. PORT 80 NON ACCESSIBLE"
+        log_warn "      → Le port 80 doit être ouvert et accessible depuis Internet"
+        log_warn "      → Vérifiez: NAT/Redirection de port sur votre box/routeur"
+        log_warn "      → Test externe: https://www.yougetsignal.com/tools/open-ports/"
+        echo ""
+        log_warn "   3. RATE LIMIT LET'S ENCRYPT"
+        log_warn "      → Limite: 5 échecs/heure, 50 certificats/semaine par domaine"
+        log_warn "      → Solution: Attendre 1 heure avant nouvelle tentative"
+        echo ""
+        log_warn "🔧 APRÈS CORRECTION:"
+        log_warn "   Relancez: ${BOLD}${CYAN}$LETSENCRYPT_SCRIPT --force${NC}"
+        log_warn "   Ou relancez le setup complet: ${BOLD}${CYAN}./setup.sh${NC}"
+        echo ""
+        log_warn "📚 DOCUMENTATION:"
+        log_warn "   • Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md"
+        log_warn "   • Logs Certbot: certbot/logs/letsencrypt.log"
+        log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+
+        # NE PAS générer de certificat auto-signé - arrêter le setup
+        exit 1
     fi
 fi
 

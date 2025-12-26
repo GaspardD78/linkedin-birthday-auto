@@ -158,22 +158,13 @@ generate_final_nginx_config() {
     log_success "Configuration HTTPS générée"
 }
 
-generate_self_signed_fallback() {
-    log_warn "⚠️  Génération de certificats de SECOURS (Auto-signés)..."
-    local cert_dir="$CERT_ROOT/conf/live/$DOMAIN"
-    mkdir -p "$cert_dir"
-
-    openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
-        -keyout "$cert_dir/privkey.pem" \
-        -out "$cert_dir/fullchain.pem" \
-        -subj "/CN=$DOMAIN/O=Fallback Self-Signed/C=FR" 2>/dev/null
-
-    chmod 644 "$cert_dir/fullchain.pem"
-    chmod 600 "$cert_dir/privkey.pem"
-    chown -R 1000:1000 "$cert_dir"
-
-    log_warn "Certificats auto-signés générés. Connexion HTTPS non sécurisée (alerte navigateur)."
-}
+# ══════════════════════════════════════════════════════════════════════════════
+# STRATÉGIE "ZERO SELF-SIGNED" (v5.2)
+# ══════════════════════════════════════════════════════════════════════════════
+# La fonction generate_self_signed_fallback a été SUPPRIMÉE.
+# Les certificats auto-signés ne sont JAMAIS acceptables pour la production.
+# Si Let's Encrypt échoue, le script retourne une erreur et setup.sh s'arrête.
+# ══════════════════════════════════════════════════════════════════════════════
 
 reload_nginx() {
     log_info "Rechargement de Nginx..."
@@ -360,24 +351,24 @@ if [[ $CERTBOT_EXIT -ne 0 ]]; then
     log_error "   cat $CERT_ROOT/logs/letsencrypt.log"
     log_error ""
 
-    # Fallback Logic
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_warn "⚠️  ACTIVATION DU MODE DÉGRADÉ (Certificat Auto-Signé)"
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_warn ""
-    log_warn "⚠️  ATTENTION:"
-    log_warn "  • Votre site est ACCESSIBLE mais INSÉCURISÉ"
-    log_warn "  • Les navigateurs afficheront une ALERTE DE SÉCURITÉ"
-    log_warn "  • Cela n'est PAS ACCEPTABLE pour la production"
-    log_warn ""
-    log_warn "🔄 POUR CORRIGER:"
-    log_warn "  1. Résoudre le problème détecté ci-dessus"
-    log_warn "  2. Relancer: $0 --force"
-    log_warn ""
+    # ══════════════════════════════════════════════════════════════════════════
+    # STRATÉGIE "ZERO SELF-SIGNED" (v5.2)
+    # ══════════════════════════════════════════════════════════════════════════
+    # PAS de fallback auto-signé. Le script échoue proprement.
+    # setup.sh gère l'affichage du message d'erreur complet.
+    # ══════════════════════════════════════════════════════════════════════════
 
-    generate_self_signed_fallback
-    generate_final_nginx_config
-    reload_nginx
+    log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_error "❌ AUCUN CERTIFICAT GÉNÉRÉ"
+    log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_error ""
+    log_error "Les certificats auto-signés ne sont PLUS générés."
+    log_error "Un certificat Let's Encrypt valide est REQUIS."
+    log_error ""
+    log_error "🔧 POUR CORRIGER:"
+    log_error "  1. Résolvez le problème détecté ci-dessus"
+    log_error "  2. Relancez: $0 --force"
+    log_error ""
 
-    exit 1 # On sort en erreur pour informer setup.sh, mais le service tourne
+    exit 1
 fi
