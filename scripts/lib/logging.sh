@@ -6,6 +6,12 @@
 
 set -euo pipefail
 
+# === IDEMPOTENCE GUARD ===
+if [[ "${LOGGING_LIB_LOADED:-}" == "true" ]]; then
+    return 0
+fi
+readonly LOGGING_LIB_LOADED="true"
+
 # === COLORS & FORMATTING ===
 
 readonly BLUE='\033[0;34m'

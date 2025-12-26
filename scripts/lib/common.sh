@@ -9,9 +9,9 @@ set -euo pipefail
 
 # Sourcing logging first to ensure colors and log functions are available
 # if common.sh is sourced independently.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/logging.sh" ]]; then
-    source "$SCRIPT_DIR/logging.sh"
+COMMON_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$COMMON_LIB_DIR/logging.sh" ]]; then
+    source "$COMMON_LIB_DIR/logging.sh"
 fi
 
 # === BANNERS & UI ELEMENTS ===
