@@ -59,6 +59,76 @@ if [[ ! "$DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
     exit 1
 fi
 
+# --- Fonctions Diagnostic ---
+check_port_accessible() {
+    local port=$1
+    local timeout=5
+
+    log_info "Vérification port $port (accès Internet)..."
+
+    # Méthode 1: Essayer d'accéder en local
+    if timeout $timeout bash -c "echo > /dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+        log_success "Port $port accessible localement"
+        return 0
+    fi
+
+    log_warn "Port $port non accessible localement (peut être bloqué par Docker)"
+    return 1
+}
+
+check_domain_dns() {
+    local domain=$1
+
+    log_info "Vérification résolution DNS pour $domain..."
+
+    # Essayer avec nslookup ou dig
+    if command -v nslookup >/dev/null; then
+        if nslookup "$domain" 1.1.1.1 >/dev/null 2>&1; then
+            local resolved_ip=$(nslookup "$domain" 1.1.1.1 2>/dev/null | grep -A1 "Name:" | tail -1 | awk '{print $NF}')
+            if [[ -n "$resolved_ip" ]]; then
+                log_success "Domaine résout à: $resolved_ip"
+                return 0
+            fi
+        fi
+    elif command -v dig >/dev/null; then
+        if dig +short "$domain" @1.1.1.1 | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+            local resolved_ip=$(dig +short "$domain" @1.1.1.1 | head -1)
+            log_success "Domaine résout à: $resolved_ip"
+            return 0
+        fi
+    fi
+
+    log_warn "Domaine $domain ne résout pas (DNS non propagé?)"
+    return 1
+}
+
+verify_certificate_validity() {
+    local cert_file=$1
+
+    if [[ ! -f "$cert_file" ]]; then
+        return 1
+    fi
+
+    # Vérifier que c'est un certificat valide (pas auto-signé)
+    local subject=$(openssl x509 -noout -subject -in "$cert_file" 2>/dev/null || echo "")
+    local issuer=$(openssl x509 -noout -issuer -in "$cert_file" 2>/dev/null || echo "")
+
+    # Si subject == issuer, c'est auto-signé (mauvais!)
+    if [[ "$subject" == "$issuer" ]] && [[ -n "$subject" ]]; then
+        log_warn "Certificat auto-signé détecté (sujet = émetteur)"
+        return 1
+    fi
+
+    # Vérifier expiration
+    if openssl x509 -checkend 0 -noout -in "$cert_file" >/dev/null 2>&1; then
+        log_success "Certificat valide et non expiré"
+        return 0
+    else
+        log_warn "Certificat expiré"
+        return 1
+    fi
+}
+
 EMAIL=$(grep "^LETSENCRYPT_EMAIL=" "$ENV_FILE" | cut -d'=' -f2 || echo "")
 
 # Intelligence Domaine: Pas de www pour freeboxos.fr
@@ -128,12 +198,18 @@ check_existing_certs() {
     fi
 
     if [[ -f "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem" ]]; then
-        # Vérifier validité (expiré dans moins de 30 jours ?)
-        if openssl x509 -checkend 2592000 -noout -in "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem" >/dev/null 2>&1; then
-            return 0 # Valide
+        # Vérifier validité: doit être émis par une CA connue ET expiration > 30 jours
+        if verify_certificate_validity "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem"; then
+            if openssl x509 -checkend 2592000 -noout -in "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem" >/dev/null 2>&1; then
+                log_success "Certificats valides et non proches de l'expiration"
+                return 0 # Valide
+            else
+                log_warn "Certificats existants mais expirés ou bientôt expirés."
+                return 1 # Invalide/Expiré
+            fi
         else
-            log_warn "Certificats existants mais expirés ou bientôt expirés."
-            return 1 # Invalide/Expiré
+            log_error "Certificats existants mais auto-signés ou invalides!"
+            return 1
         fi
     fi
     return 1 # Pas de certs
@@ -159,6 +235,39 @@ if check_existing_certs; then
     exit 0
 else
     log_info "Pas de certificats valides (ou forcé). Tentative d'obtention (Let's Encrypt)..."
+fi
+
+# --- PRE-CERTBOT DIAGNOSTIC (NOUVEAU) ---
+log_info ""
+log_info "╔════════════════════════════════════════════════════════════╗"
+log_info "║  DIAGNOSTIC PRÉ-CERTBOT (Vérifications requis pour succès)  ║"
+log_info "╚════════════════════════════════════════════════════════════╝"
+log_info ""
+
+DIAGNOSTIC_PASSED=true
+
+# 1. Vérifier port 80
+if ! check_port_accessible 80; then
+    log_warn "⚠️  Port 80 non accessible - May cause Let's Encrypt to fail"
+    DIAGNOSTIC_PASSED=false
+fi
+
+# 2. Vérifier DNS
+if ! check_domain_dns "$DOMAIN"; then
+    log_error "❌ DNS non résolu - Let's Encrypt ÉCHOUERA"
+    log_error "   Assurez-vous que: $DOMAIN pointe vers cette machine"
+    log_error "   Peut prendre 24-48h après configuration DNS"
+    DIAGNOSTIC_PASSED=false
+fi
+
+log_info ""
+if [[ "$DIAGNOSTIC_PASSED" != "true" ]]; then
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn "⚠️  DIAGNOSTICS ÉCHOUÉS - Probables causes d'échec Let's Encrypt"
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn ""
+    log_warn "Continuant quand même... (peut échouer)"
+    log_warn ""
 fi
 
 # Demander email si manquant ou défaut
@@ -203,21 +312,72 @@ CERTBOT_EXIT=$?
 
 if [[ $CERTBOT_EXIT -eq 0 ]]; then
     log_success "🎉 Certificat Let's Encrypt obtenu avec succès !"
-    generate_final_nginx_config
-    reload_nginx
-else
+
+    # Vérifier que le certificat obtenu n'est PAS auto-signé
+    if verify_certificate_validity "$CERT_ROOT/conf/live/$DOMAIN/fullchain.pem"; then
+        log_success "✓ Certificat vérifié (émis par Let's Encrypt, non auto-signé)"
+        generate_final_nginx_config
+        reload_nginx
+        log_success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_success "✓ CERTIFICAT VALIDE INSTALLÉ"
+        log_success "  Site HTTPS sécurisé ✓"
+        log_success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        exit 0
+    else
+        log_error "Certificat obtenu mais invalide (auto-signé?)"
+        CERTBOT_EXIT=1
+    fi
+fi
+
+if [[ $CERTBOT_EXIT -ne 0 ]]; then
     log_error "❌ Échec de Let's Encrypt (Code $CERTBOT_EXIT)"
+    log_error ""
+    log_error "╔════════════════════════════════════════════════════════════╗"
+    log_error "║        CAUSES PROBABLES & SOLUTIONS                        ║"
+    log_error "╚════════════════════════════════════════════════════════════╝"
+    log_error ""
+    log_error "1️⃣  DNS NON PROPAGÉ:"
+    log_error "   • Le domaine '$DOMAIN' ne pointe pas vers cette machine"
+    log_error "   • Solution: Vérifiez votre configuration DNS"
+    log_error "   • Attendre 24-48h après DNS change pour propagation complète"
+    log_error "   • Test: nslookup $DOMAIN 8.8.8.8"
+    log_error ""
+    log_error "2️⃣  PORT 80 BLOQUÉ:"
+    log_error "   • Let's Encrypt a besoin du port 80 en HTTP"
+    log_error "   • FAI peut bloquer (box Freebox, Orange, etc.)"
+    log_error "   • Solution: Ouvrir port 80 en UPnP ou configuration manuelle"
+    log_error "   • Test: curl http://$(hostname -I | awk '{print $1}'):80"
+    log_error ""
+    log_error "3️⃣  RATE LIMIT LET'S ENCRYPT:"
+    log_error "   • Trop de tentatives échouées (5/heure, 50/semaine)"
+    log_error "   • Solution: Attendre avant nouvelle tentative"
+    log_error ""
+    log_error "4️⃣  CERTBOT CONTAINER INACCESSIBLE:"
+    log_error "   • Docker ou image certbot manquante"
+    log_error "   • Solution: docker pull certbot/certbot"
+    log_error ""
+    log_error "📋 LOGS DÉTAILLÉS:"
+    log_error "   cat $CERT_ROOT/logs/letsencrypt.log"
+    log_error ""
 
     # Fallback Logic
-    log_info "Activation du mode DÉGRADÉ (Self-Signed)..."
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn "⚠️  ACTIVATION DU MODE DÉGRADÉ (Certificat Auto-Signé)"
+    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_warn ""
+    log_warn "⚠️  ATTENTION:"
+    log_warn "  • Votre site est ACCESSIBLE mais INSÉCURISÉ"
+    log_warn "  • Les navigateurs afficheront une ALERTE DE SÉCURITÉ"
+    log_warn "  • Cela n'est PAS ACCEPTABLE pour la production"
+    log_warn ""
+    log_warn "🔄 POUR CORRIGER:"
+    log_warn "  1. Résoudre le problème détecté ci-dessus"
+    log_warn "  2. Relancer: $0 --force"
+    log_warn ""
+
     generate_self_signed_fallback
     generate_final_nginx_config
     reload_nginx
 
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_warn "  ÉCHEC SSL - MODE DÉGRADÉ ACTIVÉ"
-    log_warn "  Votre site est accessible mais affichera une alerte."
-    log_warn "  Vérifiez: Port 80, DNS, et Logs."
-    log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     exit 1 # On sort en erreur pour informer setup.sh, mais le service tourne
 fi

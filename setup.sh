@@ -764,20 +764,44 @@ setup_state_set_config "https_mode" "$HTTPS_MODE"
 
 log_step "PHASE 5.1: Préparation SSL et Configuration Nginx"
 
-# Créer certificats temporaires si nécessaire (pour tous les modes sauf manual)
-if [[ "$HTTPS_MODE" != "manual" ]]; then
-    if [[ ! -f "$CERT_DIR/fullchain.pem" ]] || [[ ! -f "$CERT_DIR/privkey.pem" ]]; then
-        log_info "Génération de certificats temporaires..."
+# NOTE: Certificats auto-signés ne seront créés que si Let's Encrypt échoue
+# (dans setup_letsencrypt.sh). Cela force une meilleure UX en cas d'échec.
+# Les certificats temporaires causent des alertes Chrome et doivent être évités.
+
+# Vérifier si des certificats (valides ou non) existent déjà
+EXISTING_CERT="$CERT_DIR/fullchain.pem"
+if [[ -f "$EXISTING_CERT" ]]; then
+    # Vérifier si le certificat existant est auto-signé
+    if ! openssl x509 -noout -text -in "$EXISTING_CERT" 2>/dev/null | grep -q "CN="; then
+        log_warn "⚠️  Certificat existant détecté mais invalide"
+    else
+        # Vérifier si auto-signé (sujet == émetteur)
+        local subject=$(openssl x509 -noout -subject -in "$EXISTING_CERT" 2>/dev/null || echo "")
+        local issuer=$(openssl x509 -noout -issuer -in "$EXISTING_CERT" 2>/dev/null || echo "")
+        if [[ "$subject" == "$issuer" ]] && [[ -n "$subject" ]]; then
+            log_info "⚠️  Certificat auto-signé détecté (fallback de tentative précédente)"
+            log_warn "    Ce certificat causera une alerte Chrome - Let's Encrypt sera relancé en Phase 6.5"
+        else
+            log_success "✓ Certificat non auto-signé détecté (Let's Encrypt ou valide)"
+        fi
+    fi
+else
+    # Pas de certificat du tout - en créer un minimal JUSTE POUR NGINX BOOTSTRAP
+    # Ce certificat ne sera utilisé que quelques secondes avant Let's Encrypt
+    if [[ "$HTTPS_MODE" != "manual" ]]; then
+        log_info "Génération de certificat bootstrap minimal (pour démarrage Nginx)..."
 
         if cmd_exists openssl; then
-            openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+            mkdir -p "$CERT_DIR"
+            openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                 -keyout "$CERT_DIR/privkey.pem" \
                 -out "$CERT_DIR/fullchain.pem" \
-                -subj "/CN=${DOMAIN}/O=Temporary Certificate/C=FR" 2>/dev/null
+                -subj "/CN=${DOMAIN}/O=Bootstrap Certificate/C=FR" 2>/dev/null
 
             chmod 644 "$CERT_DIR/fullchain.pem"
             chmod 600 "$CERT_DIR/privkey.pem"
-            log_success "✓ Certificats temporaires créés"
+            log_success "✓ Certificat bootstrap créé (durée: 1 jour)"
+            log_info "  Ce certificat sera remplacé par Let's Encrypt en Phase 6.5"
         fi
     fi
 fi
@@ -965,29 +989,42 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
             fi
         else
             # Échec de l'obtention du certificat
+            log_warn ""
             log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            log_warn "⚠️  ${YELLOW}${BOLD}AVERTISSEMENT:${NC}${YELLOW} Échec de l'obtention du certificat Let's Encrypt${NC}"
+            log_warn "❌ ${RED}${BOLD}CRITIQUE: Échec obtention certificat Let's Encrypt${NC}"
             log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
-            log_warn "🔒 Votre serveur reste accessible via ${BOLD}certificats auto-signés temporaires${NC}"
-            log_warn "   (navigateurs afficheront un avertissement de sécurité)"
+            log_error "🚨 Votre serveur fonctionne en MODE DÉGRADÉ (certificat auto-signé)"
+            log_error "   Les navigateurs afficheront une ${BOLD}ALERTE DE SÉCURITÉ${NC}"
+            log_error "   Cela n'est PAS ACCEPTABLE pour la production"
             echo ""
-            log_warn "📋 Causes possibles:"
-            log_warn "   • Port 80 bloqué ou inaccessible depuis internet"
-            log_warn "   • Domaine ${DOMAIN} ne pointe pas vers cette machine"
-            log_warn "   • Rate limit Let's Encrypt atteint (5 échecs/heure, 50 certs/semaine)"
-            log_warn "   • Serveur DNS non propagé (peut prendre jusqu'à 48h)"
+            log_warn "📋 CAUSES PROBABLES:"
+            log_warn "   1. DNS NON PROPAGÉ"
+            log_warn "      → Domaine ${DOMAIN} ne pointe pas vers cette machine"
+            log_warn "      → Solution: Attendre 24-48h ou vérifier configuration DNS"
+            log_warn "      → Test: nslookup ${DOMAIN} 8.8.8.8"
             echo ""
-            log_warn "🔧 Pour réessayer manuellement:"
-            log_warn "   ${BOLD}${CYAN}$LETSENCRYPT_SCRIPT${NC}"
+            log_warn "   2. PORT 80 BLOQUÉ"
+            log_warn "      → FAI bloque (Freebox, Orange, etc.)"
+            log_warn "      → Solution: Ouvrir port 80 en UPnP ou config manuelle"
+            log_warn "      → Test: curl http://\$(hostname -I | awk '{print \$1}'):80"
             echo ""
-            log_warn "📚 Documentation troubleshooting:"
-            log_warn "   docs/RASPBERRY_PI_TROUBLESHOOTING.md (section SSL)"
+            log_warn "   3. RATE LIMIT LET'S ENCRYPT"
+            log_warn "      → Trop de tentatives échouées (5/h, 50/semaine)"
+            log_warn "      → Solution: Attendre avant nouvelle tentative"
+            echo ""
+            log_warn "🔧 CORRECTION:"
+            log_warn "   1. Résolvez le problème ci-dessus"
+            log_warn "   2. Relancez: ${BOLD}${CYAN}$LETSENCRYPT_SCRIPT --force${NC}"
+            echo ""
+            log_warn "📚 DOCUMENTATION:"
+            log_warn "   • Troubleshooting: docs/RASPBERRY_PI_TROUBLESHOOTING.md"
+            log_warn "   • Logs détaillés: certbot/logs/letsencrypt.log"
             log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo ""
 
-            # Attendre 2 secondes pour que l'utilisateur voie le message
-            sleep 2
+            # Attendre 3 secondes pour que l'utilisateur voie le message
+            sleep 3
         fi
     fi
 fi
