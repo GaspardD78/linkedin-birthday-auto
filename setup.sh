@@ -776,8 +776,8 @@ if [[ -f "$EXISTING_CERT" ]]; then
         log_warn "⚠️  Certificat existant détecté mais invalide"
     else
         # Vérifier si auto-signé (sujet == émetteur)
-        local subject=$(openssl x509 -noout -subject -in "$EXISTING_CERT" 2>/dev/null || echo "")
-        local issuer=$(openssl x509 -noout -issuer -in "$EXISTING_CERT" 2>/dev/null || echo "")
+        subject=$(openssl x509 -noout -subject -in "$EXISTING_CERT" 2>/dev/null || echo "")
+        issuer=$(openssl x509 -noout -issuer -in "$EXISTING_CERT" 2>/dev/null || echo "")
         if [[ "$subject" == "$issuer" ]] && [[ -n "$subject" ]]; then
             log_info "⚠️  Certificat auto-signé détecté (fallback de tentative précédente)"
             log_warn "    Ce certificat causera une alerte Chrome - Let's Encrypt sera relancé en Phase 6.5"
