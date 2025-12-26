@@ -622,7 +622,7 @@ fi
 log_step "PHASE 4.5: Permissions & Volumes"
 
 # Créer les répertoires nécessaires
-mkdir -p data logs config certbot/conf certbot/www deployment/nginx
+mkdir -p data logs config certbot/conf certbot/www certbot/logs certbot/work deployment/nginx
 
 # Créer les fichiers de base s'ils n'existent pas
 touch data/messages.txt data/late_messages.txt 2>/dev/null || true

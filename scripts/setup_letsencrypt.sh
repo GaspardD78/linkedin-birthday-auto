@@ -142,7 +142,7 @@ fi
 
 # Permissions (UID 1000)
 log_info "Application des permissions (UID 1000)..."
-mkdir -p "$CERT_ROOT/conf" "$CERT_ROOT/www" "$CERT_ROOT/logs"
+mkdir -p "$CERT_ROOT/conf" "$CERT_ROOT/www" "$CERT_ROOT/logs" "$CERT_ROOT/work"
 chown -R 1000:1000 "$CERT_ROOT"
 
 # --- Fonctions Clés ---
@@ -290,9 +290,13 @@ docker run --rm \
     -v "$CERT_ROOT/conf:/etc/letsencrypt" \
     -v "$CERT_ROOT/www:/var/www/certbot" \
     -v "$CERT_ROOT/logs:/var/log/letsencrypt" \
+    -v "$CERT_ROOT/work:/var/lib/letsencrypt" \
     certbot/certbot certonly \
     --webroot \
     --webroot-path=/var/www/certbot \
+    --config-dir=/etc/letsencrypt \
+    --work-dir=/var/lib/letsencrypt \
+    --logs-dir=/var/log/letsencrypt \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
