@@ -935,22 +935,8 @@ if ! docker_compose_validate "$COMPOSE_FILE"; then
 fi
 progress_done "Configuration valide"
 
-# Étape 3: Nettoyage préventif (NOUVEAU)
-progress_step "Nettoyage préventif image Dashboard"
-# Force la suppression de l'image locale pour garantir un pull frais
-docker rmi ghcr.io/gaspardd78/linkedin-birthday-auto-dashboard:latest >/dev/null 2>&1 || true
-progress_done "Image locale nettoyée"
-
-# Étape 4: Pull des images Docker
+# Étape 3: Pull des images Docker (optimisé v5.0)
 progress_step "Téléchargement des images Docker"
-
-# Vérification authentification ghcr.io si nécessaire
-if grep -q "ghcr.io" "$COMPOSE_FILE"; then
-    if ! docker system info 2>/dev/null | grep -q "Username"; then
-        log_warn "Authentification Docker Registry peut être requise pour ghcr.io"
-        # On continue quand même car le repo peut être public, mais on avertit
-    fi
-fi
 
 if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     progress_fail "Impossible de télécharger les images"
@@ -960,7 +946,7 @@ if ! docker_pull_with_retry "$COMPOSE_FILE"; then
 fi
 progress_done "Images téléchargées"
 
-# Étape 5: Démarrage des conteneurs (Force Recreate)
+# Étape 4: Démarrage des conteneurs (Force Recreate)
 progress_step "Démarrage des conteneurs (--force-recreate)"
 # Remplacement de docker_compose_up pour forcer la recréation
 # USING DOCKER_CMD (Consistent)
@@ -972,14 +958,14 @@ if ! $DOCKER_CMD -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans >/de
 fi
 progress_done "Conteneurs démarrés"
 
-# Étape 6: Vérification post-démarrage
+# Étape 5: Vérification post-démarrage
 progress_step "Vérification des conteneurs"
 sleep 5 # Délai accru pour stabilisation
 RUNNING_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
 TOTAL_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
 progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
 
-# Étape 7: Nettoyage final (NOUVEAU)
+# Étape 6: Nettoyage final
 progress_step "Nettoyage images obsolètes"
 docker image prune -f >/dev/null 2>&1 || true
 progress_done "Espace disque optimisé"
