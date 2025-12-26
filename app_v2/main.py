@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime, timezone
+from sqlalchemy import text
 
 from app_v2.api.routers import control, data
 from app_v2.core.config import Settings
@@ -141,7 +142,7 @@ async def readiness(settings: Settings = Depends(lambda: Settings())):
     try:
         engine = get_engine(settings)
         async with engine.connect() as conn:
-            await conn.execute(conn.dialect.statement_compiler.process("SELECT 1"))
+            await conn.execute(text("SELECT 1"))
         checks["database"] = "ok"
         dependencies.append("database")
         logger.debug("✅ Database check passed")
