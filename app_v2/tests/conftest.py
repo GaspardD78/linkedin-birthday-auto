@@ -126,10 +126,24 @@ async def test_redis_mock():
 # =========================================================================
 
 @pytest.fixture
-def test_client(test_settings):
+def test_client(test_settings, monkeypatch):
     """Test client for FastAPI app with dependency overrides."""
+    import os
     from app_v2.core.config import Settings
     from app_v2.api.routers.control import get_settings
+    import app_v2.db.engine as db_engine
+
+    # Reset global engine state to prevent cross-test contamination
+    db_engine._engine = None
+    db_engine._session_maker = None
+
+    # Set environment variables for lifespan function
+    # This ensures Settings() in lifespan uses in-memory database
+    monkeypatch.setenv("DATABASE_URL", test_settings.database_url)
+    monkeypatch.setenv("API_KEY", test_settings.api_key.get_secret_value() if hasattr(test_settings.api_key, 'get_secret_value') else test_settings.api_key)
+    monkeypatch.setenv("AUTH_ENCRYPTION_KEY", test_settings.auth_encryption_key.get_secret_value() if hasattr(test_settings.auth_encryption_key, 'get_secret_value') else test_settings.auth_encryption_key)
+    monkeypatch.setenv("JWT_SECRET", test_settings.jwt_secret.get_secret_value() if hasattr(test_settings.jwt_secret, 'get_secret_value') else test_settings.jwt_secret)
+    monkeypatch.setenv("REDIS_URL", "redis://fakeredis:6379/0")  # Use fake Redis for tests
 
     # Override settings dependency
     def override_get_settings():
@@ -142,6 +156,9 @@ def test_client(test_settings):
 
     # Clean up
     app.dependency_overrides.clear()
+    # Reset engine state again after test
+    db_engine._engine = None
+    db_engine._session_maker = None
 
 
 # =========================================================================

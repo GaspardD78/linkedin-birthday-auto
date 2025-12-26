@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Header
 from typing import Optional
 import asyncio
 
@@ -26,6 +26,21 @@ logger = logging.getLogger(__name__)
 
 def get_settings():
     return Settings()
+
+def verify_api_key(
+    x_api_key: Optional[str] = Header(None),
+    settings: Settings = Depends(get_settings)
+) -> Settings:
+    """Verify API key from X-API-Key header."""
+    if not x_api_key:
+        raise HTTPException(status_code=403, detail="Missing API key")
+
+    expected_key = settings.api_key.get_secret_value() if hasattr(settings.api_key, 'get_secret_value') else str(settings.api_key)
+
+    if x_api_key != expected_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return settings
 
 # --- Helper Functions for Background Tasks ---
 
@@ -84,7 +99,7 @@ async def _run_sourcing_wrapper(settings: Settings, request: SourcingRequest):
 async def start_birthday_campaign(
     request: CampaignRequest,
     background_tasks: BackgroundTasks,
-    settings: Settings = Depends(get_settings)
+    settings: Settings = Depends(verify_api_key)
 ):
     """Lance la campagne d'anniversaires en arrière-plan."""
     if GLOBAL_BOT_LOCK.locked():
@@ -97,7 +112,7 @@ async def start_birthday_campaign(
 async def start_sourcing_campaign(
     request: SourcingRequest,
     background_tasks: BackgroundTasks,
-    settings: Settings = Depends(get_settings)
+    settings: Settings = Depends(verify_api_key)
 ):
     """Lance une session de sourcing en arrière-plan."""
     if GLOBAL_BOT_LOCK.locked():

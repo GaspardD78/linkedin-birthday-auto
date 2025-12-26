@@ -47,25 +47,32 @@ class DatabaseMigration:
         results = {}
 
         async with engine.connect() as conn:
-            inspector = inspect(conn.sync_engine)
+            # Use run_sync for synchronous inspection operations
+            def _inspect_indexes(sync_conn):
+                inspector = inspect(sync_conn)
+                table_results = {}
 
-            for table_name, indexes in DatabaseMigration.CRITICAL_INDEXES.items():
-                results[table_name] = {}
+                for table_name, indexes in DatabaseMigration.CRITICAL_INDEXES.items():
+                    table_results[table_name] = {}
 
-                # Get all indexes for this table
-                table_indexes = inspector.get_indexes(table_name)
-                index_names = {idx["name"] for idx in table_indexes}
+                    # Get all indexes for this table
+                    table_indexes = inspector.get_indexes(table_name)
+                    index_names = {idx["name"] for idx in table_indexes}
 
-                for index_def in indexes:
-                    index_name = index_def["name"]
-                    exists = index_name in index_names
-                    results[table_name][index_name] = exists
+                    for index_def in indexes:
+                        index_name = index_def["name"]
+                        exists = index_name in index_names
+                        table_results[table_name][index_name] = exists
 
-                    status = "✅ PRESENT" if exists else "❌ MISSING"
-                    logger.info(
-                        f"{status} | Index: {index_name} "
-                        f"(table: {table_name}, columns: {index_def['columns']})"
-                    )
+                        status = "✅ PRESENT" if exists else "❌ MISSING"
+                        logger.info(
+                            f"{status} | Index: {index_name} "
+                            f"(table: {table_name}, columns: {index_def['columns']})"
+                        )
+
+                return table_results
+
+            results = await conn.run_sync(_inspect_indexes)
 
         return results
 
@@ -80,13 +87,20 @@ class DatabaseMigration:
         created = {}
 
         async with engine.begin() as conn:
-            # Get list of existing indexes
-            inspector = inspect(conn.sync_engine)
+            # Get list of existing indexes using run_sync
+            def _get_existing_indexes(sync_conn):
+                inspector = inspect(sync_conn)
+                existing = {}
+                for table_name in DatabaseMigration.CRITICAL_INDEXES.keys():
+                    table_indexes = inspector.get_indexes(table_name)
+                    existing[table_name] = {idx["name"] for idx in table_indexes}
+                return existing
+
+            existing_indexes = await conn.run_sync(_get_existing_indexes)
 
             for table_name, indexes in DatabaseMigration.CRITICAL_INDEXES.items():
                 created[table_name] = []
-                table_indexes = inspector.get_indexes(table_name)
-                existing_names = {idx["name"] for idx in table_indexes}
+                existing_names = existing_indexes.get(table_name, set())
 
                 for index_def in indexes:
                     index_name = index_def["name"]

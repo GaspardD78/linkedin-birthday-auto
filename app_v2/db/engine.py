@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 from app_v2.core.config import Settings
 from app_v2.db.models import Base
 from app_v2.db.migrations import run_migrations
@@ -14,6 +14,11 @@ _session_maker = None
 def get_engine(settings: Settings):
     global _engine
     if _engine is None:
+        # Use StaticPool for in-memory databases to maintain single connection
+        # Use NullPool for file-based databases
+        is_in_memory = ":memory:" in settings.database_url
+        poolclass = StaticPool if is_in_memory else NullPool
+
         # CRITIQUE : ?mode=wal est déjà actif dans ta DB, on le garde
         # check_same_thread=False nécessaire pour async
         _engine = create_async_engine(
@@ -21,7 +26,7 @@ def get_engine(settings: Settings):
             echo=settings.log_level == "DEBUG",
             pool_pre_ping=True,
             pool_recycle=3600,
-            poolclass=NullPool,  # Pas de pool pour SQLite
+            poolclass=poolclass,
             connect_args={"check_same_thread": False},
         )
         logger.info(f"✓ Engine créé : {settings.database_url}")
