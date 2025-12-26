@@ -16,6 +16,8 @@
 server {
     listen 80;
     listen [::]:80;
+    # Note: www.${DOMAIN} should be removed for freeboxos.fr subdomains
+    # setup.sh handles this by manually editing the generated config
     server_name ${DOMAIN} www.${DOMAIN} localhost;
 
     resolver 127.0.0.11 valid=30s;

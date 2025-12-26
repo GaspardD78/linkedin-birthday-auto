@@ -875,6 +875,13 @@ if [[ -f "$NGINX_TEMPLATE" ]]; then
         exit 1
     fi
     chmod 644 "$NGINX_CONFIG"
+
+    # Fix: Remove www subdomain for freeboxos.fr (not supported)
+    if [[ "$DOMAIN" == *".freeboxos.fr" ]]; then
+        sed -i "s/ www\.${DOMAIN}//g" "$NGINX_CONFIG"
+        log_info "  → www subdomain removed (freeboxos.fr limitation)"
+    fi
+
     log_success "✓ Configuration Nginx générée"
 else
     log_error "Template Nginx introuvable: $NGINX_TEMPLATE"
@@ -1081,6 +1088,11 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
             # Générer la configuration HTTPS finale
             export DOMAIN
             if envsubst '${DOMAIN}' < "$NGINX_TEMPLATE_HTTPS" > "$NGINX_CONFIG"; then
+                # Fix: Remove www subdomain for freeboxos.fr (not supported)
+                if [[ "$DOMAIN" == *".freeboxos.fr" ]]; then
+                    sed -i "s/ www\.${DOMAIN}//g" "$NGINX_CONFIG"
+                    log_info "  → www subdomain removed (freeboxos.fr limitation)"
+                fi
                 log_success "✓ Configuration Nginx HTTPS générée"
             else
                 log_error "Impossible de générer la config HTTPS"
