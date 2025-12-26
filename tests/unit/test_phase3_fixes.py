@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from unittest.mock import Mock, patch, MagicMock
 from src.bots.unlimited_bot import run_unlimited_bot, UnlimitedBirthdayBot
 from src.bots.birthday_bot import BirthdayBot
-from src.config.config_schema import Config, BirthdayFilter, MessagingLimits
+from src.config.config_schema import LinkedInBotConfig as Config, BirthdayFilterConfig as BirthdayFilter, MessagingLimitsConfig as MessagingLimits
 
 
 class TestPhase3INC1MaxDaysLate:
