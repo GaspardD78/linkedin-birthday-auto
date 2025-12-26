@@ -680,11 +680,104 @@ else
     log_success "✓ Permissions appliquées (UID 1000, mode 775)"
 fi
 
+# === PHASE 4.9: CONFIGURATION DOMAINE & EMAIL (NOUVEAU v5.2) ===
+
+log_step "PHASE 4.9: Configuration Domaine & Email Let's Encrypt"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COLLECTE DES INFORMATIONS REQUISES POUR LET'S ENCRYPT
+# ══════════════════════════════════════════════════════════════════════════════
+# Ces informations sont demandées AVANT le choix du mode HTTPS pour :
+# 1. Valider que le domaine est correctement configuré
+# 2. S'assurer que l'email est disponible pour les notifications Let's Encrypt
+# 3. Éviter les interruptions pendant la Phase 6.5 (obtention du certificat)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Récupérer les valeurs actuelles depuis .env
+CURRENT_DOMAIN=$(grep "^DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "$DOMAIN_DEFAULT")
+CURRENT_EMAIL=$(grep "^LETSENCRYPT_EMAIL=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "")
+
+# Afficher la configuration actuelle
+log_info "Configuration actuelle:"
+log_info "  Domaine: ${BOLD}${CURRENT_DOMAIN}${NC}"
+if [[ -n "$CURRENT_EMAIL" ]] && [[ "$CURRENT_EMAIL" != "votre.email@example.com" ]]; then
+    log_info "  Email:   ${BOLD}${CURRENT_EMAIL}${NC}"
+else
+    log_warn "  Email:   ${YELLOW}Non configuré${NC}"
+fi
+echo ""
+
+# Demander si l'utilisateur veut modifier le domaine
+if prompt_yes_no "Modifier le domaine actuel ($CURRENT_DOMAIN) ?" "n"; then
+    echo ""
+    log_info "Le domaine doit pointer vers l'IP publique de ce serveur pour Let's Encrypt."
+    log_info "Exemples: monsite.example.com, app.mondomaine.fr, nom.freeboxos.fr"
+    echo ""
+
+    while true; do
+        read -r -p "Nouveau domaine: " NEW_DOMAIN
+
+        # Validation basique du format de domaine
+        if [[ "$NEW_DOMAIN" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            DOMAIN="$NEW_DOMAIN"
+
+            # Mettre à jour .env
+            if grep -q "^DOMAIN=" "$ENV_FILE"; then
+                sed -i "s|^DOMAIN=.*|DOMAIN=$DOMAIN|" "$ENV_FILE"
+            else
+                echo "DOMAIN=$DOMAIN" >> "$ENV_FILE"
+            fi
+
+            log_success "✓ Domaine configuré: $DOMAIN"
+            break
+        else
+            log_error "Format de domaine invalide. Utilisez: exemple.domaine.com"
+        fi
+    done
+else
+    DOMAIN="$CURRENT_DOMAIN"
+    log_info "Domaine conservé: $DOMAIN"
+fi
+
+# Demander l'email si non configuré ou invalide
+if [[ -z "$CURRENT_EMAIL" ]] || [[ "$CURRENT_EMAIL" == "votre.email@example.com" ]]; then
+    echo ""
+    log_warn "Email Let's Encrypt non configuré."
+    log_info "Cet email recevra les notifications d'expiration des certificats."
+    echo ""
+
+    while true; do
+        read -r -p "Email pour Let's Encrypt: " NEW_EMAIL
+
+        # Validation basique du format email
+        if [[ "$NEW_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            # Mettre à jour .env
+            if grep -q "^LETSENCRYPT_EMAIL=" "$ENV_FILE"; then
+                sed -i "s|^LETSENCRYPT_EMAIL=.*|LETSENCRYPT_EMAIL=$NEW_EMAIL|" "$ENV_FILE"
+            else
+                echo "LETSENCRYPT_EMAIL=$NEW_EMAIL" >> "$ENV_FILE"
+            fi
+
+            log_success "✓ Email configuré: $NEW_EMAIL"
+            break
+        else
+            log_error "Format d'email invalide."
+        fi
+    done
+else
+    log_info "Email Let's Encrypt: $CURRENT_EMAIL"
+fi
+
+echo ""
+log_success "✓ Configuration domaine/email terminée"
+
+# Mettre à jour CERT_DIR avec le nouveau domaine
+CERT_DIR="certbot/conf/live/${DOMAIN}"
+
 # === PHASE 5: CONFIGURATION HTTPS (REORDERED BEFORE NGINX) ===
 
 log_step "PHASE 5: Configuration HTTPS"
 
-CERT_DIR="certbot/conf/live/${DOMAIN}"
 mkdir -p "$CERT_DIR"
 
 choice=$(prompt_menu "Scénario HTTPS (RPi4 - Exposition HTTPS)" \

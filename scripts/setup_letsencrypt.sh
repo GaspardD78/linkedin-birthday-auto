@@ -261,20 +261,30 @@ if [[ "$DIAGNOSTIC_PASSED" != "true" ]]; then
     log_warn ""
 fi
 
-# Demander email si manquant ou défaut
+# Vérifier que l'email est configuré
+# Note: L'email devrait être configuré par setup.sh Phase 4.9
+# Si exécuté manuellement, demander l'email
 if [[ -z "$EMAIL" ]] || [[ "$EMAIL" == "votre.email@example.com" ]]; then
-    echo -e "${YELLOW}Email requis pour Let's Encrypt (notifications expiration):${NC}"
-    read -r -p "Email: " EMAIL_INPUT
-    if [[ -n "$EMAIL_INPUT" ]]; then
-        EMAIL="$EMAIL_INPUT"
-        # Sauvegarder dans .env si possible
-        if grep -q "^LETSENCRYPT_EMAIL=" "$ENV_FILE"; then
-            sed -i "s|^LETSENCRYPT_EMAIL=.*|LETSENCRYPT_EMAIL=$EMAIL|" "$ENV_FILE"
+    # Vérifier si on est en mode interactif (terminal attaché)
+    if [[ -t 0 ]]; then
+        echo -e "${YELLOW}Email requis pour Let's Encrypt (notifications expiration):${NC}"
+        read -r -p "Email: " EMAIL_INPUT
+        if [[ -n "$EMAIL_INPUT" ]]; then
+            EMAIL="$EMAIL_INPUT"
+            # Sauvegarder dans .env si possible
+            if grep -q "^LETSENCRYPT_EMAIL=" "$ENV_FILE"; then
+                sed -i "s|^LETSENCRYPT_EMAIL=.*|LETSENCRYPT_EMAIL=$EMAIL|" "$ENV_FILE"
+            else
+                echo "LETSENCRYPT_EMAIL=$EMAIL" >> "$ENV_FILE"
+            fi
         else
-            echo "LETSENCRYPT_EMAIL=$EMAIL" >> "$ENV_FILE"
+            log_error "Email obligatoire. Abandon."
+            exit 1
         fi
     else
-        log_error "Email obligatoire. Abandon."
+        log_error "Email Let's Encrypt non configuré dans .env"
+        log_error "Configurez LETSENCRYPT_EMAIL dans le fichier .env avant de relancer."
+        log_error "Exemple: LETSENCRYPT_EMAIL=votre.email@example.com"
         exit 1
     fi
 fi
