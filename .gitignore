@@ -158,3 +158,9 @@ export_*.json
 .setup.state
 .setup.lock
 backups/
+
+# Nginx & SSL (generated files, not version controlled)
+certbot/
+deployment/nginx/ssl-dhparams.pem
+deployment/nginx/linkedin-bot.conf
+deployment/nginx/linkedin-bot.conf.backup.*
