@@ -23,6 +23,7 @@ from src.api.security import verify_api_key, API_KEY_NAME
 from src.core.database import get_database
 from src.utils.logging import setup_logging
 from src.utils.data_files import initialize_data_files
+from src.monitoring.tracing import setup_tracing, instrument_app
 
 # Configure logging using structlog
 setup_logging(log_file="logs/linkedin_bot.log")
@@ -125,6 +126,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# --- OpenTelemetry Tracing Setup ---
+setup_tracing(service_name="linkedin-bot-api")
+instrument_app(app)
 
 # --- Middleware ---
 

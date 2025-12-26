@@ -195,7 +195,9 @@ services:
       # Générer avec: python -c "import secrets; print(secrets.token_hex(32))"
     - API_KEY=${API_KEY:?API_KEY doit être définie dans le fichier .env}
       # Activer la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=false
+    - ENABLE_TELEMETRY=true
+      # Endpoint OpenTelemetry (optionnel - défaut: http://localhost:4317)
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       # Nom du service pour séparer les logs
     - SERVICE_NAME=api
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
@@ -250,7 +252,9 @@ services:
       # Utilisation SQLite partagé avec le dashboard
     - DATABASE_URL=sqlite:///app/data/linkedin.db
       # Activer la télémétrie OpenTelemetry
-    - ENABLE_TELEMETRY=false
+    - ENABLE_TELEMETRY=true
+      # Endpoint OpenTelemetry (optionnel - défaut: http://localhost:4317)
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       # Nom du service pour séparer les logs
     - SERVICE_NAME=worker
       # Force l'utilisation du fichier config monté (pas celui baked-in dans l'image)
