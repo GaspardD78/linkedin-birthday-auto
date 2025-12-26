@@ -11,10 +11,9 @@ Provides:
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator
-
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text
-
+from sqlalchemy.pool import StaticPool
+from sqlalchemy import text, event
 from fastapi.testclient import TestClient
 import redis.asyncio as redis
 
@@ -46,12 +45,17 @@ def test_settings():
 # DATABASE FIXTURES
 # =========================================================================
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def test_db_engine(test_settings):
-    """Create test database engine with in-memory SQLite."""
+    """Create test database engine with in-memory SQLite.
+
+    Uses StaticPool to properly handle async SQLite connections and
+    prevent greenlet issues.
+    """
     engine = create_async_engine(
         test_settings.database_url,
         echo=False,
+        poolclass=StaticPool,
         connect_args={"check_same_thread": False},
     )
 

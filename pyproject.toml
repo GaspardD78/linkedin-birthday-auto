@@ -55,7 +55,6 @@ dev = [
     "pre-commit>=3.6.0",
     # Type stubs
     "types-PyYAML>=6.0.12",
-    "types-python-dotenv>=1.0.0",
 ]
 monitoring = [
     "prometheus-client>=0.19.0",
