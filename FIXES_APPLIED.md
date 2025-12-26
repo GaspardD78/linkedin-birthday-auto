@@ -128,11 +128,36 @@ docker compose up -d --force-recreate docker-socket-proxy
 - ✏️ `deployment/nginx/linkedin-bot.conf` - Added `/api/health` endpoint
 - ✏️ `deployment/nginx/linkedin-bot-https.conf.template` - Added `/api/health` endpoint
 - ✏️ `docker-compose.yml` - Added `TIMEOUT_TUNNEL` to docker-socket-proxy
+- ✏️ `setup.sh` - **CRITICAL FIX**: Fixed certificate validation logic (2 bugs)
 
 ### New Files Created
 - ➕ `scripts/fix_https_certificates.sh` - Certificate diagnosis and fix script
 - ➕ `docs/TROUBLESHOOTING_HTTPS_AND_COMMON_ISSUES.md` - Comprehensive troubleshooting guide
 - ➕ `FIXES_APPLIED.md` - This file
+
+## Critical setup.sh Fixes
+
+### Bug 1: Existing Certificate Validation (Line ~789-810)
+
+**Problem**: The validation compared full subject and issuer strings, which would never match exactly for self-signed certificates with different formatting.
+
+**Fix**:
+- Extract CN (Common Name) from subject and issuer
+- Check if issuer contains "Let's Encrypt" or known intermediate CAs (R3, R10, R11, E1, E2)
+- Compare CN fields to detect self-signed certificates
+- Delete self-signed certificates to force proper Let's Encrypt generation
+
+### Bug 2: Post-Let's Encrypt Certificate Validation (Line ~1009-1037)
+
+**Problem**: The script showed "✓ Certificat vérifié - NON auto-signé" even when the certificate WAS self-signed. The issuer CN matched the domain (e.g., "gaspardanoukolivier.freeboxos.fr") instead of "Let's Encrypt".
+
+**This was the CRITICAL BUG** causing your HTTPS warning!
+
+**Fix**:
+- Properly validate that certificate is from Let's Encrypt (not just non-self-signed)
+- Check issuer for "Let's Encrypt" string or known intermediate CA names
+- Exit with error if certificate is self-signed (CN matches)
+- Show clear warning if certificate is from unknown CA
 
 ## How to Apply All Fixes
 

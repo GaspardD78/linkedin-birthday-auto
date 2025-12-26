@@ -791,20 +791,38 @@ if [[ -f "$EXISTING_CERT" ]]; then
 
     if [[ -z "$subject" ]]; then
         log_warn "⚠️  Certificat existant détecté mais invalide (format incorrect)"
-    elif [[ "$subject" == "$issuer" ]]; then
-        log_warn "⚠️  Certificat AUTO-SIGNÉ détecté - sera ignoré"
-        log_warn "    Les certificats auto-signés causent des alertes de sécurité"
-        log_info "    Un nouveau certificat Let's Encrypt sera obtenu en Phase 6.5"
-        # Supprimer le certificat auto-signé pour forcer le mode ACME bootstrap
-        rm -f "$EXISTING_CERT" "$CERT_DIR/privkey.pem" 2>/dev/null || true
     else
-        # Vérifier expiration (> 7 jours)
-        if openssl x509 -checkend 604800 -noout -in "$EXISTING_CERT" 2>/dev/null; then
-            log_success "✓ Certificat valide détecté (émis par CA, non expiré)"
-            VALID_CERT_EXISTS=true
+        # Extract CN (Common Name) from subject and issuer for comparison
+        subject_cn=$(echo "$subject" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1 | tr -d ' ')
+        issuer_cn=$(echo "$issuer" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1 | tr -d ' ')
+
+        # Check if it's a Let's Encrypt certificate (proper validation)
+        if [[ "$issuer" =~ "Let's Encrypt" ]] || [[ "$issuer_cn" =~ ^(R3|R10|R11|E1|E2)$ ]]; then
+            # Valid Let's Encrypt certificate
+            if openssl x509 -checkend 604800 -noout -in "$EXISTING_CERT" 2>/dev/null; then
+                log_success "✓ Certificat Let's Encrypt valide détecté (non expiré)"
+                VALID_CERT_EXISTS=true
+            else
+                log_warn "⚠️  Certificat Let's Encrypt existant mais expiré ou proche de l'expiration"
+                log_info "    Un nouveau certificat sera obtenu en Phase 6.5"
+            fi
+        elif [[ "$subject_cn" == "$issuer_cn" ]] || [[ "$subject" == "$issuer" ]]; then
+            # Self-signed certificate
+            log_warn "⚠️  Certificat AUTO-SIGNÉ détecté - sera ignoré"
+            log_warn "    Issuer CN: $issuer_cn (même que le sujet)"
+            log_warn "    Les certificats auto-signés causent des alertes de sécurité"
+            log_info "    Un nouveau certificat Let's Encrypt sera obtenu en Phase 6.5"
+            # Supprimer le certificat auto-signé pour forcer le mode ACME bootstrap
+            rm -f "$EXISTING_CERT" "$CERT_DIR/privkey.pem" 2>/dev/null || true
         else
-            log_warn "⚠️  Certificat existant mais expiré ou proche de l'expiration"
-            log_info "    Un nouveau certificat sera obtenu en Phase 6.5"
+            # Certificate from another CA
+            if openssl x509 -checkend 604800 -noout -in "$EXISTING_CERT" 2>/dev/null; then
+                log_success "✓ Certificat valide détecté (émis par CA: $issuer_cn, non expiré)"
+                VALID_CERT_EXISTS=true
+            else
+                log_warn "⚠️  Certificat existant mais expiré ou proche de l'expiration"
+                log_info "    Un nouveau certificat sera obtenu en Phase 6.5"
+            fi
         fi
     fi
 fi
@@ -1002,19 +1020,33 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
         log_success "✓ Certificat Let's Encrypt obtenu avec succès"
 
         # ══════════════════════════════════════════════════════════════════
-        # VÉRIFICATION STRICTE: Le certificat ne doit PAS être auto-signé
+        # VÉRIFICATION STRICTE: Le certificat DOIT être émis par Let's Encrypt
         # ══════════════════════════════════════════════════════════════════
         FINAL_CERT="$CERT_DIR/fullchain.pem"
         if [[ -f "$FINAL_CERT" ]]; then
             final_subject=$(openssl x509 -noout -subject -in "$FINAL_CERT" 2>/dev/null || echo "")
             final_issuer=$(openssl x509 -noout -issuer -in "$FINAL_CERT" 2>/dev/null || echo "")
 
-            if [[ "$final_subject" == "$final_issuer" ]] && [[ -n "$final_subject" ]]; then
+            # Extract CN (Common Name) for precise validation
+            cert_cn=$(echo "$final_subject" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1 | tr -d ' ')
+            cert_issuer_cn=$(echo "$final_issuer" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1 | tr -d ' ')
+            cert_expiry=$(openssl x509 -noout -enddate -in "$FINAL_CERT" 2>/dev/null | cut -d'=' -f2)
+
+            # CRITICAL FIX: Properly validate Let's Encrypt certificate
+            # Check if issuer is Let's Encrypt (not self-signed)
+            if [[ "$final_issuer" =~ "Let's Encrypt" ]] || [[ "$cert_issuer_cn" =~ ^(R3|R10|R11|E1|E2)$ ]]; then
+                # Valid Let's Encrypt certificate
+                log_success "✓ Certificat Let's Encrypt valide obtenu"
+                log_info "  Domaine: $cert_cn"
+                log_info "  Émetteur: $cert_issuer_cn (Let's Encrypt)"
+                log_info "  Expiration: $cert_expiry"
+            elif [[ "$cert_cn" == "$cert_issuer_cn" ]] || [[ "$final_subject" == "$final_issuer" ]]; then
+                # Self-signed certificate detected
                 log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 log_error "❌ ERREUR CRITIQUE: Le certificat obtenu est AUTO-SIGNÉ"
                 log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                log_error "Subject: $final_subject"
-                log_error "Issuer:  $final_issuer"
+                log_error "Subject CN: $cert_cn"
+                log_error "Issuer CN:  $cert_issuer_cn"
                 log_error ""
                 log_error "Ce n'est PAS un certificat Let's Encrypt valide."
                 log_error "Le setup ne peut pas continuer avec un certificat auto-signé."
@@ -1025,16 +1057,19 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
                 log_error "   3. Relancez: $LETSENCRYPT_SCRIPT --force"
                 log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 exit 1
+            else
+                # Certificate from unknown CA
+                log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                log_warn "⚠️  AVERTISSEMENT: Certificat d'une CA inconnue"
+                log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                log_warn "Domaine: $cert_cn"
+                log_warn "Émetteur: $cert_issuer_cn"
+                log_warn "Expiration: $cert_expiry"
+                log_warn ""
+                log_warn "Attendu: Certificat émis par Let's Encrypt (CN=R3, R10, R11, E1, ou E2)"
+                log_warn "Le certificat sera utilisé mais pourrait ne pas être optimal."
+                log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             fi
-
-            # Afficher les détails du certificat valide
-            cert_cn=$(echo "$final_subject" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1)
-            cert_issuer_cn=$(echo "$final_issuer" | sed 's/.*CN\s*=\s*//' | cut -d',' -f1)
-            cert_expiry=$(openssl x509 -noout -enddate -in "$FINAL_CERT" 2>/dev/null | cut -d'=' -f2)
-            log_success "✓ Certificat vérifié - NON auto-signé"
-            log_info "  Domaine: $cert_cn"
-            log_info "  Émetteur: $cert_issuer_cn"
-            log_info "  Expiration: $cert_expiry"
         fi
 
         # ══════════════════════════════════════════════════════════════════
