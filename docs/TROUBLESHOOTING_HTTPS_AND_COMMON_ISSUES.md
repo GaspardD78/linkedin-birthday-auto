@@ -10,6 +10,7 @@ This guide addresses the most common issues found in the LinkedIn Birthday Auto 
 4. [API Health Check 404 Error](#4-api-health-check-404-error)
 5. [HAProxy Timeout Warning](#5-haproxy-timeout-warning)
 6. [OpenTelemetry Warning](#6-opentelemetry-warning)
+7. [Docker Image Pull Failures (Raspberry Pi 4 / ARM64)](#7-docker-image-pull-failures-raspberry-pi-4--arm64)
 
 ---
 
@@ -461,6 +462,180 @@ Set environment variable:
 # In .env or docker-compose.yml
 ENABLE_TELEMETRY=false
 ```
+
+---
+
+## 7. Docker Image Pull Failures (Raspberry Pi 4 / ARM64)
+
+### Symptom
+
+During Phase 6 (Docker Deployment), the setup shows warnings:
+
+```
+⚠ [WARN]   ⚠ docker-socket-proxy - échec (non bloquant)
+⚠ [WARN]   ⚠ nginx - échec (non bloquant)
+⚠ [WARN]   ⚠ dozzle - échec (non bloquant)
+⚠ [WARN]   3/8 images en échec (retry au démarrage)
+```
+
+And the progress bar shows:
+```
+└─ ⚠ Déploiement Docker incomplet (6/7)
+```
+
+### Root Cause
+
+This issue has two components:
+
+**1. Progress Bar Count Mismatch**
+- The script was initialized with 7 steps but only 6 were implemented
+- **Fixed in latest version**: Progress bar now correctly shows 6/6
+
+**2. Image Pull Failures on ARM64**
+- Raspberry Pi 4 uses ARM64 architecture (aarch64)
+- Docker images must support ARM64/ARM architectures
+- Temporary network issues or rate limiting from Docker Hub
+- Images not being pulled from correct architecture variant
+
+### Impact
+
+- **Progress bar issue**: Cosmetic only - all steps complete successfully
+- **Image pull failures**: Critical services (nginx, api) may fail to start if images weren't pulled
+
+### Solution
+
+#### For Progress Bar Issue
+
+**Already Fixed** in the latest codebase. If you see "6/7" instead of "7/7":
+
+```bash
+git pull origin claude/letsencrypt-certificates-aNlS3
+```
+
+The fix changes `progress_init "Déploiement Docker" 7` to `6`.
+
+#### For Image Pull Failures on Pi4
+
+**Step 1: Verify Docker Architecture Support**
+
+```bash
+# Check current architecture
+uname -m
+# Should show: aarch64 (ARM64) or armv7l (ARM 32-bit)
+
+# Check Docker version (must support ARM)
+docker version | grep -i arch
+```
+
+**Step 2: Manually Pull Critical Images**
+
+```bash
+cd /home/gaspard/linkedin-birthday-auto
+
+# Pull images manually with retry
+docker pull nginx:alpine
+docker pull tecnativa/docker-socket-proxy:latest
+docker pull amir20/dozzle:latest
+
+# Verify architecture
+docker image inspect nginx:alpine | grep -i architecture
+# Should show: "Architecture": "arm64" or "arm"
+```
+
+**Step 3: Check Running Containers**
+
+```bash
+docker compose ps
+
+# If nginx or other services show "Exit" status, restart them:
+docker compose restart nginx
+docker compose restart api
+docker compose restart dashboard
+```
+
+**Step 4: Check Container Logs for ARM-specific Issues**
+
+```bash
+# Check if containers are failing due to architecture mismatch
+docker compose logs nginx --tail 20
+docker compose logs api --tail 20
+
+# Common ARM errors:
+# - "exec format error" → wrong architecture
+# - "no matching manifest" → image doesn't support ARM64
+```
+
+#### Prevention (Latest Code)
+
+The fixes in this commit include:
+
+1. **Automatic Critical Service Restart** (setup.sh:992-1004)
+   - Detects ARM architecture
+   - Automatically retries failed critical services (nginx, api, dashboard)
+
+2. **ARM64 Warning Messages** (scripts/lib/docker.sh:147-154)
+   - Displays helpful diagnostics when image pulls fail on ARM
+   - Provides troubleshooting commands
+
+3. **Correct Progress Bar** (setup.sh:937)
+   - Shows accurate 6/6 step completion
+
+### Verification
+
+After applying fixes or manual intervention:
+
+```bash
+# All containers should show "Up"
+docker compose ps
+
+# Should show 8/8 containers running
+docker compose ps --status running | wc -l
+
+# Test nginx is serving requests
+curl -I http://localhost
+
+# Should return: HTTP/1.1 200 OK or 30x redirect
+```
+
+### Troubleshooting ARM-specific Issues
+
+If images continue failing:
+
+**1. Check Docker Hub Rate Limits**
+```bash
+# Docker Hub limits: 100 pulls/6h for anonymous users
+# Solution: Login to Docker Hub
+docker login
+
+# Or use authenticated pulls
+```
+
+**2. Use ARM-specific Image Tags**
+```bash
+# Some images have explicit ARM tags
+# Edit docker-compose.yml if needed:
+nginx:alpine-arm64v8  # Explicit ARM tag
+```
+
+**3. Check Available Disk Space**
+```bash
+df -h /var/lib/docker
+# Pi4 SD cards fill up quickly
+# Clean old images: docker image prune -a
+```
+
+**4. Verify Network Stability**
+```bash
+# Test Docker Hub connectivity
+curl -I https://registry-1.docker.io/v2/
+
+# Should return: HTTP/2 200 or 401 (auth required)
+```
+
+### Additional Resources
+
+- [Docker Hub Official Images ARM Support](https://www.docker.com/blog/multi-arch-images/)
+- [Raspberry Pi Docker Guide](https://docs.docker.com/engine/install/debian/)
 
 ---
 

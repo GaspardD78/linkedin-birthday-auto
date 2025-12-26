@@ -933,8 +933,8 @@ MONITORING_ENABLED="false"
 setup_state_set_config "monitoring_enabled" "false"
 
 # Initialiser la barre de progression pour la phase 6
-# 7 étapes : Env, Config, Clean Img, Pull, Start, Check, Prune
-progress_init "Déploiement Docker" 7
+# 6 étapes : Env, Config, Pull, Start, Check, Prune
+progress_init "Déploiement Docker" 6
 
 # Étape 1: Validation de l'environnement
 progress_step "Validation de l'environnement"
@@ -988,6 +988,21 @@ progress_step "Vérification des conteneurs"
 sleep 5 # Délai accru pour stabilisation
 RUNNING_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
 TOTAL_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | wc -l)
+
+# Raspberry Pi 4 specific: Check for failed critical services
+if [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "armv7l" ]]; then
+    CRITICAL_SERVICES=("nginx" "api" "dashboard")
+    for svc in "${CRITICAL_SERVICES[@]}"; do
+        if ! $DOCKER_CMD -f "$COMPOSE_FILE" ps "$svc" 2>/dev/null | grep -q "Up"; then
+            log_warn "⚠️  Service critique $svc non démarré (ARM64/Pi4)"
+            log_info "    Tentative de redémarrage..."
+            $DOCKER_CMD -f "$COMPOSE_FILE" restart "$svc" 2>/dev/null || true
+            sleep 3
+        fi
+    done
+    RUNNING_CONTAINERS=$($DOCKER_CMD -f "$COMPOSE_FILE" ps --status running --quiet 2>/dev/null | wc -l)
+fi
+
 progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
 
 # Étape 6: Nettoyage final
