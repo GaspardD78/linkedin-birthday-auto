@@ -1,10 +1,14 @@
 # 📘 DOCUMENT MAÎTRE DU PROJET - LinkedIn Birthday Auto (RPi4)
 
-**Version du document :** 2.0 (Architecture V2)
-**Date de mise à jour :** 18 Décembre 2025
+**Version du document :** 3.0 (Production V1 + V2 Alternative)
+**Date de mise à jour :** 25 Décembre 2025
 **Statut :** Référence Principale
 
 Ce document consolide l'ensemble des informations techniques, fonctionnelles et architecturales du projet. Il sert de source de vérité unique pour les développeurs et administrateurs.
+
+⚠️ **Note Importante:**
+- **V1 (Production)** : Architecture éprouvée, déployée en production sur Raspberry Pi 4, version 4.1 stable
+- **V2 (Alternative)** : Refonte async-first en développement dans `./app_v2/`, non recommandée pour production sans corrections sécurité
 
 ---
 
@@ -38,7 +42,7 @@ Le projet **LinkedIn Birthday Auto** est une suite d'automatisation "Set & Forge
 
 ---
 
-## 3. 🏗️ Architecture Technique (V2)
+## 3. 🏗️ Architecture Technique (V1 - Production)
 
 Le système utilise une architecture découplée orchestrée par **Docker Compose**.
 
@@ -177,9 +181,54 @@ L'installation et la maintenance reposent sur le script maître `setup.sh`.
 
 ---
 
-## 8. 🛡️ Sécurité
+## 8. 🛡️ Sécurité (V1)
 
 *   **Session Injection :** Pas de login/password LinkedIn stockés. Utilisation de cookies de session injectés.
 *   **Isolation :** Le Worker tourne dans un conteneur non-privilégié.
 *   **Chiffrement :** HTTPS forcé, Backups chiffrés.
 *   **Validation :** Pydantic V2 pour valider toutes les entrées API et Config.
+
+---
+
+## 9. 🔄 Architecture V2 (Alternative - En Développement)
+
+**Statut :** 🔄 En développement dans `./app_v2/` - **Non recommandée pour production sans corrections**
+
+### Différences Clés vs V1
+
+| Aspect | V1 | V2 |
+|--------|----|----|
+| **Approche** | Synchrone + RQ (workers) | Async-first avec asyncio |
+| **Framework** | FastAPI (sync) | FastAPI (async) + SQLAlchemy async |
+| **Queue** | Redis + RQ | En développement |
+| **Database** | SQLite (sync) | SQLite async + NullPool |
+| **Code Quality** | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Sécurité** | ⭐⭐⭐⭐ | ⭐⭐ (problématique) |
+| **Tests** | Limités | Aucun (critique) |
+| **Production Ready** | ✅ OUI | ⚠️ NON |
+
+### Points Positifs V2
+- Architecture moderne et async-first (meilleur pattern Python)
+- Code plus propre avec SQLAlchemy ORM
+- Potentiel de meilleure scalabilité
+- Séparation claire des responsabilités
+
+### Problèmes Critiques V2
+- **Sécurité** : Vulnérabilités identifiées dans la gestion des données et l'authentification
+- **Tests** : Aucun test unitaire (critique avant production)
+- **Documentation** : Incomplète pour le déploiement
+- **Robustesse** : Manque de retry logic et gestion d'erreurs complète
+
+### Verdict
+**V2 offre une architecture excellente** mais nécessite :
+1. Audit sécurité complet et corrections
+2. Suite de tests complète
+3. Gestion des erreurs et retry logic robuste
+4. Documentation opérationnelle complète
+
+👉 **Voir :** [APP_V2_ANALYSIS_REPORT.md](APP_V2_ANALYSIS_REPORT.md) pour l'analyse détaillée.
+
+### Pour Développeurs Intéressés
+- Code situé dans : `./app_v2/`
+- Contribution : Bienvenue mais DOIT passer audit sécurité avant production
+- Recommandation : Commencer par étudier V1 pour comprendre la logique métier
