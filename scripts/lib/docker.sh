@@ -143,6 +143,15 @@ _docker_pull_parallel() {
         log_success "✓ Images tierces synchronisées"
     else
         log_warn "  ${failed}/${#services[@]} images en échec (retry au démarrage)"
+
+        # Raspberry Pi 4 specific: Warn about critical ARM64 compatibility
+        if [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "armv7l" ]]; then
+            log_warn "  ℹ️  Architecture ARM détectée (Raspberry Pi)"
+            log_warn "     Si nginx/api échouent au démarrage, vérifiez:"
+            log_warn "     - Connexion Internet stable pour Docker Hub"
+            log_warn "     - docker pull nginx:alpine (test manuel)"
+            log_warn "     - docker images | grep 'arm' (architecture)"
+        fi
     fi
 
     return 0
