@@ -7,17 +7,18 @@
 set -euo pipefail
 
 # === COLORS & FORMATTING ===
+# Guard against multiple sourcing or pre-existing readonly declarations
 
-readonly BLUE='\033[0;34m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly RED='\033[0;31m'
-readonly CYAN='\033[0;36m'
-readonly MAGENTA='\033[0;35m'
-readonly NC='\033[0m'
-readonly BOLD='\033[1m'
-readonly DIM='\033[2m'
-readonly UNDERLINE='\033[4m'
+[[ -v BLUE ]] || readonly BLUE='\033[0;34m'
+[[ -v GREEN ]] || readonly GREEN='\033[0;32m'
+[[ -v YELLOW ]] || readonly YELLOW='\033[1;33m'
+[[ -v RED ]] || readonly RED='\033[0;31m'
+[[ -v CYAN ]] || readonly CYAN='\033[0;36m'
+[[ -v MAGENTA ]] || readonly MAGENTA='\033[0;35m'
+[[ -v NC ]] || readonly NC='\033[0m'
+[[ -v BOLD ]] || readonly BOLD='\033[1m'
+[[ -v DIM ]] || readonly DIM='\033[2m'
+[[ -v UNDERLINE ]] || readonly UNDERLINE='\033[4m'
 
 # === LOGGING DUAL-OUTPUT (SCREEN + FILE) ===
 
