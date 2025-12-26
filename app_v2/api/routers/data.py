@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Header, HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -10,11 +10,29 @@ from app_v2.core.config import Settings
 
 router = APIRouter(tags=["Data"])
 
+# Dependencies
+def get_settings():
+    return Settings()
+
+def verify_api_key(
+    x_api_key: Optional[str] = Header(None),
+    settings: Settings = Depends(get_settings)
+) -> Settings:
+    """Verify API key from X-API-Key header."""
+    if not x_api_key:
+        raise HTTPException(status_code=403, detail="Missing API key")
+
+    expected_key = settings.api_key.get_secret_value() if hasattr(settings.api_key, 'get_secret_value') else str(settings.api_key)
+
+    if x_api_key != expected_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    return settings
+
 # Dependency for DB Session
-async def get_db_session():
+async def get_db_session(settings: Settings = Depends(verify_api_key)):
     # Note: In a real app, this should be a proper dependency with yield
     # utilizing the session_maker from engine
-    settings = Settings()
     session_maker = get_session_maker(settings)
     async with session_maker() as session:
         yield session
