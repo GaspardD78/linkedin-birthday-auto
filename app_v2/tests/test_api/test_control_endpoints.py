@@ -17,14 +17,14 @@ class TestBirthdayEndpoint:
 
     def test_birthday_endpoint_requires_auth(self, test_client):
         """Test that birthday endpoint requires API key."""
-        response = test_client.post("/control/birthday")
+        response = test_client.post("/campaigns/birthday")
 
         assert response.status_code == 403
 
     def test_birthday_endpoint_dry_run(self, test_client, test_settings):
         """Test birthday campaign in dry-run mode."""
         with patch(
-            "app_v2.services.birthday_service.BirthdayService.send_birthday_messages"
+            "app_v2.services.birthday_service.BirthdayService.run_daily_campaign"
         ) as mock_send:
             mock_send.return_value = Mock(
                 contacts_found=5,
@@ -34,9 +34,9 @@ class TestBirthdayEndpoint:
             )
 
             response = test_client.post(
-                "/control/birthday",
+                "/campaigns/birthday",
                 json={"dry_run": True},
-                headers={"X-API-Key": test_settings.api_key},
+                headers={"X-API-Key": test_settings.api_key.get_secret_value()},
             )
 
             assert response.status_code in [200, 500]  # May fail without full setup
@@ -45,9 +45,9 @@ class TestBirthdayEndpoint:
     def test_birthday_endpoint_invalid_request(self, test_client, test_settings):
         """Test birthday endpoint with invalid request."""
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             json={"invalid_field": "value"},
-            headers={"X-API-Key": test_settings.api_key},
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # Should accept request (invalid fields are ignored due to no strict model)
@@ -57,12 +57,12 @@ class TestBirthdayEndpoint:
         """Test birthday request schema validation."""
         # Valid request
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             json={
                 "dry_run": True,
                 "target_date": "2025-01-15",
             },
-            headers={"X-API-Key": test_settings.api_key},
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 500]  # May fail without browser
@@ -74,14 +74,14 @@ class TestSourcingEndpoint:
 
     def test_sourcing_endpoint_requires_auth(self, test_client):
         """Test that sourcing endpoint requires API key."""
-        response = test_client.post("/control/sourcing")
+        response = test_client.post("/campaigns/sourcing")
 
         assert response.status_code == 403
 
     def test_sourcing_endpoint_dry_run(self, test_client, test_settings):
         """Test sourcing in dry-run mode."""
         with patch(
-            "app_v2.services.visitor_service.VisitorService.visit_profiles"
+            "app_v2.services.visitor_service.VisitorService.run_sourcing"
         ) as mock_visit:
             mock_visit.return_value = Mock(
                 profiles_found=10,
@@ -91,12 +91,12 @@ class TestSourcingEndpoint:
             )
 
             response = test_client.post(
-                "/control/sourcing",
+                "/campaigns/sourcing",
                 json={
                     "dry_run": True,
                     "criteria": {"location": "Paris"},
                 },
-                headers={"X-API-Key": test_settings.api_key},
+                headers={"X-API-Key": test_settings.api_key.get_secret_value()},
             )
 
             assert response.status_code in [200, 500]
@@ -104,7 +104,7 @@ class TestSourcingEndpoint:
     def test_sourcing_endpoint_with_criteria(self, test_client, test_settings):
         """Test sourcing with search criteria."""
         response = test_client.post(
-            "/control/sourcing",
+            "/campaigns/sourcing",
             json={
                 "dry_run": True,
                 "criteria": {
@@ -112,7 +112,7 @@ class TestSourcingEndpoint:
                     "location": "France",
                 },
             },
-            headers={"X-API-Key": test_settings.api_key},
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 422, 500]
@@ -125,7 +125,7 @@ class TestControlErrorHandling:
     def test_invalid_api_key(self, test_client):
         """Test request with invalid API key."""
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             json={"dry_run": True},
             headers={"X-API-Key": "invalid-key"},
         )
@@ -135,7 +135,7 @@ class TestControlErrorHandling:
     def test_missing_api_key_header(self, test_client):
         """Test request without API key header."""
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             json={"dry_run": True},
         )
 
@@ -144,10 +144,10 @@ class TestControlErrorHandling:
     def test_malformed_json(self, test_client, test_settings):
         """Test request with malformed JSON."""
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             data="not valid json",
             headers={
-                "X-API-Key": test_settings.api_key,
+                "X-API-Key": test_settings.api_key.get_secret_value(),
                 "Content-Type": "application/json",
             },
         )
@@ -167,9 +167,9 @@ class TestControlEndpointIntegration:
         # This test would require full rate limiter integration
         # For now, we test that the endpoint exists
         response = test_client.post(
-            "/control/birthday",
+            "/campaigns/birthday",
             json={"dry_run": True},
-            headers={"X-API-Key": test_settings.api_key},
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # Should not fail with 404
@@ -185,5 +185,5 @@ class TestControlEndpointIntegration:
         paths = openapi_spec.get("paths", {})
 
         # Verify endpoints are documented
-        assert "/control/birthday" in paths
-        assert "/control/sourcing" in paths
+        assert "/campaigns/birthday" in paths
+        assert "/campaigns/sourcing" in paths

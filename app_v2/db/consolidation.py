@@ -99,12 +99,14 @@ class ConsolidationMigration:
             for i, msg in enumerate(messages):
                 try:
                     # Skip if already migrated (check for duplicate)
+                    # Simplified duplicate check using only contact_id and type
+                    # JSON path queries have limited SQLite support
                     if msg.contact_id:
                         existing = await session.execute(
                             select(Interaction).where(
                                 (Interaction.contact_id == msg.contact_id)
                                 & (Interaction.type == "birthday_sent")
-                                & (Interaction.payload["contact_name"].astext == msg.contact_name)
+                                & (Interaction.created_at == msg.created_at)
                             )
                         )
                         if existing.scalar():

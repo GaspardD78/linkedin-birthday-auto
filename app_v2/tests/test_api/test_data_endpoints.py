@@ -18,7 +18,7 @@ class TestContactsEndpoint:
     @pytest.mark.asyncio
     async def test_get_contacts_requires_auth(self, test_client):
         """Test that contacts endpoint requires API key."""
-        response = test_client.get("/data/contacts")
+        response = test_client.get("/contacts")
 
         assert response.status_code == 403
 
@@ -26,8 +26,8 @@ class TestContactsEndpoint:
     async def test_get_contacts_empty_database(self, test_client, test_settings):
         """Test getting contacts from empty database."""
         response = test_client.get(
-            "/data/contacts",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # May succeed with empty list or fail without proper setup
@@ -62,8 +62,8 @@ class TestContactsEndpoint:
         # Query endpoint
         # Note: This may fail because test_client doesn't use test_db_session
         response = test_client.get(
-            "/data/contacts",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # Endpoint should at least be reachable
@@ -72,8 +72,8 @@ class TestContactsEndpoint:
     def test_get_contacts_with_filters(self, test_client, test_settings):
         """Test contacts endpoint with status filter."""
         response = test_client.get(
-            "/data/contacts?status=new",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts?status=new",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 422, 500]
@@ -81,8 +81,8 @@ class TestContactsEndpoint:
     def test_get_contacts_with_pagination(self, test_client, test_settings):
         """Test contacts endpoint with pagination parameters."""
         response = test_client.get(
-            "/data/contacts?skip=0&limit=10",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts?skip=0&limit=10",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 500]
@@ -94,15 +94,15 @@ class TestInteractionsEndpoint:
 
     def test_get_interactions_requires_auth(self, test_client):
         """Test that interactions endpoint requires API key."""
-        response = test_client.get("/data/interactions")
+        response = test_client.get("/interactions")
 
         assert response.status_code == 403
 
     def test_get_interactions_empty_database(self, test_client, test_settings):
         """Test getting interactions from empty database."""
         response = test_client.get(
-            "/data/interactions",
-            headers={"X-API-Key": test_settings.api_key},
+            "/interactions",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 500]
@@ -110,8 +110,8 @@ class TestInteractionsEndpoint:
     def test_get_interactions_with_contact_filter(self, test_client, test_settings):
         """Test interactions endpoint filtered by contact_id."""
         response = test_client.get(
-            "/data/interactions?contact_id=1",
-            headers={"X-API-Key": test_settings.api_key},
+            "/interactions?contact_id=1",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 422, 500]
@@ -119,8 +119,8 @@ class TestInteractionsEndpoint:
     def test_get_interactions_with_type_filter(self, test_client, test_settings):
         """Test interactions endpoint filtered by type."""
         response = test_client.get(
-            "/data/interactions?type=birthday_sent",
-            headers={"X-API-Key": test_settings.api_key},
+            "/interactions?type=birthday_sent",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 422, 500]
@@ -128,8 +128,8 @@ class TestInteractionsEndpoint:
     def test_get_interactions_with_pagination(self, test_client, test_settings):
         """Test interactions endpoint with pagination."""
         response = test_client.get(
-            "/data/interactions?skip=0&limit=20",
-            headers={"X-API-Key": test_settings.api_key},
+            "/interactions?skip=0&limit=20",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         assert response.status_code in [200, 500]
@@ -142,8 +142,8 @@ class TestDataEndpointErrorHandling:
     def test_invalid_pagination_params(self, test_client, test_settings):
         """Test data endpoints with invalid pagination."""
         response = test_client.get(
-            "/data/contacts?skip=-1&limit=0",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts?skip=-1&limit=0",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # Should fail validation
@@ -152,8 +152,8 @@ class TestDataEndpointErrorHandling:
     def test_large_pagination_limit(self, test_client, test_settings):
         """Test data endpoints with very large limit."""
         response = test_client.get(
-            "/data/contacts?limit=10000",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts?limit=10000",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         # Should either accept or reject based on max limit
@@ -161,7 +161,7 @@ class TestDataEndpointErrorHandling:
 
     def test_missing_required_headers(self, test_client):
         """Test data endpoints without API key."""
-        endpoints = ["/data/contacts", "/data/interactions"]
+        endpoints = ["/contacts", "/interactions"]
 
         for endpoint in endpoints:
             response = test_client.get(endpoint)
@@ -175,8 +175,8 @@ class TestDataEndpointIntegration:
     def test_contacts_endpoint_schema(self, test_client, test_settings):
         """Test that contacts endpoint returns valid schema."""
         response = test_client.get(
-            "/data/contacts",
-            headers={"X-API-Key": test_settings.api_key},
+            "/contacts",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         if response.status_code == 200:
@@ -186,8 +186,8 @@ class TestDataEndpointIntegration:
     def test_interactions_endpoint_schema(self, test_client, test_settings):
         """Test that interactions endpoint returns valid schema."""
         response = test_client.get(
-            "/data/interactions",
-            headers={"X-API-Key": test_settings.api_key},
+            "/interactions",
+            headers={"X-API-Key": test_settings.api_key.get_secret_value()},
         )
 
         if response.status_code == 200:
@@ -203,5 +203,5 @@ class TestDataEndpointIntegration:
         openapi_spec = response.json()
         paths = openapi_spec.get("paths", {})
 
-        assert "/data/contacts" in paths
-        assert "/data/interactions" in paths
+        assert "/contacts" in paths
+        assert "/interactions" in paths

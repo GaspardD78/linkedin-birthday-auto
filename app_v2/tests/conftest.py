@@ -126,9 +126,22 @@ async def test_redis_mock():
 # =========================================================================
 
 @pytest.fixture
-def test_client():
-    """Test client for FastAPI app."""
-    return TestClient(app)
+def test_client(test_settings):
+    """Test client for FastAPI app with dependency overrides."""
+    from app_v2.core.config import Settings
+    from app_v2.api.routers.control import get_settings
+
+    # Override settings dependency
+    def override_get_settings():
+        return test_settings
+
+    app.dependency_overrides[get_settings] = override_get_settings
+
+    with TestClient(app) as client:
+        yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
 
 
 # =========================================================================
