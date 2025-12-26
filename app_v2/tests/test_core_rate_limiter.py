@@ -187,7 +187,7 @@ class TestRateLimiterQuotaTracking:
         # Check Redis counter was incremented
         key = limiter._get_daily_key()
         count = await test_redis_mock.get(key)
-        assert count == "1"
+        assert count == b"1"
 
     async def test_record_message_stores_interaction(
         self, test_db_session, test_settings, test_redis_mock
