@@ -5,10 +5,11 @@ This guide addresses the most common issues found in the LinkedIn Birthday Auto 
 ## Table of Contents
 
 1. [HTTPS Certificate Warning (Temporary Certificate)](#1-https-certificate-warning)
-2. [Login/Password Input Issues](#2-loginpassword-input-issues)
-3. [API Health Check 404 Error](#3-api-health-check-404-error)
-4. [HAProxy Timeout Warning](#4-haproxy-timeout-warning)
-5. [OpenTelemetry Warning](#5-opentelemetry-warning)
+2. [Let's Encrypt ACME Challenge Failure](#2-lets-encrypt-acme-challenge-failure)
+3. [Login/Password Input Issues](#3-loginpassword-input-issues)
+4. [API Health Check 404 Error](#4-api-health-check-404-error)
+5. [HAProxy Timeout Warning](#5-haproxy-timeout-warning)
+6. [OpenTelemetry Warning](#6-opentelemetry-warning)
 
 ---
 
@@ -141,7 +142,126 @@ If behind CG-NAT or cannot forward ports, use Cloudflare Tunnel:
 
 ---
 
-## 2. Login/Password Input Issues
+## 2. Let's Encrypt ACME Challenge Failure
+
+### Symptom
+
+When running `setup.sh` or `scripts/setup_letsencrypt.sh`, you see:
+
+```
+[ERROR] ❌ Nginx ne peut PAS servir les fichiers ACME challenge
+[ERROR] ❌ ÉCHEC CRITIQUE: Impossible d'obtenir un certificat Let's Encrypt
+```
+
+The diagnostic shows that port 80 is accessible and DNS resolves correctly, but the ACME challenge test fails.
+
+### Root Cause
+
+The Nginx configuration is not using the ACME bootstrap template, which includes the critical `location /.well-known/acme-challenge/` block needed for Let's Encrypt validation. This typically happens when:
+
+1. The setup script was interrupted before Phase 5.1 completed
+2. The Nginx configuration was manually overwritten with the wrong template
+3. The `linkedin-bot.conf` file is using the default LAN template instead of ACME bootstrap
+
+### How to Identify
+
+Check the current Nginx configuration:
+
+```bash
+head -5 deployment/nginx/linkedin-bot.conf
+```
+
+**Incorrect (LAN mode)**:
+```
+# Configuration Nginx - LinkedIn Birthday Auto Bot (DEFAULT - LAN MODE)
+```
+
+**Correct (ACME bootstrap)**:
+```
+# Configuration Nginx - LinkedIn Birthday Auto Bot (MODE ACME BOOTSTRAP)
+```
+
+### Solution
+
+#### Quick Fix
+
+Regenerate the ACME bootstrap configuration:
+
+```bash
+cd /home/gaspard/linkedin-birthday-auto
+
+# Generate ACME bootstrap config
+DOMAIN=gaspardanoukolivier.freeboxos.fr
+sed "s/\${DOMAIN}/$DOMAIN/g" deployment/nginx/linkedin-bot-acme-bootstrap.conf.template > deployment/nginx/linkedin-bot.conf
+
+# For freeboxos.fr domains, remove www subdomain (not supported)
+sed -i "s/ www\.${DOMAIN}//g" deployment/nginx/linkedin-bot.conf
+
+# Create ACME challenge directory
+mkdir -p certbot/www/.well-known/acme-challenge
+chmod -R 755 certbot
+
+# Restart Nginx
+docker compose restart nginx
+
+# Wait 5 seconds for Nginx to fully start
+sleep 5
+
+# Retry Let's Encrypt
+./scripts/setup_letsencrypt.sh --force
+```
+
+#### Prevention
+
+The issue has been fixed in the codebase (commits after this documentation). The `setup.sh` script now:
+- Automatically selects the correct Nginx template based on certificate state
+- Removes `www` subdomain for `.freeboxos.fr` domains automatically
+- Validates Nginx can serve ACME challenges before attempting Let's Encrypt
+
+If you still encounter this issue with the latest code, please report it.
+
+### Additional Diagnostics
+
+If the fix above doesn't work, verify these conditions:
+
+**1. Check Nginx logs:**
+```bash
+docker compose logs nginx --tail 30
+```
+
+**2. Test ACME challenge serving manually:**
+```bash
+# Create test file
+echo "test" > certbot/www/.well-known/acme-challenge/test
+chmod 644 certbot/www/.well-known/acme-challenge/test
+
+# Test from host
+curl http://localhost/.well-known/acme-challenge/test
+
+# Should return "test"
+```
+
+**3. Check Docker volume mounts:**
+```bash
+docker compose exec nginx ls -la /var/www/certbot/.well-known/acme-challenge/
+
+# Should show the test file
+```
+
+**4. Verify Nginx config in container:**
+```bash
+docker compose exec nginx cat /etc/nginx/conf.d/default.conf | grep -A5 "acme-challenge"
+
+# Should show:
+#   location /.well-known/acme-challenge/ {
+#       root /var/www/certbot;
+#       allow all;
+#   }
+```
+
+---
+
+## 3. Login/Password Input Issues
 
 ### Symptom
 
@@ -182,7 +302,7 @@ If you must use HTTP temporarily:
 
 ---
 
-## 3. API Health Check 404 Error
+## 4. API Health Check 404 Error
 
 ### Symptom
 
@@ -231,7 +351,7 @@ docker compose logs nginx --tail=50 | grep "api/health"
 
 ---
 
-## 4. HAProxy Timeout Warning
+## 5. HAProxy Timeout Warning
 
 ### Symptom
 
@@ -286,7 +406,7 @@ docker compose logs docker-socket-proxy --tail=20
 
 ---
 
-## 5. OpenTelemetry Warning
+## 6. OpenTelemetry Warning
 
 ### Symptom
 

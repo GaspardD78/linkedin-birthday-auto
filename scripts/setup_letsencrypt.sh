@@ -159,6 +159,11 @@ generate_final_nginx_config() {
     else
         sed "s/\${DOMAIN}/$DOMAIN/g" "$NGINX_TEMPLATE" > "$NGINX_CONF"
     fi
+    # Fix: Remove www subdomain for freeboxos.fr (not supported)
+    if [[ "$DOMAIN" == *".freeboxos.fr" ]]; then
+        sed -i "s/ www\.${DOMAIN}//g" "$NGINX_CONF"
+        log_info "  → www subdomain removed (freeboxos.fr limitation)"
+    fi
     log_success "Configuration HTTPS générée"
 }
 
