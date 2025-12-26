@@ -156,6 +156,15 @@ def test_client(test_settings, monkeypatch):
 
     # Clean up
     app.dependency_overrides.clear()
+
+    # Properly dispose of engine before resetting
+    import asyncio
+    if db_engine._engine:
+        try:
+            asyncio.run(db_engine._engine.dispose())
+        except:
+            pass
+
     # Reset engine state again after test
     db_engine._engine = None
     db_engine._session_maker = None
