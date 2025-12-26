@@ -143,7 +143,11 @@ fi
 # Permissions (UID 1000)
 log_info "Application des permissions (UID 1000)..."
 mkdir -p "$CERT_ROOT/conf" "$CERT_ROOT/www" "$CERT_ROOT/logs" "$CERT_ROOT/work"
+mkdir -p "$WEBROOT/.well-known/acme-challenge"
 chown -R 1000:1000 "$CERT_ROOT"
+chmod -R 755 "$CERT_ROOT"
+chmod 755 "$WEBROOT/.well-known"
+chmod 755 "$WEBROOT/.well-known/acme-challenge"
 
 # --- Fonctions Clés ---
 
@@ -259,6 +263,48 @@ if [[ "$DIAGNOSTIC_PASSED" != "true" ]]; then
     log_warn ""
     log_warn "Continuant quand même... (peut échouer)"
     log_warn ""
+fi
+
+# --- TEST NGINX WEBROOT (NOUVEAU) ---
+log_info "Test d'accès au webroot ACME via Nginx..."
+
+# Créer un fichier de test
+TEST_FILE="$WEBROOT/.well-known/acme-challenge/test-nginx-access"
+echo "nginx-acme-test-ok" > "$TEST_FILE"
+chown 1000:1000 "$TEST_FILE"
+chmod 644 "$TEST_FILE"
+
+# Standardize on command available
+DOCKER_CMD="docker compose"
+if ! command -v docker compose >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_CMD="docker-compose"
+fi
+
+# Vérifier que Nginx peut servir le fichier (attendre que Nginx soit prêt)
+sleep 2
+if curl -f -s http://localhost/.well-known/acme-challenge/test-nginx-access | grep -q "nginx-acme-test-ok"; then
+    log_success "✓ Nginx peut servir les fichiers ACME challenge"
+    rm -f "$TEST_FILE"
+else
+    log_error "❌ Nginx ne peut PAS servir les fichiers ACME challenge"
+    log_error ""
+    log_error "Diagnostic:"
+    log_error "  1. Vérifier que Nginx utilise le template ACME BOOTSTRAP:"
+    log_error "     head -5 $PROJECT_ROOT/deployment/nginx/linkedin-bot.conf"
+    log_error ""
+    log_error "  2. Vérifier les logs Nginx:"
+    log_error "     $DOCKER_CMD -f $COMPOSE_FILE logs nginx | tail -20"
+    log_error ""
+    log_error "  3. Vérifier la config Nginx dans le conteneur:"
+    log_error "     $DOCKER_CMD -f $COMPOSE_FILE exec nginx cat /etc/nginx/conf.d/default.conf | grep -A5 acme-challenge"
+    log_error ""
+    log_error "  4. Vérifier les permissions du webroot:"
+    log_error "     ls -la $WEBROOT/.well-known/acme-challenge/"
+    log_error ""
+    log_error "Si la config Nginx n'est PAS en mode ACME BOOTSTRAP, relancez:"
+    log_error "  ./setup.sh"
+    log_error ""
+    exit 1
 fi
 
 # Demander email si manquant ou défaut
