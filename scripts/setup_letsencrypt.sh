@@ -270,13 +270,13 @@ if [[ "$DIAGNOSTIC_PASSED" != "true" ]]; then
     log_warn ""
 fi
 
-# --- TEST NGINX WEBROOT (NOUVEAU) ---
+# --- TEST NGINX WEBROOT (NOUVEAU - VERSION ROBUSTE) ---
 log_info "Test d'accès au webroot ACME via Nginx..."
 
 # Créer un fichier de test
 TEST_FILE="$WEBROOT/.well-known/acme-challenge/test-nginx-access"
 echo "nginx-acme-test-ok" > "$TEST_FILE"
-chown 1000:1000 "$TEST_FILE"
+chown 1000:1000 "$TEST_FILE" 2>/dev/null || true
 chmod 644 "$TEST_FILE"
 
 # Standardize on command available
@@ -285,26 +285,67 @@ if ! command -v docker compose >/dev/null 2>&1 && command -v docker-compose >/de
     DOCKER_CMD="docker-compose"
 fi
 
-# Vérifier que Nginx peut servir le fichier (attendre que Nginx soit prêt)
-sleep 2
-if curl -f -s http://localhost/.well-known/acme-challenge/test-nginx-access | grep -q "nginx-acme-test-ok"; then
-    log_success "✓ Nginx peut servir les fichiers ACME challenge"
-    rm -f "$TEST_FILE"
+# Vérifier que le conteneur Nginx est en cours d'exécution
+log_info "Vérification de l'état du conteneur Nginx..."
+if ! $DOCKER_CMD -f "$COMPOSE_FILE" ps nginx 2>/dev/null | grep -q "Up"; then
+    log_warn "⚠️  Le conteneur Nginx n'est pas démarré. Tentative de démarrage..."
+    if ! $DOCKER_CMD -f "$COMPOSE_FILE" up -d nginx 2>/dev/null; then
+        log_error "❌ Impossible de démarrer le conteneur Nginx"
+        log_error "Vérifiez les logs: $DOCKER_CMD -f $COMPOSE_FILE logs nginx"
+        exit 1
+    fi
+    log_info "Attente du démarrage de Nginx (10 secondes)..."
+    sleep 10
 else
-    log_error "❌ Nginx ne peut PAS servir les fichiers ACME challenge"
+    log_success "✓ Conteneur Nginx actif"
+fi
+
+# Test robuste avec retry (attendre que Nginx soit prêt)
+log_info "Test d'accès au fichier ACME challenge (avec retry)..."
+TEST_SUCCESS=false
+MAX_RETRIES=5
+RETRY_DELAY=3
+
+for attempt in $(seq 1 $MAX_RETRIES); do
+    log_info "  Tentative $attempt/$MAX_RETRIES..."
+
+    # Essayer plusieurs URLs (localhost, 127.0.0.1, IP locale)
+    for url in "http://localhost" "http://127.0.0.1" "http://$(hostname -I | awk '{print $1}')"; do
+        if curl -f -s --connect-timeout 5 --max-time 10 \
+           "$url/.well-known/acme-challenge/test-nginx-access" 2>/dev/null | grep -q "nginx-acme-test-ok"; then
+            log_success "✓ Nginx peut servir les fichiers ACME challenge via $url"
+            TEST_SUCCESS=true
+            break 2
+        fi
+    done
+
+    if [[ $attempt -lt $MAX_RETRIES ]]; then
+        log_warn "  Échec, attente de ${RETRY_DELAY}s avant nouvelle tentative..."
+        sleep $RETRY_DELAY
+    fi
+done
+
+# Nettoyer le fichier de test
+rm -f "$TEST_FILE"
+
+if [[ "$TEST_SUCCESS" != "true" ]]; then
+    log_error "❌ Nginx ne peut PAS servir les fichiers ACME challenge après $MAX_RETRIES tentatives"
     log_error ""
     log_error "Diagnostic:"
     log_error "  1. Vérifier que Nginx utilise le template ACME BOOTSTRAP:"
     log_error "     head -5 $PROJECT_ROOT/deployment/nginx/linkedin-bot.conf"
     log_error ""
     log_error "  2. Vérifier les logs Nginx:"
-    log_error "     $DOCKER_CMD -f $COMPOSE_FILE logs nginx | tail -20"
+    log_error "     $DOCKER_CMD -f $COMPOSE_FILE logs nginx | tail -30"
     log_error ""
     log_error "  3. Vérifier la config Nginx dans le conteneur:"
     log_error "     $DOCKER_CMD -f $COMPOSE_FILE exec nginx cat /etc/nginx/conf.d/default.conf | grep -A5 acme-challenge"
     log_error ""
     log_error "  4. Vérifier les permissions du webroot:"
     log_error "     ls -la $WEBROOT/.well-known/acme-challenge/"
+    log_error ""
+    log_error "  5. Tester manuellement l'accès ACME depuis le conteneur:"
+    log_error "     $DOCKER_CMD -f $COMPOSE_FILE exec nginx wget -O- http://localhost/.well-known/acme-challenge/test-file"
     log_error ""
     log_error "Si la config Nginx n'est PAS en mode ACME BOOTSTRAP, relancez:"
     log_error "  ./setup.sh"

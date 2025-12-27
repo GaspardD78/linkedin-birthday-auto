@@ -891,6 +891,19 @@ fi
 # Exporter la variable pour la Phase 6.5
 export PENDING_HTTPS_SWITCH
 
+# Vérifier que la configuration Nginx est valide avant de continuer
+log_info "Validation de la configuration Nginx..."
+if command -v nginx >/dev/null 2>&1; then
+    # Si nginx est installé sur l'hôte, on peut tester la config localement
+    if nginx -t -c "$NGINX_CONFIG" 2>/dev/null; then
+        log_success "✓ Configuration Nginx valide (test local)"
+    else
+        log_warn "⚠️  Test local Nginx échoué, sera vérifié dans le conteneur après démarrage"
+    fi
+else
+    log_info "  (nginx non installé sur l'hôte, validation dans le conteneur après démarrage)"
+fi
+
 # === PHASE 5.3: CONFIGURATION CRON RENOUVELLEMENT SSL ===
 
 if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
@@ -1004,6 +1017,24 @@ if [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "armv7l" ]]; then
 fi
 
 progress_done "${RUNNING_CONTAINERS}/${TOTAL_CONTAINERS} conteneurs actifs"
+
+# Vérification spéciale: Nginx doit être prêt avant la phase Let's Encrypt
+log_info "Vérification que Nginx est prêt pour ACME challenge..."
+NGINX_READY=false
+for i in {1..10}; do
+    if $DOCKER_CMD -f "$COMPOSE_FILE" exec -T nginx nginx -t 2>/dev/null; then
+        NGINX_READY=true
+        log_success "✓ Nginx opérationnel et configuration valide"
+        break
+    fi
+    log_warn "  Tentative $i/10: Nginx pas encore prêt, attente 2s..."
+    sleep 2
+done
+
+if [[ "$NGINX_READY" != "true" ]]; then
+    log_warn "⚠️  Nginx pas complètement prêt, mais on continue..."
+    log_info "Les logs Nginx: $DOCKER_CMD -f $COMPOSE_FILE logs nginx --tail=20"
+fi
 
 # Étape 6: Nettoyage final
 progress_step "Nettoyage images obsolètes"
