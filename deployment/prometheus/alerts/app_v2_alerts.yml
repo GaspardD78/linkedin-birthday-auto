@@ -1,0 +1,151 @@
+# Alert rules for LinkedIn Automation API V2
+# Phase 3: Monitoring & Observability
+
+groups:
+  - name: app_v2_alerts
+    interval: 30s
+    rules:
+      # ======================================================================
+      # API Availability Alerts
+      # ======================================================================
+      - alert: APIDown
+        expr: up{job="app-v2-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: app-v2-api
+        annotations:
+          summary: "App V2 API is down"
+          description: "App V2 API has been down for more than 1 minute."
+
+      # ======================================================================
+      # High Error Rate Alerts
+      # ======================================================================
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="app-v2-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="app-v2-api"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for the last 5 minutes."
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="app-v2-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="app-v2-api"}[5m]))
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          service: app-v2-api
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is above 10% for the last 2 minutes."
+
+      # ======================================================================
+      # High Latency Alerts
+      # ======================================================================
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="app-v2-api"}[5m])) by (le, endpoint)
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "High request latency detected"
+          description: "95th percentile latency is above 2 seconds for endpoint {{ $labels.endpoint }}."
+
+      # ======================================================================
+      # Database Alerts
+      # ======================================================================
+      - alert: DatabaseErrors
+        expr: rate(database_errors_total{job="app-v2-api"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "Database errors detected"
+          description: "Database error rate is {{ $value }} errors/sec."
+
+      # ======================================================================
+      # Redis Alerts
+      # ======================================================================
+      - alert: RedisConnectionErrors
+        expr: rate(redis_connection_errors_total{job="app-v2-api"}[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "Redis connection errors"
+          description: "Redis connection error rate is {{ $value }} errors/sec."
+
+      # ======================================================================
+      # Circuit Breaker Alerts
+      # ======================================================================
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state{job="app-v2-api"} == 1
+        for: 1m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "Circuit breaker open for {{ $labels.service }}"
+          description: "Circuit breaker for {{ $labels.service }} is open, indicating service degradation."
+
+      # ======================================================================
+      # Rate Limiting Alerts
+      # ======================================================================
+      - alert: HighRateLimitDenials
+        expr: |
+          (
+            sum(rate(rate_limit_hits_total{job="app-v2-api",result="denied"}[5m]))
+            /
+            sum(rate(rate_limit_hits_total{job="app-v2-api"}[5m]))
+          ) > 0.20
+        for: 5m
+        labels:
+          severity: info
+          service: app-v2-api
+        annotations:
+          summary: "High rate limit denial rate"
+          description: "More than 20% of requests are being rate limited."
+
+      # ======================================================================
+      # Business Metrics Alerts
+      # ======================================================================
+      - alert: BirthdayCampaignFailures
+        expr: rate(birthday_messages_sent_total{job="app-v2-api",status="failed"}[10m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "Birthday campaign failures detected"
+          description: "Birthday campaign is experiencing failures at {{ $value }} failures/sec."
+
+      - alert: SourcingCampaignStalled
+        expr: |
+          changes(profiles_visited_total{job="app-v2-api"}[15m]) == 0
+          and
+          profiles_queue_size{job="app-v2-api"} > 0
+        for: 15m
+        labels:
+          severity: warning
+          service: app-v2-api
+        annotations:
+          summary: "Sourcing campaign appears stalled"
+          description: "No profiles visited in 15 minutes but queue has {{ $value }} profiles."
