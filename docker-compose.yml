@@ -447,10 +447,13 @@ services:
   # ========================================
   # MONITORING - PROMETHEUS (PHASE 3)
   # ========================================
+  # IMPORTANT: Ce service est OPTIONNEL et consomme 256MB de RAM
+  # Pour l'activer: docker compose --profile monitoring up -d
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "9090:9090"
     volumes:
@@ -487,10 +490,13 @@ services:
   # ========================================
   # MONITORING - GRAFANA (PHASE 3)
   # ========================================
+  # IMPORTANT: Ce service est OPTIONNEL et consomme 256MB de RAM
+  # Pour l'activer: docker compose --profile monitoring up -d
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     restart: unless-stopped
+    profiles: ["monitoring"]
     ports:
       - "3001:3000"  # Port 3001 to avoid conflict with dashboard
     volumes:
