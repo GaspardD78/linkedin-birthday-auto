@@ -205,6 +205,51 @@ LOCAL_IP=$(
 )
 log_info "IP Locale détectée: $LOCAL_IP"
 
+# Vérification de l'espace disque disponible (CRITIQUE pour RPi4 SD card)
+log_info "Vérification de l'espace disque..."
+AVAILABLE_SPACE_GB=$(df -BG "$SCRIPT_DIR" | awk 'NR==2 {print $4}' | sed 's/G//')
+REQUIRED_SPACE_GB=5  # Minimum requis pour les images Docker
+
+if [[ "$AVAILABLE_SPACE_GB" =~ ^[0-9]+$ ]] && [[ "$AVAILABLE_SPACE_GB" -lt "$REQUIRED_SPACE_GB" ]]; then
+    log_error "Espace disque insuffisant: ${AVAILABLE_SPACE_GB}Go disponible (minimum ${REQUIRED_SPACE_GB}Go requis)"
+    log_error "Les images Docker peuvent nécessiter jusqu'à 3-4 Go d'espace"
+    log_warn "Solutions:"
+    log_warn "  1. Libérer de l'espace: sudo apt clean && docker system prune -a"
+    log_warn "  2. Utiliser un stockage externe (USB/SSD)"
+    exit 1
+else
+    log_success "✓ Espace disque suffisant: ${AVAILABLE_SPACE_GB}Go disponible"
+fi
+
+# Détection architecture et optimisations RPi4
+ARCH=$(uname -m)
+if [[ "$ARCH" == "aarch64" ]] || [[ "$ARCH" == "armv7l" ]]; then
+    log_info "Architecture ARM détectée ($ARCH) - Raspberry Pi"
+
+    # Vérifier la RAM disponible
+    TOTAL_RAM_MB=$(free -m | awk '/^Mem:/ {print $2}')
+    AVAILABLE_RAM_MB=$(free -m | awk '/^Mem:/ {print $7}')
+
+    log_info "RAM: ${TOTAL_RAM_MB}Mo total, ${AVAILABLE_RAM_MB}Mo disponible"
+
+    # Avertissement si < 1Go disponible
+    if [[ "$AVAILABLE_RAM_MB" -lt 1024 ]]; then
+        log_warn "⚠️  Mémoire disponible faible (< 1Go)"
+        log_warn "    Recommandation: Fermez les applications inutiles avant de continuer"
+        if ! prompt_yes_no "Continuer malgré la RAM faible ?" "y"; then
+            exit 1
+        fi
+    fi
+
+    # Vérifier si sur SD card (usure)
+    ROOT_DEVICE=$(df "$SCRIPT_DIR" | awk 'NR==2 {print $1}')
+    if [[ "$ROOT_DEVICE" == *"mmcblk"* ]]; then
+        log_warn "⚠️  Installation sur carte SD détectée ($ROOT_DEVICE)"
+        log_warn "    Les SD cards ont une durée de vie limitée avec Docker"
+        log_info "    Recommandation: Utilisez un SSD externe via USB 3.0 pour la production"
+    fi
+fi
+
 # Vérifier la connectivité internet (NOUVEAU)
 if ! check_internet_connectivity; then
     log_error "Connectivité internet requise pour continuer"
@@ -281,18 +326,38 @@ if [ "${CONFIGURE_SYSTEM_DNS}" = "true" ]; then
 
     # Vérifier si dhcpcd est actif
     if command -v dhcpcd >/dev/null 2>&1 && systemctl is-active --quiet dhcpcd; then
+        # Détecter l'interface principale (eth0 ou wlan0)
+        PRIMARY_INTERFACE=$(ip route show default | awk '/default/ {print $5}' | head -1)
+
         # Vérif configuration existante (idempotence)
         if grep -q "static domain_name_servers=8.8.8.8" /etc/dhcpcd.conf 2>/dev/null; then
             echo "✓ [OK] DNS déjà configuré (Google DNS)"
         else
-            echo "🔧 Configuration DNS permanent..."
-            sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
+            echo "🔧 Configuration DNS permanent pour interface: ${PRIMARY_INTERFACE:-auto}..."
+
+            # Configuration adaptée pour WiFi (préserve DNS local pour .freeboxos.fr)
+            if [[ "${PRIMARY_INTERFACE}" == wlan* ]]; then
+                echo "ℹ [WiFi] Configuration DNS hybride (local + publics)..."
+                # Détecter le DNS de la box (généralement 192.168.1.254 pour Freebox)
+                LOCAL_GATEWAY=$(ip route show default | awk '/default/ {print $3}' | head -1)
+                sudo tee -a /etc/dhcpcd.conf > /dev/null << EOF
+# DNS stable RPi4 WiFi - anti-timeout Docker pull (LinkedIn-bot)
+# Préserve DNS local pour domaines .freeboxos.fr + fallback publics
+interface ${PRIMARY_INTERFACE}
+static domain_name_servers=${LOCAL_GATEWAY:-192.168.1.254} 8.8.8.8 1.1.1.1
+EOF
+            else
+                # Configuration Ethernet standard
+                sudo tee -a /etc/dhcpcd.conf > /dev/null << 'EOF'
 # DNS stable RPi4 - anti-timeout Docker pull (LinkedIn-bot)
 static domain_name_servers=8.8.8.8 8.8.4.4 1.1.1.1
 EOF
-            # Redémarrage dhcpcd (pas systemctl !)
-            echo "🔄 Redémarrage réseau dhcpcd..."
-            sudo dhcpcd -n || echo "⚠️ Redémarrage dhcpcd échoué"
+            fi
+
+            # Redémarrage dhcpcd en douceur (pas de coupure réseau brutale)
+            echo "🔄 Rechargement configuration réseau..."
+            sudo killall -HUP dhcpcd 2>/dev/null || sudo dhcpcd -n || echo "⚠️ Rechargement dhcpcd échoué"
+            sleep 2
         fi
     else
         echo "ℹ [INFO] dhcpcd non détecté ou inactif. Modification ignorée."
@@ -416,8 +481,12 @@ if [[ "$SHOULD_WRITE" == "true" ]]; then
     sudo mkdir -p /etc/docker
 
     # Fix Major #4: JSON Généré Manuellement -> Utiliser Python pour générer du JSON valide
-    # On passe la liste de DNS comme argument JSON string
-    JSON_CONTENT=$(python3 -c "import json; print(json.dumps({'dns': [$DNS_LIST], 'dns-opts': ['timeout:2', 'attempts:3']}, indent=2))")
+    # Construction du JSON via Python en passant les DNS comme arguments séparés
+    if [[ "$DNS_VALIDATED" == "true" ]]; then
+        JSON_CONTENT=$(python3 -c "import json, sys; print(json.dumps({'dns': ['$DNS_LOCAL', '1.1.1.1', '8.8.8.8'], 'dns-opts': ['timeout:2', 'attempts:3']}, indent=2))")
+    else
+        JSON_CONTENT=$(python3 -c "import json; print(json.dumps({'dns': ['1.1.1.1', '8.8.8.8'], 'dns-opts': ['timeout:2', 'attempts:3']}, indent=2))")
+    fi
 
     if [[ $? -eq 0 && -n "$JSON_CONTENT" ]]; then
         echo "$JSON_CONTENT" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
@@ -426,8 +495,19 @@ if [[ "$SHOULD_WRITE" == "true" ]]; then
         exit 1
     fi
 
-    log_info "Redémarrage de Docker..."
-    sudo systemctl restart docker || log_warn "Redémarrage Docker échoué (ignorer si Docker non installé)"
+    log_info "Rechargement de la configuration Docker..."
+    # Utiliser reload au lieu de restart pour éviter de tuer les conteneurs
+    if systemctl is-active --quiet docker; then
+        # Vérifier qu'aucune opération critique n'est en cours
+        if ! docker ps --quiet >/dev/null 2>&1 || [[ $(docker ps --quiet | wc -l) -eq 0 ]]; then
+            sudo systemctl restart docker || log_warn "Redémarrage Docker échoué"
+        else
+            log_warn "Conteneurs actifs détectés - Le redémarrage sera fait au prochain démarrage du système"
+            log_info "Vous pouvez redémarrer manuellement: sudo systemctl restart docker"
+        fi
+    else
+        log_info "Docker non actif, configuration sera appliquée au prochain démarrage"
+    fi
     DNS_CONFIGURED_PHASE_1_6=true
 else
     log_info "Configuration DNS Docker déjà à jour. Skip."
@@ -499,6 +579,63 @@ fi
 # Optimisations système (kernel, ZRAM)
 configure_kernel_params || true
 configure_zram || true
+
+# Optimisations RPi4 spécifiques (4Go RAM)
+if [[ "$ARCH" == "aarch64" ]] || [[ "$ARCH" == "armv7l" ]]; then
+    log_info "Application des optimisations RPi4..."
+
+    # Limiter la mémoire par défaut des conteneurs (éviter OOM sur 4Go RAM)
+    DOCKER_DAEMON_FILE="/etc/docker/daemon.json"
+    if [[ -f "$DOCKER_DAEMON_FILE" ]]; then
+        # Ajouter la limitation mémoire par défaut si pas déjà présente
+        if ! grep -q "default-ulimits" "$DOCKER_DAEMON_FILE" 2>/dev/null; then
+            log_info "  → Configuration des limites mémoire par conteneur (1Go max par défaut)..."
+            # Backup du fichier actuel
+            sudo cp "$DOCKER_DAEMON_FILE" "${DOCKER_DAEMON_FILE}.bak"
+
+            # Merger avec les paramètres existants via Python (safe JSON merge)
+            MERGED_JSON=$(python3 -c "
+import json, sys
+try:
+    with open('$DOCKER_DAEMON_FILE', 'r') as f:
+        config = json.load(f)
+except:
+    config = {}
+
+# Ajouter les limites par défaut pour RPi4
+config['default-ulimits'] = {
+    'memlock': {'Hard': 1073741824, 'Name': 'memlock', 'Soft': 1073741824}
+}
+
+# Log driver optimisé pour SD card (moins d'écritures)
+config['log-driver'] = 'json-file'
+config['log-opts'] = {
+    'max-size': '10m',
+    'max-file': '3'
+}
+
+print(json.dumps(config, indent=2))
+" 2>/dev/null)
+
+            if [[ $? -eq 0 && -n "$MERGED_JSON" ]]; then
+                echo "$MERGED_JSON" | sudo tee "$DOCKER_DAEMON_FILE" > /dev/null
+                log_success "✓ Limites mémoire configurées (1Go par conteneur)"
+
+                # Redémarrer Docker pour appliquer
+                if systemctl is-active --quiet docker && [[ $(docker ps --quiet | wc -l) -eq 0 ]]; then
+                    sudo systemctl restart docker
+                    log_success "✓ Configuration Docker appliquée"
+                else
+                    log_info "  → Redémarrez Docker manuellement: sudo systemctl restart docker"
+                fi
+            else
+                log_warn "Impossible de configurer les limites mémoire (fichier JSON invalide ?)"
+            fi
+        else
+            log_info "  → Limites mémoire déjà configurées"
+        fi
+    fi
+fi
 
 # Nettoyage disque
 log_info "Nettoyage des ressources Docker..."
