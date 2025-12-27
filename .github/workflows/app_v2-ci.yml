@@ -103,9 +103,9 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest pytest-asyncio pytest-cov fakeredis
+          pip install pytest pytest-asyncio pytest-cov fakeredis aiosqlite
           pip install -r requirements.txt || echo "Installing from pyproject.toml"
-          pip install -e . || echo "No setup.py/pyproject.toml with install config"
+          pip install -e .[api,dev] || pip install -e . || echo "No setup.py/pyproject.toml with install config"
 
       - name: Create test database directory
         run: mkdir -p /tmp/test_db

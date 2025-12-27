@@ -92,8 +92,13 @@ class TestSettingsValidation:
 class TestSettingsSecrets:
     """Test secret key validation."""
 
-    def test_encryption_key_required(self):
+    def test_encryption_key_required(self, monkeypatch):
         """Test that encryption key is required."""
+        # Clear environment variables that might provide defaults
+        monkeypatch.delenv("AUTH_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+
         with pytest.raises(ValidationError):
             Settings(
                 database_url="sqlite+aiosqlite:///test.db",
@@ -102,8 +107,13 @@ class TestSettingsSecrets:
                 # Missing auth_encryption_key
             )
 
-    def test_jwt_secret_required(self):
+    def test_jwt_secret_required(self, monkeypatch):
         """Test that JWT secret is required."""
+        # Clear environment variables that might provide defaults
+        monkeypatch.delenv("AUTH_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+
         with pytest.raises(ValidationError):
             Settings(
                 database_url="sqlite+aiosqlite:///test.db",
@@ -112,8 +122,13 @@ class TestSettingsSecrets:
                 # Missing jwt_secret
             )
 
-    def test_api_key_required(self):
+    def test_api_key_required(self, monkeypatch):
         """Test that API key is required."""
+        # Clear environment variables that might provide defaults
+        monkeypatch.delenv("AUTH_ENCRYPTION_KEY", raising=False)
+        monkeypatch.delenv("API_KEY", raising=False)
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+
         with pytest.raises(ValidationError):
             Settings(
                 database_url="sqlite+aiosqlite:///test.db",
