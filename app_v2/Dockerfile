@@ -75,5 +75,7 @@ EXPOSE 8000
 # ==============================================================================
 # Point d'entrée
 # ==============================================================================
-WORKDIR /app/app_v2
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# IMPORTANT: WORKDIR must be /app (not /app/app_v2) because imports use "app_v2.*"
+# If WORKDIR is /app/app_v2, Python will look for /app/app_v2/app_v2 which doesn't exist
+WORKDIR /app
+CMD ["uvicorn", "app_v2.main:app", "--host", "0.0.0.0", "--port", "8000"]
