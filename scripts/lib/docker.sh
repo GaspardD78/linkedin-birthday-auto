@@ -112,6 +112,9 @@ _docker_pull_single() {
     return 1
 }
 
+# Track which services failed to pull (global array for docker_pull_parallel)
+FAILED_PULL_SERVICES=()
+
 # Pull third-party images in parallel (background jobs)
 _docker_pull_parallel() {
     local compose_file="$1"
@@ -119,6 +122,7 @@ _docker_pull_parallel() {
     local services=("$@")
     local pids=()
     local failed=0
+    FAILED_PULL_SERVICES=()  # Reset global array
 
     [[ ${#services[@]} -eq 0 ]] && return 0
 
@@ -134,6 +138,7 @@ _docker_pull_parallel() {
     for pid in "${pids[@]}"; do
         if ! wait "$pid"; then
             log_warn "  ⚠ ${services[$idx]} - échec (non bloquant)"
+            FAILED_PULL_SERVICES+=("${services[$idx]}")
             ((failed++))
         fi
         ((idx++))
@@ -142,7 +147,7 @@ _docker_pull_parallel() {
     if [[ $failed -eq 0 ]]; then
         log_success "✓ Images tierces synchronisées"
     else
-        log_warn "  ${failed}/${#services[@]} images en échec (retry au démarrage)"
+        log_warn "  ${failed}/${#services[@]} images en échec (services concernés ne seront pas démarrés)"
 
         # Raspberry Pi 4 specific: Warn about critical ARM64 compatibility
         if [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "armv7l" ]]; then
@@ -200,6 +205,38 @@ _docker_pull_sequential_ui() {
     return 0
 }
 
+# Classify services as critical or optional
+_docker_classify_services_criticality() {
+    local -n _critical=$1
+    local -n _optional=$2
+
+    # Critical services required for basic functionality
+    _critical=("redis-bot" "redis-dashboard" "api" "bot-worker" "dashboard" "nginx")
+
+    # Optional services (monitoring, logging, utilities)
+    _optional=("docker-socket-proxy" "dozzle" "prometheus" "grafana" "otel-collector")
+}
+
+# Verify if image exists locally for a service
+_docker_check_image_exists() {
+    local compose_file="$1"
+    local service="$2"
+
+    local image
+    image=$(_docker_get_service_image "$compose_file" "$service")
+
+    if [[ -z "$image" ]]; then
+        return 1
+    fi
+
+    # Check if image exists locally
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Main optimized pull function - replaces docker_pull_with_retry
 docker_pull_images_optimized() {
     local compose_file="$1"
@@ -234,9 +271,68 @@ docker_pull_images_optimized() {
         return 1
     fi
 
+    # Phase 3: Verify critical services have their images
+    log_info "Vérification des services critiques..."
+    local critical_services=()
+    local optional_services=()
+    _docker_classify_services_criticality critical_services optional_services
+
+    local missing_critical=()
+    for svc in "${critical_services[@]}"; do
+        if ! _docker_check_image_exists "$compose_file" "$svc"; then
+            missing_critical+=("$svc")
+        fi
+    done
+
+    if [[ ${#missing_critical[@]} -gt 0 ]]; then
+        log_error "Services critiques sans image disponible:"
+        for svc in "${missing_critical[@]}"; do
+            log_error "  ✗ $svc"
+        done
+        log_error "Impossible de continuer sans ces services critiques"
+        return 1
+    fi
+
+    log_success "✓ Tous les services critiques ont leurs images (${#critical_services[@]}/${#critical_services[@]})"
+
+    # Phase 4: Report optional services without images
+    if [[ ${#FAILED_PULL_SERVICES[@]} -gt 0 ]]; then
+        log_warn "Services optionnels qui ne seront pas démarrés (images manquantes):"
+        for svc in "${FAILED_PULL_SERVICES[@]}"; do
+            log_warn "  ⊗ $svc"
+        done
+    fi
+
     echo ""
-    log_success "✓ Toutes les images sont synchronisées"
+    log_success "✓ Images synchronisées (tous les services critiques OK)"
     return 0
+}
+
+# Get list of services with available images (excluding failed pulls)
+docker_get_startable_services() {
+    local compose_file="$1"
+    local all_services
+    all_services=$(docker compose -f "$compose_file" config --services 2>/dev/null)
+
+    local startable_services=()
+    while IFS= read -r svc; do
+        [[ -z "$svc" ]] && continue
+
+        # Skip services that failed to pull
+        local skip=false
+        for failed_svc in "${FAILED_PULL_SERVICES[@]}"; do
+            if [[ "$svc" == "$failed_svc" ]]; then
+                skip=true
+                break
+            fi
+        done
+
+        if [[ "$skip" == "false" ]] && _docker_check_image_exists "$compose_file" "$svc"; then
+            startable_services+=("$svc")
+        fi
+    done <<< "$all_services"
+
+    echo "${startable_services[@]}"
 }
 
 # Legacy function - kept for compatibility, delegates to optimized version

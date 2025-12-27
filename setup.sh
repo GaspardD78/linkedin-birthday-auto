@@ -986,15 +986,35 @@ progress_done "Images téléchargées"
 
 # Étape 4: Démarrage des conteneurs (Force Recreate)
 progress_step "Démarrage des conteneurs (--force-recreate)"
-# Remplacement de docker_compose_up pour forcer la recréation
+
+# Get list of startable services (exclude failed pulls)
+STARTABLE_SERVICES=$(docker_get_startable_services "$COMPOSE_FILE")
+
+if [[ -z "$STARTABLE_SERVICES" ]]; then
+    progress_fail "Aucun service démarrable"
+    progress_end
+    log_error "Aucun service ne peut être démarré (toutes les images ont échoué)"
+    exit 1
+fi
+
+# Count services
+STARTABLE_COUNT=$(echo "$STARTABLE_SERVICES" | wc -w)
+TOTAL_SERVICES=$(docker compose -f "$COMPOSE_FILE" config --services 2>/dev/null | wc -l)
+
+if [[ $STARTABLE_COUNT -lt $TOTAL_SERVICES ]]; then
+    SKIPPED_COUNT=$((TOTAL_SERVICES - STARTABLE_COUNT))
+    log_warn "  ⚠ $SKIPPED_COUNT service(s) ignoré(s) (images manquantes)"
+fi
+
+# Start only services with available images
 # USING DOCKER_CMD (Consistent)
-if ! $DOCKER_CMD -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans >/dev/null 2>&1; then
+if ! $DOCKER_CMD -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans $STARTABLE_SERVICES >/dev/null 2>&1; then
     progress_fail "Échec du démarrage"
     progress_end
     log_error "Démarrage des conteneurs échoué"
     exit 1
 fi
-progress_done "Conteneurs démarrés"
+progress_done "Conteneurs démarrés ($STARTABLE_COUNT/$TOTAL_SERVICES)"
 
 # Étape 5: Vérification post-démarrage
 progress_step "Vérification des conteneurs"
