@@ -241,12 +241,20 @@ if [[ "$ARCH" == "aarch64" ]] || [[ "$ARCH" == "armv7l" ]]; then
         fi
     fi
 
-    # Vérifier si sur SD card (usure)
+    # Vérifier le type de stockage (SD card vs USB/SSD)
     ROOT_DEVICE=$(df "$SCRIPT_DIR" | awk 'NR==2 {print $1}')
     if [[ "$ROOT_DEVICE" == *"mmcblk"* ]]; then
         log_warn "⚠️  Installation sur carte SD détectée ($ROOT_DEVICE)"
         log_warn "    Les SD cards ont une durée de vie limitée avec Docker"
-        log_info "    Recommandation: Utilisez un SSD externe via USB 3.0 pour la production"
+        log_warn "    Recommandation: Utilisez un SSD/USB externe via USB 3.0 pour la production"
+        if ! prompt_yes_no "Continuer sur SD card ?" "y"; then
+            exit 1
+        fi
+    elif [[ "$ROOT_DEVICE" == *"sd"* ]] || [[ "$ROOT_DEVICE" == *"nvme"* ]]; then
+        log_success "✓ Stockage externe USB/SSD détecté ($ROOT_DEVICE)"
+        log_info "  Excellente durabilité pour Docker en production"
+    else
+        log_info "Stockage détecté: $ROOT_DEVICE"
     fi
 fi
 
@@ -337,6 +345,9 @@ if [ "${CONFIGURE_SYSTEM_DNS}" = "true" ]; then
 
             # Configuration adaptée pour WiFi (préserve DNS local pour .freeboxos.fr)
             if [[ "${PRIMARY_INTERFACE}" == wlan* ]]; then
+                # Détecter le SSID WiFi pour feedback utilisateur
+                WIFI_SSID=$(iwgetid -r 2>/dev/null || echo "inconnu")
+                echo "ℹ [WiFi] Réseau détecté: ${WIFI_SSID} (interface: ${PRIMARY_INTERFACE})"
                 echo "ℹ [WiFi] Configuration DNS hybride (local + publics)..."
                 # Détecter le DNS de la box (généralement 192.168.1.254 pour Freebox)
                 LOCAL_GATEWAY=$(ip route show default | awk '/default/ {print $3}' | head -1)
@@ -1049,9 +1060,10 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
     if prompt_yes_no "Configurer le renouvellement automatique des certificats SSL (cron) ?" "y"; then
         # Vérifier si le cron job existe déjà
         CRON_JOB="0 3 * * * $PROJECT_ROOT/scripts/renew_certificates.sh >> /var/log/certbot-renew.log 2>&1"
+        CRON_SIGNATURE="# LinkedIn Bot - SSL Auto-Renew"
 
-        # Vérifier idempotence exacte: le cron job complet doit exister
-        if crontab -l 2>/dev/null | grep -qF "$PROJECT_ROOT/scripts/renew_certificates.sh"; then
+        # Vérifier idempotence stricte via signature unique
+        if crontab -l 2>/dev/null | grep -qF "$CRON_SIGNATURE"; then
             log_info "✓ Cron job SSL déjà configuré"
         else
             log_info "Ajout du cron job pour le renouvellement SSL..."
@@ -1060,8 +1072,8 @@ if [[ "$HTTPS_MODE" == "letsencrypt" ]]; then
             sudo touch /var/log/certbot-renew.log 2>/dev/null || true
             sudo chown "$(whoami):$(whoami)" /var/log/certbot-renew.log 2>/dev/null || true
 
-            # Ajouter au crontab
-            (crontab -l 2>/dev/null || true; echo "$CRON_JOB") | crontab -
+            # Ajouter au crontab avec signature
+            (crontab -l 2>/dev/null || true; echo "$CRON_SIGNATURE"; echo "$CRON_JOB") | crontab -
 
             log_success "✓ Cron job configuré (tous les jours à 3h du matin)"
             log_info "Le renouvellement automatique vérifiera si les certificats expirent dans < 30 jours"
@@ -1119,6 +1131,17 @@ if ! docker_pull_with_retry "$COMPOSE_FILE"; then
     log_error "Pull images échoué"
     exit 1
 fi
+
+# Vérifier l'espace disque après pull (critique pour RPi4 avec USB limité)
+SPACE_AFTER=$(df -BG "$SCRIPT_DIR" | awk 'NR==2 {print $4}' | sed 's/G//')
+if [[ "$SPACE_AFTER" =~ ^[0-9]+$ ]] && [[ "$SPACE_AFTER" -lt 2 ]]; then
+    progress_fail "Espace disque critique après pull: ${SPACE_AFTER}GB"
+    progress_end
+    log_error "Moins de 2GB disponible. Libérez de l'espace avant de continuer."
+    log_info "Commandes utiles: docker system prune -a"
+    exit 1
+fi
+log_info "Espace disque restant: ${SPACE_AFTER}GB"
 progress_done "Images téléchargées"
 
 # Étape 4: Démarrage des conteneurs (Force Recreate)
