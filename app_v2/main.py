@@ -1,19 +1,29 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-import logging
 from datetime import datetime, timezone
 from sqlalchemy import text
+import os
 
 from app_v2.api.routers import control, data
 from app_v2.core.config import Settings
 from app_v2.db.engine import init_db, get_engine, get_session_maker
 from app_v2.core.redis_client import get_redis_client, close_redis_client
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Phase 3: Structured logging and metrics
+from app_v2.core.logging import setup_logging, get_logger
+from app_v2.core.middleware import RequestLoggingMiddleware
+from app_v2.core.metrics import (
+    get_metrics,
+    get_metrics_content_type,
+    database_connections_active,
+)
+
+# Setup structured logging (JSON in production, simple in dev)
+json_logging = os.getenv("LOG_FORMAT", "json") == "json"
+setup_logging(level=os.getenv("LOG_LEVEL", "INFO"), json_format=json_logging)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -65,6 +75,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Phase 3: Add logging and metrics middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 # Include Routers
 app.include_router(control.router)
@@ -174,4 +187,35 @@ async def readiness(settings: Settings = Depends(lambda: Settings())):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": "2.0.0",
         },
+    )
+
+
+# =========================================================================
+# METRICS ENDPOINT (PHASE 3 - MONITORING & OBSERVABILITY)
+# =========================================================================
+
+
+@app.get("/metrics", tags=["Monitoring"])
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+
+    Exposes metrics for:
+    - HTTP requests (count, latency, status codes)
+    - Business metrics (birthday messages, profile visits)
+    - System metrics (database, Redis, errors)
+    - Rate limiter and circuit breaker state
+
+    Returns:
+        Prometheus text format metrics
+
+    Note:
+        This endpoint is not protected by authentication to allow
+        Prometheus to scrape it. Consider network-level protection
+        (firewall, VPN) in production.
+    """
+    metrics_data = get_metrics()
+    return Response(
+        content=metrics_data,
+        media_type=get_metrics_content_type(),
     )
